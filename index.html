@@ -1,140 +1,215 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Makapix – Shape Worlds with Pixels</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <header class="site-header">
-    <div class="container">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Makapix — Spark ideas in pixel-perfect motion</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <meta
+      name="description"
+      content="Makapix is a community for makers and pixel artists to collaborate, prototype, and launch ideas in vivid color."
+    />
+  </head>
+  <body>
+    <header class="site-header">
       <div class="logo">Makapix</div>
       <nav class="nav">
-        <a href="#why">Why Makapix</a>
-        <a href="#community">Community</a>
-        <a href="#cta" class="nav-cta">Join</a>
+        <a href="#manifesto">Manifesto</a>
+        <a href="#features">Features</a>
+        <a href="#cta" class="nav-cta">Join beta</a>
       </nav>
-    </div>
-  </header>
+    </header>
 
-  <main>
-    <section class="hero">
-      <div class="container hero-grid">
-        <div class="hero-copy">
-          <p class="tagline">Pixel artists & makers unite</p>
-          <h1>Bring your worlds to life with people who get it.</h1>
-          <p class="lead">Makapix is the call-to-action hub for creators who craft in pixels. Share your art, build playful experiences, and find collaborators ready to ship the next big thing with you.</p>
-          <div class="cta-group">
-            <a id="cta" class="button primary" href="https://forms.gle/4rcx5A5uN7UXrv3d8" target="_blank" rel="noopener">Request an invite</a>
-            <a class="button secondary" href="#why">See what's inside</a>
+    <main>
+      <section class="hero">
+        <div class="hero-text">
+          <p class="eyebrow">Community of makers & pixel artists</p>
+          <h1>Build the next cult-classic in dazzling pixels.</h1>
+          <p class="lead">
+            Makapix is where playful experimentation meets production-ready craft.
+            Shape your idea with a guild of designers, coders, and storytellers who
+            speak fluent pixels.
+          </p>
+          <div class="hero-actions">
+            <a class="cta-primary" href="#cta">Request invite</a>
+            <a class="cta-secondary" href="#manifesto">Discover the ethos</a>
           </div>
-          <div class="hero-highlight">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM11 17L6 12L7.41 10.59L11 14.17L16.59 8.58L18 10L11 17Z" fill="currentColor"/></svg>
-            <span>Early members featured in launch gallery & collaborative drops.</span>
+          <dl class="hero-metrics">
+            <div>
+              <dt>200+</dt>
+              <dd>Concept drops every month</dd>
+            </div>
+            <div>
+              <dt>48 hrs</dt>
+              <dd>From spark to playable prototype</dd>
+            </div>
+            <div>
+              <dt>∞</dt>
+              <dd>Creative energy shared daily</dd>
+            </div>
+          </dl>
+        </div>
+        <div class="hero-visual" aria-hidden="true">
+          <div class="pixel-orbit">
+            <div class="pixel planet"></div>
+            <div class="pixel satellite"></div>
+            <div class="pixel trail"></div>
+          </div>
+          <div class="floating-card">
+            <span class="badge">Live build</span>
+            <h2>Night Market Racer</h2>
+            <p>Co-create in a neon bazaar, remixing sprites in real time.</p>
+            <div class="avatars">
+              <span aria-label="Kai">K</span>
+              <span aria-label="Mira">M</span>
+              <span aria-label="Ada">A</span>
+            </div>
           </div>
         </div>
-        <div class="hero-card" aria-hidden="true">
-          <div class="pixel-grid">
-            <div class="pixel accent"></div>
-            <div class="pixel"></div>
-            <div class="pixel"></div>
-            <div class="pixel"></div>
-            <div class="pixel"></div>
-            <div class="pixel accent"></div>
-            <div class="pixel"></div>
-            <div class="pixel"></div>
-            <div class="pixel"></div>
-          </div>
-          <div class="card-content">
-            <h2>Launch your next pixel story</h2>
-            <p>Access curated prompts, collaborative jams, and a supportive crew pushing the edge of play.</p>
-            <ul>
-              <li>Weekly pixel labs & critiques</li>
-              <li>Toolkits for animation + gamified drops</li>
-              <li>Opportunities to co-build with fellow makers</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </section>
+      </section>
 
-    <section id="why" class="section why">
-      <div class="container">
-        <h2>Why creators choose Makapix</h2>
+      <section class="marquee" aria-label="Makapix themes">
+        <div class="marquee-track">
+          <span>Pixel-perfect sprints</span>
+          <span>Story-driven worlds</span>
+          <span>Playable prototypes</span>
+          <span>Collective feedback loops</span>
+          <span>Pixel-perfect sprints</span>
+          <span>Story-driven worlds</span>
+          <span>Playable prototypes</span>
+          <span>Collective feedback loops</span>
+        </div>
+      </section>
+
+      <section class="section" id="manifesto">
+        <div class="section-heading">
+          <h2>The manifesto</h2>
+          <p>
+            Makapix celebrates bold experiments that feel like nostalgia from the
+            future. We champion fast iteration, radical collaboration, and the
+            joy of shipping weird things together.
+          </p>
+        </div>
         <div class="pillars">
           <article>
-            <h3>Collaborate without friction</h3>
-            <p>Drop into ready-made teams or spin up your own jam sessions with transparent roles, timelines, and feedback loops.</p>
+            <h3>Prototype loudly</h3>
+            <p>
+              Share your builds early and often. We give every idea a stage and the
+              support it needs to evolve in public.
+            </p>
           </article>
           <article>
-            <h3>Showcase pixel-first experiences</h3>
-            <p>Feature your art in curated galleries, limited digital merch, and playable showcases crafted to spark action.</p>
+            <h3>Remix culture</h3>
+            <p>
+              Every sprite, sound, and storyline is remixable. Creative credits
+              travel with the work, keeping the community generous and fair.
+            </p>
           </article>
           <article>
-            <h3>Access resources that matter</h3>
-            <p>From prompt banks to live workshops, Makapix keeps you stocked with the tactical support to ship your next release.</p>
+            <h3>Launch together</h3>
+            <p>
+              From game jam to marketplace debut, we provide the playbooks,
+              collaborators, and momentum to ship something unforgettable.
+            </p>
           </article>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section id="community" class="section community">
-      <div class="container community-grid">
-        <div class="community-intro">
-          <h2>Built by and for pixel pioneers</h2>
-          <p>When you join Makapix, you plug into a living studio of illustrators, animators, game designers, and interactive storytellers who champion each other's craft.</p>
+      <section class="section dense" id="features">
+        <div class="section-heading">
+          <h2>Why makers choose Makapix</h2>
+          <p>Tooling, community rituals, and delightful prompts built for pixel-first teams.</p>
         </div>
-        <div class="community-quotes">
-          <figure>
-            <blockquote>“Makapix helped me find collaborators who speak the same playful language. We shipped a tiny game in a weekend and landed our first paid commission.”</blockquote>
-            <figcaption>— Nia, pixel animator & experience designer</figcaption>
-          </figure>
-          <figure>
-            <blockquote>“The workshops and prompts keep me pushing into brighter, bolder art. It’s my go-to space when I need momentum.”</blockquote>
-            <figcaption>— Eli, interactive artist</figcaption>
-          </figure>
+        <div class="features">
+          <article>
+            <span class="label">Daily spark</span>
+            <h3>Prompted jam sessions</h3>
+            <p>
+              Meet creative partners through guided, 30-minute jams that end with
+              a playable snippet you can showcase instantly.
+            </p>
+          </article>
+          <article>
+            <span class="label">Shared canvas</span>
+            <h3>Collaborative sprite editor</h3>
+            <p>
+              Paint together in real time with layered commenting, version recall,
+              and export-ready formats.
+            </p>
+          </article>
+          <article>
+            <span class="label">Launchpad</span>
+            <h3>Lightning feedback loops</h3>
+            <p>
+              Surface constructive critiques from seasoned builders to level up
+              art direction, storytelling, and moment-to-moment feel.
+            </p>
+          </article>
+          <article>
+            <span class="label">Momentum</span>
+            <h3>Creator drops & showcases</h3>
+            <p>
+              Earn spotlight features, unlock micro-grants, and join curated
+              release nights watched by publishers and superfans.
+            </p>
+          </article>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section class="section action">
-      <div class="container action-card">
-        <div class="action-copy">
-          <h2>Ready to build a universe in pixels?</h2>
-          <p>Join the Makapix call-to-action list to access early drops, maker briefs, and opportunities to headline our next showcase.</p>
+      <section class="section highlight">
+        <div class="callout">
+          <h2>“Makapix turned my late-night sketches into a full-blown collab.”</h2>
+          <p class="quote-credit">— Lumen, pixel animator & narrative designer</p>
         </div>
-        <a class="button primary" href="https://forms.gle/4rcx5A5uN7UXrv3d8" target="_blank" rel="noopener">Get on the list</a>
-      </div>
-    </section>
-  </main>
+        <div class="callout-body">
+          <p>
+            We orchestrate small, high-trust squads who can bring your worlds to
+            life. From scene composers to tool developers, you’ll meet the partners
+            you’ve been daydreaming about.
+          </p>
+          <ul>
+            <li>Curated squads matched by creative DNA</li>
+            <li>Hands-on guidance from Makapix producers</li>
+            <li>Weekly showcases with actionable insights</li>
+          </ul>
+        </div>
+      </section>
 
-  <footer class="site-footer">
-    <div class="container footer-grid">
-      <div>
-        <div class="logo">Makapix</div>
-        <p class="footer-tagline">Community of makers and pixel artists</p>
-      </div>
+      <section class="section cta" id="cta">
+        <div class="cta-inner">
+          <h2>Ready to build the next cult favorite?</h2>
+          <p>
+            Join the early access beta to secure your spot in the founding season
+            of Makapix. We’re opening the doors to a limited wave of makers.
+          </p>
+          <form class="cta-form">
+            <label for="email" class="sr-only">Email</label>
+            <input id="email" type="email" placeholder="you@studio.com" required />
+            <button type="submit">Request invite</button>
+          </form>
+          <p class="footnote">We review every application to keep the vibe intentional.</p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-logo">Makapix</div>
       <div class="footer-links">
-        <a href="mailto:hello@makapix.com">Contact</a>
-        <a href="https://instagram.com" target="_blank" rel="noopener">Instagram</a>
-        <a href="https://discord.com" target="_blank" rel="noopener">Discord</a>
+        <a href="#">About</a>
+        <a href="#">Code of play</a>
+        <a href="#">Press kit</a>
       </div>
-    </div>
-    <p class="footer-note">© <span id="year"></span> Makapix. All rights reserved.</p>
-  </footer>
+      <p class="footer-note">© <span id="year"></span> Makapix Collective</p>
+    </footer>
 
-  <script>
-    document.getElementById('year').textContent = new Date().getFullYear();
-    document.querySelector('.nav-cta').addEventListener('click', function(event) {
-      const heroCta = document.getElementById('cta');
-      if (heroCta) {
-        heroCta.focus();
-      }
-    });
-  </script>
-</body>
+    <script>
+      document.getElementById("year").textContent = new Date().getFullYear();
+    </script>
+  </body>
 </html>
