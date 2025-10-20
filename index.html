@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Makapix – Shape Worlds with Pixels</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <div class="logo">Makapix</div>
+      <nav class="nav">
+        <a href="#why">Why Makapix</a>
+        <a href="#community">Community</a>
+        <a href="#cta" class="nav-cta">Join</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <p class="tagline">Pixel artists & makers unite</p>
+          <h1>Bring your worlds to life with people who get it.</h1>
+          <p class="lead">Makapix is the call-to-action hub for creators who craft in pixels. Share your art, build playful experiences, and find collaborators ready to ship the next big thing with you.</p>
+          <div class="cta-group">
+            <a id="cta" class="button primary" href="https://forms.gle/4rcx5A5uN7UXrv3d8" target="_blank" rel="noopener">Request an invite</a>
+            <a class="button secondary" href="#why">See what's inside</a>
+          </div>
+          <div class="hero-highlight">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM11 17L6 12L7.41 10.59L11 14.17L16.59 8.58L18 10L11 17Z" fill="currentColor"/></svg>
+            <span>Early members featured in launch gallery & collaborative drops.</span>
+          </div>
+        </div>
+        <div class="hero-card" aria-hidden="true">
+          <div class="pixel-grid">
+            <div class="pixel accent"></div>
+            <div class="pixel"></div>
+            <div class="pixel"></div>
+            <div class="pixel"></div>
+            <div class="pixel"></div>
+            <div class="pixel accent"></div>
+            <div class="pixel"></div>
+            <div class="pixel"></div>
+            <div class="pixel"></div>
+          </div>
+          <div class="card-content">
+            <h2>Launch your next pixel story</h2>
+            <p>Access curated prompts, collaborative jams, and a supportive crew pushing the edge of play.</p>
+            <ul>
+              <li>Weekly pixel labs & critiques</li>
+              <li>Toolkits for animation + gamified drops</li>
+              <li>Opportunities to co-build with fellow makers</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="why" class="section why">
+      <div class="container">
+        <h2>Why creators choose Makapix</h2>
+        <div class="pillars">
+          <article>
+            <h3>Collaborate without friction</h3>
+            <p>Drop into ready-made teams or spin up your own jam sessions with transparent roles, timelines, and feedback loops.</p>
+          </article>
+          <article>
+            <h3>Showcase pixel-first experiences</h3>
+            <p>Feature your art in curated galleries, limited digital merch, and playable showcases crafted to spark action.</p>
+          </article>
+          <article>
+            <h3>Access resources that matter</h3>
+            <p>From prompt banks to live workshops, Makapix keeps you stocked with the tactical support to ship your next release.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="community" class="section community">
+      <div class="container community-grid">
+        <div class="community-intro">
+          <h2>Built by and for pixel pioneers</h2>
+          <p>When you join Makapix, you plug into a living studio of illustrators, animators, game designers, and interactive storytellers who champion each other's craft.</p>
+        </div>
+        <div class="community-quotes">
+          <figure>
+            <blockquote>“Makapix helped me find collaborators who speak the same playful language. We shipped a tiny game in a weekend and landed our first paid commission.”</blockquote>
+            <figcaption>— Nia, pixel animator & experience designer</figcaption>
+          </figure>
+          <figure>
+            <blockquote>“The workshops and prompts keep me pushing into brighter, bolder art. It’s my go-to space when I need momentum.”</blockquote>
+            <figcaption>— Eli, interactive artist</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="section action">
+      <div class="container action-card">
+        <div class="action-copy">
+          <h2>Ready to build a universe in pixels?</h2>
+          <p>Join the Makapix call-to-action list to access early drops, maker briefs, and opportunities to headline our next showcase.</p>
+        </div>
+        <a class="button primary" href="https://forms.gle/4rcx5A5uN7UXrv3d8" target="_blank" rel="noopener">Get on the list</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <div>
+        <div class="logo">Makapix</div>
+        <p class="footer-tagline">Community of makers and pixel artists</p>
+      </div>
+      <div class="footer-links">
+        <a href="mailto:hello@makapix.com">Contact</a>
+        <a href="https://instagram.com" target="_blank" rel="noopener">Instagram</a>
+        <a href="https://discord.com" target="_blank" rel="noopener">Discord</a>
+      </div>
+    </div>
+    <p class="footer-note">© <span id="year"></span> Makapix. All rights reserved.</p>
+  </footer>
+
+  <script>
+    document.getElementById('year').textContent = new Date().getFullYear();
+    document.querySelector('.nav-cta').addEventListener('click', function(event) {
+      const heroCta = document.getElementById('cta');
+      if (heroCta) {
+        heroCta.focus();
+      }
+    });
+  </script>
+</body>
+</html>
