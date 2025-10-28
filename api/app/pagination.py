@@ -79,28 +79,16 @@ def decode_cursor(cursor: str | None) -> tuple[str, Any] | None:
         return None
 
 
-def apply_cursor_filter(query, model_class, cursor: str | None, sort_field: str = "created_at"):
+def apply_cursor_filter(query, model_class, cursor: str | None, sort_field: str = "created_at", sort_desc: bool = True):
     """
     Apply cursor-based filtering to a SQLAlchemy query.
-    
-    PLACEHOLDER: Currently does nothing and returns the original query.
-    
-    TODO: Production implementation should:
-    1. Decode the cursor to get (last_id, sort_value)
-    2. Add WHERE clause: (sort_field, id) > (sort_value, last_id)
-    3. This requires a composite index on (sort_field, id) for efficiency
-    4. Handle both ascending and descending sorts
-    
-    Example:
-        query = session.query(Post)
-        query = apply_cursor_filter(query, Post, cursor, "created_at")
-        # Adds: WHERE (created_at, id) > (last_created_at, last_id)
     
     Args:
         query: SQLAlchemy query object
         model_class: The model class being queried
         cursor: Pagination cursor string
         sort_field: Field name to sort by (default: created_at)
+        sort_desc: Whether sorting is descending (default: True)
     
     Returns:
         Modified query with cursor filter applied
@@ -112,11 +100,54 @@ def apply_cursor_filter(query, model_class, cursor: str | None, sort_field: str 
     if not cursor_data:
         return query
     
-    # TODO: Implement cursor filtering with tuple comparison
-    # last_id, sort_value = cursor_data
-    # sort_column = getattr(model_class, sort_field)
-    # id_column = model_class.id
-    # query = query.filter((sort_column, id_column) > (sort_value, last_id))
+    last_id, sort_value = cursor_data
+    sort_column = getattr(model_class, sort_field)
+    id_column = model_class.id
+    
+    if sort_desc:
+        # For descending sort: (sort_field, id) < (sort_value, last_id)
+        query = query.filter(
+            (sort_column < sort_value) |
+            ((sort_column == sort_value) & (id_column < last_id))
+        )
+    else:
+        # For ascending sort: (sort_field, id) > (sort_value, last_id)
+        query = query.filter(
+            (sort_column > sort_value) |
+            ((sort_column == sort_value) & (id_column > last_id))
+        )
     
     return query
+
+
+def create_page_response(items: list, limit: int, cursor: str | None = None) -> dict[str, Any]:
+    """
+    Create a paginated response with next cursor.
+    
+    Args:
+        items: List of items for current page
+        limit: Maximum number of items per page
+        cursor: Current cursor (for debugging)
+    
+    Returns:
+        Dict with items and next_cursor
+    """
+    next_cursor = None
+    
+    if len(items) > limit:
+        # We fetched one extra item to check if there's a next page
+        items = items[:limit]
+        if items:
+            last_item = items[-1]
+            # Create cursor from the last item
+            # Assuming items have 'id' and 'created_at' attributes
+            if hasattr(last_item, 'created_at'):
+                next_cursor = encode_cursor(str(last_item.id), last_item.created_at.isoformat())
+            else:
+                next_cursor = encode_cursor(str(last_item.id))
+    
+    return {
+        "items": items,
+        "next_cursor": next_cursor
+    }
 

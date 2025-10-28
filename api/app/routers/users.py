@@ -8,8 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..auth import get_current_user, require_moderator, require_ownership
+from ..auth import check_ownership, get_current_user, get_current_user_optional, require_moderator, require_ownership
 from ..deps import get_db
+from ..pagination import apply_cursor_filter, create_page_response
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -28,26 +29,51 @@ def list_users_admin(
 ) -> schemas.Page[schemas.UserFull]:
     """
     List users (moderator/owner only).
-    
-    TODO: Implement cursor pagination
-    TODO: Implement search query (q parameter)
-    TODO: Apply filters for hidden, banned, non_conformant
-    TODO: Implement recent users filter
     """
     query = db.query(models.User)
     
-    # TODO: Apply filters based on parameters
-    # TODO: Apply cursor pagination
+    # Apply search filter
+    if q:
+        search_term = f"%{q}%"
+        query = query.filter(
+            (models.User.handle.ilike(search_term)) |
+            (models.User.display_name.ilike(search_term))
+        )
     
-    query = query.order_by(models.User.created_at.desc()).limit(limit)
-    users = query.all()
+    # Apply filters
+    if hidden is not None:
+        query = query.filter(models.User.hidden_by_user == hidden)
     
-    # TODO: Generate next_cursor if there are more results
-    next_cursor = None
+    if banned is not None:
+        if banned:
+            query = query.filter(models.User.banned_until.isnot(None))
+        else:
+            query = query.filter(models.User.banned_until.is_(None))
+    
+    if non_conformant is not None:
+        query = query.filter(models.User.non_conformant == non_conformant)
+    
+    if recent:
+        # Show users created in the last 7 days
+        from datetime import datetime, timedelta
+        recent_date = datetime.utcnow() - timedelta(days=7)
+        query = query.filter(models.User.created_at >= recent_date)
+    
+    # Apply cursor pagination
+    query = apply_cursor_filter(query, models.User, cursor, "created_at", sort_desc=True)
+    
+    # Order and limit
+    query = query.order_by(models.User.created_at.desc())
+    
+    # Fetch limit + 1 to check if there are more results
+    users = query.limit(limit + 1).all()
+    
+    # Create paginated response
+    page_data = create_page_response(users, limit, cursor)
     
     return schemas.Page(
-        items=[schemas.UserFull.model_validate(u) for u in users],
-        next_cursor=next_cursor,
+        items=[schemas.UserFull.model_validate(u) for u in page_data["items"]],
+        next_cursor=page_data["next_cursor"],
     )
 
 
@@ -92,22 +118,28 @@ def create_user(
     return schemas.UserFull.model_validate(user)
 
 
-@router.get("/{id}", response_model=schemas.UserFull)
+@router.get("/{id}", response_model=schemas.UserPublic | schemas.UserFull)
 def get_user(
     id: UUID,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-) -> schemas.UserFull:
+    current_user: models.User | None = Depends(get_current_user_optional),
+) -> schemas.UserPublic | schemas.UserFull:
     """
     Get user by ID.
-    
-    TODO: Return UserPublic for non-owners, UserFull for owners/moderators
     """
     user = db.query(models.User).filter(models.User.id == id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
-    return schemas.UserFull.model_validate(user)
+    # Check if user is hidden and current user doesn't have permission to see it
+    if user.hidden_by_user and (not current_user or not check_ownership(user.id, current_user)):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    # Return UserFull for moderators/owners, UserPublic for others
+    if current_user and ("moderator" in current_user.roles or "owner" in current_user.roles):
+        return schemas.UserFull.model_validate(user)
+    else:
+        return schemas.UserPublic.model_validate(user)
 
 
 @router.patch("/{id}", response_model=schemas.UserFull)
@@ -119,10 +151,6 @@ def update_user(
 ) -> schemas.UserFull:
     """
     Update user fields.
-    
-    TODO: Validate ownership before allowing update
-    TODO: Only moderators can update hidden_by_user for other users
-    TODO: Validate avatar_url is accessible
     """
     user = db.query(models.User).filter(models.User.id == id).first()
     if not user:
@@ -139,8 +167,16 @@ def update_user(
         user.website = payload.website
     if payload.avatar_url is not None:
         user.avatar_url = str(payload.avatar_url)
+    
+    # Only allow moderators to update hidden_by_user for other users
     if payload.hidden_by_user is not None:
-        user.hidden_by_user = payload.hidden_by_user
+        if user.id == current_user.id or "moderator" in current_user.roles or "owner" in current_user.roles:
+            user.hidden_by_user = payload.hidden_by_user
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only moderators can change hidden_by_user for other users"
+            )
     
     db.commit()
     db.refresh(user)

@@ -8,8 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..auth import get_current_user, get_current_user_optional, require_moderator, require_ownership
+from ..auth import check_ownership, get_current_user, get_current_user_optional, require_moderator, require_ownership
 from ..deps import get_db
+from ..pagination import apply_cursor_filter, create_page_response
 
 router = APIRouter(prefix="/posts", tags=["Posts"])
 
@@ -29,37 +30,51 @@ def list_posts(
 ) -> schemas.Page[schemas.Post]:
     """
     List posts with filters.
-    
-    TODO: Implement hashtag filter (array contains)
-    TODO: Implement promoted filter
-    TODO: Implement cursor pagination
-    TODO: Apply visibility filters based on hidden_by_* flags
-    TODO: Support multiple sort fields
     """
     query = db.query(models.Post)
     
     if owner_id:
         query = query.filter(models.Post.owner_id == owner_id)
     
+    # Apply visibility filters
     if visible_only:
-        query = query.filter(
-            models.Post.visible == True,
-            models.Post.hidden_by_mod == False,
-        )
+        query = query.filter(models.Post.visible == True)
+        
+        # Hide posts hidden by moderators unless current user is moderator/owner
+        if not current_user or not ("moderator" in current_user.roles or "owner" in current_user.roles):
+            query = query.filter(models.Post.hidden_by_mod == False)
+        
+        # Hide non-conformant posts unless current user is moderator/owner
+        if not current_user or not ("moderator" in current_user.roles or "owner" in current_user.roles):
+            query = query.filter(models.Post.non_conformant == False)
     
     if promoted is not None:
         query = query.filter(models.Post.promoted == promoted)
     
-    # TODO: Implement hashtag filter
-    # if hashtag:
-    #     query = query.filter(models.Post.hashtags.contains([hashtag]))
+    # Implement hashtag filter using PostgreSQL array contains
+    if hashtag:
+        query = query.filter(models.Post.hashtags.contains([hashtag]))
     
-    query = query.order_by(models.Post.created_at.desc()).limit(limit)
-    posts = query.all()
+    # Apply cursor pagination
+    sort_desc = order == "desc"
+    query = apply_cursor_filter(query, models.Post, cursor, sort or "created_at", sort_desc=sort_desc)
+    
+    # Order and limit
+    if sort == "created_at":
+        if order == "desc":
+            query = query.order_by(models.Post.created_at.desc())
+        else:
+            query = query.order_by(models.Post.created_at.asc())
+    
+    # Fetch limit + 1 to check if there are more results
+    posts = query.limit(limit + 1).all()
+    
+    # Create paginated response
+    page_data = create_page_response(posts, limit, cursor)
     
     return schemas.Page(
-        items=[schemas.Post.model_validate(p) for p in posts],
-        next_cursor=None,
+        items=[schemas.Post.model_validate(p) for p in page_data["items"]],
+        next_cursor=page_data["next_cursor"],
     )
 
 
@@ -75,20 +90,36 @@ def create_post(
 ) -> schemas.Post:
     """
     Create a new post.
-    
-    TODO: Validate art_url is accessible
-    TODO: Validate canvas dimensions match allowed_canvases
-    TODO: Check file_kb against user's limit
-    TODO: Extract and validate hashtags
-    TODO: Queue conformance check job
-    TODO: Publish MQTT notification
     """
+    # Validate canvas dimensions against allowed list
+    allowed_canvases = ["16x16", "32x32", "64x64", "96x64", "128x64", "128x128", "160x128", "240x135", "240x240", "256x256"]
+    if payload.canvas not in allowed_canvases:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Canvas size '{payload.canvas}' not allowed. Allowed sizes: {', '.join(allowed_canvases)}"
+        )
+    
+    # Validate file size (basic check)
+    max_file_kb = 350  # Default limit
+    if payload.file_kb > max_file_kb:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File size {payload.file_kb}KB exceeds limit of {max_file_kb}KB"
+        )
+    
+    # Normalize hashtags (lowercase, strip whitespace)
+    normalized_hashtags = []
+    for tag in payload.hashtags:
+        normalized_tag = tag.strip().lower()
+        if normalized_tag and normalized_tag not in normalized_hashtags:
+            normalized_hashtags.append(normalized_tag)
+    
     post = models.Post(
         owner_id=current_user.id,
         kind=payload.kind,
         title=payload.title,
         description=payload.description,
-        hashtags=payload.hashtags,
+        hashtags=normalized_hashtags,
         art_url=str(payload.art_url),
         canvas=payload.canvas,
         file_kb=payload.file_kb,
@@ -97,7 +128,8 @@ def create_post(
     db.commit()
     db.refresh(post)
     
-    # TODO: Publish to MQTT posts/new/#{post.id}
+    # TODO: Queue conformance check job
+    # TODO: Publish MQTT notification
     
     return schemas.Post.model_validate(post)
 
@@ -133,16 +165,30 @@ def list_recent_posts(
 
 
 @router.get("/{id}", response_model=schemas.Post)
-def get_post(id: UUID, db: Session = Depends(get_db)) -> schemas.Post:
+def get_post(
+    id: UUID, 
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_optional)
+) -> schemas.Post:
     """
     Get post by ID.
-    
-    TODO: Include comment count, reaction counts
-    TODO: Return 404 for hidden posts (unless owner/moderator)
     """
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    
+    # Check visibility
+    if not post.visible:
+        if not current_user or not check_ownership(post.owner_id, current_user):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    
+    if post.hidden_by_mod:
+        if not current_user or not ("moderator" in current_user.roles or "owner" in current_user.roles):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    
+    if post.non_conformant:
+        if not current_user or not ("moderator" in current_user.roles or "owner" in current_user.roles):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
     
     return schemas.Post.model_validate(post)
 

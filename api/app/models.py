@@ -39,6 +39,10 @@ class User(Base):
     avatar_url = Column(String(500), nullable=True)
     email = Column(String(255), nullable=True, index=True)
     
+    # GitHub OAuth fields
+    github_user_id = Column(String(50), nullable=True, unique=True, index=True)
+    github_username = Column(String(100), nullable=True, index=True)
+    
     # Reputation & roles
     reputation = Column(Integer, nullable=False, default=0, index=True)
     roles = Column(JSON, nullable=False, default=list)  # ["user", "moderator", "owner"]
@@ -63,6 +67,26 @@ class User(Base):
     devices = relationship("Device", back_populates="user", cascade="all, delete-orphan")
     badges = relationship("BadgeGrant", back_populates="user", cascade="all, delete-orphan")
     reputation_history = relationship("ReputationHistory", back_populates="user", cascade="all, delete-orphan")
+    refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
+
+
+class RefreshToken(Base):
+    """Refresh token for JWT authentication."""
+
+    __tablename__ = "refresh_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    token_hash = Column(String(255), nullable=False, unique=True, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    revoked = Column(Boolean, nullable=False, default=False, index=True)
+    
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+
+    # Relationships
+    user = relationship("User", back_populates="refresh_tokens")
 
 
 class Post(Base):

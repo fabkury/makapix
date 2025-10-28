@@ -10,15 +10,28 @@ export const getServerSideProps: GetServerSideProps<Props> = async () => {
   const internalBase =
     process.env.API_INTERNAL_URL ?? "http://api:8000";
 
-  const response = await fetch(`${internalBase}/healthz`);
-  const data = await response.json();
+  try {
+    const response = await fetch(`${internalBase}/health`);
+    if (!response.ok) {
+      throw new Error(`API health check failed: ${response.status}`);
+    }
+    const data = await response.json();
 
-  return {
-    props: {
-      status: data.status ?? "unknown",
-      checkedAt: new Date().toISOString(),
-    },
-  };
+    return {
+      props: {
+        status: data.status ?? "unknown",
+        checkedAt: new Date().toISOString(),
+      },
+    };
+  } catch (error) {
+    console.error("Failed to check API health:", error);
+    return {
+      props: {
+        status: "error",
+        checkedAt: new Date().toISOString(),
+      },
+    };
+  }
 };
 
 const HomePage = ({
