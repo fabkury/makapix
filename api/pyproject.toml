@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "makapix-api"
+version = "0.1.0"
+description = "Local development FastAPI backend for the Makapix social network prototype."
+authors = [{ name = "Makapix Team" }]
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.13.2",
+    "celery[redis]>=5.3.6",
+    "fastapi>=0.110.0",
+    "paho-mqtt>=1.6.1",
+    "psycopg[binary]>=3.1.18",
+    "pydantic>=2.7.0",
+    "python-dotenv>=1.0.1",
+    "python-multipart>=0.0.6",
+    "redis>=5.0.4",
+    "requests>=2.32.0",
+    "SQLAlchemy>=2.0.29",
+    "uvicorn[standard]>=0.29.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "black>=24.3.0",
+    "pre-commit>=3.7.0",
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.6",
+    "ruff>=0.5.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app", "app.*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
