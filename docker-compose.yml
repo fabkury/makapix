@@ -81,7 +81,7 @@ services:
       mqtt:
         condition: service_started
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8000/healthz || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5

@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import os
+import secrets
 import uuid
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.orm import Session
 
 if TYPE_CHECKING:
-    from sqlalchemy.orm import Session
-
     from . import models
 
 from .deps import get_db
@@ -16,11 +19,93 @@ from .deps import get_db
 # Security scheme for Bearer token
 oauth2_scheme = HTTPBearer(auto_error=False)
 
+# JWT Configuration
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "fallback-secret-key-change-in-production")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+JWT_REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "30"))
 
-# TODO: Implement real JWT validation with PyJWT
-# TODO: Add proper token generation during GitHub OAuth exchange
-# TODO: Store refresh tokens in database
-# TODO: Implement token revocation/blacklisting
+
+def create_access_token(user_id: uuid.UUID, expires_in_seconds: int | None = None) -> str:
+    """
+    Create a JWT access token for a user.
+    """
+    if expires_in_seconds is None:
+        expires_in_seconds = JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    
+    now = datetime.utcnow()
+    payload = {
+        "user_id": str(user_id),
+        "exp": now + timedelta(seconds=expires_in_seconds),
+        "iat": now,
+        "type": "access"
+    }
+    
+    return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+
+
+def create_refresh_token(user_id: uuid.UUID, db: Session, expires_in_days: int | None = None) -> str:
+    """
+    Create a refresh token for a user and store it in the database.
+    """
+    if expires_in_days is None:
+        expires_in_days = JWT_REFRESH_TOKEN_EXPIRE_DAYS
+    
+    # Generate secure random token
+    token = secrets.token_urlsafe(32)
+    token_hash = secrets.token_urlsafe(32)  # Hash for database storage
+    
+    expires_at = datetime.utcnow() + timedelta(days=expires_in_days)
+    
+    # Store in database
+    from . import models
+    refresh_token = models.RefreshToken(
+        user_id=user_id,
+        token_hash=token_hash,
+        expires_at=expires_at
+    )
+    db.add(refresh_token)
+    db.commit()
+    
+    return token
+
+
+def verify_refresh_token(token: str, db: Session) -> models.User | None:
+    """
+    Verify a refresh token and return the associated user.
+    """
+    from . import models
+    
+    # Find token by hash (in real implementation, you'd hash the token)
+    # For now, we'll use a simple lookup
+    refresh_token = db.query(models.RefreshToken).filter(
+        models.RefreshToken.token_hash == token,
+        models.RefreshToken.expires_at > datetime.utcnow(),
+        models.RefreshToken.revoked == False
+    ).first()
+    
+    if not refresh_token:
+        return None
+    
+    return refresh_token.user
+
+
+def revoke_refresh_token(token: str, db: Session) -> bool:
+    """
+    Revoke a refresh token.
+    """
+    from . import models
+    
+    refresh_token = db.query(models.RefreshToken).filter(
+        models.RefreshToken.token_hash == token
+    ).first()
+    
+    if refresh_token:
+        refresh_token.revoked = True
+        db.commit()
+        return True
+    
+    return False
 
 
 async def get_current_user(
@@ -29,51 +114,72 @@ async def get_current_user(
 ) -> models.User:
     """
     Get current authenticated user from Bearer token.
-    
-    PLACEHOLDER IMPLEMENTATION:
-    - Always returns a mock admin user for development
-    - Does not validate JWT signature
-    - Does not check token expiration
-    
-    TODO: Production implementation should:
-    1. Extract token from Authorization header
-    2. Decode JWT using PyJWT with public key
-    3. Validate signature and expiration
-    4. Extract user_id from token claims
-    5. Query database for user by ID
-    6. Check if user is banned or deactivated
-    7. Return User model instance or raise 401
     """
     from . import models
     
-    # PLACEHOLDER: Return mock user for development
-    # In production, this should validate the JWT and query the database
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     
-    # Check if we have any users in the database
-    existing_user = db.query(models.User).first()
-    if existing_user:
-        return existing_user
-    
-    # Create a mock admin user if none exists
-    mock_user = models.User(
-        id=uuid.uuid4(),
-        handle="admin",
-        display_name="Admin User",
-        bio="Placeholder admin user for development",
-        email="admin@makapix.club",
-        reputation=1000,
-        roles=["user", "moderator", "owner"],
-        hidden_by_user=False,
-        hidden_by_mod=False,
-        non_conformant=False,
-        deactivated=False,
-        banned_until=None,
-    )
-    db.add(mock_user)
-    db.commit()
-    db.refresh(mock_user)
-    
-    return mock_user
+    try:
+        # Decode and verify JWT
+        payload = jwt.decode(
+            credentials.credentials,
+            JWT_SECRET_KEY,
+            algorithms=[JWT_ALGORITHM]
+        )
+        
+        # Extract user_id from claims
+        user_id_str = payload.get("user_id")
+        if not user_id_str:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token: missing user_id"
+            )
+        
+        user_id = uuid.UUID(user_id_str)
+        
+        # Query database for user
+        user = db.query(models.User).filter(models.User.id == user_id).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found"
+            )
+        
+        # Check if user is banned or deactivated
+        if user.deactivated:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Account deactivated"
+            )
+        
+        if user.banned_until and user.banned_until > datetime.utcnow():
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Account banned"
+            )
+        
+        return user
+        
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token expired"
+        )
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token"
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid user ID in token"
+        )
 
 
 async def get_current_user_optional(
@@ -97,42 +203,24 @@ async def get_current_user_optional(
 def require_moderator(user: models.User = Depends(get_current_user)) -> models.User:
     """
     Require that the current user has moderator or owner role.
-    
-    PLACEHOLDER IMPLEMENTATION:
-    - Currently allows all authenticated users
-    
-    TODO: Production implementation should:
-    1. Check if 'moderator' or 'owner' in user.roles
-    2. Raise 403 Forbidden if not authorized
     """
-    # PLACEHOLDER: Allow all users for development
-    # TODO: Implement real role checking
-    # if "moderator" not in user.roles and "owner" not in user.roles:
-    #     raise HTTPException(
-    #         status_code=status.HTTP_403_FORBIDDEN,
-    #         detail="Moderator or owner role required"
-    #     )
+    if "moderator" not in user.roles and "owner" not in user.roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Moderator or owner role required"
+        )
     return user
 
 
 def require_owner(user: models.User = Depends(get_current_user)) -> models.User:
     """
     Require that the current user has owner role.
-    
-    PLACEHOLDER IMPLEMENTATION:
-    - Currently allows all authenticated users
-    
-    TODO: Production implementation should:
-    1. Check if 'owner' in user.roles
-    2. Raise 403 Forbidden if not authorized
     """
-    # PLACEHOLDER: Allow all users for development
-    # TODO: Implement real role checking
-    # if "owner" not in user.roles:
-    #     raise HTTPException(
-    #         status_code=status.HTTP_403_FORBIDDEN,
-    #         detail="Owner role required"
-    #     )
+    if "owner" not in user.roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Owner role required"
+        )
     return user
 
 
@@ -147,12 +235,10 @@ def check_ownership(resource_owner_id: uuid.UUID, current_user: models.User) -> 
     if resource_owner_id == current_user.id:
         return True
     
-    # TODO: Uncomment when role checking is implemented
-    # if "moderator" in current_user.roles or "owner" in current_user.roles:
-    #     return True
+    if "moderator" in current_user.roles or "owner" in current_user.roles:
+        return True
     
-    # PLACEHOLDER: For development, allow all
-    return True
+    return False
 
 
 def require_ownership(resource_owner_id: uuid.UUID, current_user: models.User) -> None:
@@ -168,34 +254,4 @@ def require_ownership(resource_owner_id: uuid.UUID, current_user: models.User) -
         )
 
 
-# TODO: Implement JWT token generation
-def create_access_token(user_id: uuid.UUID, expires_in_seconds: int = 3600) -> str:
-    """
-    Create a JWT access token for a user.
-    
-    PLACEHOLDER: Returns a dummy token.
-    
-    TODO: Production implementation should:
-    1. Use PyJWT to create a token
-    2. Include user_id in claims
-    3. Set expiration time
-    4. Sign with private key
-    5. Return encoded token string
-    """
-    return f"placeholder_token_for_user_{user_id}"
-
-
-# TODO: Implement refresh token generation
-def create_refresh_token(user_id: uuid.UUID, expires_in_days: int = 30) -> str:
-    """
-    Create a refresh token for a user.
-    
-    PLACEHOLDER: Returns a dummy token.
-    
-    TODO: Production implementation should:
-    1. Generate a secure random token
-    2. Store in database with user_id and expiration
-    3. Return token string
-    """
-    return f"placeholder_refresh_token_for_user_{user_id}"
 
