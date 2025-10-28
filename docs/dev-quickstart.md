@@ -16,6 +16,30 @@
    cp .env.example .env
    ```
 
+2. **Set up GitHub OAuth (required for authentication)**
+
+   To enable user authentication, you need to create a GitHub OAuth App:
+   
+   a. Go to https://github.com/settings/developers
+   b. Click "New OAuth App"
+   c. Configure:
+      - **Application name**: Makapix (Local Development)
+      - **Homepage URL**: http://localhost
+      - **Authorization callback URL**: http://localhost/auth/github/callback
+   d. Save the **Client ID** and generate a **Client Secret**
+   e. Update your `.env` file with the credentials:
+      ```env
+      GITHUB_CLIENT_ID=your_client_id_here
+      GITHUB_CLIENT_SECRET=your_client_secret_here
+      GITHUB_REDIRECT_URI=http://localhost/auth/github/callback
+      
+      # JWT Configuration (generate a secure random key)
+      JWT_SECRET_KEY=your_secure_random_key_here
+      JWT_ALGORITHM=HS256
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES=60
+      JWT_REFRESH_TOKEN_EXPIRE_DAYS=30
+      ```
+
 2. **Boot the stack**
 
    ```bash
@@ -32,13 +56,33 @@
 
    Press `Ctrl+C` to detach. Individual service logs (`docker compose logs api`) are also useful.
 
-4. **Run tests**
+4. **Test authentication flow**
+
+   a. Visit http://localhost/auth/github/login to test GitHub OAuth
+   b. After authorizing with GitHub, you should be redirected back with a JWT token
+   c. Test the API with authentication:
+      ```bash
+      # Get your JWT token from the OAuth callback
+      TOKEN="your_jwt_token_here"
+      
+      # Test authenticated endpoints
+      curl -H "Authorization: Bearer $TOKEN" http://localhost/api/auth/me
+      curl -H "Authorization: Bearer $TOKEN" http://localhost/api/posts
+      
+      # Create a test post
+      curl -X POST -H "Authorization: Bearer $TOKEN" \
+        -H "Content-Type: application/json" \
+        -d '{"title":"Test Art","art_url":"https://example.com/test.png","canvas":"64x64","file_kb":32}' \
+        http://localhost/api/posts
+      ```
+
+5. **Run tests**
 
    ```bash
    make api.test
    ```
 
-5. **Lint/format**
+6. **Lint/format**
 
    ```bash
    make fmt

@@ -52,11 +52,22 @@ After `docker compose up -d`, run these commands from the repo root to verify ea
 curl -s http://localhost/api/healthz
 # → {"status":"ok"}
 
-# Create a post (persists to Postgres)
-curl -s -X POST http://localhost/api/posts \
-  -H "Content-Type: application/json" \
-  -d '{"title":"Smoke Test","body":"Created from README smoke test."}'
-# → {"id":2,"title":"Smoke Test","body":"Created from README smoke test.","created_at":"2025-10-25T12:00:00+00:00"}
+# Test GitHub OAuth login (redirects to GitHub)
+curl -s -I http://localhost/api/auth/github/login
+# → 307 redirect to GitHub
+
+# List posts (public endpoint)
+curl -s http://localhost/api/posts
+# → {"items":[...],"next_cursor":null}
+
+# Test authenticated endpoints (requires GitHub OAuth setup)
+# First, visit http://localhost/api/auth/github/login to get a JWT token
+# Then use the token:
+# TOKEN="your_jwt_token_here"
+# curl -H "Authorization: Bearer $TOKEN" http://localhost/api/auth/me
+# curl -H "Authorization: Bearer $TOKEN" -X POST http://localhost/api/posts \
+#   -H "Content-Type: application/json" \
+#   -d '{"title":"Test Art","art_url":"https://example.com/test.png","canvas":"64x64","file_kb":32}'
 
 # Queue a Celery job
 curl -s -X POST http://localhost/api/tasks/hash-url \
@@ -70,6 +81,8 @@ curl -s -X POST http://localhost/api/mqtt/demo
 ```
 
 Then open http://localhost/demo to watch the WebSocket MQTT client receive the retained message. The page can also publish again via the same API endpoint.
+
+**Note**: For full authentication testing, you need to set up GitHub OAuth credentials in your `.env` file. See [docs/dev-quickstart.md](docs/dev-quickstart.md) for detailed setup instructions.
 
 ## Next Steps
 

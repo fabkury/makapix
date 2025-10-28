@@ -107,6 +107,20 @@ def ensure_seed_data() -> None:
         )
         session.add(dave)
         
+        # GitHub OAuth test users
+        github_user = User(
+            id=uuid.uuid4(),
+            handle="githubuser",
+            display_name="GitHub User",
+            bio="Test user created via GitHub OAuth",
+            github_user_id="12345",
+            github_username="testuser",
+            email="testuser@example.com",
+            reputation=100,
+            roles=["user"],
+        )
+        session.add(github_user)
+        
         session.flush()  # Get IDs assigned
         
         # ====================================================================
