@@ -1,0 +1,39 @@
+{
+    auto_https off
+    admin 0.0.0.0:2019
+    debug
+}
+
+:80 {
+    encode gzip
+
+    @cors_preflight method OPTIONS
+    handle @cors_preflight {
+        header {
+            Access-Control-Allow-Origin "*"
+            Access-Control-Allow-Methods "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+            Access-Control-Allow-Headers "*"
+        }
+        respond "" 204
+    }
+
+    handle /proxy-healthz {
+        respond "ok" 200
+    }
+
+    handle_path /api/* {
+        reverse_proxy http://api:8000 {
+            transport http {
+                keepalive 30s
+            }
+        }
+    }
+
+    handle {
+        reverse_proxy http://web:3000 {
+            transport http {
+                keepalive 30s
+            }
+        }
+    }
+}

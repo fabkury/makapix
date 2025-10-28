@@ -1,0 +1,216 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+      - ./db/seed.sql:/docker-entrypoint-initdb.d/20-seed.sql:ro
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - internal
+
+  cache:
+    image: redis:7.2-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-h", "localhost", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  mqtt:
+    build:
+      context: .
+      dockerfile: mqtt/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./mqtt/certs:/mosquitto/certs
+    ports:
+      - "8883:8883"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_pub -h localhost -p 8883 --cafile /mosquitto/certs/ca.crt --insecure -t health/check -m ping || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+    networks:
+      - internal
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PYTHONPATH: /workspace/api
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://cache:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://cache:6379/0}
+      MQTT_CA_FILE: ${MQTT_CA_FILE:-/certs/ca.crt}
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./api:/workspace/api
+      - api_pip_cache:/root/.cache/pip
+      - ./mqtt/certs:/certs:ro
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+      mqtt:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+    networks:
+      - internal
+      - proxy
+
+  api-test:
+    profiles: ["test"]
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    env_file:
+      - .env
+    environment:
+      PYTHONPATH: /workspace/api
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://cache:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://cache:6379/0}
+      MQTT_CA_FILE: ${MQTT_CA_FILE:-/certs/ca.crt}
+    command: pytest -q
+    volumes:
+      - ./api:/workspace/api
+      - api_pip_cache:/root/.cache/pip
+      - ./mqtt/certs:/certs:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+    networks:
+      - internal
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PYTHONPATH: /workspace/api
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://cache:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://cache:6379/0}
+      MQTT_CA_FILE: ${MQTT_CA_FILE:-/certs/ca.crt}
+    command: python /workspace/worker/worker.py
+    volumes:
+      - ./api:/workspace/api
+      - ./worker:/workspace/worker
+      - api_pip_cache:/root/.cache/pip
+      - ./mqtt/certs:/certs:ro
+    depends_on:
+      cache:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_API_BASE_URL: http://localhost/api
+      API_INTERNAL_URL: http://api:8000
+      NEXT_PUBLIC_MQTT_WS_URL: ws://localhost:9001
+    command: sh -c "npm install && npm run dev"
+    volumes:
+      - ./web:/app
+      - web_node_modules:/app/node_modules
+      - web_next_cache:/app/.next
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 35s
+    networks:
+      - internal
+      - proxy
+
+  proxy:
+    image: caddy:2
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${PROXY_PORT:-80}:80"
+    volumes:
+      - ./proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost/proxy-healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - proxy
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+  proxy:
+    driver: bridge
+
+volumes:
+  pg_data:
+  api_pip_cache:
+  web_node_modules:
+  web_next_cache:
+  caddy_data:
+  caddy_config:
