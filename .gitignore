@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.dist/
+build/
+.cache/
+.pytest_cache/
+.mypy_cache/
+.coverage
+
+# Node (if present)
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Env & local config
+.env
+.env.local
+*.env.*.local
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Docker & app data
+docker-data/
+.docker/
+tmp/
+logs/
+*.log

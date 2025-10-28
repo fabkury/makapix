@@ -1,0 +1,1 @@
+"""Makapix API application package."""
