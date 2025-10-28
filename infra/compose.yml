@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: makapix
+    volumes: [ "pgdata:/var/lib/postgresql/data" ]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d makapix"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    volumes: [ "./mosquitto:/mosquitto" ]
+    # NOTE: place mosquitto.conf and certs in infra/mosquitto/
+
+  api:
+    build: ../api
+    env_file: ../.env
+    depends_on: [ db, redis ]
+    ports: [ "8080:8080" ]
+
+  web:
+    build: ../web
+    env_file: ../.env
+    depends_on: [ api ]
+    ports: [ "3000:3000" ]
+
+  caddy:
+    image: caddy:2
+    ports: [ "80:80", "443:443" ]
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+
+volumes:
+  pgdata:
