@@ -1,0 +1,22 @@
+name: Bug report
+description: Report a defect
+labels: [bug]
+body:
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to Reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+  - type: input
+    id: env
+    attributes:
+      label: Environment (commit sha, OS, browser)

@@ -1,0 +1,33 @@
+name: Feature request
+description: Propose a feature scoped to a milestone
+labels: [enhancement]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should this feature accomplish?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What makes this "done"?
+    validations:
+      required: true
+  - type: dropdown
+    id: milestone
+    attributes:
+      label: Milestone
+      options:
+        - M1 - Foundation
+        - M2 - Core API
+        - M3 - GitHub App
+        - M4 - Social
+        - M5 - MQTT
+        - M6 - Moderation
+        - M7 - Search
+        - M8 - Security
+        - M9 - Beta
+        - M10 - Ongoing
