@@ -443,6 +443,72 @@ def ensure_seed_data() -> None:
         session.add(bob_playlist)
         
         # ====================================================================
+        # ANONYMOUS COMMENTS & REACTIONS
+        # ====================================================================
+        
+        # Anonymous comments on Alice's coffee shop post
+        anon_comment1 = Comment(
+            id=uuid.uuid4(),
+            post_id=alice_post3.id,
+            author_id=None,  # Anonymous
+            author_ip="192.168.1.100",  # Example IP
+            depth=0,
+            body="Amazing work! Love the attention to detail in the furniture.",
+        )
+        session.add(anon_comment1)
+        session.flush()
+        
+        # Reply from another anonymous user
+        anon_comment2 = Comment(
+            id=uuid.uuid4(),
+            post_id=alice_post3.id,
+            author_id=None,  # Anonymous
+            author_ip="192.168.1.101",  # Different IP
+            parent_id=anon_comment1.id,
+            depth=1,
+            body="I agree! The pixel art style is perfect for this cozy vibe.",
+        )
+        session.add(anon_comment2)
+        
+        # Anonymous comment on Bob's forest post
+        anon_comment3 = Comment(
+            id=uuid.uuid4(),
+            post_id=bob_post1.id,
+            author_id=None,  # Anonymous
+            author_ip="10.0.0.50",
+            depth=0,
+            body="Beautiful use of colors! Really captures the forest atmosphere.",
+        )
+        session.add(anon_comment3)
+        
+        # Anonymous comment on Carol's cyberpunk post
+        anon_comment4 = Comment(
+            id=uuid.uuid4(),
+            post_id=carol_post1.id,
+            author_id=None,  # Anonymous
+            author_ip="172.16.0.10",
+            depth=0,
+            body="This is giving me all the cyberpunk vibes! Awesome work!",
+        )
+        session.add(anon_comment4)
+        
+        # Anonymous reactions on various posts
+        # Multiple reactions from same IP (testing the 5 reaction limit)
+        session.add(Reaction(post_id=alice_post1.id, user_id=None, user_ip="192.168.1.100", emoji="❤️"))
+        session.add(Reaction(post_id=alice_post1.id, user_id=None, user_ip="192.168.1.100", emoji="👍"))
+        session.add(Reaction(post_id=alice_post1.id, user_id=None, user_ip="192.168.1.100", emoji="🔥"))
+        
+        # Reactions from different anonymous users
+        session.add(Reaction(post_id=alice_post3.id, user_id=None, user_ip="192.168.1.101", emoji="☕"))
+        session.add(Reaction(post_id=alice_post3.id, user_id=None, user_ip="10.0.0.50", emoji="❤️"))
+        
+        session.add(Reaction(post_id=bob_post1.id, user_id=None, user_ip="172.16.0.10", emoji="🌲"))
+        session.add(Reaction(post_id=bob_post1.id, user_id=None, user_ip="192.168.1.100", emoji="😍"))
+        
+        session.add(Reaction(post_id=carol_post1.id, user_id=None, user_ip="10.0.0.50", emoji="🔥"))
+        session.add(Reaction(post_id=carol_post1.id, user_id=None, user_ip="172.16.0.10", emoji="😍"))
+        
+        # ====================================================================
         # COMMIT
         # ====================================================================
         
