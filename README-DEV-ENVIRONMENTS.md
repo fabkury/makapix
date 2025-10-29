@@ -177,6 +177,24 @@ On your remote VPS:
 5. **Ensure DNS is configured:** Point `dev.makapix.club` to your VPS IP
 6. **Caddy will automatically obtain SSL certificates** from Let's Encrypt
 
+## ⚠️ Important: Never Manually Edit Generated Files
+
+The following files are **automatically generated** by the switch-env scripts:
+- `.env`
+- `docker-compose.override.yml`
+- `proxy/Caddyfile`
+
+**Never edit these files manually!** Always use:
+- `.\dev.ps1 local|remote` (Windows)
+- `make local|remote` (Linux/Mac)
+
+If you manually edit these files:
+- Your changes will be overwritten on the next switch
+- You may get inconsistent behavior across environments
+- Git conflicts may occur (though they're gitignored now)
+
+See [WORKFLOW.md](WORKFLOW.md) for the proper workflow.
+
 ## Troubleshooting
 
 ### Environment not switching?
@@ -201,6 +219,7 @@ ls .env.*
 
 ## Documentation
 
+- **⭐ Daily Workflow:** [WORKFLOW.md](WORKFLOW.md) - **Start here for seamless local/remote switching**
 - **Quick Start:** [QUICK-START.md](QUICK-START.md)
 - **Detailed Setup:** [DEVELOPMENT-SETUP.md](DEVELOPMENT-SETUP.md)
 
