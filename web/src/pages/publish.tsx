@@ -20,18 +20,29 @@ export default function PublishPage() {
   const [githubAppInstalled, setGithubAppInstalled] = useState(false);
   const [githubAppInstallUrl, setGithubAppInstallUrl] = useState<string>('');
 
-  // Get API base URL from environment or use current origin
-  const API_BASE_URL = typeof window !== 'undefined'
-    ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
-    : 'http://localhost';
+  // Get API base URL - must be computed inside the component to ensure it runs client-side
+  // Initialize with window.location.origin as fallback to prevent empty string issues
+  const [API_BASE_URL, setAPI_BASE_URL] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin;
+    }
+    return '';
+  });
 
   // Check authentication status on component mount
   useEffect(() => {
+    // Log API_BASE_URL for debugging
+    console.log('API Base URL:', {
+      fromEnv: process.env.NEXT_PUBLIC_API_BASE_URL,
+      fallback: window.location.origin,
+      current: API_BASE_URL
+    });
+
     const checkAuth = () => {
       const accessToken = localStorage.getItem('access_token');
       const userHandle = localStorage.getItem('user_handle');
       const userDisplayName = localStorage.getItem('user_display_name');
-      
+
       // Debug: log what's in localStorage
       console.log('LocalStorage contents:', {
         accessToken: accessToken ? 'present' : 'missing',
@@ -39,7 +50,7 @@ export default function PublishPage() {
         userDisplayName: userDisplayName || 'missing',
         allKeys: Object.keys(localStorage)
       });
-      
+
       if (accessToken && userHandle) {
         setIsAuthenticated(true);
         setUserInfo({
@@ -48,28 +59,31 @@ export default function PublishPage() {
         });
 
         // Check GitHub App installation status
-        checkGithubAppStatus(accessToken);
+        checkGithubAppStatus(accessToken, API_BASE_URL);
       }
     };
 
     // Check if GitHub App is installed
-    const checkGithubAppStatus = async (token: string) => {
+    const checkGithubAppStatus = async (token: string, baseUrl: string) => {
       try {
-        console.log('Checking GitHub App status...');
-        const response = await fetch(`${API_BASE_URL}/api/auth/github-app/status`, {
+        const statusUrl = `${baseUrl}/api/auth/github-app/status`;
+        console.log('Checking GitHub App status at:', statusUrl);
+        const response = await fetch(statusUrl, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
         });
 
         console.log('GitHub App status response:', response.status);
-        
+
         if (response.ok) {
           const data = await response.json();
           console.log('GitHub App status data:', data);
           setGithubAppInstalled(data.installed);
           setGithubAppInstallUrl(data.install_url || '');
           console.log('Install URL set to:', data.install_url);
+          console.log('githubAppInstalled state:', data.installed);
+          console.log('githubAppInstallUrl state:', data.install_url || '');
         } else {
           console.error('GitHub App status failed:', response.status, response.statusText);
         }
@@ -86,14 +100,14 @@ export default function PublishPage() {
       if (event.data?.type === 'OAUTH_SUCCESS') {
         console.log('Received OAuth success message:', event.data);
         const { tokens } = event.data;
-        
+
         // Store tokens in localStorage
         localStorage.setItem('access_token', tokens.access_token);
         localStorage.setItem('refresh_token', tokens.refresh_token);
         localStorage.setItem('user_id', tokens.user_id);
         localStorage.setItem('user_handle', tokens.user_handle);
         localStorage.setItem('user_display_name', tokens.user_display_name);
-        
+
         // Update state
         setIsAuthenticated(true);
         setUserInfo({
@@ -102,7 +116,8 @@ export default function PublishPage() {
         });
 
         // Check GitHub App installation status
-        checkGithubAppStatus(tokens.access_token);
+        const currentApiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin;
+        checkGithubAppStatus(tokens.access_token, currentApiUrl);
 
         console.log('Tokens stored from postMessage');
       }
