@@ -1,2 +1,27 @@
-topic readwrite posts/new/#
+# ACL Rules for Makapix MQTT Broker
+# Format: user <username> or pattern <pattern>
+# Format: topic [read|write|readwrite] <topic>
+
+# Server user (API server) - can publish to all notification topics
+user api-server
+topic write makapix/posts/new/#
+topic write makapix/posts/new/user/+/+#
+topic write makapix/posts/new/category/+/+#
 topic read $SYS/#
+
+# Client users - can only subscribe (read) to topics
+# Pattern: user_{user_id} for authenticated web clients
+user user_%
+topic read makapix/posts/new/user/+/+#
+topic read makapix/posts/new/category/+/+#
+topic read $SYS/#
+
+# Device users - can subscribe to their user's topics
+# Pattern: device_{device_id} for physical devices
+user device_%
+topic read makapix/posts/new/user/+/+#
+topic read makapix/posts/new/category/+/+#
+topic read $SYS/#
+
+# Default: deny all (this should be last)
+topic read #

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..auth import require_moderator
 from ..deps import get_db
+from ..utils.audit import log_moderation_action
 
 router = APIRouter(prefix="/badges", tags=["Badges"])
 
@@ -79,6 +80,15 @@ def grant_badge(
         badge = models.BadgeGrant(user_id=id, badge=payload.badge)
         db.add(badge)
         db.commit()
+        
+        # Log to audit
+        log_moderation_action(
+            db=db,
+            actor_id=moderator.id,
+            action="grant_badge",
+            target_type="user",
+            target_id=id,
+        )
 
 
 @router.delete(
@@ -90,15 +100,22 @@ def revoke_badge(
     id: UUID,
     badge: str,
     db: Session = Depends(get_db),
-    _moderator: models.User = Depends(require_moderator),
+    moderator: models.User = Depends(require_moderator),
 ) -> None:
     """
     Revoke badge from a user (moderator only).
-    
-    TODO: Log in audit log
     """
     db.query(models.BadgeGrant).filter(
         models.BadgeGrant.user_id == id,
         models.BadgeGrant.badge == badge,
     ).delete()
     db.commit()
+    
+    # Log to audit
+    log_moderation_action(
+        db=db,
+        actor_id=moderator.id,
+        action="revoke_badge",
+        target_type="user",
+        target_id=id,
+    )

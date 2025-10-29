@@ -5,8 +5,10 @@ RUN apk add --no-cache bash openssl mosquitto-clients
 COPY mqtt/mosquitto.conf /mosquitto/config/mosquitto.conf
 COPY mqtt/aclfile /mosquitto/config/aclfile
 COPY mqtt/scripts/gen-certs.sh /mosquitto/config/scripts/gen-certs.sh
+COPY mqtt/scripts/gen-passwd.sh /mosquitto/config/scripts/gen-passwd.sh
 
 RUN chmod +x /mosquitto/config/scripts/gen-certs.sh && \
+    chmod +x /mosquitto/config/scripts/gen-passwd.sh && \
     chown mosquitto:mosquitto /mosquitto/config/aclfile && \
     chmod 600 /mosquitto/config/aclfile
 

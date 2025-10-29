@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..auth import get_current_user, require_moderator
 from ..deps import get_db
+from ..utils.audit import log_moderation_action
+from ..pagination import apply_cursor_filter, create_page_response
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
@@ -57,12 +59,10 @@ def list_reports(
 ) -> schemas.Page[schemas.Report]:
     """
     List reports (moderator only).
-    
-    TODO: Implement cursor pagination
-    TODO: Apply filters
     """
     query = db.query(models.Report)
     
+    # Apply filters
     if status_filter:
         query = query.filter(models.Report.status == status_filter)
     if target_type:
@@ -70,12 +70,18 @@ def list_reports(
     if reporter_id:
         query = query.filter(models.Report.reporter_id == reporter_id)
     
-    query = query.order_by(models.Report.created_at.desc()).limit(limit)
+    # Apply cursor pagination
+    query = apply_cursor_filter(query, models.Report, cursor, "created_at", sort_desc=True)
+    
+    # Order and limit
+    query = query.order_by(models.Report.created_at.desc()).limit(limit + 1)
     reports = query.all()
     
+    page_data = create_page_response(reports, limit, cursor)
+    
     return schemas.Page(
-        items=[schemas.Report.model_validate(r) for r in reports],
-        next_cursor=None,
+        items=[schemas.Report.model_validate(r) for r in page_data["items"]],
+        next_cursor=page_data["next_cursor"],
     )
 
 
@@ -89,13 +95,63 @@ def update_report(
     """
     Update report status (moderator only).
     
-    TODO: Log in audit log
-    TODO: Auto-apply action_taken if specified
+    If action_taken is set, automatically applies the moderation action.
     """
     report = db.query(models.Report).filter(models.Report.id == id).first()
     if not report:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
     
+    # Auto-apply action if specified
+    action_applied = False
+    if payload.action_taken and payload.action_taken != "none":
+        if report.target_type == "user":
+            target_user = db.query(models.User).filter(models.User.id == report.target_id).first()
+            if not target_user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Target user {report.target_id} not found"
+                )
+            
+            if payload.action_taken == "ban":
+                from datetime import datetime, timedelta, timezone
+                target_user.banned_until = datetime.now(timezone.utc) + timedelta(days=7)  # Default 7 days
+                action_applied = True
+            elif payload.action_taken == "hide":
+                target_user.hidden_by_mod = True
+                action_applied = True
+        
+        elif report.target_type == "post":
+            target_post = db.query(models.Post).filter(models.Post.id == report.target_id).first()
+            if not target_post:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Target post {report.target_id} not found"
+                )
+            
+            if payload.action_taken == "hide":
+                target_post.hidden_by_mod = True
+                action_applied = True
+            elif payload.action_taken == "delete":
+                target_post.visible = False
+                action_applied = True
+        
+        elif report.target_type == "comment":
+            target_comment = db.query(models.Comment).filter(models.Comment.id == report.target_id).first()
+            if not target_comment:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Target comment {report.target_id} not found"
+                )
+            
+            if payload.action_taken == "hide":
+                target_comment.hidden_by_mod = True
+                action_applied = True
+            elif payload.action_taken == "delete":
+                target_comment.deleted_by_owner = True
+                target_comment.body = "[deleted by moderator]"
+                action_applied = True
+    
+    # Update report fields
     if payload.status is not None:
         report.status = payload.status
     if payload.action_taken is not None:
@@ -105,5 +161,32 @@ def update_report(
     
     db.commit()
     db.refresh(report)
+    
+    # Log actions to audit log after commit
+    if action_applied and payload.action_taken:
+        action_name = {
+            "ban": "ban_user",
+            "hide": f"hide_{report.target_type}",
+            "delete": f"delete_{report.target_type}",
+        }.get(payload.action_taken)
+        
+        if action_name:
+            log_moderation_action(
+                db=db,
+                actor_id=moderator.id,
+                action=action_name,
+                target_type=report.target_type,
+                target_id=report.target_id,
+            )
+    
+    # Log report resolution to audit log
+    if payload.status == "resolved":
+        log_moderation_action(
+            db=db,
+            actor_id=moderator.id,
+            action="resolve_report",
+            target_type=report.target_type,
+            target_id=report.target_id,
+        )
     
     return schemas.Report.model_validate(report)

@@ -230,6 +230,52 @@ def require_owner(user: models.User = Depends(get_current_user)) -> models.User:
     return user
 
 
+def is_owner(user: models.User) -> bool:
+    """
+    Check if a user is the site owner.
+    """
+    return "owner" in user.roles
+
+
+def ensure_not_owner_self(user: models.User, actor: models.User) -> None:
+    """
+    Ensure the actor is not trying to modify their own owner status.
+    
+    Raises 403 Forbidden if trying to modify own owner role.
+    """
+    if is_owner(user) and user.id == actor.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You cannot modify your own owner status"
+        )
+
+
+def ensure_not_owner(user: models.User) -> None:
+    """
+    Ensure the target user is not the owner.
+    
+    Raises 403 Forbidden if trying to modify owner.
+    """
+    if is_owner(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot modify owner role"
+        )
+
+
+def ensure_authenticated_user(user: models.User) -> None:
+    """
+    Ensure the user is authenticated (has github_user_id).
+    
+    Raises 400 Bad Request if user is not authenticated.
+    """
+    if not user.github_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only authenticated users can be promoted to moderator"
+        )
+
+
 def check_ownership(resource_owner_id: uuid.UUID, current_user: models.User) -> bool:
     """
     Check if the current user owns a resource.

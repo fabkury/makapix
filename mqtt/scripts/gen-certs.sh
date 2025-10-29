@@ -36,4 +36,7 @@ chmod 644 "${CERT_DIR}/server.key" "${CERT_DIR}/server.crt" "${CERT_DIR}/ca.crt"
 chmod 600 "${CERT_DIR}/ca.key"
 chmod 644 "${CERT_DIR}/ca.srl" 2>/dev/null || true
 
+# Generate password file if it doesn't exist
+/mosquitto/config/scripts/gen-passwd.sh
+
 exec mosquitto -c /mosquitto/config/mosquitto.conf

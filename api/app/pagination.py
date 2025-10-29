@@ -120,7 +120,7 @@ def apply_cursor_filter(query, model_class, cursor: str | None, sort_field: str 
     return query
 
 
-def create_page_response(items: list, limit: int, cursor: str | None = None) -> dict[str, Any]:
+def create_page_response(items: list, limit: int, cursor: str | None = None, sort_field: str = "created_at") -> dict[str, Any]:
     """
     Create a paginated response with next cursor.
     
@@ -128,6 +128,7 @@ def create_page_response(items: list, limit: int, cursor: str | None = None) -> 
         items: List of items for current page
         limit: Maximum number of items per page
         cursor: Current cursor (for debugging)
+        sort_field: Field name used for sorting (default: created_at)
     
     Returns:
         Dict with items and next_cursor
@@ -140,10 +141,13 @@ def create_page_response(items: list, limit: int, cursor: str | None = None) -> 
         if items:
             last_item = items[-1]
             # Create cursor from the last item
-            # Assuming items have 'id' and 'created_at' attributes
-            if hasattr(last_item, 'created_at'):
+            # Use the sort_field to determine what value to encode
+            if sort_field == "created_at" and hasattr(last_item, 'created_at'):
                 next_cursor = encode_cursor(str(last_item.id), last_item.created_at.isoformat())
+            elif sort_field == "handle" and hasattr(last_item, 'handle'):
+                next_cursor = encode_cursor(str(last_item.id), last_item.handle)
             else:
+                # Fallback to ID only
                 next_cursor = encode_cursor(str(last_item.id))
     
     return {

@@ -232,8 +232,8 @@ celery_app.conf.update(
 MAX_BYTES = 1_000_000
 
 
-@celery_app.task(name="app.tasks.hash_url", bind=True)
-def hash_url(self, url: str) -> dict[str, Any]:
+def hash_url_sync(url: str) -> dict[str, Any]:
+    """Synchronously hash a URL (for use in other tasks)."""
     logger.info("Hashing URL %s", url)
     response = requests.get(url, stream=True, timeout=(3, 10))
     response.raise_for_status()
@@ -255,6 +255,83 @@ def hash_url(self, url: str) -> dict[str, Any]:
     }
     logger.info("Hash computed for %s (%s bytes)", url, total_bytes)
     return result
+
+
+@celery_app.task(name="app.tasks.hash_url", bind=True)
+def hash_url(self, url: str) -> dict[str, Any]:
+    """Celery task wrapper for hash_url_sync."""
+    return hash_url_sync(url)
+
+
+@celery_app.task(name="app.tasks.check_post_hash", bind=True)
+def check_post_hash(self, post_id: str) -> dict[str, Any]:
+    """
+    Check if a post's art_url hash matches the expected hash.
+    Sets non_conformant=True if mismatch detected.
+    """
+    from . import models
+    from .db import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        post = db.query(models.Post).filter(models.Post.id == post_id).first()
+        if not post:
+            logger.error("Post %s not found", post_id)
+            return {"status": "error", "message": "Post not found"}
+        
+        if not post.expected_hash:
+            logger.info("Post %s has no expected_hash, skipping", post_id)
+            return {"status": "skipped", "message": "No expected hash"}
+        
+        if not post.art_url:
+            logger.error("Post %s has no art_url", post_id)
+            return {"status": "error", "message": "No art_url"}
+        
+        # Fetch and hash the remote content
+        logger.info("Checking hash for post %s: %s", post_id, post.art_url)
+        hash_result = hash_url_sync(post.art_url)
+        actual_hash = hash_result["sha256"]
+        
+        if actual_hash != post.expected_hash:
+            logger.warning(
+                "Hash mismatch for post %s: expected %s, got %s",
+                post_id,
+                post.expected_hash,
+                actual_hash
+            )
+            
+            # Mark as non-conformant
+            post.non_conformant = True
+            db.commit()
+            
+            # Log to audit log (system action)
+            # Note: We need a system user or use a special UUID for automated actions
+            # For now, we'll skip audit logging for automated hash checks
+            # In production, you might want to create a system user or use a special actor_id
+            
+            return {
+                "status": "mismatch",
+                "expected": post.expected_hash,
+                "actual": actual_hash,
+                "non_conformant": True,
+            }
+        else:
+            logger.info("Hash matches for post %s", post_id)
+            # If it was previously non-conformant and now matches, clear the flag
+            if post.non_conformant:
+                post.non_conformant = False
+                db.commit()
+            
+            return {
+                "status": "match",
+                "hash": actual_hash,
+            }
+    
+    except Exception as e:
+        logger.error("Error checking hash for post %s: %s", post_id, str(e))
+        return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
 
 
 @celery_app.task(name="app.tasks.process_relay_job", bind=True)
@@ -391,7 +468,9 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
                 hashtags=artwork.get("hashtags", []),
                 art_url=f"https://{owner}.github.io/{repo_name}/{artwork['filename']}",
                 canvas=artwork["canvas"],
-                file_kb=artwork["file_kb"]
+                file_kb=artwork["file_kb"],
+                expected_hash=artwork.get("sha256"),  # Store hash from manifest
+                mime_type=artwork.get("mime_type"),  # Store MIME type from manifest
             )
             db.add(post)
             db.flush()  # Flush to get the post ID

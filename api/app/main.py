@@ -16,6 +16,7 @@ from .routers import (
     admin,
     auth,
     badges,
+    categories,
     comments,
     devices,
     legacy,
@@ -95,6 +96,7 @@ app.include_router(reports.router)
 app.include_router(badges.router)
 app.include_router(reputation.router)
 app.include_router(devices.router)
+app.include_router(categories.router)
 app.include_router(admin.router)
 app.include_router(search.router)
 app.include_router(relay.router)

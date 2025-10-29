@@ -96,6 +96,7 @@ class UserFull(UserPublic):
 
     email: str | None = None
     banned_until: datetime | None = None
+    roles: list[Literal["user", "moderator", "owner"]] = Field(default_factory=list)
 
 
 class UserCreate(BaseModel):
@@ -478,7 +479,7 @@ class BanResponse(BaseModel):
 class PromotePostRequest(BaseModel):
     """Promote post request."""
 
-    category: Literal["frontpage", "editor-pick", "weekly-pack"]
+    category: Literal["frontpage", "editor-pick", "weekly-pack", "daily's-best"]
 
 
 class PromotePostResponse(BaseModel):
@@ -486,6 +487,28 @@ class PromotePostResponse(BaseModel):
 
     promoted: bool
     category: str
+
+
+class CategoryFollow(BaseModel):
+    """Category follow relationship."""
+
+    user_id: UUID
+    category: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CategoryFollowCreate(BaseModel):
+    """Follow a category request."""
+
+    category: str = Field(..., min_length=1, max_length=50)
+
+
+class CategoryFollowList(BaseModel):
+    """List of followed categories."""
+
+    items: list[CategoryFollow]
 
 
 class AdminNoteCreate(BaseModel):
