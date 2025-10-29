@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..auth import create_access_token, create_refresh_token, get_current_user, revoke_refresh_token, verify_refresh_token
 from ..deps import get_db
+from ..github import verify_installation_belongs_to_app
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -476,8 +477,8 @@ def github_onboarding_redirect(
     if request.headers.get("x-forwarded-proto") == "https":
         base_url = base_url.replace("http://", "https://")
     
-    # Redirect to our proper setup URL
-    setup_url = f"{base_url}/api/auth/github-app/setup?installation_id={installation_id}&setup_action={setup_action}"
+    # Redirect to Next.js setup page (using shorter /setup route to avoid GitHub URL truncation)
+    setup_url = f"{base_url}/setup?installation_id={installation_id}&setup_action={setup_action}"
     return RedirectResponse(url=setup_url, status_code=302)
 
 
@@ -491,8 +492,9 @@ def github_app_setup(
     """
     Handle GitHub App installation completion.
     This endpoint is called by GitHub after app installation.
+    Redirects to Next.js page for better UX.
     """
-    from fastapi.responses import HTMLResponse, RedirectResponse
+    from fastapi.responses import RedirectResponse
     
     # Determine the base URL from the request
     base_url = str(request.base_url).rstrip('/')
@@ -500,137 +502,9 @@ def github_app_setup(
     if request.headers.get("x-forwarded-proto") == "https":
         base_url = base_url.replace("http://", "https://")
     
-    # Create a simple HTML page that handles the installation
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>GitHub App Installation - Makapix</title>
-        <style>
-            body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
-            .success {{ color: #22c55e; font-size: 24px; margin-bottom: 20px; }}
-            .info {{ color: #666; margin-bottom: 30px; }}
-            .debug {{ color: #888; font-size: 12px; margin-top: 20px; }}
-            .button {{
-                background: #0070f3;
-                color: white;
-                padding: 12px 24px;
-                border: none;
-                border-radius: 6px;
-                cursor: pointer;
-                text-decoration: none;
-                display: inline-block;
-                margin: 10px;
-            }}
-            .button:hover {{ background: #0051a2; }}
-            .spinner {{
-                border: 4px solid #f3f3f3;
-                border-top: 4px solid #0070f3;
-                border-radius: 50%;
-                width: 40px;
-                height: 40px;
-                animation: spin 1s linear infinite;
-                margin: 0 auto 1rem;
-            }}
-            @keyframes spin {{
-                0% {{ transform: rotate(0deg); }}
-                100% {{ transform: rotate(360deg); }}
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="success">🔄 Processing GitHub App Installation...</div>
-        <div class="spinner"></div>
-        <div class="info">Installation ID: {installation_id}</div>
-        <div class="info">Setup Action: {setup_action}</div>
-        
-        <div class="debug">
-            <p>Debug Info:</p>
-            <p>Installation ID: {installation_id}</p>
-            <p>Setup Action: {setup_action}</p>
-            <p>Base URL: {base_url}</p>
-        </div>
-        
-        <script>
-            console.log('GitHub App Setup - Processing installation...');
-            console.log('Installation ID:', {installation_id});
-            console.log('Setup Action:', '{setup_action}');
-            
-            // Check if user is authenticated
-            const accessToken = localStorage.getItem('access_token');
-            const userHandle = localStorage.getItem('user_handle');
-            
-            console.log('Authentication check:', {{
-                hasToken: !!accessToken,
-                userHandle: userHandle || 'missing'
-            }});
-            
-            if (accessToken && userHandle) {{
-                // User is authenticated, bind the installation
-                console.log('User authenticated, binding installation...');
-                bindInstallation();
-            }} else {{
-                // User not authenticated, redirect to OAuth with installation_id preserved
-                console.log('User not authenticated, redirecting to OAuth...');
-                redirectToOAuth();
-            }}
-            
-            async function bindInstallation() {{
-                try {{
-                    const response = await fetch('{base_url}/api/profiles/bind-github-app', {{
-                        method: 'POST',
-                        headers: {{
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${{accessToken}}`
-                        }},
-                        body: JSON.stringify({{
-                            installation_id: {installation_id}
-                        }})
-                    }});
-                    
-                    if (!response.ok) {{
-                        const error = await response.json();
-                        throw new Error(error.detail || 'Failed to bind installation');
-                    }}
-                    
-                    const result = await response.json();
-                    console.log('Installation bound successfully:', result);
-                    
-                    // Show success and redirect to publish page
-                    document.body.innerHTML = `
-                        <div class="success">✅ GitHub App Installed Successfully!</div>
-                        <div class="info">Installation ID: ${{result.installation_id}}</div>
-                        <div class="info">Redirecting to publish page...</div>
-                        <a href="{base_url}/publish" class="button">Go to Publish Page</a>
-                    `;
-                    
-                    // Redirect after 2 seconds
-                    setTimeout(() => {{
-                        window.location.href = '{base_url}/publish';
-                    }}, 2000);
-                    
-                }} catch (error) {{
-                    console.error('Error binding installation:', error);
-                    document.body.innerHTML = `
-                        <div class="error">❌ Error: ${{error.message}}</div>
-                        <div class="info">Please try again or contact support.</div>
-                        <a href="{base_url}/publish" class="button">Back to Publish Page</a>
-                    `;
-                }}
-            }}
-            
-            function redirectToOAuth() {{
-                // Redirect to OAuth with installation_id as state parameter
-                const oauthUrl = `{base_url}/api/auth/github/login?installation_id={installation_id}`;
-                console.log('Redirecting to OAuth:', oauthUrl);
-                window.location.href = oauthUrl;
-            }}
-        </script>
-    </body>
-    </html>
-    """
-    
-    return HTMLResponse(content=html_content)
+    # Redirect to Next.js setup page (using shorter /setup route to avoid GitHub URL truncation)
+    setup_url = f"{base_url}/setup?installation_id={installation_id}&setup_action={setup_action}"
+    return RedirectResponse(url=setup_url, status_code=302)
 
 
 @router.get("/github-app/status")
@@ -737,6 +611,34 @@ def validate_github_app_installation(
             "details": "GitHub App installation is incomplete - no target repository set"
         }
 
+    # Verify that the installation belongs to the configured GitHub App before attempting token generation
+    logger.info(f"Verifying installation {installation.installation_id} belongs to configured GitHub App")
+    if not verify_installation_belongs_to_app(installation.installation_id):
+        app_slug = os.getenv("GITHUB_APP_SLUG", "makapix-club")
+        install_url = f"https://github.com/apps/{app_slug}/installations/new" if app_slug else None
+        
+        error_details = (
+            f"Installation {installation.installation_id} belongs to a different GitHub App. "
+            f"This usually happens when you installed the wrong GitHub App (e.g., localhost app instead of VPS app).\n\n"
+        )
+        
+        if install_url:
+            error_details += f"Please install the correct GitHub App from: {install_url}\n\n"
+            error_details += f"After installing, you may need to uninstall the incorrect installation first."
+        
+        logger.warning(
+            f"User {current_user.id} has installation {installation.installation_id} that belongs to wrong GitHub App. "
+            f"Configured app slug: {app_slug}"
+        )
+        
+        return {
+            "valid": False,
+            "error": "Installation belongs to wrong GitHub App",
+            "details": error_details,
+            "app_slug": app_slug,
+            "install_url": install_url
+        }
+
     # Test if we can get an access token from GitHub
     try:
         from app.github import get_github_app_token
@@ -750,26 +652,16 @@ def validate_github_app_installation(
                 "details": f"GitHub App installation {installation.installation_id} cannot authenticate. This usually means:\n1. The GITHUB_APP_ID or GITHUB_APP_PRIVATE_KEY environment variables are incorrect\n2. The private key doesn't match the GitHub App\n3. The installation was revoked on GitHub\n\nCheck your GitHub App configuration in the API environment variables."
             }
 
-        # Test if the token works by making a simple API call
-        import requests
-        headers = {"Authorization": f"token {access_token}"}
-        response = requests.get("https://api.github.com/user", headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            logger.info(f"GitHub App installation validated successfully for user {current_user.id}")
-            return {
-                "valid": True,
-                "installation_id": installation.installation_id,
-                "target_repo": installation.target_repo,
-                "account_login": installation.account_login
-            }
-        else:
-            logger.error(f"GitHub API test failed for user {current_user.id}: {response.status_code}")
-            return {
-                "valid": False,
-                "error": "Access token invalid",
-                "details": f"GitHub API returned {response.status_code}: {response.text[:200]}"
-            }
+        # If we successfully got a token, the installation is valid
+        # Installation tokens can't access /user endpoint, so we don't test it
+        # The fact that we can get a token means the installation is valid
+        logger.info(f"GitHub App installation validated successfully for user {current_user.id}")
+        return {
+            "valid": True,
+            "installation_id": installation.installation_id,
+            "target_repo": installation.target_repo,
+            "account_login": installation.account_login
+        }
 
     except Exception as e:
         error_msg = str(e)

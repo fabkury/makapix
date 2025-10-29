@@ -19,6 +19,7 @@ export default function PublishPage() {
   const [userInfo, setUserInfo] = useState<any>(null);
   const [githubAppInstalled, setGithubAppInstalled] = useState(false);
   const [githubAppInstallUrl, setGithubAppInstallUrl] = useState<string>('');
+  const [validationError, setValidationError] = useState<{error?: string, details?: string, install_url?: string, app_slug?: string} | null>(null);
 
   // Get API base URL - must be computed inside the component to ensure it runs client-side
   // Initialize with window.location.origin as fallback to prevent empty string issues
@@ -103,14 +104,27 @@ export default function PublishPage() {
             if (!validationResult.valid) {
               console.error('GitHub App installation is invalid:', validationResult);
               setGithubAppInstalled(false);
-              setGithubAppInstallUrl(data.install_url || '');
+              // Use install_url from validation result if available, otherwise use status install_url
+              setGithubAppInstallUrl(validationResult.install_url || data.install_url || '');
               // Store validation error for display
+              setValidationError({
+                error: validationResult.error,
+                details: validationResult.details,
+                install_url: validationResult.install_url || data.install_url,
+                app_slug: validationResult.app_slug
+              });
               if (validationResult.error) {
                 console.error('Validation error:', validationResult.error);
                 console.error('Validation details:', validationResult.details);
               }
               return;
+            } else {
+              // Clear validation error if validation succeeds
+              setValidationError(null);
             }
+          } else {
+            // Clear validation error if not installed
+            setValidationError(null);
           }
           
           setGithubAppInstalled(data.installed);
@@ -146,7 +160,7 @@ export default function PublishPage() {
     };
 
     // Validate that GitHub App installation actually works
-    const validateGithubAppInstallation = async (token: string, baseUrl: string): Promise<{valid: boolean, error?: string, details?: string}> => {
+    const validateGithubAppInstallation = async (token: string, baseUrl: string): Promise<{valid: boolean, error?: string, details?: string, install_url?: string, app_slug?: string}> => {
       try {
         const validateUrl = `${baseUrl}/api/auth/github-app/validate`;
         console.log('Validating GitHub App installation at:', validateUrl);
@@ -165,7 +179,9 @@ export default function PublishPage() {
           return {
             valid: data.valid === true,
             error: data.error,
-            details: data.details
+            details: data.details,
+            install_url: data.install_url,
+            app_slug: data.app_slug
           };
         } else {
           console.error('GitHub App validation failed:', response.status, response.statusText);
@@ -174,7 +190,9 @@ export default function PublishPage() {
           return {
             valid: false,
             error: errorData.error || 'Validation failed',
-            details: errorData.details || errorData.message || 'Unknown error'
+            details: errorData.details || errorData.message || 'Unknown error',
+            install_url: errorData.install_url,
+            app_slug: errorData.app_slug
           };
         }
       } catch (error: any) {
@@ -450,38 +468,91 @@ export default function PublishPage() {
             padding: '15px',
             marginBottom: '20px',
             borderRadius: '6px',
-            backgroundColor: '#fef3c7',
-            border: '2px solid #f59e0b'
+            backgroundColor: validationError?.error === 'Installation belongs to wrong GitHub App' ? '#fee2e2' : '#fef3c7',
+            border: `2px solid ${validationError?.error === 'Installation belongs to wrong GitHub App' ? '#dc2626' : '#f59e0b'}`
           }}>
             <div>
               ⚠️ <strong>GitHub App Not Installed or Invalid</strong>
               <br />
-              <small>To publish artwork, you need to install the Makapix GitHub App on your account. The system will validate that the installation is working properly before allowing uploads.</small>
-              <br />
-              <small style={{ color: '#dc2626', fontWeight: 'bold', display: 'block', marginTop: '10px' }}>
-                ⚠️ IMPORTANT: If you're being redirected to a GitHub settings page (like github.com/settings/installations/92158250), 
-                you need to uninstall the app from GitHub first, then reinstall it.
-              </small>
-              <br />
-              <a 
-                href="https://github.com/settings/installations/92158250" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                style={{
-                  display: 'inline-block',
+              
+              {validationError && validationError.error && (
+                <div style={{
                   marginTop: '10px',
-                  padding: '8px 16px',
-                  backgroundColor: '#dc2626',
-                  color: 'white',
-                  textDecoration: 'none',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  fontWeight: 'bold'
-                }}
-              >
-                ⚠️ Uninstall from GitHub First
-              </a>
-              <br />
+                  padding: '10px',
+                  backgroundColor: '#fff',
+                  borderRadius: '4px',
+                  border: '1px solid #ddd'
+                }}>
+                  <strong style={{ color: '#dc2626', display: 'block', marginBottom: '5px' }}>
+                    {validationError.error}
+                  </strong>
+                  {validationError.details && (
+                    <div style={{ 
+                      marginTop: '5px', 
+                      fontSize: '13px', 
+                      color: '#666',
+                      whiteSpace: 'pre-wrap'
+                    }}>
+                      {validationError.details}
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {!validationError && (
+                <small>To publish artwork, you need to install the Makapix GitHub App on your account. The system will validate that the installation is working properly before allowing uploads.</small>
+              )}
+              
+              {validationError?.install_url && (
+                <div style={{ marginTop: '15px' }}>
+                  <a 
+                    href={validationError.install_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-block',
+                      padding: '10px 20px',
+                      backgroundColor: '#0070f3',
+                      color: 'white',
+                      textDecoration: 'none',
+                      borderRadius: '6px',
+                      fontSize: '14px',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    Install Correct GitHub App
+                  </a>
+                </div>
+              )}
+              
+              {!validationError && (
+                <>
+                  <small style={{ color: '#dc2626', fontWeight: 'bold', display: 'block', marginTop: '10px' }}>
+                    ⚠️ IMPORTANT: If you're being redirected to a GitHub settings page (like github.com/settings/installations/92158250), 
+                    you need to uninstall the app from GitHub first, then reinstall it.
+                  </small>
+                  <br />
+                  <a 
+                    href="https://github.com/settings/installations/92158250" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-block',
+                      marginTop: '10px',
+                      padding: '8px 16px',
+                      backgroundColor: '#dc2626',
+                      color: 'white',
+                      textDecoration: 'none',
+                      borderRadius: '6px',
+                      fontSize: '14px',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    ⚠️ Uninstall from GitHub First
+                  </a>
+                  <br />
+                </>
+              )}
               <button
                 onClick={async () => {
                   console.log('Install button clicked!');
@@ -523,6 +594,16 @@ export default function PublishPage() {
                           if (validateResponse.ok) {
                             const validateData = await validateResponse.json();
                             if (!validateData.valid) {
+                              // Installation exists but is invalid - check if it's wrong app
+                              if (validateData.error === 'Installation belongs to wrong GitHub App') {
+                                // Show the correct install URL from validation response
+                                if (validateData.install_url) {
+                                  alert(`You have installed the wrong GitHub App. Please install the correct one from:\n\n${validateData.install_url}\n\nYou may need to uninstall the incorrect installation first.`);
+                                  window.open(validateData.install_url, '_blank');
+                                  return;
+                                }
+                              }
+                              
                               // Installation exists but is invalid - guide user to uninstall first
                               const confirmMsg = `You have an existing GitHub App installation (ID: ${statusData.installation_id}) that is invalid.\n\n` +
                                 `You need to:\n` +
