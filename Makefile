@@ -1,4 +1,4 @@
-.PHONY: help local remote up down restart logs test clean
+.PHONY: help local remote up down restart logs test clean deploy deploy-vps
 
 help:
 	@echo "Makapix Development Commands"
@@ -6,14 +6,20 @@ help:
 	@echo "Environment Management:"
 	@echo "  make local          - Switch to local development (localhost)"
 	@echo "  make remote         - Switch to remote development (dev.makapix.club)"
+	@echo "  make status         - Show current environment and service status"
 	@echo ""
 	@echo "Docker Commands:"
 	@echo "  make up             - Start all services"
 	@echo "  make down           - Stop all services"
 	@echo "  make restart        - Restart all services"
+	@echo "  make rebuild        - Rebuild and restart all services"
 	@echo "  make logs           - Show logs for all services"
 	@echo "  make logs-api       - Show logs for API service"
 	@echo "  make logs-web       - Show logs for web service"
+	@echo ""
+	@echo "Deployment:"
+	@echo "  make deploy         - Deploy to current environment (pull, rebuild, restart)"
+	@echo "  make deploy-vps     - Full VPS deployment (git pull + switch to remote + restart)"
 	@echo ""
 	@echo "Development:"
 	@echo "  make test           - Run API tests"
@@ -70,3 +76,43 @@ status:
 	@echo ""
 	@echo "Docker services:"
 	@docker compose ps
+
+rebuild:
+	docker compose down
+	docker compose up -d --build
+
+deploy:
+	@echo "Deploying to current environment..."
+	@docker compose down
+	@docker compose up -d --build
+	@echo ""
+	@echo "Deployment complete!"
+	@make status
+
+deploy-vps:
+	@echo "🚀 Starting VPS deployment..."
+	@echo ""
+	@echo "Step 1: Pulling latest code from Git..."
+	git pull origin main
+	@echo ""
+	@echo "Step 2: Switching to remote environment..."
+	@make remote
+	@echo ""
+	@echo "Step 3: Stopping current services..."
+	@docker compose down
+	@echo ""
+	@echo "Step 4: Starting services with new configuration..."
+	@docker compose up -d --build
+	@echo ""
+	@echo "Step 5: Waiting for services to be healthy..."
+	@sleep 10
+	@echo ""
+	@echo "Step 6: Checking service status..."
+	@docker compose ps
+	@echo ""
+	@echo "✅ VPS deployment complete!"
+	@echo ""
+	@echo "Verify deployment:"
+	@echo "  - Visit: https://dev.makapix.club"
+	@echo "  - Check logs: make logs"
+	@echo "  - Check network: docker network inspect caddy_net"
