@@ -439,6 +439,9 @@ def get_github_app_status(
     Check if the current user has installed the GitHub App.
     Returns installation status and app installation URL if not installed.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
     installation = db.query(models.GitHubInstallation).filter(
         models.GitHubInstallation.user_id == current_user.id
     ).first()
@@ -448,8 +451,12 @@ def get_github_app_status(
     # Construct installation URL - users can install from this URL
     install_url = f"https://github.com/apps/{app_slug}/installations/new" if app_slug else None
 
-    return {
+    result = {
         "installed": installation is not None,
         "installation_id": installation.installation_id if installation else None,
         "install_url": install_url
     }
+
+    logger.info(f"GitHub App status check for user {current_user.id}: app_slug={app_slug}, install_url={install_url}, installed={result['installed']}")
+
+    return result
