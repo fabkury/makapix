@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker ps:*)",
+      "Bash(curl:*)",
+      "Bash(docker network:*)",
+      "Bash(docker inspect:*)",
+      "Bash(python3:*)",
+      "Bash(docker logs:*)",
+      "Bash(ip addr:*)",
+      "Bash(awk:*)",
+      "Bash(docker compose:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

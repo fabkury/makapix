@@ -10,16 +10,26 @@ services:
       caddy.handle.0_uri: strip_prefix /api
       caddy.handle.1_reverse_proxy: "{{upstreams 8000}}"
     ports: []  # Remove direct port binding - accessed via caddy-docker-proxy
+    networks:
+      - internal
+      - caddy_net
 
-  # Web service - routed via caddy-docker-proxy  
+  # Web service - routed via caddy-docker-proxy
   web:
     labels:
       caddy: dev.makapix.club
       caddy.reverse_proxy: "{{upstreams 3000}}"
     ports: []  # Remove direct port binding - accessed via caddy-docker-proxy
+    networks:
+      - internal
+      - caddy_net
 
   # Disable the standalone proxy service for remote
   proxy:
     profiles:
       - disabled
+
+networks:
+  caddy_net:
+    external: true
 

@@ -89,7 +89,6 @@ services:
     networks:
       - internal
       - proxy
-      - caddy_net
 
   api-test:
     profiles: ["test"]
@@ -175,7 +174,6 @@ services:
     networks:
       - internal
       - proxy
-      - caddy_net
 
   proxy:
     image: caddy:2
@@ -209,8 +207,6 @@ networks:
     driver: bridge
   proxy:
     driver: bridge
-  caddy_net:
-    external: true
 
 volumes:
   pg_data:
