@@ -1,11 +1,25 @@
 # Docker Compose override for REMOTE development
+# Uses existing caddy-docker-proxy for routing
 services:
+  # API service - routed via caddy-docker-proxy
+  api:
+    labels:
+      caddy: dev.makapix.club
+      caddy.@api.path: /api /api/*
+      caddy.handle: "@api"
+      caddy.handle.0_uri: strip_prefix /api
+      caddy.handle.1_reverse_proxy: "{{upstreams 8000}}"
+    ports: []  # Remove direct port binding - accessed via caddy-docker-proxy
+
+  # Web service - routed via caddy-docker-proxy  
+  web:
+    labels:
+      caddy: dev.makapix.club
+      caddy.reverse_proxy: "{{upstreams 3000}}"
+    ports: []  # Remove direct port binding - accessed via caddy-docker-proxy
+
+  # Disable the standalone proxy service for remote
   proxy:
-    environment:
-      - DOMAIN=dev.makapix.club
-      - ACME_AGREE=true
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"  # For HTTP/3
+    profiles:
+      - disabled
 
