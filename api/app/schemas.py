@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Generic, Literal, TypeVar
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, RootModel
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, RootModel, computed_field
 
 
 # ============================================================================
@@ -249,7 +249,8 @@ class Comment(BaseModel):
 
     id: UUID
     post_id: UUID
-    author_id: UUID
+    author_id: UUID | None = None  # None for anonymous comments
+    author_ip: str | None = None  # For anonymous users (visible to moderators)
     parent_id: UUID | None = None
     depth: int = Field(..., ge=0, le=2)
     body: str
@@ -259,6 +260,22 @@ class Comment(BaseModel):
     updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
+    
+    @computed_field
+    @property
+    def author_display_name(self) -> str:
+        """
+        Display name for the comment author.
+        
+        Returns guest name for anonymous users, or can be used
+        to fetch user display name for authenticated users.
+        """
+        if self.author_id is None and self.author_ip:
+            # Generate guest name from IP
+            import hashlib
+            hash_digest = hashlib.sha256(self.author_ip.encode()).hexdigest()
+            return f"Guest_{hash_digest[:6]}"
+        return "User"  # Placeholder for authenticated users
 
 
 class CommentCreate(BaseModel):
