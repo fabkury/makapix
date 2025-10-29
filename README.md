@@ -84,6 +84,23 @@ Then open http://localhost/demo to watch the WebSocket MQTT client receive the r
 
 **Note**: For full authentication testing, you need to set up GitHub OAuth credentials in your `.env` file. See [docs/dev-quickstart.md](docs/dev-quickstart.md) for detailed setup instructions.
 
+## Production Deployment
+
+This repository is **production-ready**! To deploy to https://makapix.club:
+
+1. **Quick Start**: See [`DEPLOY.md`](DEPLOY.md) for condensed deployment steps
+2. **Full Guide**: See [`docs/production-deployment.md`](docs/production-deployment.md) for complete instructions
+3. **Checklist**: Use [`docs/deployment-checklist.md`](docs/deployment-checklist.md) for step-by-step verification
+4. **Status**: See [`docs/PRODUCTION-READY.md`](docs/PRODUCTION-READY.md) for implementation details
+
+### Key Changes for Production
+
+- **SSL/TLS**: Automatic certificate management via Let's Encrypt (Caddy)
+- **Domain**: Configured for https://makapix.club
+- **Environment**: All URLs configurable via environment variables
+- **Security**: Production credentials in `.env` (not committed)
+- **GitHub**: OAuth and App configured for production callbacks
+
 ## Next Steps
 
 - Explore [`docs/dev-quickstart.md`](docs/dev-quickstart.md) for detailed workflows.

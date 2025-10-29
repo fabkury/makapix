@@ -21,6 +21,7 @@ yarn-error.log*
 .env
 .env.local
 *.env.*.local
+.pem
 
 # OS/editor
 .DS_Store
