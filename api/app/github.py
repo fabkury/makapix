@@ -111,6 +111,71 @@ def get_installation_access_token(installation_id: int) -> dict:
         return response.json()
 
 
+def verify_installation_belongs_to_app(installation_id: int) -> bool:
+    """
+    Verify that an installation belongs to the configured GitHub App.
+    
+    Returns True if the installation belongs to the app configured via GITHUB_APP_ID,
+    False otherwise. Handles errors gracefully (wrong app, not found, etc.).
+    """
+    if not GITHUB_APP_ID:
+        logger.error("Cannot verify installation: GITHUB_APP_ID not configured")
+        return False
+    
+    try:
+        app_jwt = generate_app_jwt()
+        
+        with httpx.Client() as client:
+            response = client.get(
+                f"https://api.github.com/app/installations/{installation_id}",
+                headers={
+                    "Authorization": f"Bearer {app_jwt}",
+                    "Accept": "application/vnd.github+json"
+                },
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                installation_data = response.json()
+                installation_app_id = installation_data.get("app_id")
+                
+                # Compare with configured app ID (both as strings to handle type differences)
+                configured_app_id = str(GITHUB_APP_ID)
+                actual_app_id = str(installation_app_id) if installation_app_id else None
+                
+                if actual_app_id == configured_app_id:
+                    logger.info(f"Installation {installation_id} verified: belongs to app {configured_app_id}")
+                    return True
+                else:
+                    logger.warning(
+                        f"Installation {installation_id} belongs to wrong app: "
+                        f"expected {configured_app_id}, got {actual_app_id}"
+                    )
+                    return False
+            elif response.status_code == 401:
+                logger.warning(
+                    f"Installation {installation_id} verification failed with 401: "
+                    "Installation belongs to a different GitHub App or credentials are invalid"
+                )
+                return False
+            elif response.status_code == 404:
+                logger.warning(f"Installation {installation_id} not found (404)")
+                return False
+            else:
+                logger.error(
+                    f"Unexpected status code {response.status_code} when verifying installation {installation_id}: "
+                    f"{response.text[:200]}"
+                )
+                return False
+                
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error verifying installation {installation_id}: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error verifying installation {installation_id}: {e}")
+        return False
+
+
 def get_github_app_token(installation_id: int) -> Optional[str]:
     """Get access token for a specific installation (simplified version for validation)."""
     try:
