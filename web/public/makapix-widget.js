@@ -261,11 +261,28 @@
         const response = await apiRequest(`/posts/${this.postId}/comments`);
         if (response.ok) {
           const data = await response.json();
-          this.comments = data.items || [];
+          // Filter out invalid comments (depth > 2 or missing required fields)
+          this.comments = (data.items || []).filter(comment => {
+            if (!comment || typeof comment.id === 'undefined') return false;
+            if (typeof comment.depth !== 'number' || comment.depth > 2) return false;
+            if (!comment.body) return false;
+            return true;
+          });
           this.renderComments();
+        } else {
+          console.error('Failed to load comments:', response.status, response.statusText);
+          this.showCommentsError();
         }
       } catch (error) {
         console.error('Failed to load comments:', error);
+        this.showCommentsError();
+      }
+    }
+    
+    showCommentsError() {
+      const container = document.getElementById(`comments-${this.postId}`);
+      if (container) {
+        container.innerHTML = '<p class="makapix-no-comments">Unable to load comments. Please refresh the page.</p>';
       }
     }
     
@@ -275,52 +292,117 @@
       
       container.innerHTML = '';
       
-      if (this.comments.length === 0) {
+      if (!this.comments || this.comments.length === 0) {
         container.innerHTML = '<p class="makapix-no-comments">No comments yet. Be the first to comment!</p>';
         return;
       }
       
       // Group comments by parent (for threading)
-      const topLevel = this.comments.filter(c => !c.parent_id);
+      const topLevel = this.comments.filter(c => c && !c.parent_id);
+      
+      if (topLevel.length === 0) {
+        container.innerHTML = '<p class="makapix-no-comments">No visible comments.</p>';
+        return;
+      }
       
       topLevel.forEach(comment => {
-        container.appendChild(this.renderComment(comment));
-        
-        // Render replies (depth 1)
-        const replies = this.comments.filter(c => c.parent_id === comment.id);
-        if (replies.length > 0) {
-          const repliesContainer = createElement('div', { className: 'makapix-comment-replies' });
-          replies.forEach(reply => {
-            repliesContainer.appendChild(this.renderComment(reply));
-          });
-          container.appendChild(repliesContainer);
+        const commentDiv = this.renderCommentWithReplies(comment);
+        if (commentDiv) {
+          container.appendChild(commentDiv);
         }
       });
     }
     
+    renderCommentWithReplies(comment) {
+      if (!comment || !comment.id) {
+        console.warn('Invalid comment detected, skipping:', comment);
+        return null;
+      }
+      
+      const commentDiv = this.renderComment(comment);
+      if (!commentDiv) return null;
+      
+      // Find all replies to this comment (any depth)
+      const replies = this.comments.filter(c => c && c.parent_id === comment.id);
+      if (replies.length > 0) {
+        const repliesContainer = createElement('div', { className: 'makapix-comment-replies' });
+        replies.forEach(reply => {
+          const replyDiv = this.renderCommentWithReplies(reply);
+          if (replyDiv) {
+            repliesContainer.appendChild(replyDiv);
+          }
+        });
+        if (repliesContainer.children.length > 0) {
+          // Append replies container to the content wrapper so it's hidden when folded
+          const contentWrapper = commentDiv.querySelector('.makapix-comment-content');
+          if (contentWrapper) {
+            contentWrapper.appendChild(repliesContainer);
+          } else {
+            commentDiv.appendChild(repliesContainer);
+          }
+        }
+      }
+      
+      return commentDiv;
+    }
+    
     renderComment(comment) {
-      const div = createElement('div', { className: 'makapix-comment' });
+      if (!comment || !comment.id) {
+        console.warn('Invalid comment detected:', comment);
+        return null;
+      }
+      
+      const div = createElement('div', { 
+        className: 'makapix-comment',
+        attributes: { 'data-comment-id': String(comment.id) }
+      });
       
       const header = createElement('div', { className: 'makapix-comment-header' });
       
       const authorName = comment.author_display_name || 'Unknown';
       const isGuest = authorName.startsWith('Guest_');
       
-      header.innerHTML = `
-        <span class="makapix-comment-author ${isGuest ? 'makapix-guest' : ''}">${authorName}</span>
-        <span class="makapix-comment-date">${formatDate(comment.created_at)}</span>
-      `;
+      // Fold/unfold button
+      const foldBtn = createElement('button', {
+        className: 'makapix-comment-fold-btn',
+        attributes: { 'aria-label': 'Fold comment' },
+        html: '▼'
+      });
+      foldBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.toggleFold(comment.id);
+      });
+      
+      header.appendChild(foldBtn);
+      
+      const authorSpan = createElement('span', {
+        className: `makapix-comment-author ${isGuest ? 'makapix-guest' : ''}`,
+        text: authorName
+      });
+      header.appendChild(authorSpan);
+      
+      const dateSpan = createElement('span', {
+        className: 'makapix-comment-date',
+        text: formatDate(comment.created_at)
+      });
+      header.appendChild(dateSpan);
       
       div.appendChild(header);
       
+      // Content wrapper (body + actions) - can be hidden when folded
+      const contentWrapper = createElement('div', { className: 'makapix-comment-content' });
+      
       const body = createElement('div', { 
         className: 'makapix-comment-body',
-        text: comment.body
+        text: comment.body || '[deleted]'
       });
-      div.appendChild(body);
+      contentWrapper.appendChild(body);
       
-      // Reply button (only for depth 0 comments)
-      if (comment.depth === 0) {
+      // Reply button (only for depth < 2, allowing replies up to depth 1)
+      const depth = typeof comment.depth === 'number' ? comment.depth : 0;
+      const actionsContainer = createElement('div', { className: 'makapix-comment-actions' });
+      
+      if (depth < 2) {
         const replyBtn = createElement('button', {
           className: 'makapix-comment-reply-btn',
           text: 'Reply'
@@ -328,28 +410,65 @@
         replyBtn.addEventListener('click', () => {
           this.showReplyForm(comment.id);
         });
-        div.appendChild(replyBtn);
+        actionsContainer.appendChild(replyBtn);
       }
+      
+      // Delete button (show for all comments, API will handle permission check)
+      if (!comment.deleted_by_owner) {
+        const deleteBtn = createElement('button', {
+          className: 'makapix-comment-delete-btn',
+          text: 'Delete'
+        });
+        deleteBtn.addEventListener('click', () => {
+          this.confirmDelete(comment.id);
+        });
+        actionsContainer.appendChild(deleteBtn);
+      }
+      
+      if (actionsContainer.children.length > 0) {
+        contentWrapper.appendChild(actionsContainer);
+      }
+      
+      div.appendChild(contentWrapper);
       
       return div;
     }
     
-    showReplyForm(parentId) {
-      // Find the comment element
-      const commentElements = document.querySelectorAll('.makapix-comment');
-      let targetComment = null;
+    toggleFold(commentId) {
+      const commentIdStr = String(commentId);
+      const commentElement = document.querySelector(`.makapix-comment[data-comment-id="${commentIdStr}"]`);
+      if (!commentElement) return;
       
-      for (const el of commentElements) {
-        if (el.querySelector('.makapix-comment-reply-btn')) {
-          const comment = this.comments.find(c => c.id === parentId);
-          if (comment) {
-            targetComment = el;
-            break;
-          }
+      const foldBtn = commentElement.querySelector('.makapix-comment-fold-btn');
+      const isFolded = commentElement.classList.contains('makapix-folded');
+      
+      if (isFolded) {
+        // Unfold: show content and child comments
+        commentElement.classList.remove('makapix-folded');
+        if (foldBtn) {
+          foldBtn.textContent = '▼';
+          foldBtn.setAttribute('aria-label', 'Fold comment');
+        }
+      } else {
+        // Fold: hide content and child comments
+        commentElement.classList.add('makapix-folded');
+        if (foldBtn) {
+          foldBtn.textContent = '▶';
+          foldBtn.setAttribute('aria-label', 'Unfold comment');
         }
       }
+    }
+    
+    showReplyForm(parentId) {
+      // Find the comment element by data-comment-id attribute
+      // Convert parentId to string to ensure proper matching
+      const commentId = String(parentId);
+      const targetComment = document.querySelector(`.makapix-comment[data-comment-id="${commentId}"]`);
       
-      if (!targetComment) return;
+      if (!targetComment) {
+        console.error('Comment element not found for parentId:', parentId);
+        return;
+      }
       
       // Remove any existing reply forms
       document.querySelectorAll('.makapix-reply-form').forEach(f => f.remove());
@@ -368,6 +487,9 @@
         </div>
       `;
       
+      // Store parentId for form submission
+      form.dataset.parentId = parentId;
+      
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
         await this.postComment(parentId);
@@ -378,8 +500,41 @@
         form.remove();
       });
       
-      targetComment.appendChild(form);
+      // Append form to the content wrapper so it's hidden when folded
+      const contentWrapper = targetComment.querySelector('.makapix-comment-content');
+      if (contentWrapper) {
+        contentWrapper.appendChild(form);
+      } else {
+        // Fallback: append to comment element if content wrapper doesn't exist
+        targetComment.appendChild(form);
+      }
       form.querySelector('textarea').focus();
+    }
+    
+    confirmDelete(commentId) {
+      if (!confirm('Are you sure you want to delete this comment? This action cannot be undone.')) {
+        return;
+      }
+      this.deleteComment(commentId);
+    }
+    
+    async deleteComment(commentId) {
+      try {
+        const response = await apiRequest(`/posts/comments/${commentId}`, {
+          method: 'DELETE'
+        });
+        
+        if (response.ok || response.status === 204) {
+          // Reload comments to show updated state
+          await this.loadComments();
+        } else {
+          const error = await response.json().catch(() => ({ detail: 'Failed to delete comment' }));
+          alert(error.detail || 'You don\'t have permission to delete this comment.');
+        }
+      } catch (error) {
+        console.error('Failed to delete comment:', error);
+        alert('Failed to delete comment. Please try again.');
+      }
     }
     
     async postComment(parentId = null) {
@@ -573,8 +728,33 @@
         .makapix-comment-header {
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: 8px;
           margin-bottom: 8px;
+        }
+        
+        .makapix-comment-fold-btn {
+          padding: 2px 6px;
+          background: transparent;
+          border: none;
+          color: #666;
+          font-size: 12px;
+          cursor: pointer;
+          line-height: 1;
+          min-width: 20px;
+          text-align: center;
+          transition: color 0.2s;
+        }
+        
+        .makapix-comment-fold-btn:hover {
+          color: #2196f3;
+        }
+        
+        .makapix-comment-content {
+          /* Content wrapper - hidden when comment is folded */
+        }
+        
+        .makapix-comment.makapix-folded .makapix-comment-content {
+          display: none;
         }
         
         .makapix-comment-author {
@@ -612,6 +792,27 @@
         
         .makapix-comment-reply-btn:hover {
           text-decoration: underline;
+        }
+        
+        .makapix-comment-actions {
+          display: flex;
+          gap: 12px;
+          margin-top: 8px;
+        }
+        
+        .makapix-comment-delete-btn {
+          padding: 4px 12px;
+          background: transparent;
+          color: #f44336;
+          border: none;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+        
+        .makapix-comment-delete-btn:hover {
+          text-decoration: underline;
+          color: #d32f2f;
         }
         
         .makapix-comment-replies {
