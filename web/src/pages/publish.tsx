@@ -135,7 +135,7 @@ export default function PublishPage() {
       // Check if user is authenticated
       const accessToken = localStorage.getItem('access_token');
       if (!accessToken) {
-        alert(`Please log in first. Go to ${API_BASE_URL}/auth/github/login to authenticate.`);
+        alert(`Please log in first. Go to ${API_BASE_URL}/api/auth/github/login to authenticate.`);
         setUploading(false);
         return;
       }
@@ -250,15 +250,15 @@ export default function PublishPage() {
                    ⚠️ <strong>Not authenticated</strong>
                    <br />
                    <small>
-                     Please <a 
-                       href={`${API_BASE_URL}/auth/github/login`}
-                       target="_blank" 
-                       rel="noopener noreferrer"
-                       onClick={(e) => {
-                         e.preventDefault();
-                         window.open(`${API_BASE_URL}/auth/github/login`, 'oauth', 'width=600,height=700,scrollbars=yes,resizable=yes');
-                       }}
-                     >log in with GitHub</a> first.
+                    Please <a 
+                      href={`${API_BASE_URL}/api/auth/github/login`}
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        window.open(`${API_BASE_URL}/api/auth/github/login`, 'oauth', 'width=600,height=700,scrollbars=yes,resizable=yes');
+                      }}
+                    >log in with GitHub</a> first.
                 <br />
                 <button 
                   onClick={() => {

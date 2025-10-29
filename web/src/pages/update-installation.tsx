@@ -150,7 +150,7 @@ export default function UpdateInstallationPage() {
         
         <div className="actions">
           <a href="/publish" className="link">← Back to Publish</a>
-          <a href={`${API_BASE_URL}/auth/github/login`} className="link">Log In</a>
+          <a href={`${API_BASE_URL}/api/auth/github/login`} className="link">Log In</a>
         </div>
       </main>
       
