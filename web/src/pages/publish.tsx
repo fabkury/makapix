@@ -55,16 +55,23 @@ export default function PublishPage() {
     // Check if GitHub App is installed
     const checkGithubAppStatus = async (token: string) => {
       try {
+        console.log('Checking GitHub App status...');
         const response = await fetch(`${API_BASE_URL}/api/auth/github-app/status`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
         });
 
+        console.log('GitHub App status response:', response.status);
+        
         if (response.ok) {
           const data = await response.json();
+          console.log('GitHub App status data:', data);
           setGithubAppInstalled(data.installed);
           setGithubAppInstallUrl(data.install_url || '');
+          console.log('Install URL set to:', data.install_url);
+        } else {
+          console.error('GitHub App status failed:', response.status, response.statusText);
         }
       } catch (error) {
         console.error('Error checking GitHub App status:', error);
@@ -272,6 +279,16 @@ export default function PublishPage() {
               ✅ <strong>Authenticated as {userInfo?.displayName || userInfo?.handle}</strong>
               <br />
               <small>Ready to publish artwork to GitHub Pages</small>
+              <br />
+              <button 
+                onClick={() => {
+                  localStorage.clear();
+                  window.location.reload();
+                }}
+                style={{ marginTop: '5px', padding: '5px 10px', fontSize: '12px' }}
+              >
+                Logout & Refresh
+              </button>
             </div>
           ) : (
                  <div>
@@ -318,8 +335,13 @@ export default function PublishPage() {
               <br />
               <button
                 onClick={() => {
+                  console.log('Install button clicked!');
+                  console.log('githubAppInstallUrl:', githubAppInstallUrl);
                   if (githubAppInstallUrl) {
+                    console.log('Opening install URL:', githubAppInstallUrl);
                     window.open(githubAppInstallUrl, 'github-app-install', 'width=800,height=700,scrollbars=yes,resizable=yes');
+                  } else {
+                    console.error('Install URL is empty!');
                   }
                 }}
                 style={{
