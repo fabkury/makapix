@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     Column,
     DateTime,
@@ -390,11 +391,32 @@ class RelayJob(Base):
     repo = Column(String(200), nullable=True)
     commit = Column(String(100), nullable=True)
     error = Column(Text, nullable=True)
+    bundle_path = Column(String(500), nullable=True)
+    manifest_data = Column(JSON, nullable=True)
     
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
     )
     updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
+
+
+class GitHubInstallation(Base):
+    """GitHub App installation binding."""
+
+    __tablename__ = "github_installations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    installation_id = Column(BigInteger, nullable=False, unique=True, index=True)
+    account_login = Column(String(100), nullable=False)
+    account_type = Column(String(20), nullable=False)
+    target_repo = Column(String(200), nullable=True)
+    access_token = Column(Text, nullable=True)
+    token_expires_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    user = relationship("User", backref="github_installation")
 
 
 class AuditLog(Base):

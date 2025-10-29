@@ -105,6 +105,77 @@
 - **Pytest**: “Debug API Tests” runs `pytest` with the VS Code debugger.
 - **Web (Next.js)**: “Attach to Next.js dev server” attaches to the Node inspector at port 9229 (exposed when running `npm run dev -- --inspect`).
 
+## Milestone 3: GitHub App Integration Testing
+
+### Prerequisites
+
+1. **Set up GitHub OAuth** (if not already done):
+   - Follow the instructions in the "Set up GitHub OAuth" section above
+   - Ensure you have `GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET` in your `.env`
+
+2. **Set up GitHub App**:
+   - Follow the detailed guide in `docs/github-app-setup.md`
+   - Add the following to your `.env`:
+     ```bash
+     GITHUB_APP_ID=your_app_id_here
+     GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\nYOUR_PRIVATE_KEY_CONTENT_HERE\n-----END RSA PRIVATE KEY-----"
+     GITHUB_APP_INSTALLATION_ID=your_installation_id_here
+     ```
+
+### Test the Complete Flow
+
+1. **Start the application**:
+   ```bash
+   docker compose up -d
+   ```
+
+2. **Test GitHub OAuth with App Installation**:
+   ```bash
+   # This should redirect to GitHub and install the app
+   curl -L http://localhost/auth/github/login
+   ```
+
+3. **Test the client-side generator**:
+   - Go to `http://localhost:3000/publish`
+   - Upload some PNG/JPG images
+   - Click "Publish to GitHub Pages"
+   - Monitor the job status
+
+4. **Test the API endpoints directly**:
+   ```bash
+   # Get an access token first (from OAuth flow)
+   ACCESS_TOKEN="your_jwt_token_here"
+   
+   # Connect a profile to specify repository
+   curl -X POST http://localhost/api/profiles/connect \
+     -H "Authorization: Bearer $ACCESS_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"repo_name": "your-username.github.io"}'
+   
+   # Upload a test bundle
+   curl -X POST http://localhost/api/relay/pages/upload \
+     -H "Authorization: Bearer $ACCESS_TOKEN" \
+     -F "bundle=@test-bundle.zip" \
+     -F "commit_message=Test upload"
+   ```
+
+5. **Check job status**:
+   ```bash
+   # Replace JOB_ID with the ID returned from upload
+   curl http://localhost/api/relay/jobs/JOB_ID
+   ```
+
+6. **Verify GitHub Pages**:
+   - Check your GitHub repository for the committed files
+   - Visit `https://your-username.github.io` to see the published content
+
+### Troubleshooting
+
+- **"GitHub App not installed"**: Make sure you've installed the GitHub App on your account
+- **"Repository not found"**: Ensure the app has access to the target repository
+- **Upload failures**: Check the API logs for validation errors
+- **Job failures**: Check the Celery worker logs for GitHub API errors
+
 ## Common Workflows
 
 ### Database resets

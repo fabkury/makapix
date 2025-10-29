@@ -17,8 +17,8 @@ from ..deps import get_db
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 # GitHub OAuth Configuration
-GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
-GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
+GITHUB_CLIENT_ID = os.getenv("GITHUB_OAUTH_CLIENT_ID")
+GITHUB_CLIENT_SECRET = os.getenv("GITHUB_OAUTH_CLIENT_SECRET")
 GITHUB_REDIRECT_URI = os.getenv("GITHUB_REDIRECT_URI", "http://localhost/auth/github/callback")
 
 
@@ -44,6 +44,186 @@ def github_login():
     
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url=auth_url)
+
+
+@router.get("/github/callback")
+def github_callback(
+    code: str = Query(...),
+    state: str = Query(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Handle GitHub OAuth callback and exchange code for tokens.
+    """
+    if not GITHUB_CLIENT_ID or not GITHUB_CLIENT_SECRET:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="GitHub OAuth not configured"
+        )
+    
+    # Exchange code for GitHub access token
+    token_data = {
+        "client_id": GITHUB_CLIENT_ID,
+        "client_secret": GITHUB_CLIENT_SECRET,
+        "code": code,
+        "redirect_uri": GITHUB_REDIRECT_URI,
+    }
+    
+    try:
+        with httpx.Client() as client:
+            response = client.post(
+                "https://github.com/login/oauth/access_token",
+                data=token_data,
+                headers={"Accept": "application/json"}
+            )
+            response.raise_for_status()
+            token_response = response.json()
+            
+            if "error" in token_response:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"GitHub OAuth error: {token_response['error_description']}"
+                )
+            
+            access_token = token_response["access_token"]
+            
+            # Fetch GitHub user profile
+            user_response = client.get(
+                "https://api.github.com/user",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Accept": "application/vnd.github.v3+json"
+                }
+            )
+            user_response.raise_for_status()
+            github_user = user_response.json()
+            
+    except httpx.HTTPError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to authenticate with GitHub: {str(e)}"
+        )
+    
+    # Find or create Makapix user
+    github_user_id = str(github_user["id"])
+    github_username = github_user["login"]
+    
+    # Check if user already exists
+    user = db.query(models.User).filter(
+        models.User.github_user_id == github_user_id
+    ).first()
+    
+    if not user:
+        # Create new user
+        # Generate handle from GitHub username (ensure uniqueness)
+        base_handle = re.sub(r'[^a-zA-Z0-9_-]', '', github_username.lower())
+        handle = base_handle
+        counter = 1
+        
+        while db.query(models.User).filter(models.User.handle == handle).first():
+            handle = f"{base_handle}{counter}"
+            counter += 1
+        
+        user = models.User(
+            github_user_id=github_user_id,
+            github_username=github_username,
+            handle=handle,
+            display_name=github_user.get("name", github_username),
+            bio=github_user.get("bio"),
+            avatar_url=github_user.get("avatar_url"),
+            email=github_user.get("email"),
+            roles=["user"]  # Default role
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    
+    # Generate JWT tokens
+    access_token = create_access_token(user.id)
+    refresh_token = create_refresh_token(user.id, db)
+    
+    # Create a simple HTML page that shows success and stores tokens
+    from fastapi.responses import HTMLResponse
+    
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Makapix - Authentication Success</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
+            .success {{ color: #22c55e; font-size: 24px; margin-bottom: 20px; }}
+            .info {{ color: #666; margin-bottom: 30px; }}
+            .debug {{ color: #888; font-size: 12px; margin-top: 20px; }}
+            .button {{ 
+                background: #0070f3; 
+                color: white; 
+                padding: 12px 24px; 
+                border: none; 
+                border-radius: 6px; 
+                cursor: pointer; 
+                text-decoration: none;
+                display: inline-block;
+                margin: 10px;
+            }}
+            .button:hover {{ background: #0051a2; }}
+        </style>
+    </head>
+    <body>
+        <div class="success">✅ Authentication Successful!</div>
+        <div class="info">Welcome to Makapix, {user.display_name}!</div>
+        <div class="info">You can now close this window and return to the main application.</div>
+        <a href="http://localhost:3000" class="button">Go to Makapix</a>
+        <a href="http://localhost:3000/publish" class="button">Publish Artwork</a>
+        
+        <div class="debug">
+            <p>Debug Info:</p>
+            <p>User ID: {user.id}</p>
+            <p>Handle: {user.handle}</p>
+            <p>Display Name: {user.display_name}</p>
+            <p>Access Token: {access_token[:20]}...</p>
+        </div>
+        
+        <script>
+            console.log('OAuth Callback - Storing tokens...');
+            console.log('Access Token:', '{access_token[:20]}...');
+            console.log('User ID:', '{user.id}');
+            console.log('Handle:', '{user.handle}');
+            
+            // Store tokens in localStorage for the main app
+            try {{
+                localStorage.setItem('access_token', '{access_token}');
+                localStorage.setItem('refresh_token', '{refresh_token}');
+                localStorage.setItem('user_id', '{user.id}');
+                localStorage.setItem('user_handle', '{user.handle}');
+                localStorage.setItem('user_display_name', '{user.display_name}');
+                
+                console.log('Tokens stored successfully!');
+                console.log('localStorage contents:', Object.keys(localStorage));
+                
+                // Also try to communicate with parent window if opened in popup
+                if (window.opener) {{
+                    window.opener.postMessage({{
+                        type: 'OAUTH_SUCCESS',
+                        tokens: {{
+                            access_token: '{access_token}',
+                            refresh_token: '{refresh_token}',
+                            user_id: '{user.id}',
+                            user_handle: '{user.handle}',
+                            user_display_name: '{user.display_name}'
+                        }}
+                    }}, '*');
+                    window.close();
+                }}
+            }} catch (error) {{
+                console.error('Error storing tokens:', error);
+            }}
+        </script>
+    </body>
+    </html>
+    """
+    
+    return HTMLResponse(content=html_content)
 
 
 @router.post(
@@ -137,6 +317,26 @@ def exchange_github_code(payload: schemas.GithubExchangeRequest, db: Session = D
         db.add(user)
         db.commit()
         db.refresh(user)
+    
+    # Check if installation_id is provided (from GitHub App installation)
+    installation_id = payload.installation_id
+    setup_action = payload.setup_action
+    
+    if installation_id and setup_action == "install":
+        # Bind GitHub App installation to user
+        installation = db.query(models.GitHubInstallation).filter(
+            models.GitHubInstallation.installation_id == installation_id
+        ).first()
+        
+        if not installation:
+            installation = models.GitHubInstallation(
+                user_id=user.id,
+                installation_id=installation_id,
+                account_login=github_user["login"],
+                account_type="User"
+            )
+            db.add(installation)
+            db.commit()
     
     # Generate JWT tokens
     access_token = create_access_token(user.id)

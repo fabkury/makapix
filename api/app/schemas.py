@@ -410,12 +410,26 @@ class GithubExchangeRequest(BaseModel):
 
     code: str
     redirect_uri: str
+    installation_id: int | None = None
+    setup_action: str | None = None
 
 
 class RefreshTokenRequest(BaseModel):
     """Token refresh request."""
 
     refresh_token: str
+
+
+class ProfileConnectRequest(BaseModel):
+    """Profile connection request."""
+
+    repo_name: str
+
+
+class GitHubAppBindRequest(BaseModel):
+    """GitHub App binding request."""
+
+    installation_id: int
 
 
 class MeResponse(BaseModel):

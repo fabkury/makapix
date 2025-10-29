@@ -1,179 +1,79 @@
-"""Profile and follow endpoints."""
+"""Profile management endpoints."""
 
 from __future__ import annotations
 
-from uuid import UUID
-
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..auth import get_current_user, require_ownership
+from ..auth import get_current_user
 from ..deps import get_db
 
 router = APIRouter(prefix="/profiles", tags=["Profiles"])
 
 
-@router.get("", response_model=schemas.Page[schemas.UserPublic])
-def list_public_profiles(
-    q: str | None = None,
-    badge: str | None = None,
-    reputation_min: int | None = None,
-    cursor: str | None = None,
-    limit: int = Query(50, ge=1, le=200),
-    sort: str | None = "created_at",
-    order: str = Query("desc", regex="^(asc|desc)$"),
-    db: Session = Depends(get_db),
-) -> schemas.Page[schemas.UserPublic]:
-    """
-    Public profiles index.
-    
-    TODO: Implement full-text search for q parameter
-    TODO: Implement badge filter (join with badge_grants)
-    TODO: Implement reputation_min filter
-    TODO: Implement cursor pagination
-    TODO: Support multiple sort fields
-    """
-    query = db.query(models.User).filter(
-        models.User.hidden_by_user == False,
-        models.User.hidden_by_mod == False,
-        models.User.deactivated == False,
-    )
-    
-    # TODO: Apply filters
-    
-    query = query.order_by(models.User.created_at.desc()).limit(limit)
-    users = query.all()
-    
-    return schemas.Page(
-        items=[schemas.UserPublic.model_validate(u) for u in users],
-        next_cursor=None,
-    )
-
-
-@router.get("/{handle}", response_model=schemas.UserPublic)
-def get_profile_by_handle(handle: str, db: Session = Depends(get_db)) -> schemas.UserPublic:
-    """
-    Get profile by handle.
-    
-    TODO: Return 404 if user is hidden or deactivated
-    """
-    user = db.query(models.User).filter(models.User.handle == handle).first()
-    if not user or user.deactivated or user.hidden_by_mod:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
-    
-    return schemas.UserPublic.model_validate(user)
-
-
-# Follow endpoints
-@router.put(
-    "/users/{id}/follow",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-def follow_user(
-    id: UUID,
-    db: Session = Depends(get_db),
+@router.post("/connect")
+def connect_profile(
+    payload: schemas.ProfileConnectRequest,
     current_user: models.User = Depends(get_current_user),
-) -> None:
-    """
-    Follow a user.
-    
-    TODO: Prevent following yourself
-    TODO: Check if already following (idempotent)
-    TODO: Send notification to followed user
-    """
-    if id == current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot follow yourself"
-        )
-    
-    # Check if already following
-    existing = db.query(models.Follow).filter(
-        models.Follow.follower_id == current_user.id,
-        models.Follow.following_id == id,
+    db: Session = Depends(get_db)
+):
+    """Configure GitHub repository for publishing."""
+    installation = db.query(models.GitHubInstallation).filter(
+        models.GitHubInstallation.user_id == current_user.id
     ).first()
     
-    if not existing:
-        follow = models.Follow(follower_id=current_user.id, following_id=id)
-        db.add(follow)
-        db.commit()
-
-
-@router.delete(
-    "/users/{id}/follow",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-def unfollow_user(
-    id: UUID,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-) -> None:
-    """
-    Unfollow a user.
+    if not installation:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="GitHub App not installed"
+        )
     
-    TODO: Make idempotent (don't error if not following)
-    """
-    db.query(models.Follow).filter(
-        models.Follow.follower_id == current_user.id,
-        models.Follow.following_id == id,
-    ).delete()
+    installation.target_repo = payload.repo_name
     db.commit()
+    
+    return {"status": "connected", "repo": payload.repo_name}
 
 
-@router.get("/users/{id}/followers", response_model=schemas.Page[schemas.UserPublic])
-def list_followers(
-    id: UUID,
-    cursor: str | None = None,
-    limit: int = Query(50, ge=1, le=200),
-    db: Session = Depends(get_db),
-) -> schemas.Page[schemas.UserPublic]:
-    """
-    List user's followers.
+@router.post("/bind-github-app")
+def bind_github_app(
+    payload: schemas.GitHubAppBindRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Manually bind GitHub App installation to user account."""
+    # Check if user already has an installation
+    user_installation = db.query(models.GitHubInstallation).filter(
+        models.GitHubInstallation.user_id == current_user.id
+    ).first()
     
-    TODO: Implement cursor pagination
-    TODO: Hide hidden/deactivated users
-    """
-    query = (
-        db.query(models.User)
-        .join(models.Follow, models.Follow.follower_id == models.User.id)
-        .filter(models.Follow.following_id == id)
-        .order_by(models.Follow.created_at.desc())
-        .limit(limit)
+    if user_installation:
+        # Update existing installation with new ID
+        user_installation.installation_id = payload.installation_id
+        user_installation.account_login = current_user.github_username or "unknown"
+        db.commit()
+        return {"status": "updated", "installation_id": payload.installation_id}
+    
+    # Check if installation ID is already bound to another user
+    existing = db.query(models.GitHubInstallation).filter(
+        models.GitHubInstallation.installation_id == payload.installation_id
+    ).first()
+    
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Installation already bound to another user"
+        )
+    
+    # Create new installation binding
+    installation = models.GitHubInstallation(
+        user_id=current_user.id,
+        installation_id=payload.installation_id,
+        account_login=current_user.github_username or "unknown",
+        account_type="User"
     )
+    db.add(installation)
+    db.commit()
+    db.refresh(installation)
     
-    users = query.all()
-    
-    return schemas.Page(
-        items=[schemas.UserPublic.model_validate(u) for u in users],
-        next_cursor=None,
-    )
-
-
-@router.get("/users/{id}/following", response_model=schemas.Page[schemas.UserPublic])
-def list_following(
-    id: UUID,
-    cursor: str | None = None,
-    limit: int = Query(50, ge=1, le=200),
-    db: Session = Depends(get_db),
-) -> schemas.Page[schemas.UserPublic]:
-    """
-    List users this user is following.
-    
-    TODO: Implement cursor pagination
-    TODO: Hide hidden/deactivated users
-    """
-    query = (
-        db.query(models.User)
-        .join(models.Follow, models.Follow.following_id == models.User.id)
-        .filter(models.Follow.follower_id == id)
-        .order_by(models.Follow.created_at.desc())
-        .limit(limit)
-    )
-    
-    users = query.all()
-    
-    return schemas.Page(
-        items=[schemas.UserPublic.model_validate(u) for u in users],
-        next_cursor=None,
-    )
+    return {"status": "bound", "installation_id": payload.installation_id}
