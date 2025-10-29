@@ -189,21 +189,20 @@ export default function PublishPage() {
       console.log('Response received:', response.status, response.statusText);
       
       if (!response.ok) {
+        // Read error response once
+        const errorData = await response.json();
+        
         // Handle token expiration
-        if (response.status === 401) {
-          const errorData = await response.json();
-          if (errorData.detail && errorData.detail.includes("expired")) {
-            // Clear expired tokens
-            localStorage.clear();
-            alert("Your session has expired. Please log in again.");
-            setIsAuthenticated(false);
-            setUserInfo(null);
-            setUploading(false);
-            return;
-          }
+        if (response.status === 401 && errorData.detail && errorData.detail.includes("expired")) {
+          // Clear expired tokens
+          localStorage.clear();
+          alert("Your session has expired. Please log in again.");
+          setIsAuthenticated(false);
+          setUserInfo(null);
+          setUploading(false);
+          return;
         }
         
-        const errorData = await response.json();
         throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
       }
       

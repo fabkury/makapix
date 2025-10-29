@@ -2,7 +2,7 @@
     email fabio@biokury.com
 }
 
-http://localhost {
+http://{$DOMAIN:localhost} {
     encode gzip
 
     handle /proxy-healthz {
@@ -33,5 +33,4 @@ http://localhost {
         }
     }
 }
-
 
