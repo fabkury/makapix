@@ -14,6 +14,34 @@ from ..deps import get_db
 router = APIRouter(prefix="/playlists", tags=["Playlists"])
 
 
+def validate_post_visibility(post_ids: list[UUID], db: Session) -> list[UUID]:
+    """
+    Validate that posts exist and are visible.
+    
+    Returns list of valid (visible) post IDs.
+    Raises HTTPException if any post doesn't exist.
+    """
+    if not post_ids:
+        return []
+    
+    valid_post_ids = []
+    
+    for post_id in post_ids:
+        post = db.query(models.Post).filter(models.Post.id == post_id).first()
+        
+        if not post:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Post {post_id} not found"
+            )
+        
+        # Only include visible, non-hidden posts
+        if post.visible and not post.hidden_by_mod and not post.non_conformant:
+            valid_post_ids.append(post_id)
+    
+    return valid_post_ids
+
+
 @router.get("", response_model=schemas.Page[schemas.Playlist])
 def list_playlists(
     owner_id: UUID | None = None,
@@ -61,13 +89,16 @@ def create_playlist(
     """
     Create playlist.
     
-    TODO: Validate that all post_ids exist and are visible
+    Validates that all posts exist and are visible.
     """
+    # Validate all posts exist and filter to visible ones
+    valid_post_ids = validate_post_visibility(payload.post_ids, db)
+    
     playlist = models.Playlist(
         owner_id=current_user.id,
         title=payload.title,
         description=payload.description,
-        post_ids=payload.post_ids,
+        post_ids=valid_post_ids,
     )
     db.add(playlist)
     db.commit()
@@ -96,8 +127,7 @@ def update_playlist(
     """
     Update playlist.
     
-    TODO: Validate ownership
-    TODO: Validate that all post_ids exist
+    Validates ownership and post visibility.
     """
     playlist = db.query(models.Playlist).filter(models.Playlist.id == id).first()
     if not playlist:
@@ -110,7 +140,9 @@ def update_playlist(
     if payload.description is not None:
         playlist.description = payload.description
     if payload.post_ids is not None:
-        playlist.post_ids = payload.post_ids
+        # Validate all posts exist and filter to visible ones
+        valid_post_ids = validate_post_visibility(payload.post_ids, db)
+        playlist.post_ids = valid_post_ids
     if payload.hidden_by_user is not None:
         playlist.hidden_by_user = payload.hidden_by_user
     if payload.hidden_by_mod is not None:

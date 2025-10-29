@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..auth import get_current_user, require_moderator, require_ownership
+from ..auth import AnonymousUser, get_current_user, get_current_user_or_anonymous, require_moderator, require_ownership
 from ..deps import get_db
 
 router = APIRouter(prefix="/posts", tags=["Comments"])
@@ -21,20 +22,26 @@ def list_comments(
     limit: int = Query(50, ge=1, le=200),
     view: str = Query("flat", regex="^(flat|tree)$"),
     db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_or_anonymous),
 ) -> schemas.Page[schemas.Comment]:
     """
     List comments for a post.
     
-    TODO: Implement tree view (nested structure)
-    TODO: Implement cursor pagination
-    TODO: Hide hidden_by_mod comments for non-moderators
+    Returns comments with guest names for anonymous users.
+    Moderators can see hidden comments; regular users cannot.
     """
-    query = (
-        db.query(models.Comment)
-        .filter(models.Comment.post_id == id)
-        .order_by(models.Comment.created_at.asc())
-        .limit(limit)
+    query = db.query(models.Comment).filter(models.Comment.post_id == id)
+    
+    # Hide comments hidden by moderators unless current user is a moderator
+    is_moderator = (
+        isinstance(current_user, models.User) 
+        and ("moderator" in current_user.roles or "owner" in current_user.roles)
     )
+    if not is_moderator:
+        query = query.filter(models.Comment.hidden_by_mod == False)
+    
+    # Order by creation time and apply limit
+    query = query.order_by(models.Comment.created_at.asc()).limit(limit)
     
     comments = query.all()
     
@@ -52,18 +59,28 @@ def list_comments(
 def create_comment(
     id: UUID,
     payload: schemas.CommentCreate,
+    request: Request,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User | AnonymousUser = Depends(get_current_user_or_anonymous),
 ) -> schemas.Comment:
     """
     Create comment on a post.
     
-    TODO: Validate max_comment_depth (currently 2)
-    TODO: Validate max_comments_per_post
-    TODO: Check if parent comment exists and belongs to this post
-    TODO: Calculate depth based on parent
-    TODO: Publish MQTT notification
+    Supports both authenticated and anonymous users.
+    Enforces max depth of 2 and max 1000 comments per post.
     """
+    # Check comment count limit (1000 per post)
+    comment_count = db.query(func.count(models.Comment.id)).filter(
+        models.Comment.post_id == id
+    ).scalar()
+    
+    if comment_count >= 1000:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Maximum comments per post (1000) exceeded"
+        )
+    
+    # Validate parent comment and calculate depth
     depth = 0
     if payload.parent_id:
         parent = db.query(models.Comment).filter(models.Comment.id == payload.parent_id).first()
@@ -76,12 +93,14 @@ def create_comment(
         if depth > 2:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Maximum comment depth exceeded"
+                detail="Maximum comment depth (2) exceeded"
             )
     
+    # Create comment with appropriate author identification
     comment = models.Comment(
         post_id=id,
-        author_id=current_user.id,
+        author_id=current_user.id if isinstance(current_user, models.User) else None,
+        author_ip=current_user.ip if isinstance(current_user, AnonymousUser) else None,
         parent_id=payload.parent_id,
         depth=depth,
         body=payload.body,
@@ -101,14 +120,20 @@ def update_comment(
     current_user: models.User = Depends(get_current_user),
 ) -> schemas.Comment:
     """
-    Update comment.
+    Update comment (authenticated users only).
     
-    TODO: Validate ownership
-    TODO: Set updated_at timestamp
+    Anonymous users cannot edit their comments.
     """
     comment = db.query(models.Comment).filter(models.Comment.id == commentId).first()
     if not comment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
+    
+    # Anonymous comments cannot be edited
+    if comment.author_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Anonymous comments cannot be edited"
+        )
     
     require_ownership(comment.author_id, current_user)
     
@@ -126,13 +151,20 @@ def delete_comment(
     current_user: models.User = Depends(get_current_user),
 ) -> None:
     """
-    Delete comment (soft delete).
+    Delete comment (soft delete, authenticated users only).
     
-    TODO: Set deleted_by_owner=True instead of hard delete
+    Anonymous users cannot delete their comments.
     """
     comment = db.query(models.Comment).filter(models.Comment.id == commentId).first()
     if not comment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
+    
+    # Anonymous comments cannot be deleted
+    if comment.author_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Anonymous comments cannot be deleted"
+        )
     
     require_ownership(comment.author_id, current_user)
     

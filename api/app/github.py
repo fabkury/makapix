@@ -21,8 +21,8 @@ def generate_app_jwt() -> str:
     
     now = int(time.time())
     payload = {
-        "iat": now - 60,
-        "exp": now + (10 * 60),
+        "iat": now,
+        "exp": now + (9 * 60),  # 9 minutes (GitHub allows max 10 minutes)
         "iss": GITHUB_APP_ID
     }
     return jwt.encode(payload, GITHUB_APP_PRIVATE_KEY, algorithm="RS256")

@@ -144,7 +144,8 @@ class Comment(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id"), nullable=False, index=True)
-    author_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    author_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    author_ip = Column(String(45), nullable=True, index=True)  # For anonymous users
     parent_id = Column(UUID(as_uuid=True), ForeignKey("comments.id"), nullable=True, index=True)
     
     depth = Column(Integer, nullable=False, default=0)  # 0 = top-level, max 2
@@ -209,7 +210,8 @@ class Reaction(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id"), nullable=False, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    user_ip = Column(String(45), nullable=True, index=True)  # For anonymous users
     emoji = Column(String(20), nullable=False)
     
     created_at = Column(
@@ -220,7 +222,8 @@ class Reaction(Base):
     post = relationship("Post", back_populates="reactions")
 
     __table_args__ = (
-        UniqueConstraint("post_id", "user_id", "emoji", name="uq_reaction_post_user_emoji"),
+        # Note: Unique constraints handled by partial indexes in migration
+        # to support both user_id and user_ip cases
         Index("ix_reactions_post_emoji", post_id, emoji),
     )
 

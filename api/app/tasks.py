@@ -152,6 +152,14 @@ def generate_artwork_html(manifest: dict, artwork_files: List[str], owner: str, 
             font-weight: 600;
         }}
         
+        .social-section {{
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }}
+        
         footer {{
             text-align: center;
             color: white;
@@ -182,11 +190,19 @@ def generate_artwork_html(manifest: dict, artwork_files: List[str], owner: str, 
             {artwork_html}
         </main>
         
+        <!-- Makapix Social Widget -->
+        <div class="social-section">
+            <div id="makapix-widget" data-post-id="POST_ID_PLACEHOLDER"></div>
+        </div>
+        
         <footer>
             <p>Published with <a href="https://makapix.club" target="_blank">Makapix Club</a></p>
             <p>View on <a href="https://github.com/{owner}/{repo}" target="_blank">GitHub</a></p>
         </footer>
     </div>
+    
+    <!-- Makapix Widget Script -->
+    <script src="https://makapix.club/makapix-widget.js"></script>
 </body>
 </html>"""
     
@@ -382,6 +398,8 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
                 timeout=30
             )
             response.raise_for_status()
+            # Capture the new SHA for potential second upload
+            html_sha = response.json().get("content", {}).get("sha")
         
         # Make repository public (required for GitHub Pages on free accounts)
         from .github import make_repository_public, enable_github_pages
@@ -402,7 +420,8 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
         
         # Create Post records from manifest
         manifest = job.manifest_data
-        for artwork in manifest.get("artworks", []):
+        first_post_id = None
+        for idx, artwork in enumerate(manifest.get("artworks", [])):
             post = models.Post(
                 owner_id=job.user_id,
                 kind="art",
@@ -414,6 +433,37 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
                 file_kb=artwork["file_kb"]
             )
             db.add(post)
+            db.flush()  # Flush to get the post ID
+            
+            # Track first post ID for widget integration
+            if idx == 0:
+                first_post_id = str(post.id)
+        
+        # Update HTML with actual post ID for widget
+        if first_post_id:
+            html_content = generate_artwork_html(manifest, artwork_files, owner, repo_name)
+            html_content = html_content.replace("POST_ID_PLACEHOLDER", first_post_id)
+            html_base64 = base64.b64encode(html_content.encode()).decode()
+            
+            # Update the HTML file with the correct post ID
+            html_data = {
+                "message": "Update HTML with post ID",
+                "content": html_base64
+            }
+            if html_sha:
+                html_data["sha"] = html_sha
+            
+            with httpx.Client() as client:
+                response = client.put(
+                    f"https://api.github.com/repos/{owner}/{repo_name}/contents/index.html",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Accept": "application/vnd.github.v3+json"
+                    },
+                    json=html_data,
+                    timeout=30
+                )
+                response.raise_for_status()
         
         # Update job status
         job.status = "committed"

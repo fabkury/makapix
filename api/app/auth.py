@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import secrets
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -256,6 +258,93 @@ def require_ownership(resource_owner_id: uuid.UUID, current_user: models.User) -
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have permission to access this resource"
         )
+
+
+# ============================================================================
+# ANONYMOUS USER SUPPORT
+# ============================================================================
+
+
+@dataclass
+class AnonymousUser:
+    """Represents an anonymous user identified by IP address."""
+    ip: str
+    guest_name: str
+    
+    @property
+    def id(self) -> None:
+        """Anonymous users have no user ID."""
+        return None
+    
+    @property
+    def is_authenticated(self) -> bool:
+        """Anonymous users are not authenticated."""
+        return False
+
+
+def get_client_ip(request: Request) -> str:
+    """
+    Extract client IP address from request, handling proxies.
+    
+    Checks X-Forwarded-For header first (for reverse proxy setups),
+    then falls back to direct client IP.
+    """
+    # Check X-Forwarded-For header (set by reverse proxies)
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        # X-Forwarded-For can contain multiple IPs; take the first one
+        return forwarded_for.split(",")[0].strip()
+    
+    # Fall back to direct client IP
+    if request.client:
+        return request.client.host
+    
+    # Fallback if neither is available (shouldn't happen in practice)
+    return "unknown"
+
+
+def generate_guest_name(ip: str) -> str:
+    """
+    Generate a deterministic guest name from an IP address.
+    
+    Uses SHA256 hash to create a short, consistent identifier.
+    Format: Guest_abc123
+    """
+    # Hash the IP address
+    hash_digest = hashlib.sha256(ip.encode()).hexdigest()
+    
+    # Take first 6 characters for a short identifier
+    short_hash = hash_digest[:6]
+    
+    return f"Guest_{short_hash}"
+
+
+async def get_current_user_or_anonymous(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> models.User | AnonymousUser:
+    """
+    Get current authenticated user or create an anonymous user representation.
+    
+    Returns:
+        - User object if authenticated
+        - AnonymousUser object if not authenticated (with IP and generated name)
+    """
+    # Try to get authenticated user
+    if credentials:
+        try:
+            user = await get_current_user(credentials, db)
+            return user
+        except HTTPException:
+            # Authentication failed, treat as anonymous
+            pass
+    
+    # Create anonymous user representation
+    ip = get_client_ip(request)
+    guest_name = generate_guest_name(ip)
+    
+    return AnonymousUser(ip=ip, guest_name=guest_name)
 
 
 
