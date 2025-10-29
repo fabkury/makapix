@@ -8,6 +8,7 @@ RUN apk add --no-cache libc6-compat curl
 
 COPY web/package.json web/tsconfig.json web/next.config.mjs web/.eslintrc.cjs web/.prettierrc ./ 
 COPY web/src ./src
+COPY web/public ./public
 
 RUN npm install
 
