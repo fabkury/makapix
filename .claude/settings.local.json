@@ -9,7 +9,9 @@
       "Bash(docker logs:*)",
       "Bash(ip addr:*)",
       "Bash(awk:*)",
-      "Bash(docker compose:*)"
+      "Bash(docker compose:*)",
+      "Bash(git pull:*)",
+      "Bash(docker-compose exec:*)"
     ],
     "deny": [],
     "ask": []
