@@ -23,9 +23,10 @@ GITHUB_REDIRECT_URI = os.getenv("GITHUB_REDIRECT_URI", "http://localhost/auth/gi
 
 
 @router.get("/github/login")
-def github_login():
+def github_login(installation_id: int = Query(None)):
     """
     Redirect to GitHub OAuth authorization.
+    If installation_id is provided, it will be preserved through the OAuth flow.
     """
     if not GITHUB_CLIENT_ID:
         raise HTTPException(
@@ -33,11 +34,20 @@ def github_login():
             detail="GitHub OAuth not configured"
         )
     
+    # Create state parameter that includes installation_id if provided
+    state_data = {"random": "state_string"}
+    if installation_id:
+        state_data["installation_id"] = installation_id
+    
+    import json
+    import base64
+    state = base64.b64encode(json.dumps(state_data).encode()).decode()
+    
     params = {
         "client_id": GITHUB_CLIENT_ID,
         "redirect_uri": GITHUB_REDIRECT_URI,
         "scope": "user:email",
-        "state": "random_state_string"  # In production, use proper CSRF protection
+        "state": state
     }
     
     auth_url = f"https://github.com/login/oauth/authorize?{urlencode(params)}"
@@ -64,6 +74,18 @@ def github_callback(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="GitHub OAuth not configured"
         )
+    
+    # Decode state parameter to extract installation_id if present
+    try:
+        import json
+        import base64
+        state_data = json.loads(base64.b64decode(state).decode())
+        state_installation_id = state_data.get("installation_id")
+        if state_installation_id and not installation_id:
+            installation_id = state_installation_id
+    except (json.JSONDecodeError, base64.binascii.Error, KeyError):
+        # If state decoding fails, continue with existing installation_id parameter
+        pass
     
     # Exchange code for GitHub access token
     token_data = {
@@ -428,6 +450,158 @@ def get_me(current_user: models.User = Depends(get_current_user)) -> schemas.MeR
         user=schemas.UserFull.model_validate(current_user),
         roles=current_user.roles or ["user"],
     )
+
+
+@router.get("/github-app/setup")
+def github_app_setup(
+    request: Request,
+    installation_id: int = Query(...),
+    setup_action: str = Query(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Handle GitHub App installation completion.
+    This endpoint is called by GitHub after app installation.
+    """
+    from fastapi.responses import HTMLResponse, RedirectResponse
+    
+    # Determine the base URL from the request
+    base_url = str(request.base_url).rstrip('/')
+    # Handle both http and https
+    if request.headers.get("x-forwarded-proto") == "https":
+        base_url = base_url.replace("http://", "https://")
+    
+    # Create a simple HTML page that handles the installation
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>GitHub App Installation - Makapix</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
+            .success {{ color: #22c55e; font-size: 24px; margin-bottom: 20px; }}
+            .info {{ color: #666; margin-bottom: 30px; }}
+            .debug {{ color: #888; font-size: 12px; margin-top: 20px; }}
+            .button {{
+                background: #0070f3;
+                color: white;
+                padding: 12px 24px;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                text-decoration: none;
+                display: inline-block;
+                margin: 10px;
+            }}
+            .button:hover {{ background: #0051a2; }}
+            .spinner {{
+                border: 4px solid #f3f3f3;
+                border-top: 4px solid #0070f3;
+                border-radius: 50%;
+                width: 40px;
+                height: 40px;
+                animation: spin 1s linear infinite;
+                margin: 0 auto 1rem;
+            }}
+            @keyframes spin {{
+                0% {{ transform: rotate(0deg); }}
+                100% {{ transform: rotate(360deg); }}
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="success">🔄 Processing GitHub App Installation...</div>
+        <div class="spinner"></div>
+        <div class="info">Installation ID: {installation_id}</div>
+        <div class="info">Setup Action: {setup_action}</div>
+        
+        <div class="debug">
+            <p>Debug Info:</p>
+            <p>Installation ID: {installation_id}</p>
+            <p>Setup Action: {setup_action}</p>
+            <p>Base URL: {base_url}</p>
+        </div>
+        
+        <script>
+            console.log('GitHub App Setup - Processing installation...');
+            console.log('Installation ID:', {installation_id});
+            console.log('Setup Action:', '{setup_action}');
+            
+            // Check if user is authenticated
+            const accessToken = localStorage.getItem('access_token');
+            const userHandle = localStorage.getItem('user_handle');
+            
+            console.log('Authentication check:', {{
+                hasToken: !!accessToken,
+                userHandle: userHandle || 'missing'
+            }});
+            
+            if (accessToken && userHandle) {{
+                // User is authenticated, bind the installation
+                console.log('User authenticated, binding installation...');
+                bindInstallation();
+            }} else {{
+                // User not authenticated, redirect to OAuth with installation_id preserved
+                console.log('User not authenticated, redirecting to OAuth...');
+                redirectToOAuth();
+            }}
+            
+            async function bindInstallation() {{
+                try {{
+                    const response = await fetch('{base_url}/api/profiles/bind-github-app', {{
+                        method: 'POST',
+                        headers: {{
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${{accessToken}}`
+                        }},
+                        body: JSON.stringify({{
+                            installation_id: {installation_id}
+                        }})
+                    }});
+                    
+                    if (!response.ok) {{
+                        const error = await response.json();
+                        throw new Error(error.detail || 'Failed to bind installation');
+                    }}
+                    
+                    const result = await response.json();
+                    console.log('Installation bound successfully:', result);
+                    
+                    // Show success and redirect to publish page
+                    document.body.innerHTML = `
+                        <div class="success">✅ GitHub App Installed Successfully!</div>
+                        <div class="info">Installation ID: ${{result.installation_id}}</div>
+                        <div class="info">Redirecting to publish page...</div>
+                        <a href="{base_url}/publish" class="button">Go to Publish Page</a>
+                    `;
+                    
+                    // Redirect after 2 seconds
+                    setTimeout(() => {{
+                        window.location.href = '{base_url}/publish';
+                    }}, 2000);
+                    
+                }} catch (error) {{
+                    console.error('Error binding installation:', error);
+                    document.body.innerHTML = `
+                        <div class="error">❌ Error: ${{error.message}}</div>
+                        <div class="info">Please try again or contact support.</div>
+                        <a href="{base_url}/publish" class="button">Back to Publish Page</a>
+                    `;
+                }}
+            }}
+            
+            function redirectToOAuth() {{
+                // Redirect to OAuth with installation_id as state parameter
+                const oauthUrl = `{base_url}/api/auth/github/login?installation_id={installation_id}`;
+                console.log('Redirecting to OAuth:', oauthUrl);
+                window.location.href = oauthUrl;
+            }}
+        </script>
+    </body>
+    </html>
+    """
+    
+    return HTMLResponse(content=html_content)
 
 
 @router.get("/github-app/status")
