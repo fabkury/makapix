@@ -11,21 +11,87 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 GITHUB_APP_ID = os.getenv("GITHUB_APP_ID")
-GITHUB_APP_PRIVATE_KEY = os.getenv("GITHUB_APP_PRIVATE_KEY")
+GITHUB_APP_CLIENT_ID = os.getenv("GITHUB_APP_CLIENT_ID")
+GITHUB_APP_SLUG = os.getenv("GITHUB_APP_SLUG")
+
+_cached_app_client_id: Optional[str] = None
+GITHUB_APP_PRIVATE_KEY_RAW = os.getenv("GITHUB_APP_PRIVATE_KEY")
+
+
+def _normalized_private_key() -> str:
+    """Return the GitHub App private key with consistent formatting."""
+
+    if not GITHUB_APP_PRIVATE_KEY_RAW:
+        raise ValueError("GitHub App private key not configured")
+
+    key = GITHUB_APP_PRIVATE_KEY_RAW.strip()
+
+    # Remove wrapping quotes if present (common in .env files)
+    if (key.startswith('"') and key.endswith('"')) or (key.startswith("'") and key.endswith("'")):
+        key = key[1:-1].strip()
+
+    # Convert literal escape sequences ("\n") into actual newlines
+    key = key.replace("\\r", "\r").replace("\\n", "\n")
+
+    # Normalise Windows line endings to LF
+    key = key.replace("\r\n", "\n").replace("\r", "\n")
+
+    return key
 
 
 def generate_app_jwt() -> str:
     """Generate JWT for GitHub App authentication."""
-    if not GITHUB_APP_ID or not GITHUB_APP_PRIVATE_KEY:
+    if not GITHUB_APP_ID:
         raise ValueError("GitHub App credentials not configured")
     
     now = int(time.time())
+    issued_at = now - 60  # allow for clock drift per GitHub guidance
+    expires_at = now + (9 * 60)
+    # issuer_source = _resolve_app_identifier()
+
+    # if issuer_source is None:
+    #     raise ValueError("GitHub App identifier not configured")
+
+    # issuer = int(issuer_source) if issuer_source.isdigit() else issuer_source
+
     payload = {
-        "iat": now,
-        "exp": now + (9 * 60),  # 9 minutes (GitHub allows max 10 minutes)
-        "iss": GITHUB_APP_ID
+        "iat": issued_at,
+        "exp": expires_at,  # 9 minutes (GitHub allows max 10 minutes)
+        "iss": GITHUB_APP_ID # issuer
     }
-    return jwt.encode(payload, GITHUB_APP_PRIVATE_KEY, algorithm="RS256")
+
+    private_key = _normalized_private_key()
+
+    return jwt.encode(payload, private_key, algorithm="RS256")
+
+
+def _resolve_app_identifier() -> Optional[str]:
+    global _cached_app_client_id
+
+    if GITHUB_APP_CLIENT_ID:
+        return GITHUB_APP_CLIENT_ID
+
+    if _cached_app_client_id:
+        return _cached_app_client_id
+
+    if not GITHUB_APP_SLUG:
+        return GITHUB_APP_ID
+
+    try:
+        response = httpx.get(
+            f"https://api.github.com/apps/{GITHUB_APP_SLUG}",
+            timeout=5,
+            headers={"Accept": "application/vnd.github+json"},
+        )
+        response.raise_for_status()
+        client_id = response.json().get("client_id")
+        if client_id:
+            _cached_app_client_id = client_id
+            return client_id
+    except Exception as exc:
+        logger.warning("Failed to fetch GitHub App client id: %s", exc)
+
+    return GITHUB_APP_ID
 
 
 def get_installation_access_token(installation_id: int) -> dict:
@@ -43,6 +109,29 @@ def get_installation_access_token(installation_id: int) -> dict:
         )
         response.raise_for_status()
         return response.json()
+
+
+def get_github_app_token(installation_id: int) -> Optional[str]:
+    """Get access token for a specific installation (simplified version for validation)."""
+    try:
+        result = get_installation_access_token(installation_id)
+        return result.get("token")
+    except httpx.HTTPStatusError as e:
+        # Capture the full error details
+        error_details = f"{e}"
+        try:
+            if e.response.status_code == 401:
+                response_text = e.response.text
+                logger.error(f"GitHub authentication failed for installation {installation_id}: {response_text}")
+                # Re-raise with more context
+                raise ValueError(f"GitHub authentication failed (401): {response_text}")
+        except:
+            pass
+        logger.error(f"Failed to get GitHub App token for installation {installation_id}: {error_details}")
+        raise  # Re-raise to preserve original error
+    except Exception as e:
+        logger.error(f"Failed to get GitHub App token for installation {installation_id}: {e}")
+        raise  # Re-raise to preserve original error
 
 
 def create_or_update_file(
