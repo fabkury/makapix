@@ -17,9 +17,11 @@ export default function PublishPage() {
   const [jobStatus, setJobStatus] = useState<string>('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userInfo, setUserInfo] = useState<any>(null);
-  
+  const [githubAppInstalled, setGithubAppInstalled] = useState(false);
+  const [githubAppInstallUrl, setGithubAppInstallUrl] = useState<string>('');
+
   // Get API base URL from environment or use current origin
-  const API_BASE_URL = typeof window !== 'undefined' 
+  const API_BASE_URL = typeof window !== 'undefined'
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
     : 'http://localhost';
 
@@ -44,6 +46,28 @@ export default function PublishPage() {
           handle: userHandle,
           displayName: userDisplayName
         });
+
+        // Check GitHub App installation status
+        checkGithubAppStatus(accessToken);
+      }
+    };
+
+    // Check if GitHub App is installed
+    const checkGithubAppStatus = async (token: string) => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/auth/github-app/status`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setGithubAppInstalled(data.installed);
+          setGithubAppInstallUrl(data.install_url || '');
+        }
+      } catch (error) {
+        console.error('Error checking GitHub App status:', error);
       }
     };
 
@@ -69,7 +93,10 @@ export default function PublishPage() {
           handle: tokens.user_handle,
           displayName: tokens.user_display_name
         });
-        
+
+        // Check GitHub App installation status
+        checkGithubAppStatus(tokens.access_token);
+
         console.log('Tokens stored from postMessage');
       }
     };
@@ -191,18 +218,19 @@ export default function PublishPage() {
       if (!response.ok) {
         // Read error response once
         const errorData = await response.json();
-        
-        // Handle token expiration
-        if (response.status === 401 && errorData.detail && errorData.detail.includes("expired")) {
-          // Clear expired tokens
+
+        // Handle authentication errors (expired token, user not found, etc.)
+        if (response.status === 401) {
+          // Clear invalid/expired tokens
           localStorage.clear();
-          alert("Your session has expired. Please log in again.");
+          const errorMessage = errorData.detail || "Authentication failed";
+          alert(`${errorMessage}. Please log in again.`);
           setIsAuthenticated(false);
           setUserInfo(null);
           setUploading(false);
           return;
         }
-        
+
         throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
       }
       
@@ -232,9 +260,9 @@ export default function PublishPage() {
         <h1>Publish Artwork</h1>
         
         {/* Authentication Status */}
-        <div className="auth-status" style={{ 
-          padding: '10px', 
-          marginBottom: '20px', 
+        <div className="auth-status" style={{
+          padding: '10px',
+          marginBottom: '20px',
           borderRadius: '6px',
           backgroundColor: isAuthenticated ? '#d1fae5' : '#fef3c7',
           border: `1px solid ${isAuthenticated ? '#10b981' : '#f59e0b'}`
@@ -245,7 +273,7 @@ export default function PublishPage() {
               <br />
               <small>Ready to publish artwork to GitHub Pages</small>
             </div>
-               ) : (
+          ) : (
                  <div>
                    ⚠️ <strong>Not authenticated</strong>
                    <br />
@@ -273,7 +301,64 @@ export default function PublishPage() {
             </div>
           )}
         </div>
-        
+
+        {/* GitHub App Installation Status */}
+        {isAuthenticated && !githubAppInstalled && (
+          <div className="github-app-status" style={{
+            padding: '15px',
+            marginBottom: '20px',
+            borderRadius: '6px',
+            backgroundColor: '#fef3c7',
+            border: '2px solid #f59e0b'
+          }}>
+            <div>
+              ⚠️ <strong>GitHub App Not Installed</strong>
+              <br />
+              <small>To publish artwork, you need to install the Makapix GitHub App on your account.</small>
+              <br />
+              <button
+                onClick={() => {
+                  if (githubAppInstallUrl) {
+                    window.open(githubAppInstallUrl, 'github-app-install', 'width=800,height=700,scrollbars=yes,resizable=yes');
+                  }
+                }}
+                style={{
+                  marginTop: '10px',
+                  padding: '10px 20px',
+                  backgroundColor: '#0070f3',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                Install GitHub App
+              </button>
+              <br />
+              <small style={{ marginTop: '10px', display: 'block', color: '#666' }}>
+                After installation, refresh this page to continue.
+              </small>
+            </div>
+          </div>
+        )}
+
+        {isAuthenticated && githubAppInstalled && (
+          <div className="github-app-status" style={{
+            padding: '10px',
+            marginBottom: '20px',
+            borderRadius: '6px',
+            backgroundColor: '#d1fae5',
+            border: '1px solid #10b981'
+          }}>
+            <div>
+              ✅ <strong>GitHub App Installed</strong>
+              <br />
+              <small>Your artwork will be published to your GitHub Pages repository</small>
+            </div>
+          </div>
+        )}
+
         <div className="upload-section">
           <h2>Select Images</h2>
           <input 
@@ -307,16 +392,17 @@ export default function PublishPage() {
               ))}
             </div>
             
-            <button 
-              onClick={handlePublish} 
-              disabled={uploading || !isAuthenticated}
+            <button
+              onClick={handlePublish}
+              disabled={uploading || !isAuthenticated || !githubAppInstalled}
               className="publish-button"
               style={{
-                opacity: !isAuthenticated ? 0.5 : 1,
-                cursor: !isAuthenticated ? 'not-allowed' : 'pointer'
+                opacity: (!isAuthenticated || !githubAppInstalled) ? 0.5 : 1,
+                cursor: (!isAuthenticated || !githubAppInstalled) ? 'not-allowed' : 'pointer'
               }}
             >
-              {!isAuthenticated ? "Please log in first" : 
+              {!isAuthenticated ? "Please log in first" :
+               !githubAppInstalled ? "Install GitHub App first" :
                uploading ? "Publishing..." : "Publish to GitHub Pages"}
             </button>
           </div>
