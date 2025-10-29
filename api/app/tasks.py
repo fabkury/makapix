@@ -16,11 +16,11 @@ from celery import Celery
 logger = logging.getLogger(__name__)
 
 
-def generate_artwork_html(manifest: dict, artwork_files: List[str], owner: str, repo: str) -> str:
+def generate_artwork_html(manifest: dict, artwork_files: List[str], owner: str, repo: str, api_base_url: str, post_ids: List[str], widget_base_url: str) -> str:
     """Generate standalone HTML page showcasing the artwork."""
     artworks = manifest.get("artworks", [])
     
-    # Build artwork gallery HTML
+    # Build artwork gallery HTML with widgets
     artwork_html = ""
     for idx, artwork in enumerate(artworks):
         filename = artwork.get("filename", artwork_files[idx] if idx < len(artwork_files) else "")
@@ -29,6 +29,9 @@ def generate_artwork_html(manifest: dict, artwork_files: List[str], owner: str, 
         file_kb = artwork.get("file_kb", 0)
         description = artwork.get("description", "")
         hashtags = artwork.get("hashtags", [])
+        
+        # Get post ID for this artwork (use empty string if not available)
+        post_id = post_ids[idx] if idx < len(post_ids) else ""
         
         artwork_html += f"""
         <div class="artwork-card">
@@ -41,6 +44,7 @@ def generate_artwork_html(manifest: dict, artwork_files: List[str], owner: str, 
                 {f'<p class="description">{description}</p>' if description else ''}
                 {f'<p class="hashtags">{"".join(f"#{tag} " for tag in hashtags)}</p>' if hashtags else ''}
             </div>
+            {f'<div class="social-section"><div id="makapix-widget-{idx}" data-post-id="{post_id}"></div></div>' if post_id else ''}
         </div>
         """
     
@@ -190,19 +194,18 @@ def generate_artwork_html(manifest: dict, artwork_files: List[str], owner: str, 
             {artwork_html}
         </main>
         
-        <!-- Makapix Social Widget -->
-        <div class="social-section">
-            <div id="makapix-widget" data-post-id="POST_ID_PLACEHOLDER"></div>
-        </div>
-        
         <footer>
             <p>Published with <a href="https://makapix.club" target="_blank">Makapix Club</a></p>
             <p>View on <a href="https://github.com/{owner}/{repo}" target="_blank">GitHub</a></p>
         </footer>
     </div>
     
+    <!-- Makapix Widget Configuration -->
+    <script>
+        window.MAKAPIX_API_URL = '{api_base_url}';
+    </script>
     <!-- Makapix Widget Script -->
-    <script src="https://makapix.club/makapix-widget.js"></script>
+    <script src="{widget_base_url}/makapix-widget.js"></script>
 </body>
 </html>"""
     
@@ -360,8 +363,42 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
                     if file_info.filename != 'manifest.json':
                         artwork_files.append(file_info.filename)
         
-        # Generate and commit index.html page
-        html_content = generate_artwork_html(manifest, artwork_files, owner, repo_name)
+        # Get API base URL from environment variables
+        api_base_url = os.getenv("API_BASE_URL")
+        if not api_base_url:
+            # If API_BASE_URL is not set, try BASE_URL and append /api if needed
+            base_url = os.getenv("BASE_URL") or "https://makapix.club"
+            api_base_url = base_url if base_url.endswith("/api") else f"{base_url}/api"
+        # Ensure it doesn't have a trailing slash
+        api_base_url = api_base_url.rstrip("/")
+        
+        # Get base URL for widget script (remove /api if present, or use BASE_URL)
+        widget_base_url = os.getenv("BASE_URL")
+        if not widget_base_url:
+            # Remove /api suffix if present
+            widget_base_url = api_base_url.replace("/api", "").rstrip("/") or "https://makapix.club"
+        widget_base_url = widget_base_url.rstrip("/")
+        
+        # Create Post records from manifest before generating HTML
+        manifest = job.manifest_data
+        post_ids = []
+        for idx, artwork in enumerate(manifest.get("artworks", [])):
+            post = models.Post(
+                owner_id=job.user_id,
+                kind="art",
+                title=artwork["title"],
+                description=artwork.get("description"),
+                hashtags=artwork.get("hashtags", []),
+                art_url=f"https://{owner}.github.io/{repo_name}/{artwork['filename']}",
+                canvas=artwork["canvas"],
+                file_kb=artwork["file_kb"]
+            )
+            db.add(post)
+            db.flush()  # Flush to get the post ID
+            post_ids.append(str(post.id))
+        
+        # Generate HTML with actual post IDs and API base URL
+        html_content = generate_artwork_html(manifest, artwork_files, owner, repo_name, api_base_url, post_ids, widget_base_url)
         
         # Check if index.html exists
         html_sha = None
@@ -398,8 +435,6 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
                 timeout=30
             )
             response.raise_for_status()
-            # Capture the new SHA for potential second upload
-            html_sha = response.json().get("content", {}).get("sha")
         
         # Make repository public (required for GitHub Pages on free accounts)
         from .github import make_repository_public, enable_github_pages
@@ -417,53 +452,6 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
         except Exception as e:
             logger.warning(f"Failed to enable GitHub Pages: {e}")
             # Don't fail the job if Pages enablement fails
-        
-        # Create Post records from manifest
-        manifest = job.manifest_data
-        first_post_id = None
-        for idx, artwork in enumerate(manifest.get("artworks", [])):
-            post = models.Post(
-                owner_id=job.user_id,
-                kind="art",
-                title=artwork["title"],
-                description=artwork.get("description"),
-                hashtags=artwork.get("hashtags", []),
-                art_url=f"https://{owner}.github.io/{repo_name}/{artwork['filename']}",
-                canvas=artwork["canvas"],
-                file_kb=artwork["file_kb"]
-            )
-            db.add(post)
-            db.flush()  # Flush to get the post ID
-            
-            # Track first post ID for widget integration
-            if idx == 0:
-                first_post_id = str(post.id)
-        
-        # Update HTML with actual post ID for widget
-        if first_post_id:
-            html_content = generate_artwork_html(manifest, artwork_files, owner, repo_name)
-            html_content = html_content.replace("POST_ID_PLACEHOLDER", first_post_id)
-            html_base64 = base64.b64encode(html_content.encode()).decode()
-            
-            # Update the HTML file with the correct post ID
-            html_data = {
-                "message": "Update HTML with post ID",
-                "content": html_base64
-            }
-            if html_sha:
-                html_data["sha"] = html_sha
-            
-            with httpx.Client() as client:
-                response = client.put(
-                    f"https://api.github.com/repos/{owner}/{repo_name}/contents/index.html",
-                    headers={
-                        "Authorization": f"Bearer {token}",
-                        "Accept": "application/vnd.github.v3+json"
-                    },
-                    json=html_data,
-                    timeout=30
-                )
-                response.raise_for_status()
         
         # Update job status
         job.status = "committed"
