@@ -86,12 +86,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 25s
-    labels:
-      caddy: makapix.club
-      caddy.@api.path: /api /api/*
-      caddy.handle: "@api"
-      caddy.handle.0_uri: strip_prefix /api
-      caddy.handle.1_reverse_proxy: "{{upstreams 8000}}"
     networks:
       - internal
       - proxy
@@ -181,6 +175,7 @@ services:
     networks:
       - internal
       - proxy
+      - caddy_net
 
   proxy:
     image: caddy:2
