@@ -18,6 +18,7 @@ This guide walks you through setting up a GitHub App for Makapix's content publi
    - **GitHub App name**: `Makapix` (or your preferred name)
    - **Homepage URL**: `http://localhost:3000`
    - **User authorization callback URL**: `http://localhost/auth/github/callback`
+   - **Setup URL**: `http://localhost/github-app-setup`
    - **Webhook URL**: Leave blank for now
    - **Webhook secret**: Leave blank for now
 
@@ -56,9 +57,18 @@ GITHUB_APP_ID=your_app_id_here
 GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----
 your_private_key_content_here
 -----END RSA PRIVATE KEY-----"
+GITHUB_APP_SLUG=your-app-slug-here
 ```
 
 **Important**: The private key must be on multiple lines with proper formatting.
+
+### Understanding GitHub App URLs
+
+- **Callback URL** (`/auth/github/callback`): Used for OAuth authentication flow
+- **Setup URL** (`/github-app-setup`): Used when users complete GitHub App installation
+- **Homepage URL**: Your main application URL
+
+The Setup URL is crucial for capturing the installation ID when users install your GitHub App.
 
 ## Step 4: Install the App
 
