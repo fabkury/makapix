@@ -48,12 +48,16 @@ def github_login():
 
 @router.get("/github/callback")
 def github_callback(
+    request: Request,
     code: str = Query(...),
     state: str = Query(...),
+    installation_id: int = Query(None),
+    setup_action: str = Query(None),
     db: Session = Depends(get_db)
 ):
     """
     Handle GitHub OAuth callback and exchange code for tokens.
+    Also handles GitHub App installation if installation_id is provided.
     """
     if not GITHUB_CLIENT_ID or not GITHUB_CLIENT_SECRET:
         raise HTTPException(
@@ -137,14 +141,43 @@ def github_callback(
         db.add(user)
         db.commit()
         db.refresh(user)
-    
+
+    # Handle GitHub App installation if installation_id is provided
+    if installation_id and setup_action == "install":
+        # Check if installation already exists
+        existing_installation = db.query(models.GitHubInstallation).filter(
+            models.GitHubInstallation.installation_id == installation_id
+        ).first()
+
+        if not existing_installation:
+            # Create new installation record
+            installation = models.GitHubInstallation(
+                user_id=user.id,
+                installation_id=installation_id,
+                account_login=github_username,
+                account_type="User"
+            )
+            db.add(installation)
+            db.commit()
+        elif existing_installation.user_id != user.id:
+            # Update installation to point to this user
+            existing_installation.user_id = user.id
+            existing_installation.account_login = github_username
+            db.commit()
+
     # Generate JWT tokens
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id, db)
-    
+
+    # Determine the base URL from the request
+    base_url = str(request.base_url).rstrip('/')
+    # Handle both http and https
+    if request.headers.get("x-forwarded-proto") == "https":
+        base_url = base_url.replace("http://", "https://")
+
     # Create a simple HTML page that shows success and stores tokens
     from fastapi.responses import HTMLResponse
-    
+
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -155,13 +188,13 @@ def github_callback(
             .success {{ color: #22c55e; font-size: 24px; margin-bottom: 20px; }}
             .info {{ color: #666; margin-bottom: 30px; }}
             .debug {{ color: #888; font-size: 12px; margin-top: 20px; }}
-            .button {{ 
-                background: #0070f3; 
-                color: white; 
-                padding: 12px 24px; 
-                border: none; 
-                border-radius: 6px; 
-                cursor: pointer; 
+            .button {{
+                background: #0070f3;
+                color: white;
+                padding: 12px 24px;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
                 text-decoration: none;
                 display: inline-block;
                 margin: 10px;
@@ -173,8 +206,8 @@ def github_callback(
         <div class="success">✅ Authentication Successful!</div>
         <div class="info">Welcome to Makapix, {user.display_name}!</div>
         <div class="info">You can now close this window and return to the main application.</div>
-        <a href="http://localhost:3000" class="button">Go to Makapix</a>
-        <a href="http://localhost:3000/publish" class="button">Publish Artwork</a>
+        <a href="{base_url}" class="button">Go to Makapix</a>
+        <a href="{base_url}/publish" class="button">Publish Artwork</a>
         
         <div class="debug">
             <p>Debug Info:</p>
@@ -388,10 +421,35 @@ def logout(
 def get_me(current_user: models.User = Depends(get_current_user)) -> schemas.MeResponse:
     """
     Get current user profile and roles.
-    
+
     TODO: Include additional user metadata (followers count, posts count, etc.)
     """
     return schemas.MeResponse(
         user=schemas.UserFull.model_validate(current_user),
         roles=current_user.roles or ["user"],
     )
+
+
+@router.get("/github-app/status")
+def get_github_app_status(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> dict:
+    """
+    Check if the current user has installed the GitHub App.
+    Returns installation status and app installation URL if not installed.
+    """
+    installation = db.query(models.GitHubInstallation).filter(
+        models.GitHubInstallation.user_id == current_user.id
+    ).first()
+
+    # Get GitHub App slug from environment or use default
+    app_slug = os.getenv("GITHUB_APP_SLUG", "makapix-club")
+    # Construct installation URL - users can install from this URL
+    install_url = f"https://github.com/apps/{app_slug}/installations/new" if app_slug else None
+
+    return {
+        "installed": installation is not None,
+        "installation_id": installation.installation_id if installation else None,
+        "install_url": install_url
+    }
