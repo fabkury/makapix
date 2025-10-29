@@ -8,8 +8,9 @@ from pathlib import Path
 from alembic import command
 from alembic.config import Config
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 
 from .routers import (
     admin,

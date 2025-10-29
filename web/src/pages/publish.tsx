@@ -31,11 +31,20 @@ export default function PublishPage() {
 
   // Check authentication status on component mount
   useEffect(() => {
+    // Ensure API_BASE_URL is set correctly
+    const baseUrl = typeof window !== 'undefined' 
+      ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
+      : '';
+    
+    if (baseUrl && baseUrl !== API_BASE_URL) {
+      setAPI_BASE_URL(baseUrl);
+    }
+
     // Log API_BASE_URL for debugging
     console.log('API Base URL:', {
       fromEnv: process.env.NEXT_PUBLIC_API_BASE_URL,
-      fallback: window.location.origin,
-      current: API_BASE_URL
+      fallback: typeof window !== 'undefined' ? window.location.origin : 'N/A',
+      current: baseUrl || API_BASE_URL
     });
 
     const checkAuth = () => {
@@ -58,27 +67,52 @@ export default function PublishPage() {
           displayName: userDisplayName
         });
 
-        // Check GitHub App installation status
-        checkGithubAppStatus(accessToken, API_BASE_URL);
+        // Check GitHub App installation status - use computed baseUrl
+        const urlToUse = baseUrl || API_BASE_URL;
+        if (urlToUse) {
+          checkGithubAppStatus(accessToken, urlToUse);
+        } else {
+          console.error('API_BASE_URL is not available');
+        }
       }
     };
 
-    // Check if GitHub App is installed
+    // Check if GitHub App is installed and validate it works
     const checkGithubAppStatus = async (token: string, baseUrl: string) => {
       try {
         const statusUrl = `${baseUrl}/api/auth/github-app/status`;
         console.log('Checking GitHub App status at:', statusUrl);
+        console.log('Using token:', token.substring(0, 20) + '...');
+        console.log('Base URL:', baseUrl);
+        
         const response = await fetch(statusUrl, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
         });
 
-        console.log('GitHub App status response:', response.status);
+        console.log('GitHub App status response:', response.status, response.statusText);
 
         if (response.ok) {
           const data = await response.json();
           console.log('GitHub App status data:', data);
+          
+          // If installed, validate that it actually works
+          if (data.installed) {
+            const validationResult = await validateGithubAppInstallation(token, baseUrl);
+            if (!validationResult.valid) {
+              console.error('GitHub App installation is invalid:', validationResult);
+              setGithubAppInstalled(false);
+              setGithubAppInstallUrl(data.install_url || '');
+              // Store validation error for display
+              if (validationResult.error) {
+                console.error('Validation error:', validationResult.error);
+                console.error('Validation details:', validationResult.details);
+              }
+              return;
+            }
+          }
+          
           setGithubAppInstalled(data.installed);
           setGithubAppInstallUrl(data.install_url || '');
           console.log('Install URL set to:', data.install_url);
@@ -86,14 +120,89 @@ export default function PublishPage() {
           console.log('githubAppInstallUrl state:', data.install_url || '');
         } else {
           console.error('GitHub App status failed:', response.status, response.statusText);
+          const errorData = await response.json().catch(() => ({}));
+          console.error('Error details:', errorData);
+          
+          // Handle token expiration
+          if (response.status === 401) {
+            console.error('Authentication error - token may be expired');
+            // Clear expired tokens and redirect to login
+            localStorage.clear();
+            setIsAuthenticated(false);
+            setUserInfo(null);
+            alert('Your session has expired. Please log in again.');
+            return;
+          } else if (response.status === 500) {
+            console.error('Server error - check if GITHUB_APP_SLUG is configured in environment');
+          }
+          // Don't set any fallback URL - let the system fail properly
         }
       } catch (error) {
         console.error('Error checking GitHub App status:', error);
+        console.error('Error details:', error.message);
+        console.error('Error stack:', error.stack);
+        // Don't set any fallback URL - let the system fail properly
       }
     };
 
-    // Check auth immediately
+    // Validate that GitHub App installation actually works
+    const validateGithubAppInstallation = async (token: string, baseUrl: string): Promise<{valid: boolean, error?: string, details?: string}> => {
+      try {
+        const validateUrl = `${baseUrl}/api/auth/github-app/validate`;
+        console.log('Validating GitHub App installation at:', validateUrl);
+        
+        const response = await fetch(validateUrl, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        console.log('GitHub App validation response:', response.status, response.statusText);
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log('GitHub App validation data:', data);
+          return {
+            valid: data.valid === true,
+            error: data.error,
+            details: data.details
+          };
+        } else {
+          console.error('GitHub App validation failed:', response.status, response.statusText);
+          const errorData = await response.json().catch(() => ({}));
+          console.error('Validation error details:', errorData);
+          return {
+            valid: false,
+            error: errorData.error || 'Validation failed',
+            details: errorData.details || errorData.message || 'Unknown error'
+          };
+        }
+      } catch (error: any) {
+        console.error('Error validating GitHub App installation:', error);
+        return {
+          valid: false,
+          error: 'Validation error',
+          details: error.message || 'Unknown error'
+        };
+      }
+    };
+
+        // Check auth immediately
     checkAuth();
+    
+    // Also check GitHub App status on page focus (in case user installed app in another tab)
+    const handleFocus = () => {
+      const accessToken = localStorage.getItem('access_token');
+      const baseUrl = typeof window !== 'undefined' 
+        ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
+        : '';
+      
+      if (accessToken && baseUrl) {
+        checkGithubAppStatus(accessToken, baseUrl);
+      }
+    };
+    
+    window.addEventListener('focus', handleFocus);
 
     // Listen for OAuth success messages from popup
     const handleMessage = (event: MessageEvent) => {
@@ -128,6 +237,7 @@ export default function PublishPage() {
     // Cleanup
     return () => {
       window.removeEventListener('message', handleMessage);
+      window.removeEventListener('focus', handleFocus);
     };
   }, []);
 
@@ -344,19 +454,136 @@ export default function PublishPage() {
             border: '2px solid #f59e0b'
           }}>
             <div>
-              ⚠️ <strong>GitHub App Not Installed</strong>
+              ⚠️ <strong>GitHub App Not Installed or Invalid</strong>
               <br />
-              <small>To publish artwork, you need to install the Makapix GitHub App on your account.</small>
+              <small>To publish artwork, you need to install the Makapix GitHub App on your account. The system will validate that the installation is working properly before allowing uploads.</small>
+              <br />
+              <small style={{ color: '#dc2626', fontWeight: 'bold', display: 'block', marginTop: '10px' }}>
+                ⚠️ IMPORTANT: If you're being redirected to a GitHub settings page (like github.com/settings/installations/92158250), 
+                you need to uninstall the app from GitHub first, then reinstall it.
+              </small>
+              <br />
+              <a 
+                href="https://github.com/settings/installations/92158250" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-block',
+                  marginTop: '10px',
+                  padding: '8px 16px',
+                  backgroundColor: '#dc2626',
+                  color: 'white',
+                  textDecoration: 'none',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  fontWeight: 'bold'
+                }}
+              >
+                ⚠️ Uninstall from GitHub First
+              </a>
               <br />
               <button
-                onClick={() => {
+                onClick={async () => {
                   console.log('Install button clicked!');
-                  console.log('githubAppInstallUrl:', githubAppInstallUrl);
-                  if (githubAppInstallUrl) {
-                    console.log('Opening install URL:', githubAppInstallUrl);
-                    window.open(githubAppInstallUrl, 'github-app-install', 'width=800,height=700,scrollbars=yes,resizable=yes');
+                  console.log('Current githubAppInstallUrl:', githubAppInstallUrl);
+                  
+                  // Force refresh the GitHub App status before proceeding
+                  const accessToken = localStorage.getItem('access_token');
+                  const baseUrl = typeof window !== 'undefined' 
+                    ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
+                    : '';
+                  
+                  if (accessToken && baseUrl) {
+                    try {
+                      console.log('Force refreshing GitHub App status...');
+                      const statusUrl = `${baseUrl}/api/auth/github-app/status`;
+                      const statusResponse = await fetch(statusUrl, {
+                        headers: {
+                          'Authorization': `Bearer ${accessToken}`
+                        }
+                      });
+                      
+                      if (statusResponse.ok) {
+                        const statusData = await statusResponse.json();
+                        console.log('Fresh status data:', statusData);
+                        
+                        // Update the install URL from the fresh data
+                        const freshInstallUrl = statusData.install_url;
+                        console.log('Fresh install URL:', freshInstallUrl);
+                        
+                        if (statusData.installed && statusData.installation_id) {
+                          // There's an installation - check if it's valid
+                          const validateUrl = `${baseUrl}/api/auth/github-app/validate`;
+                          const validateResponse = await fetch(validateUrl, {
+                            headers: {
+                              'Authorization': `Bearer ${accessToken}`
+                            }
+                          });
+                          
+                          if (validateResponse.ok) {
+                            const validateData = await validateResponse.json();
+                            if (!validateData.valid) {
+                              // Installation exists but is invalid - guide user to uninstall first
+                              const confirmMsg = `You have an existing GitHub App installation (ID: ${statusData.installation_id}) that is invalid.\n\n` +
+                                `You need to:\n` +
+                                `1. Uninstall the app from GitHub first\n` +
+                                `2. Then reinstall it\n\n` +
+                                `Open GitHub settings to uninstall?`;
+                              
+                              if (confirm(confirmMsg)) {
+                                window.open(`https://github.com/settings/installations/${statusData.installation_id}`, '_blank');
+                                
+                                // After user confirms they've uninstalled, clear from database
+                                const clearConfirm = confirm('Have you uninstalled the GitHub App from GitHub?\n\nClick OK to clear the invalid installation from our system, then you can reinstall.');
+                                if (clearConfirm) {
+                                  try {
+                                    const clearUrl = `${baseUrl}/api/auth/github-app/clear-installation`;
+                                    const clearResponse = await fetch(clearUrl, {
+                                      method: 'POST',
+                                      headers: {
+                                        'Authorization': `Bearer ${accessToken}`
+                                      }
+                                    });
+                                    
+                                    if (clearResponse.ok) {
+                                      const clearData = await clearResponse.json();
+                                      alert(clearData.message || 'Invalid installation cleared. You can now reinstall the GitHub App.');
+                                      window.location.reload();
+                                    } else {
+                                      alert('Failed to clear installation. Please try again.');
+                                    }
+                                  } catch (error) {
+                                    console.error('Error clearing installation:', error);
+                                    alert('Error clearing installation. Please refresh the page and try again.');
+                                  }
+                                }
+                                return;
+                              }
+                            } else {
+                              // Installation is valid - this shouldn't happen if we're showing the install button
+                              alert('GitHub App is already installed and working. Please refresh the page.');
+                              return;
+                            }
+                          }
+                        }
+                        
+                        // Use the fresh install URL
+                        if (freshInstallUrl) {
+                          console.log('Opening fresh install URL:', freshInstallUrl);
+                          window.open(freshInstallUrl, 'github-app-install', 'width=800,height=700,scrollbars=yes,resizable=yes');
+                        } else {
+                          alert('GitHub App installation URL is not available. Please refresh the page and try again.');
+                        }
+                      } else {
+                        console.error('Failed to get fresh status:', statusResponse.status);
+                        alert('Failed to get GitHub App status. Please refresh the page and try again.');
+                      }
+                    } catch (error) {
+                      console.error('Error getting fresh status:', error);
+                      alert('Error checking GitHub App status. Please refresh the page and try again.');
+                    }
                   } else {
-                    console.error('Install URL is empty!');
+                    alert('You are not logged in. Please log in first.');
                   }
                 }}
                 style={{
@@ -371,6 +598,146 @@ export default function PublishPage() {
                 }}
               >
                 Install GitHub App
+              </button>
+              <br />
+              <button
+                onClick={async () => {
+                  console.log('Debug button clicked - testing API call...');
+                  const accessToken = localStorage.getItem('access_token');
+                  const baseUrl = typeof window !== 'undefined' 
+                    ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
+                    : '';
+                  
+                  console.log('Debug info:', {
+                    accessToken: accessToken ? 'present' : 'missing',
+                    baseUrl: baseUrl,
+                    githubAppInstallUrl: githubAppInstallUrl
+                  });
+                  
+                  if (accessToken && baseUrl) {
+                    try {
+                      const statusUrl = `${baseUrl}/api/auth/github-app/status`;
+                      console.log('Testing API call to:', statusUrl);
+                      const response = await fetch(statusUrl, {
+                        headers: {
+                          'Authorization': `Bearer ${accessToken}`
+                        }
+                      });
+                      console.log('Debug API response:', response.status, response.statusText);
+                      const data = await response.json();
+                      console.log('Debug API data:', data);
+                      
+                      if (response.status === 401) {
+                        alert(`Debug: Token expired (401). Please log in again.`);
+                        // Clear expired tokens
+                        localStorage.clear();
+                        window.location.reload();
+                      } else {
+                        alert(`Debug: API returned status ${response.status}.\n\nData: ${JSON.stringify(data, null, 2)}\n\nCheck console for full details.`);
+                      }
+                    } catch (error) {
+                      console.error('Debug API error:', error);
+                      alert(`Debug: API call failed. Check console for details.`);
+                    }
+                  } else {
+                    alert('Debug: Missing access token or base URL. Check console for details.');
+                  }
+                }}
+                style={{
+                  marginTop: '5px',
+                  padding: '5px 10px',
+                  backgroundColor: '#666',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '12px'
+                }}
+              >
+                Debug API Call
+              </button>
+              <br />
+              <button
+                onClick={() => {
+                  console.log('Refresh button clicked - reloading page...');
+                  window.location.reload();
+                }}
+                style={{
+                  marginTop: '5px',
+                  padding: '5px 10px',
+                  backgroundColor: '#10b981',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '12px'
+                }}
+              >
+                Refresh Page
+              </button>
+              <br />
+              <button
+                onClick={async () => {
+                  console.log('Force Install URL button clicked');
+                  
+                  // First, try to clear any existing installation from our database
+                  const accessToken = localStorage.getItem('access_token');
+                  const baseUrl = typeof window !== 'undefined' 
+                    ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
+                    : '';
+                  
+                  if (accessToken && baseUrl) {
+                    try {
+                      // Check if there's an installation in our database
+                      const statusUrl = `${baseUrl}/api/auth/github-app/status`;
+                      const statusResponse = await fetch(statusUrl, {
+                        headers: {
+                          'Authorization': `Bearer ${accessToken}`
+                        }
+                      });
+                      
+                      if (statusResponse.ok) {
+                        const statusData = await statusResponse.json();
+                        if (statusData.installed && statusData.installation_id) {
+                          // Clear it from our database
+                          const clearUrl = `${baseUrl}/api/auth/github-app/clear-installation`;
+                          const clearResponse = await fetch(clearUrl, {
+                            method: 'POST',
+                            headers: {
+                              'Authorization': `Bearer ${accessToken}`
+                            }
+                          });
+                          
+                          if (clearResponse.ok) {
+                            console.log('Cleared installation from database');
+                          }
+                        }
+                      }
+                    } catch (error) {
+                      console.error('Error clearing installation:', error);
+                    }
+                  }
+                  
+                  // Now open the install URL with cache busting
+                  const freshUrl = 'https://github.com/apps/makapix-club-local-development/installations/new';
+                  console.log('Opening fresh URL directly:', freshUrl);
+                  
+                  // Use a new window name to avoid cache issues
+                  const windowName = `github-app-install-${Date.now()}`;
+                  window.open(freshUrl, windowName, 'width=800,height=700,scrollbars=yes,resizable=yes');
+                }}
+                style={{
+                  marginTop: '5px',
+                  padding: '5px 10px',
+                  backgroundColor: '#f59e0b',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '12px'
+                }}
+              >
+                Force Install URL
               </button>
               <br />
               <small style={{ marginTop: '10px', display: 'block', color: '#666' }}>
