@@ -66,11 +66,13 @@ def bind_github_app(
         )
     
     # Create new installation binding
+    target_repo = f"{current_user.github_username or 'unknown'}.github.io"
     installation = models.GitHubInstallation(
         user_id=current_user.id,
         installation_id=payload.installation_id,
         account_login=current_user.github_username or "unknown",
-        account_type="User"
+        account_type="User",
+        target_repo=target_repo
     )
     db.add(installation)
     db.commit()
