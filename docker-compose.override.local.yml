@@ -1,0 +1,10 @@
+# Docker Compose override for LOCAL development
+services:
+  proxy:
+    environment:
+      - DOMAIN=localhost
+      - ACME_AGREE=false
+    ports:
+      - "80:80"
+      # No HTTPS port for local development
+
