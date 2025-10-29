@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..auth import require_moderator
 from ..deps import get_db
+from ..utils.audit import log_moderation_action
 
 router = APIRouter(prefix="/users", tags=["Reputation"])
 
@@ -47,6 +48,15 @@ def adjust_reputation(
     # Update user total
     user.reputation += payload.delta
     db.commit()
+    
+    # Log to audit
+    log_moderation_action(
+        db=db,
+        actor_id=moderator.id,
+        action="adjust_reputation",
+        target_type="user",
+        target_id=id,
+    )
     
     return schemas.ReputationAdjustResponse(new_total=user.reputation)
 

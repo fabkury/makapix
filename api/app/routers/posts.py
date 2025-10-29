@@ -11,6 +11,8 @@ from .. import models, schemas
 from ..auth import check_ownership, get_current_user, get_current_user_optional, require_moderator, require_ownership
 from ..deps import get_db
 from ..pagination import apply_cursor_filter, create_page_response
+from ..mqtt.notifications import publish_new_post_notification, publish_category_promotion_notification
+from ..utils.audit import log_moderation_action
 
 router = APIRouter(prefix="/posts", tags=["Posts"])
 
@@ -129,7 +131,15 @@ def create_post(
     db.refresh(post)
     
     # TODO: Queue conformance check job
-    # TODO: Publish MQTT notification
+    
+    # Publish MQTT notification to followers
+    try:
+        publish_new_post_notification(post.id, db)
+    except Exception as e:
+        # Log error but don't fail the request
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to publish MQTT notification for post {post.id}: {e}")
     
     return schemas.Post.model_validate(post)
 
@@ -262,12 +272,10 @@ def delete_post(
 def undelete_post_by_moderator(
     id: UUID,
     db: Session = Depends(get_db),
-    _moderator: models.User = Depends(require_moderator),
+    moderator: models.User = Depends(require_moderator),
 ) -> None:
     """
     Undelete post (moderator only).
-    
-    TODO: Log this action in audit log
     """
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post:
@@ -277,6 +285,46 @@ def undelete_post_by_moderator(
     post.hidden_by_user = False
     post.hidden_by_mod = False
     db.commit()
+    
+    # Log to audit
+    log_moderation_action(
+        db=db,
+        actor_id=moderator.id,
+        action="undelete_post",
+        target_type="post",
+        target_id=id,
+    )
+
+
+@router.post(
+    "/{id}/delete",
+    status_code=status.HTTP_201_CREATED,
+    tags=["Posts", "Admin"],
+)
+def delete_post_by_moderator(
+    id: UUID,
+    db: Session = Depends(get_db),
+    moderator: models.User = Depends(require_moderator),
+) -> None:
+    """
+    Soft delete post (moderator only).
+    """
+    post = db.query(models.Post).filter(models.Post.id == id).first()
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    
+    post.visible = False
+    post.hidden_by_mod = True
+    db.commit()
+    
+    # Log to audit
+    log_moderation_action(
+        db=db,
+        actor_id=moderator.id,
+        action="delete_post",
+        target_type="post",
+        target_id=id,
+    )
 
 
 @router.post("/{id}/hide", status_code=status.HTTP_201_CREATED)
@@ -299,8 +347,21 @@ def hide_post(
     by = payload.by if payload else "user"
     
     if by == "mod":
-        # TODO: Check moderator role
+        # Check moderator role
+        if "moderator" not in current_user.roles and "owner" not in current_user.roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Moderator role required to hide posts as moderator"
+            )
         post.hidden_by_mod = True
+        # Log to audit
+        log_moderation_action(
+            db=db,
+            actor_id=current_user.id,
+            action="hide_post",
+            target_type="post",
+            target_id=id,
+        )
     else:
         require_ownership(post.owner_id, current_user)
         post.hidden_by_user = True
@@ -323,11 +384,23 @@ def unhide_post(
     if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
     
-    require_ownership(post.owner_id, current_user)
+    # Check if user is owner or moderator
+    is_moderator = "moderator" in current_user.roles or "owner" in current_user.roles
+    if not is_moderator:
+        require_ownership(post.owner_id, current_user)
     
     post.hidden_by_user = False
     # Moderators can unhide mod-hidden posts
-    # TODO: Check if user is moderator before allowing to unhide hidden_by_mod
+    if is_moderator and post.hidden_by_mod:
+        post.hidden_by_mod = False
+        # Log to audit
+        log_moderation_action(
+            db=db,
+            actor_id=current_user.id,
+            action="unhide_post",
+            target_type="post",
+            target_id=id,
+        )
     db.commit()
 
 
@@ -357,6 +430,25 @@ def promote_post(
     post.promoted_category = payload.category
     db.commit()
     
+    # Log to audit
+    log_moderation_action(
+        db=db,
+        actor_id=_moderator.id,
+        action="promote_post",
+        target_type="post",
+        target_id=id,
+    )
+    
+    # Publish MQTT notification if promoted to "daily's-best"
+    if payload.category == "daily's-best":
+        try:
+            publish_category_promotion_notification(post.id, payload.category, db)
+        except Exception as e:
+            # Log error but don't fail the request
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to publish MQTT notification for category promotion: {e}")
+    
     return schemas.PromotePostResponse(promoted=True, category=payload.category)
 
 
@@ -382,6 +474,15 @@ def demote_post(
     post.promoted = False
     post.promoted_category = None
     db.commit()
+    
+    # Log to audit
+    log_moderation_action(
+        db=db,
+        actor_id=_moderator.id,
+        action="demote_post",
+        target_type="post",
+        target_id=id,
+    )
 
 
 @router.get(

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..auth import AnonymousUser, get_current_user, get_current_user_or_anonymous, require_moderator, require_ownership
 from ..deps import get_db
+from ..utils.audit import log_moderation_action
 
 router = APIRouter(prefix="/posts", tags=["Comments"])
 
@@ -29,6 +30,7 @@ def list_comments(
     
     Returns comments with guest names for anonymous users.
     Moderators can see hidden comments; regular users cannot.
+    Filters out comments with invalid depth (> 2) to prevent widget errors.
     """
     query = db.query(models.Comment).filter(models.Comment.post_id == id)
     
@@ -40,13 +42,29 @@ def list_comments(
     if not is_moderator:
         query = query.filter(models.Comment.hidden_by_mod == False)
     
+    # Filter out comments with invalid depth (> 2) to prevent widget errors
+    query = query.filter(models.Comment.depth <= 2)
+    
     # Order by creation time and apply limit
     query = query.order_by(models.Comment.created_at.asc()).limit(limit)
     
     comments = query.all()
     
+    # Additional validation: filter out comments that reference invalid parents
+    valid_comments = []
+    comment_ids = {c.id for c in comments}
+    
+    for comment in comments:
+        # Skip comments with parent_id that doesn't exist in the result set
+        # (orphaned comments or invalid parent references)
+        if comment.parent_id is None:
+            valid_comments.append(comment)
+        elif comment.parent_id in comment_ids:
+            valid_comments.append(comment)
+        # else: skip orphaned comment
+    
     return schemas.Page(
-        items=[schemas.Comment.model_validate(c) for c in comments],
+        items=[schemas.Comment.model_validate(c) for c in valid_comments],
         next_cursor=None,
     )
 
@@ -89,6 +107,14 @@ def create_comment(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid parent comment"
             )
+        
+        # Validate parent depth is valid (< 2)
+        if parent.depth >= 2:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot reply to comment at maximum depth"
+            )
+        
         depth = parent.depth + 1
         if depth > 2:
             raise HTTPException(
@@ -147,26 +173,43 @@ def update_comment(
 @router.delete("/comments/{commentId}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_comment(
     commentId: UUID,
+    request: Request,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User | AnonymousUser = Depends(get_current_user_or_anonymous),
 ) -> None:
     """
-    Delete comment (soft delete, authenticated users only).
+    Delete comment (soft delete).
     
-    Anonymous users cannot delete their comments.
+    Supports both authenticated and anonymous users.
+    For anonymous users, ownership is verified by IP address.
     """
     comment = db.query(models.Comment).filter(models.Comment.id == commentId).first()
     if not comment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
     
-    # Anonymous comments cannot be deleted
-    if comment.author_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Anonymous comments cannot be deleted"
-        )
-    
-    require_ownership(comment.author_id, current_user)
+    # Check ownership
+    if isinstance(current_user, models.User):
+        # Authenticated user: check by user_id
+        if comment.author_id != current_user.id:
+            # Check if user is moderator/owner
+            if "moderator" not in current_user.roles and "owner" not in current_user.roles:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You don't have permission to delete this comment"
+                )
+    else:
+        # Anonymous user: check by IP
+        if comment.author_id is not None:
+            # Comment was created by authenticated user, anonymous can't delete it
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to delete this comment"
+            )
+        if comment.author_ip != current_user.ip:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to delete this comment"
+            )
     
     comment.deleted_by_owner = True
     comment.body = "[deleted]"
@@ -190,6 +233,15 @@ def undelete_comment(
     
     comment.deleted_by_owner = False
     db.commit()
+    
+    # Log to audit
+    log_moderation_action(
+        db=db,
+        actor_id=_moderator.id,
+        action="undelete_comment",
+        target_type="comment",
+        target_id=commentId,
+    )
 
 
 @router.post(
@@ -209,6 +261,15 @@ def hide_comment(
     
     comment.hidden_by_mod = True
     db.commit()
+    
+    # Log to audit
+    log_moderation_action(
+        db=db,
+        actor_id=_moderator.id,
+        action="hide_comment",
+        target_type="comment",
+        target_id=commentId,
+    )
 
 
 @router.delete(
@@ -228,3 +289,12 @@ def unhide_comment(
     
     comment.hidden_by_mod = False
     db.commit()
+    
+    # Log to audit
+    log_moderation_action(
+        db=db,
+        actor_id=_moderator.id,
+        action="unhide_comment",
+        target_type="comment",
+        target_id=commentId,
+    )

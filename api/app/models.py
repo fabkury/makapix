@@ -108,6 +108,8 @@ class Post(Base):
     art_url = Column(String(1000), nullable=False)
     canvas = Column(String(50), nullable=False)  # e.g., "64x64", "128x128"
     file_kb = Column(Integer, nullable=False)
+    expected_hash = Column(String(64), nullable=True, index=True)  # SHA256 hash for mismatch detection
+    mime_type = Column(String(50), nullable=True)  # MIME type (image/png, image/jpeg, image/gif)
     
     # Visibility & moderation
     visible = Column(Boolean, nullable=False, default=True, index=True)
@@ -134,6 +136,7 @@ class Post(Base):
     __table_args__ = (
         Index("ix_posts_hashtags", "hashtags", postgresql_using="gin"),
         Index("ix_posts_owner_created", owner_id, created_at.desc()),
+        Index("ix_posts_non_conformant_created", non_conformant, created_at.desc()),
     )
 
 
@@ -247,6 +250,25 @@ class Follow(Base):
     )
 
 
+class CategoryFollow(Base):
+    """User following a category (e.g., daily's-best)."""
+
+    __tablename__ = "category_follows"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    category = Column(String(50), nullable=False, index=True)  # e.g., "daily's-best"
+    
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "category", name="uq_category_follow_user_category"),
+        Index("ix_category_follows_category_created", category, created_at.desc()),
+    )
+
+
 # ============================================================================
 # BADGES & REPUTATION
 # ============================================================================
@@ -355,6 +377,7 @@ class Device(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     name = Column(String(100), nullable=False)
+    cert_serial_number = Column(String(100), nullable=True, unique=True, index=True)  # For certificate revocation
     
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
