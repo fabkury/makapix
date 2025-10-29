@@ -1,0 +1,11 @@
+# Docker Compose override for REMOTE development
+services:
+  proxy:
+    environment:
+      - DOMAIN=dev.makapix.club
+      - ACME_AGREE=true
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"  # For HTTP/3
+

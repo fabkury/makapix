@@ -33,7 +33,8 @@ def create_access_token(user_id: uuid.UUID, expires_in_seconds: int | None = Non
     if expires_in_seconds is None:
         expires_in_seconds = JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60
     
-    now = datetime.utcnow()
+    from datetime import timezone
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     payload = {
         "user_id": str(user_id),
         "exp": now + timedelta(seconds=expires_in_seconds),
@@ -55,7 +56,8 @@ def create_refresh_token(user_id: uuid.UUID, db: Session, expires_in_days: int |
     token = secrets.token_urlsafe(32)
     token_hash = secrets.token_urlsafe(32)  # Hash for database storage
     
-    expires_at = datetime.utcnow() + timedelta(days=expires_in_days)
+    from datetime import timezone
+    expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=expires_in_days)
     
     # Store in database
     from . import models
@@ -78,9 +80,10 @@ def verify_refresh_token(token: str, db: Session) -> models.User | None:
     
     # Find token by hash (in real implementation, you'd hash the token)
     # For now, we'll use a simple lookup
+    from datetime import timezone
     refresh_token = db.query(models.RefreshToken).filter(
         models.RefreshToken.token_hash == token,
-        models.RefreshToken.expires_at > datetime.utcnow(),
+        models.RefreshToken.expires_at > datetime.now(timezone.utc).replace(tzinfo=None),
         models.RefreshToken.revoked == False
     ).first()
     
@@ -157,7 +160,8 @@ async def get_current_user(
                 detail="Account deactivated"
             )
         
-        if user.banned_until and user.banned_until > datetime.utcnow():
+        from datetime import timezone
+        if user.banned_until and user.banned_until > datetime.now(timezone.utc).replace(tzinfo=None):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Account banned"

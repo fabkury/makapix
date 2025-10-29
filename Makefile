@@ -1,39 +1,72 @@
-COMPOSE ?= docker compose
+.PHONY: help local remote up down restart logs test clean
 
-.PHONY: up down restart logs api.test web.lint fmt db.reset seed
+help:
+	@echo "Makapix Development Commands"
+	@echo ""
+	@echo "Environment Management:"
+	@echo "  make local          - Switch to local development (localhost)"
+	@echo "  make remote         - Switch to remote development (dev.makapix.club)"
+	@echo ""
+	@echo "Docker Commands:"
+	@echo "  make up             - Start all services"
+	@echo "  make down           - Stop all services"
+	@echo "  make restart        - Restart all services"
+	@echo "  make logs           - Show logs for all services"
+	@echo "  make logs-api       - Show logs for API service"
+	@echo "  make logs-web       - Show logs for web service"
+	@echo ""
+	@echo "Development:"
+	@echo "  make test           - Run API tests"
+	@echo "  make shell-api      - Open shell in API container"
+	@echo "  make shell-db       - Open PostgreSQL shell"
+	@echo ""
+	@echo "Cleanup:"
+	@echo "  make clean          - Remove all containers, volumes, and generated files"
+
+local:
+	@./scripts/switch-env.sh local || powershell -ExecutionPolicy Bypass -File ./scripts/switch-env.ps1 local
+
+remote:
+	@./scripts/switch-env.sh remote || powershell -ExecutionPolicy Bypass -File ./scripts/switch-env.ps1 remote
 
 up:
-	@$(COMPOSE) up -d
+	docker compose up -d
 
 down:
-	@$(COMPOSE) down --remove-orphans
+	docker compose down
 
 restart:
-	@$(COMPOSE) restart
+	docker compose restart
 
 logs:
-	@$(COMPOSE) logs -f
+	docker compose logs -f
 
-api.test:
-	@$(COMPOSE) --profile test run --rm api-test
+logs-api:
+	docker compose logs -f api
 
-web.lint:
-	@$(COMPOSE) run --rm web npm run lint
+logs-web:
+	docker compose logs -f web
 
-fmt:
-	@$(COMPOSE) run --rm api bash -lc "ruff check app --fix && black app"
-	@$(COMPOSE) run --rm web npm run format
+logs-proxy:
+	docker compose logs -f proxy
 
-db.reset:
-	@echo "Stopping application services..."
-	@$(COMPOSE) stop api worker web proxy >/dev/null 2>&1 || true
-	@echo "Removing database container and volume..."
-	@$(COMPOSE) rm -f db >/dev/null 2>&1 || true
-	@docker volume ls -q | grep '_pg_data$$' | xargs -r docker volume rm >/dev/null
-	@echo "Recreating database and reapplying migrations..."
-	@$(COMPOSE) up -d db
-	@$(COMPOSE) run --rm api alembic upgrade head
-	@$(COMPOSE) run --rm api python -m app.seed
+test:
+	docker compose run --rm api-test
 
-seed:
-	@$(COMPOSE) run --rm api python -m app.seed
+shell-api:
+	docker compose exec api bash
+
+shell-db:
+	docker compose exec db psql -U makapix -d makapix
+
+clean:
+	docker compose down -v
+	rm -f .env docker-compose.override.yml proxy/Caddyfile
+	@echo "Cleaned up containers, volumes, and generated files"
+
+status:
+	@echo "Current environment:"
+	@grep "^ENVIRONMENT=" .env 2>/dev/null || echo "  No .env file found"
+	@echo ""
+	@echo "Docker services:"
+	@docker compose ps
