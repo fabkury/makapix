@@ -177,6 +177,8 @@ def update_report(
                 action=action_name,
                 target_type=report.target_type,
                 target_id=report.target_id,
+                reason_code=report.reason_code,
+                note=payload.notes or report.notes or f"Action taken via report {report.id}",
             )
     
     # Log report resolution to audit log
@@ -185,8 +187,10 @@ def update_report(
             db=db,
             actor_id=moderator.id,
             action="resolve_report",
-            target_type=report.target_type,
-            target_id=report.target_id,
+            target_type="report",
+            target_id=report.id,
+            reason_code=report.reason_code,
+            note=payload.notes or report.notes or f"Report resolved: {report.id}",
         )
     
     return schemas.Report.model_validate(report)

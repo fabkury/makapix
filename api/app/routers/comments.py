@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
 from ..auth import AnonymousUser, get_current_user, get_current_user_or_anonymous, require_moderator, require_ownership
@@ -33,7 +33,7 @@ def list_comments(
     Filters out comments with invalid depth (> 2) to prevent widget errors.
     Deleted comments are filtered out unless they have child comments (to maintain thread structure).
     """
-    query = db.query(models.Comment).filter(models.Comment.post_id == id)
+    query = db.query(models.Comment).options(joinedload(models.Comment.author)).filter(models.Comment.post_id == id)
     
     # Hide comments hidden by moderators unless current user is a moderator
     is_moderator = (

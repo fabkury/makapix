@@ -227,6 +227,13 @@ celery_app.conf.update(
     result_expires=3600,
     worker_max_tasks_per_child=100,
     task_routes={"app.tasks.hash_url": {"queue": "default"}},
+    beat_schedule={
+        "check-post-hashes": {
+            "task": "app.tasks.periodic_check_post_hashes",
+            "schedule": 21600.0,  # Every 6 hours (in seconds)
+        },
+    },
+    timezone="UTC",
 )
 
 MAX_BYTES = 1_000_000
@@ -329,6 +336,107 @@ def check_post_hash(self, post_id: str) -> dict[str, Any]:
     
     except Exception as e:
         logger.error("Error checking hash for post %s: %s", post_id, str(e))
+        return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
+
+
+# System user UUID for automated actions (hash checks, etc.)
+# This is a special UUID that represents system/automated actions
+SYSTEM_USER_UUID = "00000000-0000-0000-0000-000000000001"
+
+
+@celery_app.task(name="app.tasks.periodic_check_post_hashes", bind=True)
+def periodic_check_post_hashes(self) -> dict[str, Any]:
+    """
+    Periodic task to check post hashes for mismatches.
+    Runs every 6 hours (configurable via beat_schedule).
+    
+    Checks batches of posts with expected_hash set, marks non-conformant on mismatch.
+    """
+    from . import models
+    from .db import SessionLocal
+    from .utils.audit import log_moderation_action, SYSTEM_USER_UUID
+    from uuid import UUID
+    
+    db = SessionLocal()
+    try:
+        # Query posts with expected_hash set, limit to reasonable batch size
+        # Check posts that haven't been checked recently or are already non-conformant
+        posts_to_check = db.query(models.Post).filter(
+            models.Post.expected_hash.isnot(None),
+            models.Post.art_url.isnot(None),
+        ).limit(100).all()  # Process 100 at a time
+        
+        if not posts_to_check:
+            logger.info("No posts to check for hash mismatches")
+            return {"status": "success", "checked": 0, "mismatches": 0}
+        
+        checked_count = 0
+        mismatch_count = 0
+        
+        for post in posts_to_check:
+            try:
+                # Check hash
+                hash_result = hash_url_sync(post.art_url)
+                actual_hash = hash_result["sha256"]
+                
+                if actual_hash != post.expected_hash:
+                    logger.warning(
+                        "Hash mismatch detected for post %s: expected %s, got %s",
+                        post.id,
+                        post.expected_hash,
+                        actual_hash
+                    )
+                    
+                    # Mark as non-conformant
+                    post.non_conformant = True
+                    db.commit()
+                    mismatch_count += 1
+                    
+                    # Log to audit log with system user
+                    try:
+                        log_moderation_action(
+                            db=db,
+                            actor_id=UUID(SYSTEM_USER_UUID),
+                            action="hash_mismatch_detected",
+                            target_type="post",
+                            target_id=post.id,
+                            reason_code="hash_mismatch",
+                            note=f"Automated hash check detected mismatch. Expected: {post.expected_hash[:16]}..., Got: {actual_hash[:16]}...",
+                        )
+                    except Exception as audit_error:
+                        logger.error("Failed to log hash mismatch to audit log: %s", audit_error)
+                        # Continue even if audit logging fails
+                
+                else:
+                    # Hash matches - if previously non-conformant, clear flag
+                    if post.non_conformant:
+                        logger.info("Hash now matches for post %s, clearing non_conformant flag", post.id)
+                        post.non_conformant = False
+                        db.commit()
+                
+                checked_count += 1
+                
+            except Exception as e:
+                logger.error("Error checking hash for post %s: %s", post.id, str(e))
+                # Continue with next post
+                continue
+        
+        logger.info(
+            "Periodic hash check completed: checked %d posts, found %d mismatches",
+            checked_count,
+            mismatch_count
+        )
+        
+        return {
+            "status": "success",
+            "checked": checked_count,
+            "mismatches": mismatch_count,
+        }
+    
+    except Exception as e:
+        logger.error("Error in periodic hash check: %s", str(e))
         return {"status": "error", "message": str(e)}
     finally:
         db.close()

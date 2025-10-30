@@ -44,6 +44,7 @@
 - Next.js 14 with TypeScript and ESLint strict mode.
 - `/` SSR health check page demonstrates server-side calls via internal URL.
 - `/demo` uses `mqtt` npm package over WebSockets to subscribe to `posts/new/demo` and triggers the API MQTT publisher.
+- `/session-transfer` is a lightweight redirect helper that enables cross-origin authentication for the Makapix widget. When embedded on external sites (e.g., GitHub Pages), the widget redirects new visitors through this page to read Makapix tokens in a first-party context, then bounces back with tokens in the URL hash for the widget to import into localStorage.
 
 ### Messaging
 

@@ -56,6 +56,8 @@ def adjust_reputation(
         action="adjust_reputation",
         target_type="user",
         target_id=id,
+        reason_code=payload.reason_code,
+        note=payload.note or payload.reason,
     )
     
     return schemas.ReputationAdjustResponse(new_total=user.reputation)

@@ -88,6 +88,8 @@ def grant_badge(
             action="grant_badge",
             target_type="user",
             target_id=id,
+            reason_code=payload.reason_code,
+            note=payload.note,
         )
 
 

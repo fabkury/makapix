@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Generic, Literal, TypeVar
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, RootModel, computed_field
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, RootModel, computed_field, model_validator
 
 
 # ============================================================================
@@ -262,21 +262,41 @@ class Comment(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
     
+    _author_display_name_cache: str | None = None
+    
+    @model_validator(mode='wrap')
+    @classmethod
+    def extract_author_display_name(cls, data, handler):
+        """Extract author display name from the ORM model during validation."""
+        # Call the default validation
+        instance = handler(data)
+        
+        # If data is an ORM model with author relationship loaded, extract display name
+        if hasattr(data, 'author') and data.author:
+            instance._author_display_name_cache = data.author.display_name
+        
+        return instance
+    
     @computed_field
     @property
     def author_display_name(self) -> str:
         """
         Display name for the comment author.
         
-        Returns guest name for anonymous users, or can be used
-        to fetch user display name for authenticated users.
+        Returns guest name for anonymous users, or the cached display name
+        from the author relationship for authenticated users.
         """
         if self.author_id is None and self.author_ip:
             # Generate guest name from IP
             import hashlib
             hash_digest = hashlib.sha256(self.author_ip.encode()).hexdigest()
             return f"Guest_{hash_digest[:6]}"
-        return "User"  # Placeholder for authenticated users
+        
+        # Return cached display name if available
+        if self._author_display_name_cache:
+            return self._author_display_name_cache
+        
+        return "User"  # Fallback if user not found or not loaded
 
 
 class CommentCreate(BaseModel):
@@ -300,7 +320,9 @@ class CommentUpdate(BaseModel):
 class ReactionTotals(BaseModel):
     """Reaction totals for a post."""
 
-    totals: dict[str, int]  # emoji -> count
+    totals: dict[str, int]  # combined emoji totals (authenticated + anonymous)
+    authenticated_totals: dict[str, int]
+    anonymous_totals: dict[str, int]
     mine: list[str]  # emoji list for current user
 
 
@@ -360,6 +382,8 @@ class BadgeGrantRequest(BaseModel):
     """Grant badge request."""
 
     badge: str
+    reason_code: str | None = Field(None, max_length=50)
+    note: str | None = Field(None, max_length=1000)
 
 
 # ============================================================================
@@ -372,6 +396,8 @@ class ReputationAdjust(BaseModel):
 
     delta: int
     reason: str | None = Field(None, max_length=200)
+    reason_code: str | None = Field(None, max_length=50)
+    note: str | None = Field(None, max_length=1000)
 
 
 class ReputationAdjustResponse(BaseModel):
@@ -467,6 +493,8 @@ class BanUserRequest(BaseModel):
 
     reason: str | None = Field(None, max_length=500)
     duration_days: int | None = Field(None, gt=0, le=365)
+    reason_code: str | None = Field(None, max_length=50)
+    note: str | None = Field(None, max_length=1000)
 
 
 class BanResponse(BaseModel):
@@ -480,6 +508,8 @@ class PromotePostRequest(BaseModel):
     """Promote post request."""
 
     category: Literal["frontpage", "editor-pick", "weekly-pack", "daily's-best"]
+    reason_code: str | None = Field(None, max_length=50)
+    note: str | None = Field(None, max_length=1000)
 
 
 class PromotePostResponse(BaseModel):
@@ -539,6 +569,8 @@ class HideRequest(BaseModel):
 
     by: Literal["user", "mod"] | None = "user"
     reason: str | None = Field(None, max_length=500)
+    reason_code: str | None = Field(None, max_length=50)
+    note: str | None = Field(None, max_length=1000)
 
 
 class PromoteModeratorResponse(BaseModel):
@@ -556,7 +588,9 @@ class AuditLogEntry(BaseModel):
     action: str
     target_type: str | None
     target_id: UUID | None
-    at: datetime
+    reason_code: str | None = None
+    note: str | None = None
+    created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 

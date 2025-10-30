@@ -54,6 +54,8 @@ def ban_user(
         action="ban_user",
         target_type="user",
         target_id=id,
+        reason_code=payload.reason_code,
+        note=payload.note or payload.reason,
     )
     
     return schemas.BanResponse(status="banned", until=until)
