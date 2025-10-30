@@ -27,21 +27,26 @@ def ensure_seed_data() -> None:
     Creates sample users, posts, comments, playlists, and relationships
     for development and testing purposes.
     """
-    with SessionLocal() as session:
-        # Check if seed data already exists
-        existing = session.scalar(select(User.id).limit(1))
-        if existing:
-            logger.debug("Seed data already present, skipping.")
-            return
+    logger.info("ensure_seed_data: Starting...")
+    try:
+        logger.info("ensure_seed_data: Creating session...")
+        with SessionLocal() as session:
+            logger.info("ensure_seed_data: Session created, checking for existing data...")
+            # Check if seed data already exists
+            existing = session.scalar(select(User.id).limit(1))
+            logger.info(f"ensure_seed_data: Existing data check result: {existing}")
+            if existing:
+                logger.debug("Seed data already present, skipping.")
+                return
 
-        logger.info("Creating seed data...")
+            logger.info("Creating seed data...")
         
-        # ====================================================================
-        # USERS
-        # ====================================================================
+            # ====================================================================
+            # USERS
+            # ====================================================================
         
-        # Create admin user
-        admin = User(
+            # Create admin user
+            admin = User(
             id=uuid.uuid4(),
             handle="admin",
             display_name="Admin User",
@@ -50,9 +55,9 @@ def ensure_seed_data() -> None:
             reputation=1000,
             roles=["user", "moderator", "owner"],
         )
-        session.add(admin)
-        
-        # Create moderator user
+            session.add(admin)
+            
+            # Create moderator user
         moderator = User(
             id=uuid.uuid4(),
             handle="moderator",
@@ -522,6 +527,11 @@ def ensure_seed_data() -> None:
         logger.info(f"  - Follows: 7")
         logger.info(f"  - Playlists: 3")
         logger.info(f"  - Badges: 6")
+    except Exception as e:
+        logger.error(f"ensure_seed_data: Error occurred: {e}", exc_info=True)
+        raise
+    finally:
+        logger.info("ensure_seed_data: Completed.")
 
 
 if __name__ == "__main__":

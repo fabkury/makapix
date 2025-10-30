@@ -30,7 +30,7 @@ export default function OwnerDashboardPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const API_BASE_URL = typeof window !== 'undefined' 
-    ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
+    ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
     : '';
 
   // Debug: Log immediately when component mounts

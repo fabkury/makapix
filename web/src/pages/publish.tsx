@@ -22,10 +22,12 @@ export default function PublishPage() {
   const [validationError, setValidationError] = useState<{error?: string, details?: string, install_url?: string, app_slug?: string} | null>(null);
 
   // Get API base URL - must be computed inside the component to ensure it runs client-side
-  // Initialize with window.location.origin as fallback to prevent empty string issues
+  // Initialize with http://localhost as fallback to prevent issues when accessing directly on port 3000
   const [API_BASE_URL, setAPI_BASE_URL] = useState<string>(() => {
     if (typeof window !== 'undefined') {
-      return process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin;
+      // Use env var if set, otherwise use http://localhost (not window.location.origin)
+      // This ensures API calls work whether accessed via proxy (localhost) or directly (localhost:3000)
+      return process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost';
     }
     return '';
   });
@@ -34,7 +36,7 @@ export default function PublishPage() {
   useEffect(() => {
     // Ensure API_BASE_URL is set correctly
     const baseUrl = typeof window !== 'undefined' 
-      ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
+      ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
       : '';
     
     if (baseUrl && baseUrl !== API_BASE_URL) {
@@ -212,7 +214,7 @@ export default function PublishPage() {
     const handleFocus = () => {
       const accessToken = localStorage.getItem('access_token');
       const baseUrl = typeof window !== 'undefined' 
-        ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
+        ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
         : '';
       
       if (accessToken && baseUrl) {
@@ -243,7 +245,7 @@ export default function PublishPage() {
         });
 
         // Check GitHub App installation status
-        const currentApiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin;
+        const currentApiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost';
         checkGithubAppStatus(tokens.access_token, currentApiUrl);
 
         console.log('Tokens stored from postMessage');
@@ -561,7 +563,7 @@ export default function PublishPage() {
                   // Force refresh the GitHub App status before proceeding
                   const accessToken = localStorage.getItem('access_token');
                   const baseUrl = typeof window !== 'undefined' 
-                    ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
+                    ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
                     : '';
                   
                   if (accessToken && baseUrl) {
@@ -686,7 +688,7 @@ export default function PublishPage() {
                   console.log('Debug button clicked - testing API call...');
                   const accessToken = localStorage.getItem('access_token');
                   const baseUrl = typeof window !== 'undefined' 
-                    ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
+                    ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
                     : '';
                   
                   console.log('Debug info:', {
@@ -764,7 +766,7 @@ export default function PublishPage() {
                   // First, try to clear any existing installation from our database
                   const accessToken = localStorage.getItem('access_token');
                   const baseUrl = typeof window !== 'undefined' 
-                    ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
+                    ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
                     : '';
                   
                   if (accessToken && baseUrl) {
