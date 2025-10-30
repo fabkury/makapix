@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..auth import create_access_token, create_refresh_token, get_current_user, revoke_refresh_token, verify_refresh_token
 from ..deps import get_db
 from ..github import verify_installation_belongs_to_app
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -71,220 +75,379 @@ def github_callback(
     Also handles GitHub App installation if installation_id is provided.
     """
     if not GITHUB_CLIENT_ID or not GITHUB_CLIENT_SECRET:
+        logger.error("GitHub OAuth callback failed: OAuth credentials not configured")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="GitHub OAuth not configured"
         )
     
-    # Decode state parameter to extract installation_id if present
     try:
-        import json
-        import base64
-        state_data = json.loads(base64.b64decode(state).decode())
-        state_installation_id = state_data.get("installation_id")
-        if state_installation_id and not installation_id:
-            installation_id = state_installation_id
-    except (json.JSONDecodeError, base64.binascii.Error, KeyError):
-        # If state decoding fails, continue with existing installation_id parameter
-        pass
-    
-    # Exchange code for GitHub access token
-    token_data = {
-        "client_id": GITHUB_CLIENT_ID,
-        "client_secret": GITHUB_CLIENT_SECRET,
-        "code": code,
-        "redirect_uri": GITHUB_REDIRECT_URI,
-    }
-    
-    try:
-        with httpx.Client() as client:
-            response = client.post(
-                "https://github.com/login/oauth/access_token",
-                data=token_data,
-                headers={"Accept": "application/json"}
+        # Decode state parameter to extract installation_id if present
+        try:
+            import json
+            import base64
+            state_data = json.loads(base64.b64decode(state).decode())
+            state_installation_id = state_data.get("installation_id")
+            if state_installation_id and not installation_id:
+                installation_id = state_installation_id
+        except (json.JSONDecodeError, base64.binascii.Error, KeyError) as e:
+            logger.warning(f"Failed to decode state parameter: {e}, continuing without installation_id")
+            # If state decoding fails, continue with existing installation_id parameter
+            pass
+        
+        # Exchange code for GitHub access token
+        token_data = {
+            "client_id": GITHUB_CLIENT_ID,
+            "client_secret": GITHUB_CLIENT_SECRET,
+            "code": code,
+            "redirect_uri": GITHUB_REDIRECT_URI,
+        }
+        
+        logger.info(f"Exchanging GitHub OAuth code for access token")
+        try:
+            with httpx.Client() as client:
+                response = client.post(
+                    "https://github.com/login/oauth/access_token",
+                    data=token_data,
+                    headers={"Accept": "application/json"}
+                )
+                response.raise_for_status()
+                token_response = response.json()
+                
+                if "error" in token_response:
+                    error_msg = f"GitHub OAuth error: {token_response.get('error_description', token_response.get('error', 'Unknown error'))}"
+                    logger.error(error_msg)
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=error_msg
+                    )
+                
+                github_access_token = token_response["access_token"]
+                logger.info("Successfully obtained GitHub access token")
+                
+                # Fetch GitHub user profile
+                logger.info("Fetching GitHub user profile")
+                user_response = client.get(
+                    "https://api.github.com/user",
+                    headers={
+                        "Authorization": f"Bearer {github_access_token}",
+                        "Accept": "application/vnd.github.v3+json"
+                    }
+                )
+                user_response.raise_for_status()
+                github_user = user_response.json()
+                logger.info(f"Successfully fetched GitHub user profile: {github_user.get('login')}")
+                
+                # Fetch GitHub user emails (since we requested user:email scope)
+                github_email = None
+                try:
+                    logger.info("Fetching GitHub user emails")
+                    emails_response = client.get(
+                        "https://api.github.com/user/emails",
+                        headers={
+                            "Authorization": f"Bearer {github_access_token}",
+                            "Accept": "application/vnd.github.v3+json"
+                        }
+                    )
+                    emails_response.raise_for_status()
+                    emails = emails_response.json()
+                    
+                    # Find primary email or first verified email
+                    for email_entry in emails:
+                        if email_entry.get("primary") and email_entry.get("verified"):
+                            github_email = email_entry.get("email")
+                            break
+                    
+                    # If no primary verified email, use first verified email
+                    if not github_email:
+                        for email_entry in emails:
+                            if email_entry.get("verified"):
+                                github_email = email_entry.get("email")
+                                break
+                    
+                    # Fallback to first email if no verified email found
+                    if not github_email and emails:
+                        github_email = emails[0].get("email")
+                    
+                    logger.info(f"Found GitHub email: {github_email if github_email else 'None'}")
+                except httpx.HTTPError as e:
+                    logger.warning(f"Failed to fetch GitHub emails: {e}, continuing without email")
+                    # Fallback to email from user profile if available
+                    github_email = github_user.get("email")
+                
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error during GitHub OAuth flow: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to authenticate with GitHub: {str(e)}"
             )
-            response.raise_for_status()
-            token_response = response.json()
+        
+        # Find or create Makapix user
+        github_user_id = str(github_user["id"])
+        github_username = github_user["login"]
+        
+        logger.info(f"Looking up user with GitHub ID: {github_user_id}")
+        # Check if user already exists
+        user = db.query(models.User).filter(
+            models.User.github_user_id == github_user_id
+        ).first()
+        
+        if not user:
+            logger.info(f"Creating new user for GitHub username: {github_username}")
+            # Create new user
+            # Generate handle from GitHub username (ensure uniqueness)
+            base_handle = re.sub(r'[^a-zA-Z0-9_-]', '', github_username.lower())
             
-            if "error" in token_response:
+            # Ensure handle is not empty and has reasonable length
+            if not base_handle:
+                base_handle = "user"
+            elif len(base_handle) > 47:  # Leave room for counter suffix
+                base_handle = base_handle[:47]
+            
+            handle = base_handle
+            counter = 1
+            max_attempts = 100  # Prevent infinite loop
+            
+            while db.query(models.User).filter(models.User.handle == handle).first() and counter < max_attempts:
+                handle = f"{base_handle}{counter}"
+                counter += 1
+            
+            if counter >= max_attempts:
+                logger.error(f"Failed to find unique handle after {max_attempts} attempts for username: {github_username}")
                 raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"GitHub OAuth error: {token_response['error_description']}"
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Unable to generate unique username. Please contact support."
                 )
             
-            access_token = token_response["access_token"]
-            
-            # Fetch GitHub user profile
-            user_response = client.get(
-                "https://api.github.com/user",
-                headers={
-                    "Authorization": f"Bearer {access_token}",
-                    "Accept": "application/vnd.github.v3+json"
-                }
+            user = models.User(
+                github_user_id=github_user_id,
+                github_username=github_username,
+                handle=handle,
+                display_name=github_user.get("name") or github_username,
+                bio=github_user.get("bio"),
+                avatar_url=github_user.get("avatar_url"),
+                email=github_email or github_user.get("email"),
+                roles=["user"]  # Default role
             )
-            user_response.raise_for_status()
-            github_user = user_response.json()
-            
-    except httpx.HTTPError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to authenticate with GitHub: {str(e)}"
-        )
-    
-    # Find or create Makapix user
-    github_user_id = str(github_user["id"])
-    github_username = github_user["login"]
-    
-    # Check if user already exists
-    user = db.query(models.User).filter(
-        models.User.github_user_id == github_user_id
-    ).first()
-    
-    if not user:
-        # Create new user
-        # Generate handle from GitHub username (ensure uniqueness)
-        base_handle = re.sub(r'[^a-zA-Z0-9_-]', '', github_username.lower())
-        handle = base_handle
-        counter = 1
+            db.add(user)
+            try:
+                db.commit()
+                db.refresh(user)
+                logger.info(f"Successfully created user: {user.id} ({user.handle})")
+            except IntegrityError as e:
+                db.rollback()
+                error_str = str(e.orig) if hasattr(e, 'orig') else str(e)
+                logger.error(f"Database integrity error creating user: {error_str}", exc_info=True)
+                
+                # Check if it's a handle collision and retry with a different handle
+                if "handle" in error_str.lower() or "ix_users_handle" in error_str.lower():
+                    logger.info(f"Handle collision detected for '{handle}', retrying with different handle")
+                    # Use UUID-based suffix to ensure uniqueness
+                    import uuid
+                    handle = f"{base_handle}{uuid.uuid4().hex[:8]}"
+                    user.handle = handle
+                    db.add(user)
+                    try:
+                        db.commit()
+                        db.refresh(user)
+                        logger.info(f"Successfully created user with UUID-based handle: {user.id} ({user.handle})")
+                    except IntegrityError as e2:
+                        db.rollback()
+                        logger.error(f"Still failed after retry: {e2}", exc_info=True)
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"Failed to create user account due to handle conflict. Please try again later."
+                        )
+                # Check if it's a github_user_id collision (user might have been created concurrently)
+                elif "github_user_id" in error_str.lower() or "ix_users_github_user_id" in error_str.lower():
+                    logger.info(f"GitHub user ID collision detected for '{github_user_id}', checking if user exists")
+                    # Check if user was created concurrently
+                    existing_user = db.query(models.User).filter(
+                        models.User.github_user_id == github_user_id
+                    ).first()
+                    if existing_user:
+                        logger.info(f"Found existing user created concurrently: {existing_user.id} ({existing_user.handle})")
+                        user = existing_user
+                    else:
+                        logger.error(f"GitHub user ID collision but user not found: {github_user_id}")
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail="Account creation conflict. Please try logging in again."
+                        )
+                else:
+                    # Unknown constraint violation
+                    logger.error(f"Unknown integrity error: {error_str}")
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"Failed to create user account: {error_str}. Please try again."
+                    )
         
-        while db.query(models.User).filter(models.User.handle == handle).first():
-            handle = f"{base_handle}{counter}"
-            counter += 1
-        
-        user = models.User(
-            github_user_id=github_user_id,
-            github_username=github_username,
-            handle=handle,
-            display_name=github_user.get("name", github_username),
-            bio=github_user.get("bio"),
-            avatar_url=github_user.get("avatar_url"),
-            email=github_user.get("email"),
-            roles=["user"]  # Default role
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+        # Update user profile with latest GitHub data (for both new and existing users)
+        if user:
+            logger.info(f"Updating user profile for user: {user.id} ({user.handle})")
+            user.github_username = github_username
+            user.display_name = github_user.get("name") or user.display_name or github_username
+            user.bio = github_user.get("bio") or user.bio
+            user.avatar_url = github_user.get("avatar_url") or user.avatar_url
+            if github_email:
+                user.email = github_email
+            try:
+                db.commit()
+                db.refresh(user)
+            except IntegrityError as e:
+                db.rollback()
+                logger.error(f"Database integrity error updating user: {e}", exc_info=True)
+                # Don't fail the auth flow if profile update fails
 
-    # Handle GitHub App installation if installation_id is provided
-    if installation_id and setup_action == "install":
-        # Check if installation already exists
-        existing_installation = db.query(models.GitHubInstallation).filter(
-            models.GitHubInstallation.installation_id == installation_id
-        ).first()
+        # Handle GitHub App installation if installation_id is provided
+        if installation_id and setup_action == "install":
+            logger.info(f"Processing GitHub App installation: {installation_id}")
+            try:
+                # Check if installation already exists
+                existing_installation = db.query(models.GitHubInstallation).filter(
+                    models.GitHubInstallation.installation_id == installation_id
+                ).first()
 
-        # Set target repository (makapix-user is the standard repository name)
-        target_repo = f"{github_username}.github.io"
+                # Set target repository (makapix-user is the standard repository name)
+                target_repo = f"{github_username}.github.io"
 
-        if not existing_installation:
-            # Create new installation record
-            installation = models.GitHubInstallation(
-                user_id=user.id,
-                installation_id=installation_id,
-                account_login=github_username,
-                account_type="User",
-                target_repo=target_repo
+                if not existing_installation:
+                    # Create new installation record
+                    installation = models.GitHubInstallation(
+                        user_id=user.id,
+                        installation_id=installation_id,
+                        account_login=github_username,
+                        account_type="User",
+                        target_repo=target_repo
+                    )
+                    db.add(installation)
+                    db.commit()
+                    logger.info(f"Created new GitHub installation: {installation_id}")
+                elif existing_installation.user_id != user.id:
+                    # Update installation to point to this user
+                    existing_installation.user_id = user.id
+                    existing_installation.account_login = github_username
+                    existing_installation.target_repo = target_repo
+                    db.commit()
+                    logger.info(f"Updated GitHub installation {installation_id} to user {user.id}")
+            except IntegrityError as e:
+                db.rollback()
+                logger.error(f"Database integrity error handling installation: {e}", exc_info=True)
+                # Don't fail the auth flow if installation handling fails
+
+        # Generate JWT tokens
+        logger.info(f"Generating JWT tokens for user: {user.id}")
+        try:
+            makapix_access_token = create_access_token(user.id)
+            makapix_refresh_token = create_refresh_token(user.id, db)
+            logger.info(f"Successfully generated tokens for user: {user.id}")
+        except Exception as e:
+            logger.error(f"Failed to generate tokens: {e}", exc_info=True)
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate authentication tokens. Please try again."
             )
-            db.add(installation)
-            db.commit()
-        elif existing_installation.user_id != user.id:
-            # Update installation to point to this user
-            existing_installation.user_id = user.id
-            existing_installation.account_login = github_username
-            existing_installation.target_repo = target_repo
-            db.commit()
 
-    # Generate JWT tokens
-    access_token = create_access_token(user.id)
-    refresh_token = create_refresh_token(user.id, db)
+        # Determine the base URL from the request
+        base_url = str(request.base_url).rstrip('/')
+        # Handle both http and https
+        if request.headers.get("x-forwarded-proto") == "https":
+            base_url = base_url.replace("http://", "https://")
 
-    # Determine the base URL from the request
-    base_url = str(request.base_url).rstrip('/')
-    # Handle both http and https
-    if request.headers.get("x-forwarded-proto") == "https":
-        base_url = base_url.replace("http://", "https://")
+        # Create a simple HTML page that shows success and stores tokens
+        from fastapi.responses import HTMLResponse
 
-    # Create a simple HTML page that shows success and stores tokens
-    from fastapi.responses import HTMLResponse
-
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Makapix - Authentication Success</title>
-        <style>
-            body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
-            .success {{ color: #22c55e; font-size: 24px; margin-bottom: 20px; }}
-            .info {{ color: #666; margin-bottom: 30px; }}
-            .debug {{ color: #888; font-size: 12px; margin-top: 20px; }}
-            .button {{
-                background: #0070f3;
-                color: white;
-                padding: 12px 24px;
-                border: none;
-                border-radius: 6px;
-                cursor: pointer;
-                text-decoration: none;
-                display: inline-block;
-                margin: 10px;
-            }}
-            .button:hover {{ background: #0051a2; }}
-        </style>
-    </head>
-    <body>
-        <div class="success">✅ Authentication Successful!</div>
-        <div class="info">Welcome to Makapix, {user.display_name}!</div>
-        <div class="info">You can now close this window and return to the main application.</div>
-        <a href="{base_url}" class="button">Go to Makapix</a>
-        <a href="{base_url}/publish" class="button">Publish Artwork</a>
-        
-        <div class="debug">
-            <p>Debug Info:</p>
-            <p>User ID: {user.id}</p>
-            <p>Handle: {user.handle}</p>
-            <p>Display Name: {user.display_name}</p>
-            <p>Access Token: {access_token[:20]}...</p>
-        </div>
-        
-        <script>
-            console.log('OAuth Callback - Storing tokens...');
-            console.log('Access Token:', '{access_token[:20]}...');
-            console.log('User ID:', '{user.id}');
-            console.log('Handle:', '{user.handle}');
-            
-            // Store tokens in localStorage for the main app
-            try {{
-                localStorage.setItem('access_token', '{access_token}');
-                localStorage.setItem('refresh_token', '{refresh_token}');
-                localStorage.setItem('user_id', '{user.id}');
-                localStorage.setItem('user_handle', '{user.handle}');
-                localStorage.setItem('user_display_name', '{user.display_name}');
-                
-                console.log('Tokens stored successfully!');
-                console.log('localStorage contents:', Object.keys(localStorage));
-                
-                // Also try to communicate with parent window if opened in popup
-                if (window.opener) {{
-                    window.opener.postMessage({{
-                        type: 'OAUTH_SUCCESS',
-                        tokens: {{
-                            access_token: '{access_token}',
-                            refresh_token: '{refresh_token}',
-                            user_id: '{user.id}',
-                            user_handle: '{user.handle}',
-                            user_display_name: '{user.display_name}'
-                        }}
-                    }}, '*');
-                    window.close();
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Makapix - Authentication Success</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
+                .success {{ color: #22c55e; font-size: 24px; margin-bottom: 20px; }}
+                .info {{ color: #666; margin-bottom: 30px; }}
+                .debug {{ color: #888; font-size: 12px; margin-top: 20px; }}
+                .button {{
+                    background: #0070f3;
+                    color: white;
+                    padding: 12px 24px;
+                    border: none;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    text-decoration: none;
+                    display: inline-block;
+                    margin: 10px;
                 }}
-            }} catch (error) {{
-                console.error('Error storing tokens:', error);
-            }}
-        </script>
-    </body>
-    </html>
-    """
-    
-    return HTMLResponse(content=html_content)
+                .button:hover {{ background: #0051a2; }}
+            </style>
+        </head>
+        <body>
+            <div class="success">✅ Authentication Successful!</div>
+            <div class="info">Welcome to Makapix, {user.display_name}!</div>
+            <div class="info">You can now close this window and return to the main application.</div>
+            <a href="{base_url}" class="button">Go to Makapix</a>
+            <a href="{base_url}/publish" class="button">Publish Artwork</a>
+            
+            <div class="debug">
+                <p>Debug Info:</p>
+                <p>User ID: {user.id}</p>
+                <p>Handle: {user.handle}</p>
+                <p>Display Name: {user.display_name}</p>
+                <p>Access Token: {makapix_access_token[:20]}...</p>
+            </div>
+            
+            <script>
+                console.log('OAuth Callback - Storing tokens...');
+                console.log('Access Token:', '{makapix_access_token[:20]}...');
+                console.log('User ID:', '{user.id}');
+                console.log('Handle:', '{user.handle}');
+                
+                // Store tokens in localStorage for the main app
+                try {{
+                    localStorage.setItem('access_token', '{makapix_access_token}');
+                    localStorage.setItem('refresh_token', '{makapix_refresh_token}');
+                    localStorage.setItem('user_id', '{user.id}');
+                    localStorage.setItem('user_handle', '{user.handle}');
+                    localStorage.setItem('user_display_name', '{user.display_name}');
+                    
+                    console.log('Tokens stored successfully!');
+                    console.log('localStorage contents:', Object.keys(localStorage));
+                    
+                    // Also try to communicate with parent window if opened in popup
+                    if (window.opener) {{
+                        window.opener.postMessage({{
+                            type: 'OAUTH_SUCCESS',
+                            tokens: {{
+                                access_token: '{makapix_access_token}',
+                                refresh_token: '{makapix_refresh_token}',
+                                user_id: '{user.id}',
+                                user_handle: '{user.handle}',
+                                user_display_name: '{user.display_name}'
+                            }}
+                        }}, '*');
+                        window.close();
+                    }}
+                }} catch (error) {{
+                    console.error('Error storing tokens:', error);
+                }}
+            </script>
+        </body>
+        </html>
+        """
+        
+        return HTMLResponse(content=html_content)
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in GitHub OAuth callback: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred during authentication. Please try again."
+        )
 
 
 @router.post(

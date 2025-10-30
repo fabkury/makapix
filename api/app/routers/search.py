@@ -117,6 +117,7 @@ def search_all(
                 models.Post.hidden_by_mod == False,
                 models.Post.non_conformant == False,
             )
+        post_query = post_query.filter(models.Post.hidden_by_user == False)
         
         # Apply cursor pagination
         if cursor:
@@ -164,6 +165,7 @@ def search_all(
                     models.Post.hidden_by_mod == False,
                     models.Post.non_conformant == False,
                 )
+            post_query = post_query.filter(models.Post.hidden_by_user == False)
             
             # Limit results
             hashtag_posts = post_query.order_by(models.Post.created_at.desc()).limit(limit // len(types)).all()
@@ -318,14 +320,15 @@ def list_hashtag_posts(
     )
     
     # Apply visibility filters
-    query = query.filter(models.Post.visible == True)
+    query = query.filter(
+        models.Post.visible == True,
+        models.Post.hidden_by_mod == False,
+        models.Post.hidden_by_user == False,
+    )
     
-    # Hide posts hidden by moderators unless current user is moderator/owner
+    # Hide non-conformant posts unless current user is moderator/owner
     if not is_moderator:
-        query = query.filter(
-            models.Post.hidden_by_mod == False,
-            models.Post.non_conformant == False,
-        )
+        query = query.filter(models.Post.non_conformant == False)
     
     # Apply cursor pagination
     query = apply_cursor_filter(query, models.Post, cursor, "created_at", sort_desc=True)
@@ -374,11 +377,13 @@ def feed_promoted(
     if cached_result:
         return schemas.Page(**cached_result)
     
-    query = db.query(models.Post).filter(
-        models.Post.promoted == True,
-        models.Post.visible == True,
-        models.Post.hidden_by_mod == False,
-    )
+    from sqlalchemy.orm import joinedload
+    query = db.query(models.Post).options(joinedload(models.Post.owner)).filter(
+            models.Post.promoted == True,
+            models.Post.visible == True,
+            models.Post.hidden_by_mod == False,
+            models.Post.hidden_by_user == False,
+        )
     
     # Hide non-conformant posts unless current user is moderator/owner
     if not is_moderator:
