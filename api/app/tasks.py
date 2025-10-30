@@ -544,10 +544,18 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
         return {"status": "success", "repo": f"{owner}/{repo_name}"}
         
     except Exception as e:
-        logger.error("Error processing relay job %s: %s", job_id, str(e))
-        job.status = "failed"
-        job.error = str(e)
-        db.commit()
+        logger.error("Error processing relay job %s: %s", job_id, str(e), exc_info=True)
+        try:
+            # Rollback any pending transaction
+            db.rollback()
+            # Refresh the job object to ensure we have a clean state
+            job = db.query(models.RelayJob).filter(models.RelayJob.id == job_id).first()
+            if job:
+                job.status = "failed"
+                job.error = str(e)
+                db.commit()
+        except Exception as rollback_error:
+            logger.error("Failed to update job status after error: %s", rollback_error)
         return {"status": "error", "message": str(e)}
     finally:
         db.close()

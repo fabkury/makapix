@@ -9,7 +9,7 @@ export default function GitHubAppSetupPage() {
   const [installationId, setInstallationId] = useState<string>('');
   
   const API_BASE_URL = typeof window !== 'undefined' 
-    ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
+    ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
     : 'http://localhost';
 
   useEffect(() => {

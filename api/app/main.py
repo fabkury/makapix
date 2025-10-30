@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from alembic import command
@@ -39,21 +40,61 @@ load_dotenv()
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
 
-app = FastAPI(
-    title="Makapix API",
-    version="1.0.0",
-    description="Lightweight pixel-art social network API",
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 _STARTUP_COMPLETE = False
+
+
+def run_migrations() -> None:
+    logger.info("run_migrations: Starting...")
+    try:
+        logger.info("Running Alembic migrations...")
+        alembic_cfg = _alembic_config()
+        
+        # Check current revision first to avoid unnecessary upgrade calls
+        from alembic.runtime.migration import MigrationContext
+        from alembic.script import ScriptDirectory
+        from .db import engine
+        
+        try:
+            with engine.connect() as connection:
+                context = MigrationContext.configure(connection)
+                # Use get_current_heads() instead of get_current_revision() when there are multiple heads
+                current_heads = context.get_current_heads()
+                if not current_heads:
+                    current_rev = None
+                else:
+                    # If multiple heads, check if any of them match the available heads
+                    current_rev = current_heads[0] if len(current_heads) == 1 else None
+                
+                script = ScriptDirectory.from_config(alembic_cfg)
+                heads = script.get_heads()
+                
+                # If we have a single current revision and it's in heads, we're up to date
+                if current_rev and current_rev in heads:
+                    logger.info(f"Database is up to date (revision: {current_rev}), skipping migrations.")
+                    return
+                
+                # If multiple heads, upgrade to the latest one (highest revision number)
+                if len(heads) > 1:
+                    logger.info(f"Multiple heads detected: {heads}. Upgrading to latest...")
+                    # Sort heads by revision number and take the latest
+                    latest_head = max(heads, key=lambda h: int(h.split('_')[0]) if h.split('_')[0].isdigit() else 0)
+                    logger.info(f"Selected latest head: {latest_head}")
+                    target_rev = latest_head
+                else:
+                    target_rev = heads[0]
+                
+                logger.info(f"Current revision(s): {current_heads}, Target revision: {target_rev}. Running migrations...")
+        finally:
+            # Ensure connection is closed before calling command.upgrade
+            engine.dispose()
+        
+        # Now run migrations with a fresh connection pool
+        command.upgrade(alembic_cfg, target_rev)
+        logger.info("run_migrations: command.upgrade() returned")
+        logger.info("run_migrations: Completed successfully.")
+    except Exception as e:
+        logger.error(f"run_migrations: Error occurred: {e}", exc_info=True)
+        raise
 
 
 def _alembic_config() -> Config:
@@ -63,24 +104,49 @@ def _alembic_config() -> Config:
     return cfg
 
 
-def run_migrations() -> None:
-    logger.info("Running Alembic migrations...")
-    command.upgrade(_alembic_config(), "head")
-
-
 def run_startup_tasks() -> None:
     global _STARTUP_COMPLETE
+    logger.info("run_startup_tasks: Starting...")
     if _STARTUP_COMPLETE:
+        logger.info("run_startup_tasks: Already completed, skipping.")
         return
-    run_migrations()
-    ensure_seed_data()
-    _STARTUP_COMPLETE = True
-    logger.info("Startup tasks completed.")
+    try:
+        logger.info("run_startup_tasks: Running migrations...")
+        run_migrations()
+        logger.info("run_startup_tasks: Migrations completed, running seed data...")
+        ensure_seed_data()
+        _STARTUP_COMPLETE = True
+        logger.info("Startup tasks completed.")
+    except Exception as e:
+        logger.error(f"Startup tasks failed: {e}", exc_info=True)
+        raise
 
 
-@app.on_event("startup")
-def on_startup() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("Starting application...")
+    # Run startup tasks synchronously - server won't start until these complete
     run_startup_tasks()
+    yield
+    # Shutdown
+    logger.info("Shutting down application...")
+
+
+app = FastAPI(
+    title="Makapix API",
+    version="1.0.0",
+    description="Lightweight pixel-art social network API",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # Include all routers
