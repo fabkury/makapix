@@ -669,6 +669,36 @@ class RelayUploadResponse(BaseModel):
     error: str | None = None
 
 
+class RepositoryInfo(BaseModel):
+    """GitHub repository information."""
+
+    name: str
+    full_name: str
+    description: str | None = None
+    private: bool
+    html_url: str
+
+
+class RepositoryListResponse(BaseModel):
+    """Repository list response."""
+
+    repositories: list[RepositoryInfo]
+
+
+class CreateRepositoryRequest(BaseModel):
+    """Create repository request."""
+
+    name: str
+
+
+class CreateRepositoryResponse(BaseModel):
+    """Create repository response."""
+
+    name: str
+    full_name: str
+    html_url: str
+
+
 class ManifestValidateRequest(BaseModel):
     """Manifest validation request."""
 
