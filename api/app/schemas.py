@@ -168,6 +168,7 @@ class Post(BaseModel):
     promoted_category: str | None = None
     created_at: datetime
     updated_at: datetime | None = None
+    owner: UserPublic | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -20,7 +20,7 @@ interface PageResponse<T> {
   next_cursor: string | null;
 }
 
-export default function HomePage() {
+export default function RecentPage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -40,7 +40,7 @@ export default function HomePage() {
     setError(null);
     
     try {
-      const url = `${API_BASE_URL}/api/feed/promoted?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const url = `${API_BASE_URL}/api/posts/recent?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       const response = await fetch(url);
       
       if (!response.ok) {
@@ -100,7 +100,7 @@ export default function HomePage() {
   return (
     <>
       <Head>
-        <title>Makapix - Promoted Pixel Art</title>
+        <title>Makapix - Recent Pixel Art</title>
       </Head>
       <div style={styles.container}>
         <header style={styles.header}>
@@ -114,7 +114,7 @@ export default function HomePage() {
         </header>
 
         <main style={styles.main}>
-          <h2 style={styles.sectionTitle}>Promoted Works</h2>
+          <h2 style={styles.sectionTitle}>Recent Works</h2>
           
           {error && (
             <div style={styles.error}>
@@ -127,7 +127,7 @@ export default function HomePage() {
 
           {posts.length === 0 && !loading && !error && (
             <div style={styles.empty}>
-              <p>No promoted posts yet. Check back later!</p>
+              <p>No recent posts yet.</p>
             </div>
           )}
 
@@ -339,3 +339,4 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '2rem',
   },
 };
+

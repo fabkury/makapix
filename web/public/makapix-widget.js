@@ -1123,7 +1123,12 @@
   function initWidgets() {
     const containers = document.querySelectorAll('[id^="makapix-widget"]');
     containers.forEach(container => {
+      // Check if widget is already initialized
+      if (container.__makapix_initialized) {
+        return;
+      }
       new MakapixWidget(container);
+      container.__makapix_initialized = true;
     });
   }
 
