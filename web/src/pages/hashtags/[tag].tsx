@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 
 interface Post {
   id: string;
@@ -11,8 +12,6 @@ interface Post {
   canvas: string;
   owner_id: string;
   created_at: string;
-  promoted?: boolean;
-  visible?: boolean;
 }
 
 interface PageResponse<T> {
@@ -20,7 +19,10 @@ interface PageResponse<T> {
   next_cursor: string | null;
 }
 
-export default function HomePage() {
+export default function HashtagPage() {
+  const router = useRouter();
+  const { tag } = router.query;
+  
   const [posts, setPosts] = useState<Post[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -33,14 +35,14 @@ export default function HomePage() {
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
     : '';
 
-  const loadPosts = useCallback(async (cursor: string | null = null) => {
-    if (loading || (!hasMore && cursor !== null)) return;
+  const loadPosts = useCallback(async (hashtag: string, cursor: string | null = null) => {
+    if (loading || (!hasMore && cursor !== null) || !hashtag) return;
     
     setLoading(true);
     setError(null);
     
     try {
-      const url = `${API_BASE_URL}/api/feed/promoted?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const url = `${API_BASE_URL}/api/hashtags/${encodeURIComponent(hashtag)}/posts?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       const response = await fetch(url);
       
       if (!response.ok) {
@@ -50,10 +52,8 @@ export default function HomePage() {
       const data: PageResponse<Post> = await response.json();
       
       if (cursor) {
-        // Append to existing posts
         setPosts(prev => [...prev, ...data.items]);
       } else {
-        // First load
         setPosts(data.items);
       }
       
@@ -67,19 +67,24 @@ export default function HomePage() {
     }
   }, [API_BASE_URL, loading, hasMore]);
 
-  // Initial load
+  // Load posts when tag changes
   useEffect(() => {
-    if (API_BASE_URL) {
-      loadPosts();
+    if (tag && typeof tag === 'string') {
+      setPosts([]);
+      setNextCursor(null);
+      setHasMore(true);
+      loadPosts(tag);
     }
-  }, [API_BASE_URL]);
+  }, [tag, loadPosts]);
 
   // Intersection Observer for infinite scroll
   useEffect(() => {
+    if (!tag || typeof tag !== 'string') return;
+
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore && !loading) {
-          loadPosts(nextCursor);
+          loadPosts(tag, nextCursor);
         }
       },
       { threshold: 0.1 }
@@ -95,12 +100,14 @@ export default function HomePage() {
         observer.unobserve(currentTarget);
       }
     };
-  }, [hasMore, loading, nextCursor, loadPosts]);
+  }, [hasMore, loading, nextCursor, tag, loadPosts]);
+
+  const hashtagName = typeof tag === 'string' ? tag : '';
 
   return (
     <>
       <Head>
-        <title>Makapix - Promoted Pixel Art</title>
+        <title>#{hashtagName} - Makapix</title>
       </Head>
       <div style={styles.container}>
         <header style={styles.header}>
@@ -114,20 +121,29 @@ export default function HomePage() {
         </header>
 
         <main style={styles.main}>
-          <h2 style={styles.sectionTitle}>Promoted Works</h2>
+          <h2 style={styles.sectionTitle}>#{hashtagName}</h2>
+          {posts.length > 0 && (
+            <p style={styles.count}>{posts.length} {posts.length === 1 ? 'post' : 'posts'}</p>
+          )}
           
           {error && (
             <div style={styles.error}>
               <p>{error}</p>
-              <button onClick={() => loadPosts()} style={styles.retryButton}>
+              <button onClick={() => hashtagName && loadPosts(hashtagName)} style={styles.retryButton}>
                 Retry
               </button>
             </div>
           )}
 
-          {posts.length === 0 && !loading && !error && (
+          {posts.length === 0 && !loading && !error && hashtagName && (
             <div style={styles.empty}>
-              <p>No promoted posts yet. Check back later!</p>
+              <p>No posts found with hashtag #{hashtagName}</p>
+            </div>
+          )}
+
+          {!hashtagName && (
+            <div style={styles.empty}>
+              <p>Invalid hashtag</p>
             </div>
           )}
 
@@ -150,14 +166,14 @@ export default function HomePage() {
                     )}
                     {post.hashtags && post.hashtags.length > 0 && (
                       <div style={styles.hashtags}>
-                        {post.hashtags.map((tag, idx) => (
+                        {post.hashtags.map((tagItem, idx) => (
                           <Link
                             key={idx}
-                            href={`/hashtags/${tag}`}
+                            href={`/hashtags/${tagItem}`}
                             style={styles.hashtag}
                             onClick={(e) => e.stopPropagation()}
                           >
-                            #{tag}
+                            #{tagItem}
                           </Link>
                         ))}
                       </div>
@@ -228,8 +244,13 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   sectionTitle: {
     fontSize: '1.8rem',
-    marginBottom: '2rem',
+    marginBottom: '0.5rem',
     color: '#333',
+  },
+  count: {
+    fontSize: '1rem',
+    color: '#666',
+    marginBottom: '2rem',
   },
   error: {
     backgroundColor: '#fee',
@@ -339,3 +360,4 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '2rem',
   },
 };
+

@@ -5,10 +5,11 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
 from ..auth import check_ownership, get_current_user, get_current_user_optional, require_moderator, require_ownership
+from ..cache import cache_get, cache_set, cache_invalidate
 from ..deps import get_db
 from ..pagination import apply_cursor_filter, create_page_response
 from ..mqtt.notifications import publish_new_post_notification, publish_category_promotion_notification
@@ -130,6 +131,10 @@ def create_post(
     db.commit()
     db.refresh(post)
     
+    # Invalidate feed caches since a new post was created
+    cache_invalidate("feed:recent:*")
+    cache_invalidate("hashtags:*")
+    
     # TODO: Queue conformance check job
     
     # Publish MQTT notification to followers
@@ -149,29 +154,55 @@ def list_recent_posts(
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_optional),
 ) -> schemas.Page[schemas.Post]:
     """
-    List recent posts (visible only).
+    List recent posts (visible only) with infinite scroll support.
     
-    TODO: Implement cursor pagination
-    TODO: Cache this query with short TTL
+    Returns recent posts ordered by creation date (newest first).
+    Uses cursor-based pagination for efficient infinite scroll.
+    Cached for 2 minutes due to high churn rate.
     """
-    query = (
-        db.query(models.Post)
-        .filter(
-            models.Post.visible == True,
-            models.Post.hidden_by_mod == False,
-        )
-        .order_by(models.Post.created_at.desc())
-        .limit(limit)
+    # Create cache key based on cursor and limit
+    # Include moderator flag in cache key since they see different results
+    is_moderator = current_user and ("moderator" in current_user.roles or "owner" in current_user.roles)
+    cache_key = f"feed:recent:{'mod' if is_moderator else 'user'}:{cursor or 'first'}:{limit}"
+    
+    # Try to get from cache
+    cached_result = cache_get(cache_key)
+    if cached_result:
+        return schemas.Page(**cached_result)
+    
+    query = db.query(models.Post).filter(
+        models.Post.visible == True,
+        models.Post.hidden_by_mod == False,
     )
     
-    posts = query.all()
+    # Hide non-conformant posts unless current user is moderator/owner
+    if not is_moderator:
+        query = query.filter(models.Post.non_conformant == False)
     
-    return schemas.Page(
-        items=[schemas.Post.model_validate(p) for p in posts],
-        next_cursor=None,
+    # Apply cursor pagination
+    query = apply_cursor_filter(query, models.Post, cursor, "created_at", sort_desc=True)
+    
+    # Order and limit
+    query = query.order_by(models.Post.created_at.desc())
+    
+    # Fetch limit + 1 to check if there are more results
+    posts = query.limit(limit + 1).all()
+    
+    # Create paginated response
+    page_data = create_page_response(posts, limit, cursor, "created_at")
+    
+    response = schemas.Page(
+        items=[schemas.Post.model_validate(p) for p in page_data["items"]],
+        next_cursor=page_data["next_cursor"],
     )
+    
+    # Cache for 2 minutes (120 seconds) - shorter due to high churn
+    cache_set(cache_key, response.model_dump(), ttl=120)
+    
+    return response
 
 
 @router.get("/{id}", response_model=schemas.Post)
@@ -183,7 +214,7 @@ def get_post(
     """
     Get post by ID.
     """
-    post = db.query(models.Post).filter(models.Post.id == id).first()
+    post = db.query(models.Post).options(joinedload(models.Post.owner)).filter(models.Post.id == id).first()
     if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
     
@@ -262,6 +293,11 @@ def delete_post(
     post.visible = False
     post.hidden_by_user = True
     db.commit()
+    
+    # Invalidate feed caches
+    cache_invalidate("feed:recent:*")
+    cache_invalidate("feed:promoted:*")
+    cache_invalidate("hashtags:*")
 
 
 @router.post(
@@ -432,6 +468,9 @@ def promote_post(
     post.promoted_category = payload.category
     db.commit()
     
+    # Invalidate promoted feed cache
+    cache_invalidate("feed:promoted:*")
+    
     # Log to audit
     log_moderation_action(
         db=db,
@@ -478,6 +517,9 @@ def demote_post(
     post.promoted = False
     post.promoted_category = None
     db.commit()
+    
+    # Invalidate promoted feed cache
+    cache_invalidate("feed:promoted:*")
     
     # Log to audit
     log_moderation_action(

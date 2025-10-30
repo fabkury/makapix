@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import JSZip from 'jszip';
 
@@ -20,6 +20,7 @@ export default function PublishPage() {
   const [githubAppInstalled, setGithubAppInstalled] = useState(false);
   const [githubAppInstallUrl, setGithubAppInstallUrl] = useState<string>('');
   const [validationError, setValidationError] = useState<{error?: string, details?: string, install_url?: string, app_slug?: string} | null>(null);
+  const expiredAlertShownRef = useRef(false);
 
   // Get API base URL - must be computed inside the component to ensure it runs client-side
   // Initialize with http://localhost as fallback to prevent issues when accessing directly on port 3000
@@ -146,7 +147,11 @@ export default function PublishPage() {
             localStorage.clear();
             setIsAuthenticated(false);
             setUserInfo(null);
-            alert('Your session has expired. Please log in again.');
+            // Only show alert if not already shown
+            if (!expiredAlertShownRef.current) {
+              expiredAlertShownRef.current = true;
+              alert('Your session has expired. Please log in again.');
+            }
             return;
           } else if (response.status === 500) {
             console.error('Server error - check if GITHUB_APP_SLUG is configured in environment');
@@ -243,6 +248,9 @@ export default function PublishPage() {
           handle: tokens.user_handle,
           displayName: tokens.user_display_name
         });
+        
+        // Reset expired alert flag when user logs in successfully
+        expiredAlertShownRef.current = false;
 
         // Check GitHub App installation status
         const currentApiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost';
@@ -376,7 +384,11 @@ export default function PublishPage() {
           // Clear invalid/expired tokens
           localStorage.clear();
           const errorMessage = errorData.detail || "Authentication failed";
-          alert(`${errorMessage}. Please log in again.`);
+          // Only show alert if not already shown
+          if (!expiredAlertShownRef.current) {
+            expiredAlertShownRef.current = true;
+            alert(`${errorMessage}. Please log in again.`);
+          }
           setIsAuthenticated(false);
           setUserInfo(null);
           setUploading(false);
@@ -711,7 +723,11 @@ export default function PublishPage() {
                       console.log('Debug API data:', data);
                       
                       if (response.status === 401) {
-                        alert(`Debug: Token expired (401). Please log in again.`);
+                        // Only show alert if not already shown
+                        if (!expiredAlertShownRef.current) {
+                          expiredAlertShownRef.current = true;
+                          alert(`Debug: Token expired (401). Please log in again.`);
+                        }
                         // Clear expired tokens
                         localStorage.clear();
                         window.location.reload();
