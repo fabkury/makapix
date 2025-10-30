@@ -572,17 +572,31 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
         token_data = get_installation_access_token(installation.installation_id)
         token = token_data["token"]
         
-        # Determine repository - use the existing makapix-user repo
-        repo_name = "makapix-user"  # Use the existing repository
+        # Determine repository - repository is required
+        repo_name = job.repo
+        if not repo_name:
+            job.status = "failed"
+            job.error = "Repository name is required but was not provided in the job"
+            db.commit()
+            return {"status": "error", "message": "Repository name is required"}
+        
+        repo_name = repo_name.strip()
         owner = installation.account_login
         
-        # Check if repository exists
+        logger.info(f"Processing job {job_id} for repository {owner}/{repo_name}")
+        
+        # Check if repository exists, create it if it doesn't
         if not repository_exists(token, owner, repo_name):
-            logger.error("Repository %s/%s not found and cannot be created with installation token", owner, repo_name)
-            job.status = "failed"
-            job.error = f"Repository {owner}/{repo_name} not found"
-            db.commit()
-            return {"status": "error", "message": "Repository not found"}
+            logger.info(f"Repository {owner}/{repo_name} not found, attempting to create it...")
+            try:
+                create_repository(token, repo_name, auto_init=True)
+                logger.info(f"Successfully created repository {owner}/{repo_name}")
+            except Exception as e:
+                logger.error(f"Failed to create repository {owner}/{repo_name}: {e}", exc_info=True)
+                job.status = "failed"
+                job.error = f"Repository {owner}/{repo_name} not found and could not be created: {str(e)}"
+                db.commit()
+                return {"status": "error", "message": f"Repository creation failed: {str(e)}"}
         
         # Extract manifest and artwork files from bundle
         bundle_path = Path(job.bundle_path)

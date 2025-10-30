@@ -187,20 +187,6 @@ export default function HomePage() {
                     {post.description && (
                       <p style={styles.cardDescription}>{post.description}</p>
                     )}
-                    {post.hashtags && post.hashtags.length > 0 && (
-                      <div style={styles.hashtags}>
-                        {post.hashtags.map((tag, idx) => (
-                          <Link
-                            key={idx}
-                            href={`/hashtags/${tag}`}
-                            style={styles.hashtag}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            #{tag}
-                          </Link>
-                        ))}
-                      </div>
-                    )}
                     <div style={styles.cardMeta}>
                       <span style={styles.canvas}>{post.canvas}</span>
                       <span style={styles.date}>
@@ -209,6 +195,19 @@ export default function HomePage() {
                     </div>
                   </div>
                 </Link>
+                {post.hashtags && post.hashtags.length > 0 && (
+                  <div style={styles.hashtags}>
+                    {post.hashtags.map((tag, idx) => (
+                      <Link
+                        key={idx}
+                        href={`/hashtags/${tag}`}
+                        style={styles.hashtag}
+                      >
+                        #{tag}
+                      </Link>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -345,7 +344,10 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     flexWrap: 'wrap',
     gap: '0.5rem',
-    marginBottom: '0.5rem',
+    padding: '0 1rem 1rem 1rem',
+    borderTop: '1px solid #f0f0f0',
+    marginTop: '0.5rem',
+    paddingTop: '0.5rem',
   },
   hashtag: {
     fontSize: '0.85rem',

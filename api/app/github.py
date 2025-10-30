@@ -250,8 +250,146 @@ def create_repository(token: str, name: str, auto_init: bool = True) -> dict:
             json=data,
             timeout=30
         )
+        
+        # Check for errors and provide detailed error message
+        if response.status_code >= 400:
+            error_details = {}
+            try:
+                error_data = response.json()
+                error_details = error_data
+            except:
+                error_details = {"message": response.text[:500] if response.text else f"HTTP {response.status_code}"}
+            
+            # Extract error message
+            error_msg = error_details.get("message", f"HTTP {response.status_code}")
+            if "errors" in error_details:
+                error_messages = [err.get("message", "") for err in error_details.get("errors", [])]
+                if error_messages:
+                    error_msg = "; ".join(error_messages)
+            
+            # Log the error for debugging
+            logger.error(f"GitHub API error creating repository '{name}': {error_msg}")
+            logger.error(f"Full error response: {error_details}")
+            
+            # Raise HTTPStatusError with detailed message
+            # Create a custom exception that includes the error message
+            class GitHubAPIError(Exception):
+                def __init__(self, message: str, status_code: int, response_data: dict):
+                    self.message = message
+                    self.status_code = status_code
+                    self.response_data = response_data
+                    super().__init__(f"{message} (HTTP {status_code})")
+            
+            raise GitHubAPIError(error_msg, response.status_code, error_details)
+        
         response.raise_for_status()
         return response.json()
+
+
+def list_repositories(token: str, installation_id: int = None) -> list[dict]:
+    """List user's GitHub repositories using installation token.
+    
+    For GitHub App installation tokens, prefer using /installation/repositories endpoint
+    if installation_id is provided, otherwise fall back to /user/repos.
+    """
+    repos = []
+    page = 1
+    per_page = 100
+    
+    # Try /installation/repositories endpoint first if we have installation_id
+    if installation_id:
+        try:
+            logger.info(f"Attempting to list repositories using installation endpoint for installation {installation_id}")
+            with httpx.Client() as client:
+                while True:
+                    response = client.get(
+                        f"https://api.github.com/installation/repositories",
+                        headers={
+                            "Authorization": f"Bearer {token}",
+                            "Accept": "application/vnd.github.v3+json"
+                        },
+                        params={
+                            "per_page": per_page,
+                            "page": page
+                        },
+                        timeout=30
+                    )
+                    
+                    if response.status_code == 403:
+                        logger.warning(f"Installation endpoint returned 403, falling back to /user/repos")
+                        break  # Fall through to /user/repos
+                    
+                    response.raise_for_status()
+                    data = response.json()
+                    page_repos = data.get("repositories", [])
+                    
+                    if not page_repos:
+                        break
+                    
+                    repos.extend(page_repos)
+                    
+                    if len(page_repos) < per_page:
+                        break
+                    
+                    page += 1
+            
+            if repos:
+                logger.info(f"Successfully fetched {len(repos)} repositories from installation endpoint")
+                return repos
+        except Exception as e:
+            logger.warning(f"Failed to use installation endpoint, falling back to /user/repos: {e}")
+            # Reset for fallback
+            repos = []
+            page = 1
+    
+    # Fall back to /user/repos endpoint
+    logger.info("Using /user/repos endpoint")
+    with httpx.Client() as client:
+        while True:
+            response = client.get(
+                "https://api.github.com/user/repos",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github.v3+json"
+                },
+                params={
+                    "per_page": per_page,
+                    "page": page,
+                    "sort": "updated",
+                    "direction": "desc"
+                },
+                timeout=30
+            )
+            
+            # Installation tokens should work with /user/repos if app has repository access
+            # If we get 403, it means the app doesn't have the right permissions
+            if response.status_code == 403:
+                logger.warning(f"GitHub App installation token lacks permissions to list repositories. Status: {response.status_code}")
+                # Try to get error details
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get("message", "Insufficient permissions")
+                    logger.error(f"GitHub API error: {error_msg}")
+                except:
+                    error_msg = "GitHub App installation token lacks permissions to list repositories"
+                raise ValueError(f"{error_msg}. The GitHub App may need additional repository permissions.")
+            
+            response.raise_for_status()
+            page_repos = response.json()
+            
+            if not page_repos:
+                break
+            
+            repos.extend(page_repos)
+            
+            # GitHub API uses Link header for pagination, but we'll check if we got fewer than per_page
+            if len(page_repos) < per_page:
+                break
+            
+            page += 1
+    
+    logger.info(f"Successfully fetched {len(repos)} repositories from /user/repos endpoint")
+    return repos
 
 
 def get_repository(token: str, owner: str, repo: str) -> dict:
