@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
+import Link from 'next/link';
 import JSZip from 'jszip';
 
 interface Artwork {
@@ -8,6 +9,7 @@ interface Artwork {
   canvas: string;
   file_kb: number;
   blob: File;
+  description?: string;
 }
 
 export default function PublishPage() {
@@ -15,6 +17,7 @@ export default function PublishPage() {
   const [uploading, setUploading] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<string>('');
+  const [jobError, setJobError] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userInfo, setUserInfo] = useState<any>(null);
   const [githubAppInstalled, setGithubAppInstalled] = useState(false);
@@ -278,6 +281,12 @@ export default function PublishPage() {
     });
   };
 
+  const handleArtworkUpdate = (index: number, field: 'title' | 'description', value: string) => {
+    setArtworks(prev => prev.map((artwork, i) => 
+      i === index ? { ...artwork, [field]: value } : artwork
+    ));
+  };
+
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     
@@ -285,12 +294,15 @@ export default function PublishPage() {
     const processedArtworks = await Promise.all(
       files.map(async (file) => {
         const img = await loadImage(file);
+        // Check if we already have this artwork (by filename) to preserve title/description
+        const existing = artworks.find(a => a.filename === file.name);
         return {
           filename: file.name,
-          title: file.name.replace(/\.[^/.]+$/, ""),
+          title: existing?.title || file.name.replace(/\.[^/.]+$/, ""),
           canvas: `${img.width}x${img.height}`,
           file_kb: Math.round(file.size / 1024),
-          blob: file
+          blob: file,
+          description: existing?.description || ""
         };
       })
     );
@@ -304,6 +316,7 @@ export default function PublishPage() {
         const response = await fetch(`${API_BASE_URL}/api/relay/jobs/${jobId}`);
         const job = await response.json();
         setJobStatus(job.status);
+        setJobError(job.error || null);
         
         if (job.status === 'queued' || job.status === 'running') {
           setTimeout(poll, 2000); // Poll every 2 seconds
@@ -317,6 +330,9 @@ export default function PublishPage() {
 
   const handlePublish = async () => {
     setUploading(true);
+    setJobError(null); // Clear any previous errors
+    setJobId(null); // Clear previous job ID
+    setJobStatus(''); // Clear previous status
     
     try {
       // Check if user is authenticated
@@ -338,7 +354,8 @@ export default function PublishPage() {
           title: a.title,
           canvas: a.canvas,
           file_kb: a.file_kb,
-          hashtags: []
+          hashtags: [],
+          description: a.description || ""
         }))
       };
       zip.file("manifest.json", JSON.stringify(manifest, null, 2));
@@ -376,14 +393,27 @@ export default function PublishPage() {
       console.log('Response received:', response.status, response.statusText);
       
       if (!response.ok) {
-        // Read error response once
-        const errorData = await response.json();
+        // Try to read error response as JSON, but handle non-JSON responses
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        try {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await response.json();
+            errorMessage = errorData.detail || errorData.error || errorMessage;
+          } else {
+            // If not JSON, read as text
+            const errorText = await response.text();
+            errorMessage = errorText || errorMessage;
+          }
+        } catch (parseError) {
+          // If parsing fails, use the default error message
+          console.error('Failed to parse error response:', parseError);
+        }
 
         // Handle authentication errors (expired token, user not found, etc.)
         if (response.status === 401) {
           // Clear invalid/expired tokens
           localStorage.clear();
-          const errorMessage = errorData.detail || "Authentication failed";
           // Only show alert if not already shown
           if (!expiredAlertShownRef.current) {
             expiredAlertShownRef.current = true;
@@ -395,7 +425,7 @@ export default function PublishPage() {
           return;
         }
 
-        throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(errorMessage);
       }
       
       const result = await response.json();
@@ -420,6 +450,50 @@ export default function PublishPage() {
       <Head>
         <title>Publish Artwork - Makapix</title>
       </Head>
+      <div style={{
+        minHeight: '100vh',
+        backgroundColor: '#f5f5f5',
+      }}>
+        <header style={{
+          backgroundColor: '#fff',
+          borderBottom: '1px solid #e0e0e0',
+          padding: '1rem 2rem',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}>
+          <h1 style={{
+            fontSize: '1.5rem',
+            fontWeight: 'bold',
+            margin: 0,
+            color: '#333',
+          }}>Makapix</h1>
+          <nav style={{
+            display: 'flex',
+            gap: '1.5rem',
+          }}>
+            <Link href="/" style={{
+              color: '#666',
+              textDecoration: 'none',
+              fontSize: '0.9rem',
+            }}>Home</Link>
+            <Link href="/recent" style={{
+              color: '#666',
+              textDecoration: 'none',
+              fontSize: '0.9rem',
+            }}>Recent</Link>
+            <Link href="/search" style={{
+              color: '#666',
+              textDecoration: 'none',
+              fontSize: '0.9rem',
+            }}>Search</Link>
+            <Link href="/publish" style={{
+              color: '#666',
+              textDecoration: 'none',
+              fontSize: '0.9rem',
+            }}>Publish</Link>
+          </nav>
+        </header>
       <main className="container">
         <h1>Publish Artwork</h1>
         
@@ -887,9 +961,53 @@ export default function PublishPage() {
                     />
                   </div>
                   <div className="artwork-details">
-                    <h3>{artwork.title}</h3>
-                    <p>Canvas: {artwork.canvas}</p>
-                    <p>Size: {artwork.file_kb} KB</p>
+                    <div style={{ marginBottom: '0.5rem' }}>
+                      <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.25rem', fontSize: '0.9rem' }}>
+                        Title:
+                      </label>
+                      <input
+                        type="text"
+                        value={artwork.title}
+                        onChange={(e) => handleArtworkUpdate(index, 'title', e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '0.5rem',
+                          fontSize: '1rem',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          boxSizing: 'border-box'
+                        }}
+                        maxLength={200}
+                      />
+                    </div>
+                    <div style={{ marginBottom: '0.5rem' }}>
+                      <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.25rem', fontSize: '0.9rem' }}>
+                        Description:
+                      </label>
+                      <textarea
+                        value={artwork.description || ''}
+                        onChange={(e) => handleArtworkUpdate(index, 'description', e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '0.5rem',
+                          fontSize: '0.9rem',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          minHeight: '80px',
+                          resize: 'vertical',
+                          fontFamily: 'inherit',
+                          boxSizing: 'border-box'
+                        }}
+                        maxLength={5000}
+                        placeholder="Describe your artwork..."
+                      />
+                      <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.25rem', textAlign: 'right' }}>
+                        {(artwork.description || '').length} / 5000
+                      </div>
+                    </div>
+                    <p style={{ fontSize: '0.875rem', color: '#666', marginTop: '0.5rem' }}>
+                      Canvas: {artwork.canvas} • Size: {artwork.file_kb} KB
+                    </p>
                   </div>
                 </div>
               ))}
@@ -954,7 +1072,19 @@ export default function PublishPage() {
               </div>
             )}
             {jobStatus === 'failed' && (
-              <p className="error">❌ Publishing failed. Check the logs for details.</p>
+              <div className="error">
+                <p>❌ Publishing failed.</p>
+                {jobError && (
+                  <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#d32f2f' }}>
+                    Error: {jobError}
+                  </p>
+                )}
+                {!jobError && (
+                  <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#666' }}>
+                    Check the logs for details.
+                  </p>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -1049,6 +1179,7 @@ export default function PublishPage() {
           font-weight: bold;
         }
       `}</style>
+      </div>
     </>
   );
 }

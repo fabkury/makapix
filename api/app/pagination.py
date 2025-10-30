@@ -104,6 +104,21 @@ def apply_cursor_filter(query, model_class, cursor: str | None, sort_field: str 
     sort_column = getattr(model_class, sort_field)
     id_column = model_class.id
     
+    # Cast sort_value to appropriate type based on sort_field
+    if sort_field == "created_at":
+        # Parse ISO format datetime string to Python datetime object
+        from datetime import datetime
+        if isinstance(sort_value, str):
+            try:
+                # Handle both 'Z' suffix and timezone offsets
+                if sort_value.endswith('Z'):
+                    sort_value = sort_value[:-1] + '+00:00'
+                parsed_datetime = datetime.fromisoformat(sort_value)
+                sort_value = parsed_datetime
+            except (ValueError, AttributeError):
+                # If parsing fails, return query without cursor filter
+                return query
+    
     if sort_desc:
         # For descending sort: (sort_field, id) < (sort_value, last_id)
         query = query.filter(

@@ -326,7 +326,6 @@
         <button class="makapix-reaction-btn" data-emoji="👍">👍</button>
         <button class="makapix-reaction-btn" data-emoji="❤️">❤️</button>
         <button class="makapix-reaction-btn" data-emoji="🔥">🔥</button>
-        <button class="makapix-reaction-btn" data-emoji="🤩">🤩</button>
         <button class="makapix-reaction-btn" data-emoji="😊">😊</button>
         <button class="makapix-reaction-btn" data-emoji="⭐">⭐</button>
       `;

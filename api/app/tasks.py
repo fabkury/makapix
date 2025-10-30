@@ -33,10 +33,15 @@ def generate_artwork_html(manifest: dict, artwork_files: List[str], owner: str, 
         # Get post ID for this artwork (use empty string if not available)
         post_id = post_ids[idx] if idx < len(post_ids) else ""
         
+        # Parse canvas dimensions for scaling
+        canvas_match = canvas.split('x') if 'x' in canvas else None
+        canvas_width = int(canvas_match[0]) if canvas_match and canvas_match[0].isdigit() else None
+        canvas_height = int(canvas_match[1]) if canvas_match and len(canvas_match) > 1 and canvas_match[1].isdigit() else None
+        
         artwork_html += f"""
         <div class="artwork-card">
-            <div class="artwork-image">
-                <img src="{filename}" alt="{title}" />
+            <div class="artwork-image" id="artwork-container-{idx}">
+                <img src="{filename}" alt="{title}" class="pixel-art-image" data-canvas="{canvas}" data-artwork-idx="{idx}" />
             </div>
             <div class="artwork-info">
                 <h2>{title}</h2>
@@ -114,7 +119,7 @@ def generate_artwork_html(manifest: dict, artwork_files: List[str], owner: str, 
         
         .artwork-image {{
             background: #2d3748;
-            padding: 40px;
+            padding: 80px;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -122,11 +127,17 @@ def generate_artwork_html(manifest: dict, artwork_files: List[str], owner: str, 
         }}
         
         .artwork-image img {{
-            max-width: 100%;
-            height: auto;
-            image-rendering: pixelated;
+            display: block;
+            /* Safari - vendor prefix */
+            image-rendering: -webkit-optimize-contrast;
+            /* Firefox - vendor prefix */
             image-rendering: -moz-crisp-edges;
+            /* Standard - Firefox */
             image-rendering: crisp-edges;
+            /* Standard - Chrome/Edge */
+            image-rendering: pixelated;
+            /* IE/Edge legacy */
+            -ms-interpolation-mode: nearest-neighbor;
         }}
         
         .artwork-info {{
@@ -203,6 +214,87 @@ def generate_artwork_html(manifest: dict, artwork_files: List[str], owner: str, 
     <!-- Makapix Widget Configuration -->
     <script>
         window.MAKAPIX_API_URL = '{api_base_url}';
+    </script>
+    <!-- Pixel Art Scaling Script -->
+    <script>
+        (function() {{
+            function parseCanvas(canvas) {{
+                const match = canvas.match(/(\\d+)x(\\d+)/);
+                if (!match) return null;
+                return {{
+                    width: parseInt(match[1], 10),
+                    height: parseInt(match[2], 10)
+                }};
+            }}
+            
+            function calculateScaledSize(originalSize, containerWidth, maxHeight, padding) {{
+                const availableWidth = containerWidth - padding;
+                const availableHeight = maxHeight - padding;
+                
+                const scaleX = Math.floor(availableWidth / originalSize.width);
+                const scaleY = Math.floor(availableHeight / originalSize.height);
+                const scale = Math.max(1, Math.min(scaleX, scaleY));
+                
+                return {{
+                    width: originalSize.width * scale,
+                    height: originalSize.height * scale
+                }};
+            }}
+            
+            function updateImageSize(img) {{
+                const container = img.closest('.artwork-image');
+                if (!container) return;
+                
+                const canvas = img.getAttribute('data-canvas');
+                if (!canvas) return;
+                
+                const originalSize = parseCanvas(canvas);
+                if (!originalSize) return;
+                
+                const containerRect = container.getBoundingClientRect();
+                if (containerRect.width === 0) {{
+                    setTimeout(function() {{ updateImageSize(img); }}, 50);
+                    return;
+                }}
+                
+                const maxHeight = window.innerHeight * 0.7;
+                const scaledSize = calculateScaledSize(originalSize, containerRect.width, maxHeight, 120);
+                
+                if (scaledSize.width > 0 && scaledSize.height > 0) {{
+                    img.style.width = scaledSize.width + 'px';
+                    img.style.height = scaledSize.height + 'px';
+                    img.style.imageRendering = 'pixelated';
+                }}
+            }}
+            
+            function initializeImages() {{
+                const images = document.querySelectorAll('.pixel-art-image');
+                images.forEach(function(img) {{
+                    updateImageSize(img);
+                    img.addEventListener('load', function() {{
+                        updateImageSize(img);
+                        img.style.imageRendering = 'pixelated';
+                    }}, {{ once: true }});
+                }});
+            }}
+            
+            function handleResize() {{
+                const images = document.querySelectorAll('.pixel-art-image');
+                images.forEach(updateImageSize);
+            }}
+            
+            if (document.readyState === 'loading') {{
+                document.addEventListener('DOMContentLoaded', initializeImages);
+            }} else {{
+                setTimeout(initializeImages, 0);
+            }}
+            
+            let resizeTimeout;
+            window.addEventListener('resize', function() {{
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(handleResize, 100);
+            }});
+        }})();
     </script>
     <!-- Makapix Widget Script -->
     <script src="{widget_base_url}/makapix-widget.js"></script>

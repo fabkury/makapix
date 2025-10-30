@@ -47,6 +47,9 @@ def list_posts(
         if not current_user or not ("moderator" in current_user.roles or "owner" in current_user.roles):
             query = query.filter(models.Post.hidden_by_mod == False)
         
+        # Hide posts hidden by users (should always be hidden from public view)
+        query = query.filter(models.Post.hidden_by_user == False)
+        
         # Hide non-conformant posts unless current user is moderator/owner
         if not current_user or not ("moderator" in current_user.roles or "owner" in current_user.roles):
             query = query.filter(models.Post.non_conformant == False)
@@ -103,7 +106,7 @@ def create_post(
         )
     
     # Validate file size (basic check)
-    max_file_kb = 350  # Default limit
+    max_file_kb = 15 * 1024  # 15 MB limit
     if payload.file_kb > max_file_kb:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -173,9 +176,10 @@ def list_recent_posts(
     if cached_result:
         return schemas.Page(**cached_result)
     
-    query = db.query(models.Post).filter(
+    query = db.query(models.Post).options(joinedload(models.Post.owner)).filter(
         models.Post.visible == True,
         models.Post.hidden_by_mod == False,
+        models.Post.hidden_by_user == False,
     )
     
     # Hide non-conformant posts unless current user is moderator/owner
@@ -405,6 +409,11 @@ def hide_post(
         post.hidden_by_user = True
     
     db.commit()
+    
+    # Invalidate feed caches since post visibility changed
+    cache_invalidate("feed:recent:*")
+    cache_invalidate("feed:promoted:*")
+    cache_invalidate("hashtags:*")
 
 
 @router.delete("/{id}/hide", status_code=status.HTTP_204_NO_CONTENT)
@@ -440,6 +449,11 @@ def unhide_post(
             target_id=id,
         )
     db.commit()
+    
+    # Invalidate feed caches since post visibility changed
+    cache_invalidate("feed:recent:*")
+    cache_invalidate("feed:promoted:*")
+    cache_invalidate("hashtags:*")
 
 
 @router.post(
