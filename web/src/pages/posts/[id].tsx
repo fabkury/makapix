@@ -14,6 +14,7 @@ interface Post {
   owner_id: string;
   created_at: string;
   kind?: string;
+  hidden_by_user?: boolean;
   owner?: {
     id: string;
     handle: string;
@@ -35,6 +36,9 @@ export default function PostPage() {
   const [imageSize, setImageSize] = useState<ArtworkSize | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+  const updateSizeRef = useRef<(() => void) | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string } | null>(null);
+  const [isOwner, setIsOwner] = useState(false);
   
   const API_BASE_URL = typeof window !== 'undefined' 
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
@@ -62,6 +66,27 @@ export default function PostPage() {
         
         const data = await response.json();
         setPost(data);
+        
+        // Check if current user is the owner
+        const accessToken = localStorage.getItem('access_token');
+        if (accessToken) {
+          try {
+            const userResponse = await fetch(`${API_BASE_URL}/api/auth/me`, {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            });
+            if (userResponse.ok) {
+              const userData = await userResponse.json();
+              setCurrentUser({ id: userData.user.id });
+              setIsOwner(userData.user.id === data.owner_id);
+            }
+          } catch (err) {
+            // User not authenticated or token expired
+            setCurrentUser(null);
+            setIsOwner(false);
+          }
+        }
       } catch (err) {
         setError('Failed to load post');
         console.error('Error fetching post:', err);
@@ -75,7 +100,7 @@ export default function PostPage() {
 
   // Calculate pixel art scaling
   useEffect(() => {
-    if (!post || !containerRef.current || !imageRef.current) return;
+    if (!post) return;
 
     const parseCanvas = (canvas: string): ArtworkSize | null => {
       const match = canvas.match(/(\d+)x(\d+)/);
@@ -89,17 +114,14 @@ export default function PostPage() {
     const calculateScaledSize = (
       originalSize: ArtworkSize,
       containerWidth: number,
-      containerHeight: number,
+      maxHeight: number,
       padding: number = 120
     ): ArtworkSize => {
       const availableWidth = containerWidth - padding;
-      const availableHeight = containerHeight - padding;
+      const availableHeight = maxHeight - padding;
 
-      // Calculate scale factors
       const scaleX = Math.floor(availableWidth / originalSize.width);
       const scaleY = Math.floor(availableHeight / originalSize.height);
-
-      // Use the smaller scale factor to ensure it fits both dimensions
       const scale = Math.max(1, Math.min(scaleX, scaleY));
 
       return {
@@ -117,31 +139,36 @@ export default function PostPage() {
       if (!originalSize) return;
 
       const containerRect = container.getBoundingClientRect();
-      const scaledSize = calculateScaledSize(
-        originalSize,
-        containerRect.width,
-        window.innerHeight * 0.7, // Use 70% of viewport height as max
-        120 // 120px padding (80px from container + 40px extra)
-      );
+      if (containerRect.width === 0) {
+        setTimeout(updateSize, 50);
+        return;
+      }
 
-      setImageSize(scaledSize);
+      const maxHeight = window.innerHeight * 0.7;
+      const scaledSize = calculateScaledSize(originalSize, containerRect.width, maxHeight, 120);
+
+      if (scaledSize.width > 0 && scaledSize.height > 0) {
+        setImageSize(scaledSize);
+      }
     };
 
-    // Update size initially and on resize
-    updateSize();
-    window.addEventListener('resize', updateSize);
-    
-    // Also update when image loads
-    const image = imageRef.current;
-    if (image) {
-      image.addEventListener('load', updateSize);
-    }
+    updateSizeRef.current = updateSize;
 
+    // Wait for refs to be set
+    const timer = setTimeout(() => {
+      updateSize();
+    }, 0);
+
+    const handleResize = () => {
+      updateSize();
+    };
+
+    window.addEventListener('resize', handleResize);
+    
     return () => {
-      window.removeEventListener('resize', updateSize);
-      if (image) {
-        image.removeEventListener('load', updateSize);
-      }
+      clearTimeout(timer);
+      window.removeEventListener('resize', handleResize);
+      updateSizeRef.current = null;
     };
   }, [post]);
 
@@ -154,6 +181,92 @@ export default function PostPage() {
       (window as any).MAKAPIX_API_URL = `${API_BASE_URL}/api`;
     }
   }, [API_BASE_URL]);
+
+  const handleDelete = async () => {
+    if (!post || !id || typeof id !== 'string') return;
+    
+    const confirmed = confirm(
+      'Are you sure you want to delete this post?\n\n' +
+      'This action cannot be undone. The post will be permanently removed from all feeds and searches.'
+    );
+    
+    if (!confirmed) return;
+    
+    const accessToken = localStorage.getItem('access_token');
+    if (!accessToken) {
+      alert('You must be logged in to delete posts.');
+      return;
+    }
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/posts/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      
+      if (response.ok || response.status === 204) {
+        alert('Post deleted successfully.');
+        router.push('/');
+      } else {
+        const errorData = await response.json().catch(() => ({ detail: 'Failed to delete post' }));
+        alert(errorData.detail || 'Failed to delete post. Please try again.');
+      }
+    } catch (err) {
+      console.error('Error deleting post:', err);
+      alert('Failed to delete post. Please try again.');
+    }
+  };
+
+  const handleHide = async () => {
+    if (!post || !id || typeof id !== 'string') return;
+    
+    const isHidden = post.hidden_by_user;
+    const action = isHidden ? 'unhide' : 'hide';
+    const confirmed = confirm(
+      isHidden
+        ? 'Are you sure you want to unhide this post? It will become visible again in feeds.'
+        : 'Are you sure you want to hide this post? It will be removed from feeds temporarily but can be unhidden later.'
+    );
+    
+    if (!confirmed) return;
+    
+    const accessToken = localStorage.getItem('access_token');
+    if (!accessToken) {
+      alert('You must be logged in to hide/unhide posts.');
+      return;
+    }
+    
+    try {
+      const url = `${API_BASE_URL}/api/posts/${id}/hide`;
+      const method = isHidden ? 'DELETE' : 'POST';
+      
+      const response = await fetch(url, {
+        method: method,
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok || response.status === 201 || response.status === 204) {
+        // Refresh the post to get updated hidden_by_user status
+        const refreshResponse = await fetch(`${API_BASE_URL}/api/posts/${id}`);
+        if (refreshResponse.ok) {
+          const updatedPost = await refreshResponse.json();
+          setPost(updatedPost);
+        }
+        alert(`Post ${isHidden ? 'unhidden' : 'hidden'} successfully.`);
+      } else {
+        const errorData = await response.json().catch(() => ({ detail: `Failed to ${action} post` }));
+        alert(errorData.detail || `Failed to ${action} post. Please try again.`);
+      }
+    } catch (err) {
+      console.error(`Error ${action}ing post:`, err);
+      alert(`Failed to ${action} post. Please try again.`);
+    }
+  };
 
   if (loading) {
     return (
@@ -248,7 +361,6 @@ export default function PostPage() {
       alignItems: 'center',
     },
     artworkImage: {
-      maxWidth: '100%',
       display: 'block',
     },
     postTitle: {
@@ -340,20 +452,18 @@ export default function PostPage() {
               className="pixel-art-image"
               style={{
                 ...styles.artworkImage,
-                width: imageSize ? `${imageSize.width}px` : 'auto',
-                height: imageSize ? `${imageSize.height}px` : 'auto',
+                width: imageSize ? `${imageSize.width}px` : undefined,
+                height: imageSize ? `${imageSize.height}px` : undefined,
                 // Force pixelated for Chrome/Edge - this must be set inline
                 imageRendering: 'pixelated' as any,
                 // Also set msInterpolationMode for IE/Edge legacy
                 msInterpolationMode: 'nearest-neighbor' as any,
               }}
               onLoad={(e) => {
-                // Force pixel rendering on load for Chrome/Edge
                 const img = e.currentTarget;
-                if (img.style) {
-                  img.style.imageRendering = 'pixelated';
-                  (img.style as any).imageRendering = 'crisp-edges';
-                  (img.style as any).imageRendering = 'pixelated';
+                img.style.imageRendering = 'pixelated';
+                if (updateSizeRef.current) {
+                  updateSizeRef.current();
                 }
               }}
             />
@@ -391,6 +501,83 @@ export default function PostPage() {
               </div>
             )}
           </div>
+
+          {isOwner && (
+            <div style={{
+              background: '#fff',
+              borderRadius: '8px',
+              padding: '1.5rem',
+              marginBottom: '2rem',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+              border: '1px solid #e0e0e0'
+            }}>
+              <h3 style={{ fontSize: '1.2rem', marginBottom: '1rem', color: '#333' }}>Post Management</h3>
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                {post.hidden_by_user ? (
+                  <button
+                    onClick={handleHide}
+                    style={{
+                      padding: '0.75rem 1.5rem',
+                      backgroundColor: '#10b981',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '0.9rem',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.2s'
+                    }}
+                    onMouseOver={(e) => (e.currentTarget.style.backgroundColor = '#059669')}
+                    onMouseOut={(e) => (e.currentTarget.style.backgroundColor = '#10b981')}
+                  >
+                    Unhide Post
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleHide}
+                    style={{
+                      padding: '0.75rem 1.5rem',
+                      backgroundColor: '#f59e0b',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '0.9rem',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.2s'
+                    }}
+                    onMouseOver={(e) => (e.currentTarget.style.backgroundColor = '#d97706')}
+                    onMouseOut={(e) => (e.currentTarget.style.backgroundColor = '#f59e0b')}
+                  >
+                    Hide Post
+                  </button>
+                )}
+                <button
+                  onClick={handleDelete}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    backgroundColor: '#ef4444',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '0.9rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    transition: 'background-color 0.2s'
+                  }}
+                  onMouseOver={(e) => (e.currentTarget.style.backgroundColor = '#dc2626')}
+                  onMouseOut={(e) => (e.currentTarget.style.backgroundColor = '#ef4444')}
+                >
+                  Delete Post
+                </button>
+              </div>
+              <p style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.75rem' }}>
+                {post.hidden_by_user 
+                  ? 'This post is currently hidden. Click "Unhide Post" to make it visible again.'
+                  : 'Hide removes the post from feeds temporarily. Delete permanently removes it (cannot be undone).'}
+              </p>
+            </div>
+          )}
 
           <div style={styles.widgetContainer}>
             <div id={`makapix-widget-${post.id}`} data-post-id={post.id}></div>

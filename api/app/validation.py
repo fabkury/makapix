@@ -5,8 +5,8 @@ import zipfile
 from pathlib import Path
 from typing import Tuple, List
 
-MAX_BUNDLE_SIZE = 10 * 1024 * 1024  # 10 MB
-MAX_FILE_SIZE = 350 * 1024  # 350 KB per artwork
+MAX_BUNDLE_SIZE = 50 * 1024 * 1024  # 50 MB
+MAX_FILE_SIZE = 15 * 1024 * 1024  # 15 MB per artwork
 ALLOWED_CANVASES = ["16x16", "32x32", "64x64", "128x128", "256x256"]
 
 
@@ -57,7 +57,9 @@ def validate_manifest(manifest: dict) -> Tuple[bool, List[str]]:
                 errors.append(f"Invalid canvas in artwork {idx}: {art.get('canvas')}")
             
             # File size validation
-            if art.get("file_kb", 0) > MAX_FILE_SIZE / 1024:
-                errors.append(f"File too large in artwork {idx}")
+            file_kb = art.get("file_kb", 0)
+            max_file_kb = MAX_FILE_SIZE / 1024
+            if file_kb > max_file_kb:
+                errors.append(f"File too large in artwork {idx}: {file_kb}KB exceeds limit of {max_file_kb}KB")
     
     return len(errors) == 0, errors

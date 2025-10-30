@@ -28,26 +28,41 @@ export default function RecentPage() {
   const [hasMore, setHasMore] = useState(true);
   
   const observerTarget = useRef<HTMLDivElement>(null);
+  const loadingRef = useRef(false);
+  const hasMoreRef = useRef(true);
+  const nextCursorRef = useRef<string | null>(null);
+  const initialLoadRef = useRef(false);
   
   const API_BASE_URL = typeof window !== 'undefined' 
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
     : '';
 
   const loadPosts = useCallback(async (cursor: string | null = null) => {
-    if (loading || (!hasMore && cursor !== null)) return;
+    // Prevent loading if already loading or if no more data and trying to load more
+    if (loadingRef.current || (cursor !== null && !hasMoreRef.current)) {
+      return;
+    }
     
+    loadingRef.current = true;
     setLoading(true);
     setError(null);
     
     try {
       const url = `${API_BASE_URL}/api/posts/recent?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      console.log('Fetching posts from:', url);
       const response = await fetch(url);
       
       if (!response.ok) {
-        throw new Error(`Failed to load posts: ${response.statusText}`);
+        const errorText = await response.text().catch(() => response.statusText);
+        throw new Error(`Failed to load posts: ${response.status} ${errorText}`);
       }
       
       const data: PageResponse<Post> = await response.json();
+      console.log('Received data:', data);
+      
+      if (!data || typeof data !== 'object' || !Array.isArray(data.items)) {
+        throw new Error('Invalid response format from server');
+      }
       
       if (cursor) {
         // Append to existing posts
@@ -58,28 +73,52 @@ export default function RecentPage() {
       }
       
       setNextCursor(data.next_cursor);
-      setHasMore(data.next_cursor !== null);
+      nextCursorRef.current = data.next_cursor;
+      const hasMoreValue = data.next_cursor !== null;
+      hasMoreRef.current = hasMoreValue;
+      setHasMore(hasMoreValue);
+      
+      // Mark initial load as complete after first load (success or failure)
+      if (cursor === null) {
+        initialLoadRef.current = true;
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load posts');
       console.error('Error loading posts:', err);
+      
+      // Mark initial load as complete even on error so user can retry
+      if (cursor === null) {
+        initialLoadRef.current = true;
+      }
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
-  }, [API_BASE_URL, loading, hasMore]);
+  }, [API_BASE_URL]);
 
   // Initial load
   useEffect(() => {
     if (API_BASE_URL) {
       loadPosts();
     }
-  }, [API_BASE_URL]);
+  }, [API_BASE_URL, loadPosts]);
 
   // Intersection Observer for infinite scroll
   useEffect(() => {
+    // Only set up observer after initial load is complete
+    if (!initialLoadRef.current) return;
+    
+    // Don't observe if no posts or no more to load
+    if (posts.length === 0 || !hasMoreRef.current) return;
+    
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loading) {
-          loadPosts(nextCursor);
+        // Read current values from refs at callback time
+        if (entries[0].isIntersecting && 
+            initialLoadRef.current && 
+            hasMoreRef.current && 
+            !loadingRef.current) {
+          loadPosts(nextCursorRef.current);
         }
       },
       { threshold: 0.1 }
@@ -95,7 +134,7 @@ export default function RecentPage() {
         observer.unobserve(currentTarget);
       }
     };
-  }, [hasMore, loading, nextCursor, loadPosts]);
+  }, [posts.length, loadPosts]);
 
   return (
     <>
@@ -174,19 +213,21 @@ export default function RecentPage() {
             ))}
           </div>
 
-          {/* Loading indicator / Observer target */}
-          <div ref={observerTarget} style={styles.observerTarget}>
-            {loading && (
-              <div style={styles.loading}>
-                <p>Loading more posts...</p>
-              </div>
-            )}
-            {!hasMore && posts.length > 0 && (
-              <div style={styles.endMessage}>
-                <p>You&apos;ve reached the end!</p>
-              </div>
-            )}
-          </div>
+          {/* Loading indicator / Observer target - only render when there are posts */}
+          {posts.length > 0 && (
+            <div ref={observerTarget} style={styles.observerTarget}>
+              {loading && (
+                <div style={styles.loading}>
+                  <p>Loading more posts...</p>
+                </div>
+              )}
+              {!hasMore && (
+                <div style={styles.endMessage}>
+                  <p>You&apos;ve reached the end!</p>
+                </div>
+              )}
+            </div>
+          )}
         </main>
       </div>
     </>

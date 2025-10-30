@@ -56,7 +56,7 @@ class Config(BaseModel):
     max_comments_per_post: int = 1000
     max_emojis_per_user_per_post: int = 5
     allowed_canvases: list[str] = ["16x16", "32x32", "64x64", "128x128", "256x256"]
-    max_art_file_kb_default: int = 350
+    max_art_file_kb_default: int = 15 * 1024  # 15 MB
 
 
 # ============================================================================
@@ -69,6 +69,8 @@ class BadgeGrant(BaseModel):
 
     badge: str
     granted_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserPublic(BaseModel):
@@ -182,7 +184,7 @@ class PostCreate(BaseModel):
     hashtags: list[str] = Field(default_factory=list, max_length=10)
     art_url: HttpUrl
     canvas: str = Field(..., pattern=r"^\d+x\d+$")
-    file_kb: int = Field(..., gt=0, le=1024)
+    file_kb: int = Field(..., gt=0, le=15 * 1024)  # 15 MB max
 
 
 class PostUpdate(BaseModel):
@@ -660,10 +662,11 @@ class RelayJob(BaseModel):
 class RelayUploadResponse(BaseModel):
     """Relay upload response."""
 
-    status: Literal["committed", "queued"]
+    status: Literal["committed", "queued", "failed"]
     repo: str | None = None
     commit: str | None = None
     job_id: UUID | None = None
+    error: str | None = None
 
 
 class ManifestValidateRequest(BaseModel):
