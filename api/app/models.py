@@ -457,6 +457,9 @@ class AuditLog(Base):
     target_type = Column(String(20), nullable=True)
     target_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     
+    reason_code = Column(String(50), nullable=True)  # e.g., "spam", "abuse", "copyright", "other"
+    note = Column(Text, nullable=True)  # Additional context/notes
+    
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
     )

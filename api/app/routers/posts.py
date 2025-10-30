@@ -361,6 +361,8 @@ def hide_post(
             action="hide_post",
             target_type="post",
             target_id=id,
+            reason_code=payload.reason_code if payload else None,
+            note=payload.note or (payload.reason if payload else None),
         )
     else:
         require_ownership(post.owner_id, current_user)
@@ -437,6 +439,8 @@ def promote_post(
         action="promote_post",
         target_type="post",
         target_id=id,
+        reason_code=payload.reason_code,
+        note=payload.note,
     )
     
     # Publish MQTT notification if promoted to "daily's-best"

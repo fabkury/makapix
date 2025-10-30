@@ -32,18 +32,36 @@ def get_reactions(
     reactions = db.query(models.Reaction).filter(models.Reaction.post_id == id).all()
     
     totals: dict[str, int] = {}
+    authenticated_totals: dict[str, int] = {}
+    anonymous_totals: dict[str, int] = {}
     mine: list[str] = []
     
     for reaction in reactions:
-        totals[reaction.emoji] = totals.get(reaction.emoji, 0) + 1
+        emoji = reaction.emoji
+
+        # Combined totals (backward compatibility)
+        totals[emoji] = totals.get(emoji, 0) + 1
+
+        # Separate authenticated vs anonymous buckets
+        if reaction.user_id is not None:
+            authenticated_totals[emoji] = authenticated_totals.get(emoji, 0) + 1
+        else:
+            anonymous_totals[emoji] = anonymous_totals.get(emoji, 0) + 1
         
         # Check if this reaction belongs to current user
         if isinstance(current_user, models.User) and reaction.user_id == current_user.id:
-            mine.append(reaction.emoji)
+            if emoji not in mine:
+                mine.append(emoji)
         elif isinstance(current_user, AnonymousUser) and reaction.user_ip == current_user.ip:
-            mine.append(reaction.emoji)
-    
-    return schemas.ReactionTotals(totals=totals, mine=mine)
+            if emoji not in mine:
+                mine.append(emoji)
+
+    return schemas.ReactionTotals(
+        totals=totals,
+        authenticated_totals=authenticated_totals,
+        anonymous_totals=anonymous_totals,
+        mine=mine,
+    )
 
 
 @router.put(
