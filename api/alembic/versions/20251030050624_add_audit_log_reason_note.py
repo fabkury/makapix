@@ -26,3 +26,4 @@ def downgrade() -> None:
     op.drop_column("audit_logs", "note")
     op.drop_column("audit_logs", "reason_code")
 
+

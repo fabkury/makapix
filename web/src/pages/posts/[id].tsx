@@ -177,10 +177,54 @@ export default function PostPage() {
     if (typeof window === 'undefined') return;
     
     // Set API URL for widget before script loads
-    if (window.MAKAPIX_API_URL === undefined) {
+    if ((window as any).MAKAPIX_API_URL === undefined) {
       (window as any).MAKAPIX_API_URL = `${API_BASE_URL}/api`;
     }
   }, [API_BASE_URL]);
+
+  // Initialize widget after component mounts and script loads
+  useEffect(() => {
+    if (!post || !id || typeof id !== 'string') return;
+
+    // Function to initialize widget
+    const initializeWidget = () => {
+      // Check if widget script is loaded
+      if (typeof (window as any).MakapixWidget === 'undefined') {
+        // Script not loaded yet, try again after a short delay
+        setTimeout(initializeWidget, 100);
+        return;
+      }
+
+      // Find the widget container
+      const container = document.getElementById(`makapix-widget-${post.id}`);
+      if (!container) {
+        // Container not found, try again after a short delay
+        setTimeout(initializeWidget, 100);
+        return;
+      }
+
+      // Check if already initialized
+      if ((container as any).__makapix_initialized) {
+        return;
+      }
+
+      // Initialize the widget
+      try {
+        new (window as any).MakapixWidget(container);
+        (container as any).__makapix_initialized = true;
+        console.log('Makapix widget initialized for post:', post.id);
+      } catch (error) {
+        console.error('Failed to initialize Makapix widget:', error);
+      }
+    };
+
+    // Start initialization after a short delay to ensure DOM is ready
+    const timer = setTimeout(initializeWidget, 100);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [post, id]);
 
   const handleDelete = async () => {
     if (!post || !id || typeof id !== 'string') return;
@@ -586,10 +630,28 @@ export default function PostPage() {
       </div>
 
       {/* Load Makapix Widget Script */}
-      {/* The script auto-initializes widgets on load, so we don't need manual initialization */}
       <Script
         src={`${API_BASE_URL}/makapix-widget.js`}
         strategy="afterInteractive"
+        onLoad={() => {
+          // Script loaded, trigger widget initialization
+          if (post && id && typeof id === 'string') {
+            setTimeout(() => {
+              const container = document.getElementById(`makapix-widget-${post.id}`);
+              if (container && typeof (window as any).MakapixWidget !== 'undefined') {
+                if (!(container as any).__makapix_initialized) {
+                  try {
+                    new (window as any).MakapixWidget(container);
+                    (container as any).__makapix_initialized = true;
+                    console.log('Makapix widget initialized via script onLoad');
+                  } catch (error) {
+                    console.error('Failed to initialize Makapix widget:', error);
+                  }
+                }
+              }
+            }, 100);
+          }
+        }}
       />
     </>
   );

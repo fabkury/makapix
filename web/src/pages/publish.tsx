@@ -23,6 +23,10 @@ export default function PublishPage() {
   const [githubAppInstalled, setGithubAppInstalled] = useState(false);
   const [githubAppInstallUrl, setGithubAppInstallUrl] = useState<string>('');
   const [validationError, setValidationError] = useState<{error?: string, details?: string, install_url?: string, app_slug?: string} | null>(null);
+  const [repositories, setRepositories] = useState<Array<{name: string, full_name: string, html_url: string}>>([]);
+  const [selectedRepository, setSelectedRepository] = useState<string>('');
+  const [loadingRepos, setLoadingRepos] = useState(false);
+  const [installationId, setInstallationId] = useState<number | null>(null);
   const expiredAlertShownRef = useRef(false);
 
   // Get API base URL - must be computed inside the component to ensure it runs client-side
@@ -35,6 +39,38 @@ export default function PublishPage() {
     }
     return '';
   });
+
+  // Fetch repositories function (defined before useEffect so it can be called inside)
+  const fetchRepositories = async (token: string, baseUrl: string) => {
+    try {
+      setLoadingRepos(true);
+      const response = await fetch(`${baseUrl}/api/relay/repositories`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Repositories fetched:', data.repositories?.length || 0, 'repositories');
+        console.log('Repository data:', data.repositories);
+        setRepositories(data.repositories || []);
+        // Auto-select first repository if available
+        if (data.repositories && data.repositories.length > 0 && !selectedRepository) {
+          setSelectedRepository(data.repositories[0].name);
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Failed to fetch repositories:', response.status, response.statusText, errorData);
+        alert(`Failed to fetch repositories: ${errorData.detail || errorData.error || response.statusText}`);
+      }
+    } catch (error) {
+      console.error('Error fetching repositories:', error);
+      alert(`Error fetching repositories: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoadingRepos(false);
+    }
+  };
 
   // Check authentication status on component mount
   useEffect(() => {
@@ -106,27 +142,45 @@ export default function PublishPage() {
           
           // If installed, validate that it actually works
           if (data.installed) {
-            const validationResult = await validateGithubAppInstallation(token, baseUrl);
-            if (!validationResult.valid) {
-              console.error('GitHub App installation is invalid:', validationResult);
-              setGithubAppInstalled(false);
-              // Use install_url from validation result if available, otherwise use status install_url
-              setGithubAppInstallUrl(validationResult.install_url || data.install_url || '');
-              // Store validation error for display
-              setValidationError({
-                error: validationResult.error,
-                details: validationResult.details,
-                install_url: validationResult.install_url || data.install_url,
-                app_slug: validationResult.app_slug
-              });
-              if (validationResult.error) {
-                console.error('Validation error:', validationResult.error);
-                console.error('Validation details:', validationResult.details);
+            try {
+              const validationResult = await validateGithubAppInstallation(token, baseUrl);
+              if (!validationResult.valid) {
+                // Only show errors if validation actually failed (not skipped due to network error)
+                if (validationResult.error && validationResult.error !== 'Configuration error') {
+                  console.error('GitHub App installation is invalid:', validationResult);
+                  setGithubAppInstalled(false);
+                  // Use install_url from validation result if available, otherwise use status install_url
+                  setGithubAppInstallUrl(validationResult.install_url || data.install_url || '');
+                  // Store validation error for display
+                  setValidationError({
+                    error: validationResult.error,
+                    details: validationResult.details,
+                    install_url: validationResult.install_url || data.install_url,
+                    app_slug: validationResult.app_slug
+                  });
+                  if (validationResult.error) {
+                    console.error('Validation error:', validationResult.error);
+                    console.error('Validation details:', validationResult.details);
+                  }
+                  return;
+                }
               }
-              return;
-            } else {
-              // Clear validation error if validation succeeds
+              
+              // Clear validation error if validation succeeds or was skipped
               setValidationError(null);
+              // Store installation_id from validation result
+              if (validationResult.installation_id) {
+                setInstallationId(validationResult.installation_id);
+              }
+              // Fetch repositories when GitHub App is installed
+              fetchRepositories(token, baseUrl);
+            } catch (error: any) {
+              // If validation throws an error, log it but don't block the UI
+              console.warn('Validation check failed (non-critical):', error);
+              // Still set the installation as valid based on status check
+              setValidationError(null);
+              setInstallationId(data.installation_id || null);
+              fetchRepositories(token, baseUrl);
             }
           } else {
             // Clear validation error if not installed
@@ -135,9 +189,11 @@ export default function PublishPage() {
           
           setGithubAppInstalled(data.installed);
           setGithubAppInstallUrl(data.install_url || '');
+          setInstallationId(data.installation_id || null);
           console.log('Install URL set to:', data.install_url);
           console.log('githubAppInstalled state:', data.installed);
           console.log('githubAppInstallUrl state:', data.install_url || '');
+          console.log('installationId:', data.installation_id);
         } else {
           console.error('GitHub App status failed:', response.status, response.statusText);
           const errorData = await response.json().catch(() => ({}));
@@ -170,7 +226,17 @@ export default function PublishPage() {
     };
 
     // Validate that GitHub App installation actually works
-    const validateGithubAppInstallation = async (token: string, baseUrl: string): Promise<{valid: boolean, error?: string, details?: string, install_url?: string, app_slug?: string}> => {
+    const validateGithubAppInstallation = async (token: string, baseUrl: string): Promise<{valid: boolean, error?: string, details?: string, install_url?: string, app_slug?: string, installation_id?: number}> => {
+      // Only validate if we have a valid baseUrl
+      if (!baseUrl || baseUrl === '') {
+        console.warn('Cannot validate GitHub App: baseUrl is empty');
+        return {
+          valid: false,
+          error: 'Configuration error',
+          details: 'API base URL is not configured'
+        };
+      }
+
       try {
         const validateUrl = `${baseUrl}/api/auth/github-app/validate`;
         console.log('Validating GitHub App installation at:', validateUrl);
@@ -191,7 +257,8 @@ export default function PublishPage() {
             error: data.error,
             details: data.details,
             install_url: data.install_url,
-            app_slug: data.app_slug
+            app_slug: data.app_slug,
+            installation_id: data.installation_id
           };
         } else {
           console.error('GitHub App validation failed:', response.status, response.statusText);
@@ -206,7 +273,23 @@ export default function PublishPage() {
           };
         }
       } catch (error: any) {
-        console.error('Error validating GitHub App installation:', error);
+        // Network errors shouldn't be treated as validation failures
+        // They might be due to CORS, network issues, or SSR
+        console.warn('Error validating GitHub App installation (may be network/CORS issue):', error);
+        
+        // If it's a network error, don't fail validation - just skip it
+        if (error.name === 'TypeError' && error.message.includes('NetworkError')) {
+          console.warn('Network error detected - skipping validation (will retry on next check)');
+          // Return valid: true to prevent blocking the UI, but mark that validation was skipped
+          return {
+            valid: true,
+            error: undefined,
+            details: undefined,
+            install_url: undefined,
+            app_slug: undefined
+          };
+        }
+        
         return {
           valid: false,
           error: 'Validation error',
@@ -373,6 +456,16 @@ export default function PublishPage() {
       formData.append("bundle", zipBlob, "bundle.zip");
       formData.append("commit_message", "Update via Makapix");
       
+      // Repository name is required
+      if (!selectedRepository) {
+        alert('Please select a repository before publishing.');
+        setUploading(false);
+        return;
+      }
+      
+      formData.append("repository", selectedRepository);
+      console.log('Uploading to repository:', selectedRepository);
+      
       // Use the API base URL
       const uploadUrl = `${API_BASE_URL}/api/relay/pages/upload`;
       console.log('Uploading to:', uploadUrl);
@@ -526,13 +619,16 @@ export default function PublishPage() {
                    ⚠️ <strong>Not authenticated</strong>
                    <br />
                    <small>
-                    Please <a 
-                      href={`${API_BASE_URL}/api/auth/github/login`}
+                    Please                     <a
+                      href="/api/auth/github/login"
                       target="_blank" 
                       rel="noopener noreferrer"
                       onClick={(e) => {
                         e.preventDefault();
-                        window.open(`${API_BASE_URL}/api/auth/github/login`, 'oauth', 'width=600,height=700,scrollbars=yes,resizable=yes');
+                        const apiBaseUrl = typeof window !== 'undefined' 
+                          ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
+                          : '';
+                        window.open(`${apiBaseUrl}/api/auth/github/login`, 'oauth', 'width=600,height=700,scrollbars=yes,resizable=yes');
                       }}
                     >log in with GitHub</a> first.
                 <br />
@@ -932,7 +1028,117 @@ export default function PublishPage() {
               ✅ <strong>GitHub App Installed</strong>
               <br />
               <small>Your artwork will be published to your GitHub Pages repository</small>
+              <div style={{ marginTop: '10px', fontSize: '0.875rem' }}>
+                {installationId && (
+                  <a 
+                    href={`https://github.com/settings/installations/${installationId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      color: '#0070f3',
+                      textDecoration: 'none'
+                    }}
+                  >
+                    Manage Installation →
+                  </a>
+                )}
+              </div>
             </div>
+          </div>
+        )}
+
+        {isAuthenticated && githubAppInstalled && (
+          <div className="repository-selection" style={{
+            padding: '15px',
+            marginBottom: '20px',
+            borderRadius: '6px',
+            backgroundColor: '#fff',
+            border: '1px solid #ddd'
+          }}>
+            <h2 style={{ marginTop: 0, marginBottom: '15px', fontSize: '1.2rem' }}>Select Repository</h2>
+            
+            {loadingRepos ? (
+              <p>Loading repositories...</p>
+            ) : (
+              <>
+                <div style={{ marginBottom: '15px' }}>
+                  <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+                    Choose an existing repository:
+                  </label>
+                  <select
+                    value={selectedRepository}
+                    onChange={(e) => {
+                      setSelectedRepository(e.target.value);
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem',
+                      fontSize: '1rem',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      boxSizing: 'border-box'
+                    }}
+                  >
+                    <option value="">-- Select repository --</option>
+                    {repositories.map((repo) => (
+                      <option key={repo.name} value={repo.name}>
+                        {repo.full_name}
+                      </option>
+                    ))}
+                  </select>
+                  {repositories.length === 0 && (
+                    <div style={{ fontSize: '0.875rem', color: '#666', marginTop: '0.5rem' }}>
+                      <p style={{ marginBottom: '0.5rem' }}>No repositories found.</p>
+                      <p style={{ marginTop: '0.5rem' }}>Use "Manage Installation" above to change repository access, or create a repository on GitHub using the button below.</p>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ marginTop: '10px', marginBottom: '15px' }}>
+                  <button
+                    onClick={async () => {
+                      const accessToken = localStorage.getItem('access_token');
+                      const baseUrl = typeof window !== 'undefined' 
+                        ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
+                        : '';
+                      if (accessToken && baseUrl) {
+                        await fetchRepositories(accessToken, baseUrl);
+                      }
+                    }}
+                    disabled={loadingRepos}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      backgroundColor: '#10b981',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: loadingRepos ? 'not-allowed' : 'pointer',
+                      opacity: loadingRepos ? 0.5 : 1,
+                      fontSize: '0.875rem'
+                    }}
+                  >
+                    {loadingRepos ? 'Loading...' : '🔄 Refresh Repository List'}
+                  </button>
+                  <a 
+                    href="https://github.com/new" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    style={{
+                      marginLeft: '10px',
+                      padding: '0.5rem 1rem',
+                      backgroundColor: '#24292e',
+                      color: 'white',
+                      textDecoration: 'none',
+                      borderRadius: '4px',
+                      fontSize: '0.875rem',
+                      display: 'inline-block'
+                    }}
+                  >
+                    Create on GitHub →
+                  </a>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -1015,15 +1221,16 @@ export default function PublishPage() {
             
             <button
               onClick={handlePublish}
-              disabled={uploading || !isAuthenticated || !githubAppInstalled}
+              disabled={uploading || !isAuthenticated || !githubAppInstalled || !selectedRepository}
               className="publish-button"
               style={{
-                opacity: (!isAuthenticated || !githubAppInstalled) ? 0.5 : 1,
-                cursor: (!isAuthenticated || !githubAppInstalled) ? 'not-allowed' : 'pointer'
+                opacity: (!isAuthenticated || !githubAppInstalled || !selectedRepository) ? 0.5 : 1,
+                cursor: (!isAuthenticated || !githubAppInstalled || !selectedRepository) ? 'not-allowed' : 'pointer'
               }}
             >
               {!isAuthenticated ? "Please log in first" :
                !githubAppInstalled ? "Install GitHub App first" :
+               !selectedRepository ? "Select a repository" :
                uploading ? "Publishing..." : "Publish to GitHub Pages"}
             </button>
           </div>
@@ -1046,7 +1253,7 @@ export default function PublishPage() {
                 }}>
                   <p style={{ fontWeight: 'bold', marginBottom: '10px', fontSize: '16px' }}>🌐 Your artwork is live!</p>
                   <a 
-                    href={`https://${userInfo?.handle || 'your-username'}.github.io/makapix-user/`}
+                    href={`https://${userInfo?.handle || 'your-username'}.github.io/${selectedRepository || 'makapix-user'}/`}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{
@@ -1059,7 +1266,7 @@ export default function PublishPage() {
                       wordBreak: 'break-all'
                     }}
                   >
-                    {`https://${userInfo?.handle || 'your-username'}.github.io/makapix-user/`} →
+                    {`https://${userInfo?.handle || 'your-username'}.github.io/${selectedRepository || 'makapix-user'}/`} →
                   </a>
                   <p style={{ fontSize: '14px', color: '#666', marginTop: '10px' }}>
                     📝 Note: It may take 1-2 minutes for GitHub Pages to deploy your site.

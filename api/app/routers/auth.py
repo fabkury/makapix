@@ -308,8 +308,8 @@ def github_callback(
                     models.GitHubInstallation.installation_id == installation_id
                 ).first()
 
-                # Set target repository (makapix-user is the standard repository name)
-                target_repo = f"{github_username}.github.io"
+                # Don't set target_repo during installation - user will select/create repo later
+                # target_repo should be NULL until user selects a repository
 
                 if not existing_installation:
                     # Create new installation record
@@ -318,7 +318,7 @@ def github_callback(
                         installation_id=installation_id,
                         account_login=github_username,
                         account_type="User",
-                        target_repo=target_repo
+                        target_repo=None  # User will select repository later
                     )
                     db.add(installation)
                     db.commit()
@@ -327,7 +327,9 @@ def github_callback(
                     # Update installation to point to this user
                     existing_installation.user_id = user.id
                     existing_installation.account_login = github_username
-                    existing_installation.target_repo = target_repo
+                    # Don't overwrite existing target_repo if user has already selected one
+                    if existing_installation.target_repo is None:
+                        existing_installation.target_repo = None
                     db.commit()
                     logger.info(f"Updated GitHub installation {installation_id} to user {user.id}")
             except IntegrityError as e:
@@ -767,13 +769,9 @@ def validate_github_app_installation(
             "details": "Installation ID is missing"
         }
 
-    if not installation.target_repo:
-        return {
-            "valid": False,
-            "error": "No target repository configured",
-            "details": "GitHub App installation is incomplete - no target repository set"
-        }
-
+    # target_repo is now optional - users select/create repositories via the UI
+    # Don't require it for validation
+    
     # Verify that the installation belongs to the configured GitHub App before attempting token generation
     logger.info(f"Verifying installation {installation.installation_id} belongs to configured GitHub App")
     if not verify_installation_belongs_to_app(installation.installation_id):
@@ -822,7 +820,7 @@ def validate_github_app_installation(
         return {
             "valid": True,
             "installation_id": installation.installation_id,
-            "target_repo": installation.target_repo,
+            "target_repo": installation.target_repo,  # May be NULL - user selects repo later
             "account_login": installation.account_login
         }
 
