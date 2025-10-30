@@ -51,15 +51,40 @@ def list_comments(
     
     comments = query.all()
     
-    # Filter out deleted comments that don't have children
-    # Build set of parent IDs (comments that have children in the result set)
-    parent_ids = {c.parent_id for c in comments if c.parent_id is not None}
+    # Filter out deleted comments recursively using bottom-up approach
+    # Build a map of comment ID -> list of children comment IDs
+    comment_dict = {c.id: c for c in comments}
+    children_map: dict[UUID, list[UUID]] = {}
+    for comment in comments:
+        if comment.parent_id is not None:
+            if comment.parent_id not in children_map:
+                children_map[comment.parent_id] = []
+            children_map[comment.parent_id].append(comment.id)
     
-    # Keep comment if not deleted OR deleted but has children
-    comments = [
-        c for c in comments 
-        if not c.deleted_by_owner or c.id in parent_ids
-    ]
+    # Iteratively remove deleted comments that have no children (bottom-up)
+    # Continue until no more deletions occur
+    removed_ids: set[UUID] = set()
+    changed = True
+    while changed:
+        changed = False
+        # Find deleted leaf comments (comments with no children in the current result set)
+        for comment_id, comment in list(comment_dict.items()):
+            if comment.deleted_by_owner and comment_id not in removed_ids:
+                # Check if this comment has any children that are still in the result set
+                has_children = False
+                if comment_id in children_map:
+                    for child_id in children_map[comment_id]:
+                        if child_id not in removed_ids:
+                            has_children = True
+                            break
+                
+                # If no children, remove this deleted comment
+                if not has_children:
+                    removed_ids.add(comment_id)
+                    changed = True
+    
+    # Filter out removed comments
+    comments = [c for c in comments if c.id not in removed_ids]
     
     # Additional validation: filter out comments that reference invalid parents
     valid_comments = []
