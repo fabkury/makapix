@@ -83,9 +83,9 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
       interval: 10s
-      timeout: 5s
+      timeout: 30s
       retries: 5
-      start_period: 25s
+      start_period: 60s
     networks:
       - internal
       - proxy
@@ -152,7 +152,7 @@ services:
       HOST: 0.0.0.0
       PORT: 3000
       NEXT_TELEMETRY_DISABLED: "1"
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost}
       API_INTERNAL_URL: http://api:8000
       NEXT_PUBLIC_MQTT_WS_URL: ${NEXT_PUBLIC_MQTT_WS_URL:-wss://makapix.club:9001}
     command: sh -c "npm install && npm run dev"
