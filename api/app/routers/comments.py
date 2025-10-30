@@ -31,6 +31,7 @@ def list_comments(
     Returns comments with guest names for anonymous users.
     Moderators can see hidden comments; regular users cannot.
     Filters out comments with invalid depth (> 2) to prevent widget errors.
+    Deleted comments are filtered out unless they have child comments (to maintain thread structure).
     """
     query = db.query(models.Comment).filter(models.Comment.post_id == id)
     
@@ -49,6 +50,16 @@ def list_comments(
     query = query.order_by(models.Comment.created_at.asc()).limit(limit)
     
     comments = query.all()
+    
+    # Filter out deleted comments that don't have children
+    # Build set of parent IDs (comments that have children in the result set)
+    parent_ids = {c.parent_id for c in comments if c.parent_id is not None}
+    
+    # Keep comment if not deleted OR deleted but has children
+    comments = [
+        c for c in comments 
+        if not c.deleted_by_owner or c.id in parent_ids
+    ]
     
     # Additional validation: filter out comments that reference invalid parents
     valid_comments = []
