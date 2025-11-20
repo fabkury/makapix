@@ -42,7 +42,9 @@ services:
       - .env
     volumes:
       - ./mqtt/certs:/mosquitto/certs
+      - ./mqtt/config:/mosquitto/config
     ports:
+      - "1883:1883"
       - "8883:8883"
       - "9001:9001"
     healthcheck:

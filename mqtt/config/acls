@@ -1,0 +1,10 @@
+# Backend service: may publish artwork data and read all view submissions
+user svc_backend
+topic read views/submit/#
+topic write art/#
+
+# Player clients: may read artwork data and publish view submissions only
+user player_client
+topic read art/#
+topic write views/submit/+
+
