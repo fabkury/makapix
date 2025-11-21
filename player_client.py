@@ -1,5 +1,5 @@
 # player_client.py
-import json, time, itertools
+import json, time
 from datetime import datetime
 import paho.mqtt.client as mqtt
 
