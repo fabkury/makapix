@@ -1,3 +1,6 @@
+servoom/
+credentials.py
+
 # Environment files (contain secrets - must be gitignored)
 .env
 .env.*
