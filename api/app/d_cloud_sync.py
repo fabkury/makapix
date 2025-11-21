@@ -176,21 +176,27 @@ def add_new_artworks(existing_artworks: List[Dict], new_artworks: List[Dict]) ->
     return existing_artworks
 
 
-def trim_gallery_file(artworks: List[Dict], max_count: int) -> List[Dict]:
-    """Trim the gallery file to max_count items, removing oldest by added_date."""
+def trim_gallery_file(artworks: List[Dict], max_count: int) -> tuple[List[Dict], int]:
+    """Trim the gallery file to max_count items, removing oldest by added_date.
+    
+    Returns:
+        tuple: (trimmed artworks list, count of removed items)
+    """
     if len(artworks) <= max_count:
-        return artworks
+        return artworks, 0
     
     # Sort by added_date (oldest first)
     def get_added_date(art: Dict) -> str:
         return art.get('added_date', '')
     
     sorted_artworks = sorted(artworks, key=get_added_date)
+    removed_count = 0
     
     # Remove oldest items
     while len(sorted_artworks) > max_count:
         removed = sorted_artworks.pop(0)
         gallery_id = removed.get('GalleryId')
+        removed_count += 1
         
         # Delete associated files if they exist
         downloaded_file = removed.get('downloaded_file', '')
@@ -216,18 +222,22 @@ def trim_gallery_file(artworks: List[Dict], max_count: int) -> List[Dict]:
         save_gallery_file(sorted_artworks)
     
     print(f"[OK] Trimmed gallery file to {len(sorted_artworks)} items")
-    return sorted_artworks
+    return sorted_artworks, removed_count
 
 
-def process_artwork_download_decode(client: DivoomClient, artwork: Dict, gallery_file: List[Dict]) -> None:
-    """Process a single artwork: download and decode if needed."""
+def process_artwork_download_decode(client: DivoomClient, artwork: Dict, gallery_file: List[Dict]) -> bool:
+    """Process a single artwork: download and decode if needed.
+    
+    Returns:
+        bool: True if a file was downloaded in this execution, False otherwise
+    """
     gallery_id = artwork.get('GalleryId')
     if not gallery_id:
-        return
+        return False
     
     health = artwork.get('health', 'ok')
     if health != 'ok':
-        return
+        return False
     
     # Step 7.a: Download file
     downloaded_file = artwork.get('downloaded_file', '')
@@ -238,6 +248,7 @@ def process_artwork_download_decode(client: DivoomClient, artwork: Dict, gallery
         save_gallery_file(gallery_file)
     
     # Check if file already exists
+    file_downloaded = False
     if not os.path.exists(downloaded_file):
         try:
             # Download the artwork (client will create a file with format: {gallery_id}.dat)
@@ -247,12 +258,13 @@ def process_artwork_download_decode(client: DivoomClient, artwork: Dict, gallery
             
             artwork['downloaded_file'] = file_path
             save_gallery_file(gallery_file)
+            file_downloaded = True
             
         except Exception as e:
             print(f"  [ERROR] Download failed for GalleryId={gallery_id}: {e}")
             artwork['health'] = 'download failed'
             save_gallery_file(gallery_file)
-            return
+            return False
     
     # Step 7.b: Decode file
     decoded_file = artwork.get('decoded_file', '')
@@ -281,11 +293,12 @@ def process_artwork_download_decode(client: DivoomClient, artwork: Dict, gallery
             print(f"  [ERROR] Decode failed for GalleryId={gallery_id}: {e}")
             artwork['health'] = 'decode failed'
             save_gallery_file(gallery_file)
-            return
+            return file_downloaded
     
     # Success
     artwork['health'] = 'ok'
     save_gallery_file(gallery_file)
+    return file_downloaded
 
 
 def foo():
@@ -323,7 +336,7 @@ def main():
     
     # Step 4: Trim gallery file to max 1000 items
     print(f"\n[4] Trimming gallery file to {MAX_ARTWORKS} items...")
-    gallery_file = trim_gallery_file(gallery_file, MAX_ARTWORKS)
+    gallery_file, removed_count = trim_gallery_file(gallery_file, MAX_ARTWORKS)
     
     # Step 5: Sort by added_date (oldest first) and process artworks with health="ok"
     print(f"\n[5] Processing artworks (download/decode)...")
@@ -334,13 +347,16 @@ def main():
     sorted_artworks = sorted(gallery_file, key=get_added_date)
     
     processed_count = 0
+    downloaded_count = 0
     for artwork in sorted_artworks:
         if artwork.get('health') == 'ok':
             gallery_id = artwork.get('GalleryId')
             print(f"  Processing GalleryId={gallery_id}...")
             
             try:
-                process_artwork_download_decode(client, artwork, gallery_file)
+                was_downloaded = process_artwork_download_decode(client, artwork, gallery_file)
+                if was_downloaded:
+                    downloaded_count += 1
                 processed_count += 1
             except Exception as e:
                 print(f"  [ERROR] Unknown error processing GalleryId={gallery_id}: {e}")
@@ -352,6 +368,25 @@ def main():
     # Step 6: Call foo() function
     print(f"\n[6] Calling foo() function...")
     foo()
+    
+    # Step 7: Generate final report
+    print(f"\n[7] Generating final report...")
+    
+    # Reload gallery file to get final state
+    gallery_file = load_gallery_file()
+    
+    # Count artworks by health status
+    ok_count = sum(1 for art in gallery_file if art.get('health') == 'ok')
+    not_ok_count = sum(1 for art in gallery_file if art.get('health') != 'ok')
+    
+    print("\n" + "=" * 70)
+    print("FINAL REPORT")
+    print("=" * 70)
+    print(f"  Files with 'ok' health: {ok_count}")
+    print(f"  Files downloaded in this execution: {downloaded_count}")
+    print(f"  Files removed in this execution: {removed_count}")
+    print(f"  Files with health != 'ok': {not_ok_count}")
+    print("=" * 70)
     
     print("\n" + "=" * 70)
     print("Sync completed successfully")
