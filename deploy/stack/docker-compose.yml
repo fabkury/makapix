@@ -30,7 +30,7 @@ services:
     container_name: makapix-cta
     restart: unless-stopped
     volumes:
-      - ../apps/cta:/usr/share/caddy:ro
+      - ../../apps/cta:/usr/share/caddy:ro
     labels:
       caddy: ${ROOT_DOMAIN}, www.${ROOT_DOMAIN}
       caddy.encode: "gzip zstd"
@@ -46,6 +46,7 @@ services:
       - caddy_net
 
   dev:
+    profiles: ["dev"]
     build:
       context: ../..
       dockerfile: web/Dockerfile
@@ -71,5 +72,9 @@ networks:
     external: true
 
 volumes:
-  caddy_data: {}
-  caddy_config: {}
+  caddy_data:
+    external: true
+    name: makapix-stack_caddy_data
+  caddy_config:
+    external: true
+    name: makapix-stack_caddy_config
