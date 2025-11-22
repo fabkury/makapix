@@ -1,4 +1,4 @@
-.PHONY: help local remote up down restart logs test clean deploy deploy-vps
+.PHONY: help local remote up down restart logs test clean deploy deploy-vps stack-up stack-down stack-logs stack-restart
 
 help:
 	@echo "Makapix Development Commands"
@@ -8,7 +8,7 @@ help:
 	@echo "  make remote         - Switch to remote development (dev.makapix.club)"
 	@echo "  make status         - Show current environment and service status"
 	@echo ""
-	@echo "Docker Commands:"
+	@echo "Docker Commands (Full Stack):"
 	@echo "  make up             - Start all services"
 	@echo "  make down           - Stop all services"
 	@echo "  make restart        - Restart all services"
@@ -16,6 +16,12 @@ help:
 	@echo "  make logs           - Show logs for all services"
 	@echo "  make logs-api       - Show logs for API service"
 	@echo "  make logs-web       - Show logs for web service"
+	@echo ""
+	@echo "VPS Stack Commands (CTA + Dev Preview):"
+	@echo "  make stack-up       - Start VPS stack (CTA + dev.makapix.club)"
+	@echo "  make stack-down     - Stop VPS stack"
+	@echo "  make stack-restart  - Restart VPS stack"
+	@echo "  make stack-logs     - Show VPS stack logs"
 	@echo ""
 	@echo "Deployment:"
 	@echo "  make deploy         - Deploy to current environment (pull, rebuild, restart)"
@@ -116,3 +122,15 @@ deploy-vps:
 	@echo "  - Visit: https://dev.makapix.club"
 	@echo "  - Check logs: make logs"
 	@echo "  - Check network: docker network inspect caddy_net"
+
+stack-up:
+	@cd deploy/stack && docker compose up -d
+
+stack-down:
+	@cd deploy/stack && docker compose down
+
+stack-restart:
+	@cd deploy/stack && docker compose restart
+
+stack-logs:
+	@cd deploy/stack && docker compose logs -f
