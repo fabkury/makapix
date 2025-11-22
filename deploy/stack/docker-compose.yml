@@ -1,0 +1,75 @@
+services:
+  caddy:
+    image: lucaslorentz/caddy-docker-proxy:${CADDY_DOCKER_PROXY_TAG}
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "127.0.0.1:2019:2019"
+    environment:
+      - CADDY_INGRESS_NETWORK=caddy_net
+      - ACME_AGREE=true
+      - CADDY_ADMIN=0.0.0.0:2019
+      - EMAIL=${ACME_EMAIL}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - /var/log/caddy:/var/log/caddy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "10"
+    networks:
+      - caddy_net
+
+  cta:
+    image: caddy:${CADDY_TAG}
+    container_name: makapix-cta
+    restart: unless-stopped
+    volumes:
+      - ../apps/cta:/usr/share/caddy:ro
+    labels:
+      caddy: ${ROOT_DOMAIN}, www.${ROOT_DOMAIN}
+      caddy.encode: "gzip zstd"
+      caddy.header.Strict-Transport-Security: "max-age=31536000; includeSubDomains; preload"
+      caddy.header.Content-Security-Policy: "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:"
+      caddy.header.X-Content-Type-Options: "nosniff"
+      caddy.header.Referrer-Policy: "strict-origin-when-cross-origin"
+      caddy.reverse_proxy: "{{upstreams 80}}"
+      caddy.log.output: "file /var/log/caddy/access.log"
+      caddy.log.format: "json"
+      caddy.log.level: "INFO"
+    networks:
+      - caddy_net
+
+  dev:
+    build:
+      context: ../..
+      dockerfile: web/Dockerfile
+    container_name: makapix-dev
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - HOST=0.0.0.0
+      - PORT=${DEV_APP_PORT}
+      - NEXT_TELEMETRY_DISABLED=1
+      - NEXT_PUBLIC_API_BASE_URL=https://makapix.club
+      - NEXT_PUBLIC_MQTT_WS_URL=wss://makapix.club:9001
+    labels:
+      caddy: ${DEV_DOMAIN}
+      caddy.header.X-Robots-Tag: "noindex, nofollow, noarchive"
+      # caddy.basicauth./: "devuser {bcrypt}$2y$10$u6Uc0zq/5xK6aK7n2uRrIeq5a5lqFA0QDqp2nYdSyxvN.6B3OaY3."
+      caddy.reverse_proxy: "{{upstreams ${DEV_APP_PORT}}}"
+    networks:
+      - caddy_net
+
+networks:
+  caddy_net:
+    external: true
+
+volumes:
+  caddy_data: {}
+  caddy_config: {}
