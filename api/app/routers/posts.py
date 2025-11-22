@@ -106,7 +106,7 @@ def create_post(
         )
     
     # Validate file size (basic check)
-    max_file_kb = 15 * 1024  # 15 MB limit
+    max_file_kb = 5 * 1024  # 15 MB limit
     if payload.file_kb > max_file_kb:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
