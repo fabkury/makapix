@@ -176,27 +176,28 @@ def add_new_artworks(existing_artworks: List[Dict], new_artworks: List[Dict]) ->
     return existing_artworks
 
 
-def trim_gallery_file(artworks: List[Dict], max_count: int) -> tuple[List[Dict], int]:
+def trim_gallery_file(artworks: List[Dict], max_count: int) -> tuple[List[Dict], List[int]]:
     """Trim the gallery file to max_count items, removing oldest by added_date.
     
     Returns:
-        tuple: (trimmed artworks list, count of removed items)
+        tuple: (trimmed artworks list, list of removed GalleryIds)
     """
     if len(artworks) <= max_count:
-        return artworks, 0
+        return artworks, []
     
     # Sort by added_date (oldest first)
     def get_added_date(art: Dict) -> str:
         return art.get('added_date', '')
     
     sorted_artworks = sorted(artworks, key=get_added_date)
-    removed_count = 0
+    removed_gallery_ids = []
     
     # Remove oldest items
     while len(sorted_artworks) > max_count:
         removed = sorted_artworks.pop(0)
         gallery_id = removed.get('GalleryId')
-        removed_count += 1
+        if gallery_id:
+            removed_gallery_ids.append(gallery_id)
         
         # Delete associated files if they exist
         downloaded_file = removed.get('downloaded_file', '')
@@ -205,39 +206,39 @@ def trim_gallery_file(artworks: List[Dict], max_count: int) -> tuple[List[Dict],
         if downloaded_file and os.path.exists(downloaded_file):
             try:
                 os.remove(downloaded_file)
-                print(f"  Deleted downloaded file: {downloaded_file}")
+                # print(f"  Deleted downloaded file: {downloaded_file}")
             except Exception as e:
                 print(f"  [WARNING] Failed to delete downloaded file {downloaded_file}: {e}")
         
         if decoded_file and os.path.exists(decoded_file):
             try:
                 os.remove(decoded_file)
-                print(f"  Deleted decoded file: {decoded_file}")
+                # print(f"  Deleted decoded file: {decoded_file}")
             except Exception as e:
                 print(f"  [WARNING] Failed to delete decoded file {decoded_file}: {e}")
         
-        print(f"  Removed artwork GalleryId={gallery_id} (oldest by added_date)")
+        # print(f"  Removed artwork GalleryId={gallery_id} (oldest by added_date)")
         
         # Save after each removal
         save_gallery_file(sorted_artworks)
     
     print(f"[OK] Trimmed gallery file to {len(sorted_artworks)} items")
-    return sorted_artworks, removed_count
+    return sorted_artworks, removed_gallery_ids
 
 
-def process_artwork_download_decode(client: DivoomClient, artwork: Dict, gallery_file: List[Dict]) -> bool:
+def process_artwork_download_decode(client: DivoomClient, artwork: Dict, gallery_file: List[Dict]) -> int | None:
     """Process a single artwork: download and decode if needed.
     
     Returns:
-        bool: True if a file was downloaded in this execution, False otherwise
+        int | None: GalleryId if a file was downloaded in this execution, None otherwise
     """
     gallery_id = artwork.get('GalleryId')
     if not gallery_id:
-        return False
+        return None
     
     health = artwork.get('health', 'ok')
     if health != 'ok':
-        return False
+        return None
     
     # Step 7.a: Download file
     downloaded_file = artwork.get('downloaded_file', '')
@@ -264,7 +265,7 @@ def process_artwork_download_decode(client: DivoomClient, artwork: Dict, gallery
             print(f"  [ERROR] Download failed for GalleryId={gallery_id}: {e}")
             artwork['health'] = 'download failed'
             save_gallery_file(gallery_file)
-            return False
+            return None
     
     # Step 7.b: Decode file
     decoded_file = artwork.get('decoded_file', '')
@@ -293,12 +294,12 @@ def process_artwork_download_decode(client: DivoomClient, artwork: Dict, gallery
             print(f"  [ERROR] Decode failed for GalleryId={gallery_id}: {e}")
             artwork['health'] = 'decode failed'
             save_gallery_file(gallery_file)
-            return file_downloaded
+            return gallery_id if file_downloaded else None
     
     # Success
     artwork['health'] = 'ok'
     save_gallery_file(gallery_file)
-    return file_downloaded
+    return gallery_id if file_downloaded else None
 
 
 def foo():
@@ -336,7 +337,8 @@ def main():
     
     # Step 4: Trim gallery file to max 1000 items
     print(f"\n[4] Trimming gallery file to {MAX_ARTWORKS} items...")
-    gallery_file, removed_count = trim_gallery_file(gallery_file, MAX_ARTWORKS)
+    gallery_file, removed_gallery_ids = trim_gallery_file(gallery_file, MAX_ARTWORKS)
+    removed_count = len(removed_gallery_ids)
     
     # Step 5: Sort by added_date (oldest first) and process artworks with health="ok"
     print(f"\n[5] Processing artworks (download/decode)...")
@@ -347,21 +349,27 @@ def main():
     sorted_artworks = sorted(gallery_file, key=get_added_date)
     
     processed_count = 0
-    downloaded_count = 0
+    downloaded_gallery_ids = []
+    total_artworks = len(sorted_artworks)
+    percent_step = max(1, int(total_artworks * 0.05))
     for artwork in sorted_artworks:
         if artwork.get('health') == 'ok':
             gallery_id = artwork.get('GalleryId')
-            print(f"  Processing GalleryId={gallery_id}...")
-            
+
             try:
-                was_downloaded = process_artwork_download_decode(client, artwork, gallery_file)
-                if was_downloaded:
-                    downloaded_count += 1
+                downloaded_id = process_artwork_download_decode(client, artwork, gallery_file)
+                if downloaded_id is not None:
+                    downloaded_gallery_ids.append(downloaded_id)
                 processed_count += 1
             except Exception as e:
                 print(f"  [ERROR] Unknown error processing GalleryId={gallery_id}: {e}")
                 artwork['health'] = 'unknown error'
                 save_gallery_file(gallery_file)
+                
+            # Print status message every 5% of artworks processed
+            if total_artworks > 0 and processed_count % percent_step == 0:
+                percent = int((processed_count / total_artworks) * 100)
+                print(f"    [STATUS] Processed {processed_count}/{total_artworks} artworks ({percent}%)")
     
     print(f"[OK] Processed {processed_count} artworks")
     
@@ -378,6 +386,7 @@ def main():
     # Count artworks by health status
     ok_count = sum(1 for art in gallery_file if art.get('health') == 'ok')
     not_ok_count = sum(1 for art in gallery_file if art.get('health') != 'ok')
+    downloaded_count = len(downloaded_gallery_ids)
     
     print("\n" + "=" * 70)
     print("FINAL REPORT")
@@ -387,6 +396,19 @@ def main():
     print(f"  Files removed in this execution: {removed_count}")
     print(f"  Files with health != 'ok': {not_ok_count}")
     print("=" * 70)
+    
+    # Print GalleryIds lists
+    if downloaded_gallery_ids:
+        print(f"\n  GalleryIds downloaded in this execution ({len(downloaded_gallery_ids)}):")
+        print(f"    {', '.join(map(str, downloaded_gallery_ids))}")
+    else:
+        print(f"\n  GalleryIds downloaded in this execution: (none)")
+    
+    if removed_gallery_ids:
+        print(f"\n  GalleryIds removed in this execution ({len(removed_gallery_ids)}):")
+        print(f"    {', '.join(map(str, removed_gallery_ids))}")
+    else:
+        print(f"\n  GalleryIds removed in this execution: (none)")
     
     print("\n" + "=" * 70)
     print("Sync completed successfully")
