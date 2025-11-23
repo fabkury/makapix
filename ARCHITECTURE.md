@@ -767,36 +767,37 @@ docker compose exec api mypy app/
 
 | Technology | Version | Purpose |
 |------------|---------|---------|
-| **Python** | 3.11 | Primary language |
-| **FastAPI** | 0.104+ | Web framework |
-| **SQLAlchemy** | 2.0+ | ORM |
-| **Alembic** | Latest | Migrations |
-| **Pydantic** | 2.0+ | Validation |
+| **Python** | 3.12+ | Primary language |
+| **FastAPI** | 0.110+ | Web framework |
+| **SQLAlchemy** | 2.0.29+ | ORM |
+| **Alembic** | 1.13+ | Migrations |
+| **Pydantic** | 2.7+ | Validation |
 | **Celery** | 5.3+ | Task queue |
-| **PyJWT** | Latest | JWT handling |
-| **httpx** | Latest | HTTP client |
-| **Passlib** | Latest | Password hashing |
+| **PyJWT** | 2.8+ | JWT handling |
+| **httpx** | 0.27+ | HTTP client |
+| **psycopg** | 3.1+ | PostgreSQL adapter |
 
 ### Frontend
 
 | Technology | Version | Purpose |
 |------------|---------|---------|
-| **Node.js** | 18+ | Runtime |
-| **Next.js** | 14+ | React framework |
-| **React** | 18+ | UI library |
-| **TypeScript** | 5.0+ | Type safety |
-| **MQTT.js** | Latest | MQTT client |
+| **Node.js** | 20+ | Runtime |
+| **Next.js** | 14.2+ | React framework |
+| **React** | 18.2+ | UI library |
+| **TypeScript** | 5.5+ | Type safety |
+| **mqtt** | 5.3+ | MQTT client |
+| **JSZip** | 3.10+ | ZIP file handling |
 
 ### Infrastructure
 
 | Technology | Version | Purpose |
 |------------|---------|---------|
-| **PostgreSQL** | 16 | Database |
-| **Redis** | 7.2 | Cache/Queue |
-| **Mosquitto** | Latest | MQTT broker |
-| **Caddy** | 2 | Reverse proxy |
-| **Docker** | Latest | Containerization |
-| **Docker Compose** | Latest | Orchestration |
+| **PostgreSQL** | 16 (Alpine) | Database |
+| **Redis** | 7.2 (Alpine) | Cache/Queue |
+| **Mosquitto** | 2.0+ | MQTT broker |
+| **Caddy** | 2+ | Reverse proxy |
+| **Docker** | 24+ | Containerization |
+| **Docker Compose** | 2.20+ | Orchestration |
 
 ### External Services
 
