@@ -1,4 +1,4 @@
-# Makapix - Pixel Art Social Network
+# Makapix Club - Pixel Art Social Network
 
 A lightweight social network centered on pixel art, designed to run efficiently on a single VPS.
 
