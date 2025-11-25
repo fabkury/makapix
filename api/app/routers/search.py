@@ -357,7 +357,7 @@ def feed_promoted(
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User | None = Depends(get_current_user_optional),
 ) -> schemas.Page[schemas.Post]:
     """
     Promoted posts feed with infinite scroll support.

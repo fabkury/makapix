@@ -23,10 +23,21 @@ export default function HashtagsPage() {
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'popularity' | 'alphabetical'>('popularity');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   
   const API_BASE_URL = typeof window !== 'undefined' 
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
     : '';
+
+  // Check authentication
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      router.push('/auth');
+      return;
+    }
+    setIsAuthenticated(true);
+  }, [router]);
 
   // Debounce search query
   useEffect(() => {
@@ -115,6 +126,17 @@ export default function HashtagsPage() {
     setHashtags([]);
     setNextCursor(null);
   };
+
+  // Don't render until authenticated
+  if (!isAuthenticated) {
+    return (
+      <Layout title="Browse Hashtags">
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
+          <div className="loading-spinner" style={{ width: 40, height: 40, border: '3px solid var(--bg-tertiary)', borderTopColor: 'var(--accent-cyan)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout title="Browse Hashtags" description="Explore hashtags used in pixel art">

@@ -39,22 +39,8 @@ export default function RecommendedPage() {
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
     : '';
 
-  // Check authentication on mount
-  useEffect(() => {
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      router.push('/auth');
-    }
-  }, [router]);
-
   const loadPosts = useCallback(async (cursor: string | null = null) => {
     if (loadingRef.current || (cursor !== null && !hasMoreRef.current)) {
-      return;
-    }
-    
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      router.push('/auth');
       return;
     }
     
@@ -63,18 +49,18 @@ export default function RecommendedPage() {
     setError(null);
     
     try {
-      const url = `${API_BASE_URL}/api/feed/promoted?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const token = localStorage.getItem('access_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
       
-      if (response.status === 401) {
+      const url = `${API_BASE_URL}/api/feed/promoted?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const response = await fetch(url, { headers });
+      
+      if (response.status === 401 && token) {
         localStorage.removeItem('access_token');
         localStorage.removeItem('user_id');
-        router.push('/auth');
-        return;
       }
       
       if (!response.ok) {

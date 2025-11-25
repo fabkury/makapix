@@ -40,11 +40,51 @@ export default function AuthPage() {
     }
   }, [router]);
 
+  // Listen for OAuth success message from popup
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Verify message origin for security (in production, check against your domain)
+      if (event.data && event.data.type === 'OAUTH_SUCCESS') {
+        const { tokens } = event.data;
+        if (tokens) {
+          localStorage.setItem('access_token', tokens.access_token);
+          localStorage.setItem('refresh_token', tokens.refresh_token || '');
+          localStorage.setItem('user_id', tokens.user_id);
+          localStorage.setItem('user_handle', tokens.user_handle || '');
+          
+          // Reload the page to update authentication state
+          window.location.reload();
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setEmailNotVerified(false);
     setVerificationResent(false);
+    
+    // Trim and validate inputs
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password.trim();
+    
+    // Client-side validation
+    if (!trimmedEmail) {
+      setError('Email is required');
+      return;
+    }
+    
+    if (mode === 'login' && !trimmedPassword) {
+      setError('Password is required');
+      return;
+    }
+    
     setLoading(true);
 
     try {
@@ -54,12 +94,31 @@ export default function AuthPage() {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ email }),
+          body: JSON.stringify({ email: trimmedEmail }),
         });
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-          throw new Error(errorData.detail || 'Failed to register');
+          let errorMessage = 'Failed to register';
+          
+          // Handle FastAPI validation errors (array of error objects)
+          if (Array.isArray(errorData.detail)) {
+            const messages = errorData.detail.map((err: { msg?: string; loc?: (string | number)[]; type?: string }) => {
+              const field = err.loc && err.loc.length > 1 ? err.loc[err.loc.length - 1] : '';
+              const msg = err.msg || 'Validation error';
+              
+              if (msg.includes('String should have at least 1 character')) {
+                return field ? `${field} is required` : 'This field is required';
+              }
+              
+              return field ? `${field}: ${msg}` : msg;
+            });
+            errorMessage = messages.join(', ');
+          } else if (typeof errorData.detail === 'string') {
+            errorMessage = errorData.detail;
+          }
+          
+          throw new Error(errorMessage);
         }
 
         const data: RegisterResponse = await response.json();
@@ -70,7 +129,7 @@ export default function AuthPage() {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ email, password }),
+          body: JSON.stringify({ email: trimmedEmail, password: trimmedPassword }),
         });
 
         if (!response.ok) {
@@ -79,7 +138,19 @@ export default function AuthPage() {
           
           // Handle FastAPI validation errors (array of error objects)
           if (Array.isArray(errorData.detail)) {
-            errorMessage = errorData.detail.map((err: { msg?: string }) => err.msg || 'Validation error').join(', ');
+            const messages = errorData.detail.map((err: { msg?: string; loc?: (string | number)[]; type?: string }) => {
+              // Extract field name from location if available
+              const field = err.loc && err.loc.length > 1 ? err.loc[err.loc.length - 1] : '';
+              const msg = err.msg || 'Validation error';
+              
+              // Provide user-friendly messages for common validation errors
+              if (msg.includes('String should have at least 1 character')) {
+                return field ? `${field} is required` : 'This field is required';
+              }
+              
+              return field ? `${field}: ${msg}` : msg;
+            });
+            errorMessage = messages.join(', ');
           } else if (typeof errorData.detail === 'string') {
             errorMessage = errorData.detail;
           }

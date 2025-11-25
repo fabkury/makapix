@@ -82,6 +82,7 @@ services:
       - ./api:/workspace/api
       - api_pip_cache:/root/.cache/pip
       - ./mqtt/certs:/certs:ro
+      - ${VAULT_LOCATION}:${VAULT_LOCATION}
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:

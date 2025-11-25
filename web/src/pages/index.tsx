@@ -28,6 +28,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   
   const observerTarget = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
@@ -39,11 +40,13 @@ export default function HomePage() {
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
     : '';
 
-  // Check authentication on mount
+  // Redirect non-logged-in users to login page
   useEffect(() => {
     const token = localStorage.getItem('access_token');
     if (!token) {
-      router.push('/auth');
+      router.replace('/auth');
+    } else {
+      setIsAuthenticated(true);
     }
   }, [router]);
 
@@ -54,7 +57,6 @@ export default function HomePage() {
     
     const token = localStorage.getItem('access_token');
     if (!token) {
-      router.push('/auth');
       return;
     }
     
@@ -118,10 +120,10 @@ export default function HomePage() {
 
   // Initial load
   useEffect(() => {
-    if (API_BASE_URL) {
+    if (API_BASE_URL && isAuthenticated) {
       loadPosts();
     }
-  }, [API_BASE_URL, loadPosts]);
+  }, [API_BASE_URL, isAuthenticated, loadPosts]);
 
   // Intersection Observer for infinite scroll
   useEffect(() => {
@@ -151,6 +153,17 @@ export default function HomePage() {
       }
     };
   }, [posts.length, loadPosts]);
+
+  // Don't render content if not authenticated (will redirect)
+  if (!isAuthenticated) {
+    return (
+      <Layout title="Recent Pixel Art">
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
+          <div className="loading-spinner" style={{ width: 40, height: 40, border: '3px solid var(--bg-tertiary)', borderTopColor: 'var(--accent-cyan)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout title="Recent Pixel Art" description="Discover the latest pixel art creations">

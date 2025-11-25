@@ -36,6 +36,13 @@ export default function PostPage() {
   const [isOwner, setIsOwner] = useState(false);
   const [isModerator, setIsModerator] = useState(false);
   
+  // Edit mode state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editDescription, setEditDescription] = useState('');
+  const [editHashtags, setEditHashtags] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  
   const API_BASE_URL = typeof window !== 'undefined' 
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
     : '';
@@ -228,6 +235,68 @@ export default function PostPage() {
     } catch (err) {
       console.error(`Error ${action}ing post:`, err);
       alert(`Failed to ${action} post.`);
+    }
+  };
+
+  // Owner: Edit description and hashtags
+  const handleEditClick = () => {
+    if (!post) return;
+    setEditDescription(post.description || '');
+    setEditHashtags(post.hashtags?.join(', ') || '');
+    setSaveError(null);
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setSaveError(null);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!post || !id || typeof id !== 'string') return;
+    
+    setIsSaving(true);
+    setSaveError(null);
+    
+    const accessToken = localStorage.getItem('access_token');
+    if (!accessToken) {
+      setSaveError('You must be logged in.');
+      setIsSaving(false);
+      return;
+    }
+    
+    // Parse hashtags from comma-separated string
+    const hashtagsArray = editHashtags
+      .split(',')
+      .map(tag => tag.trim().toLowerCase().replace(/^#/, ''))
+      .filter(tag => tag.length > 0);
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/posts/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          description: editDescription,
+          hashtags: hashtagsArray
+        })
+      });
+      
+      if (response.ok) {
+        const updatedPost = await response.json();
+        setPost(updatedPost);
+        setIsEditing(false);
+      } else {
+        const errorData = await response.json().catch(() => ({ detail: 'Failed to save changes' }));
+        setSaveError(errorData.detail || 'Failed to save changes.');
+      }
+    } catch (err) {
+      console.error('Error saving post:', err);
+      setSaveError('Failed to save changes.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -532,7 +601,7 @@ export default function PostPage() {
             </div>
           )}
 
-          {isOwner && (
+          {isOwner && !isEditing && (
             <div className="owner-actions">
               <button
                 onClick={handleHide}
@@ -540,12 +609,73 @@ export default function PostPage() {
               >
                 {post.hidden_by_user ? '👁 Unhide' : '👁‍🗨 Hide'}
               </button>
+              {post.hidden_by_user && (
+                <button
+                  onClick={handleDelete}
+                  className="action-button delete"
+                >
+                  🗑 Delete
+                </button>
+              )}
               <button
-                onClick={handleDelete}
-                className="action-button delete"
+                onClick={handleEditClick}
+                className="action-button edit"
               >
-                🗑 Delete
+                ✏️ Edit
               </button>
+            </div>
+          )}
+
+          {isOwner && isEditing && (
+            <div className="edit-section">
+              <h3 className="edit-title">Edit Artwork</h3>
+              
+              <div className="edit-field">
+                <label htmlFor="edit-description">Description</label>
+                <textarea
+                  id="edit-description"
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="Describe your artwork..."
+                  rows={4}
+                  maxLength={5000}
+                  disabled={isSaving}
+                />
+              </div>
+              
+              <div className="edit-field">
+                <label htmlFor="edit-hashtags">Hashtags</label>
+                <input
+                  id="edit-hashtags"
+                  type="text"
+                  value={editHashtags}
+                  onChange={(e) => setEditHashtags(e.target.value)}
+                  placeholder="art, pixel, game (comma-separated)"
+                  disabled={isSaving}
+                />
+                <span className="field-hint">Separate hashtags with commas</span>
+              </div>
+              
+              {saveError && (
+                <p className="save-error">{saveError}</p>
+              )}
+              
+              <div className="edit-actions">
+                <button
+                  onClick={handleSaveEdit}
+                  className="action-button save"
+                  disabled={isSaving}
+                >
+                  {isSaving ? 'Saving...' : '💾 Save Changes'}
+                </button>
+                <button
+                  onClick={handleCancelEdit}
+                  className="action-button cancel"
+                  disabled={isSaving}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           )}
 
@@ -716,6 +846,7 @@ export default function PostPage() {
           margin-top: 24px;
           padding-top: 24px;
           border-top: 1px solid rgba(255, 255, 255, 0.05);
+          justify-content: flex-start;
         }
 
         .action-button {
@@ -724,6 +855,13 @@ export default function PostPage() {
           font-size: 0.9rem;
           font-weight: 600;
           transition: all var(--transition-fast);
+          cursor: pointer;
+          border: none;
+        }
+
+        .action-button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
 
         .action-button.hide {
@@ -731,7 +869,7 @@ export default function PostPage() {
           color: var(--text-secondary);
         }
 
-        .action-button.hide:hover {
+        .action-button.hide:hover:not(:disabled) {
           background: rgba(245, 158, 11, 0.2);
           color: #f59e0b;
         }
@@ -741,7 +879,7 @@ export default function PostPage() {
           color: #10b981;
         }
 
-        .action-button.unhide:hover {
+        .action-button.unhide:hover:not(:disabled) {
           background: rgba(16, 185, 129, 0.3);
         }
 
@@ -750,8 +888,110 @@ export default function PostPage() {
           color: #ef4444;
         }
 
-        .action-button.delete:hover {
+        .action-button.delete:hover:not(:disabled) {
           background: rgba(239, 68, 68, 0.3);
+        }
+
+        .action-button.edit {
+          background: rgba(78, 159, 255, 0.2);
+          color: #4e9fff;
+        }
+
+        .action-button.edit:hover:not(:disabled) {
+          background: rgba(78, 159, 255, 0.3);
+        }
+
+        .action-button.save {
+          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          color: white;
+        }
+
+        .action-button.save:hover:not(:disabled) {
+          box-shadow: var(--glow-pink);
+        }
+
+        .action-button.cancel {
+          background: var(--bg-tertiary);
+          color: var(--text-secondary);
+        }
+
+        .action-button.cancel:hover:not(:disabled) {
+          background: var(--bg-primary);
+        }
+
+        /* Edit Section Styles */
+        .edit-section {
+          margin-top: 24px;
+          padding-top: 24px;
+          border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .edit-title {
+          font-size: 1.1rem;
+          font-weight: 600;
+          color: var(--text-primary);
+          margin-bottom: 16px;
+        }
+
+        .edit-field {
+          margin-bottom: 16px;
+        }
+
+        .edit-field label {
+          display: block;
+          font-size: 0.9rem;
+          font-weight: 500;
+          color: var(--text-secondary);
+          margin-bottom: 8px;
+        }
+
+        .edit-field textarea,
+        .edit-field input {
+          width: 100%;
+          padding: 12px;
+          border-radius: 8px;
+          border: 2px solid var(--bg-tertiary);
+          background: var(--bg-primary);
+          color: var(--text-primary);
+          font-size: 0.95rem;
+          font-family: inherit;
+          transition: border-color var(--transition-fast);
+        }
+
+        .edit-field textarea:focus,
+        .edit-field input:focus {
+          outline: none;
+          border-color: var(--accent-cyan);
+        }
+
+        .edit-field textarea:disabled,
+        .edit-field input:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .edit-field textarea {
+          min-height: 100px;
+          resize: vertical;
+        }
+
+        .field-hint {
+          display: block;
+          font-size: 0.8rem;
+          color: var(--text-muted);
+          margin-top: 6px;
+        }
+
+        .save-error {
+          color: #ef4444;
+          font-size: 0.9rem;
+          margin-bottom: 12px;
+        }
+
+        .edit-actions {
+          display: flex;
+          gap: 12px;
+          margin-top: 16px;
         }
 
         .moderator-actions {
