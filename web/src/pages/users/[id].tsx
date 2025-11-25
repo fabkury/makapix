@@ -6,7 +6,6 @@ import Layout from '../../components/Layout';
 interface User {
   id: string;
   handle: string;
-  display_name: string;
   bio?: string;
   avatar_url?: string;
   reputation: number;
@@ -62,7 +61,7 @@ export default function UserProfilePage() {
         const token = localStorage.getItem('access_token');
         const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
         
-        const response = await fetch(`${API_BASE_URL}/api/profiles/${id}`, { headers });
+        const response = await fetch(`${API_BASE_URL}/api/users/${id}`, { headers });
         
         if (!response.ok) {
           if (response.status === 404) {
@@ -223,22 +222,21 @@ export default function UserProfilePage() {
   }
 
   return (
-    <Layout title={user.display_name || user.handle} description={user.bio || `${user.display_name}'s profile on Makapix Club`}>
+    <Layout title={user.handle} description={user.bio || `${user.handle}'s profile on Makapix Club`}>
       <div className="profile-container">
         <div className="profile-header">
           <div className="avatar-container">
             {user.avatar_url ? (
-              <img src={user.avatar_url} alt={user.display_name} className="avatar" />
+              <img src={user.avatar_url} alt={user.handle} className="avatar" />
             ) : (
               <div className="avatar-placeholder">
-                {user.display_name?.charAt(0) || user.handle.charAt(0)}
+                {user.handle.charAt(0).toUpperCase()}
               </div>
             )}
           </div>
           
           <div className="profile-info">
-            <h1 className="display-name">{user.display_name}</h1>
-            <p className="handle">@{user.handle}</p>
+            <h1 className="display-name">{user.handle}</h1>
             
             {user.bio && (
               <p className="bio">{user.bio}</p>
@@ -246,7 +244,7 @@ export default function UserProfilePage() {
             
             <div className="stats">
               <div className="stat">
-                <span className="stat-value">{posts.length}+</span>
+                <span className="stat-value">{posts.length}</span>
                 <span className="stat-label">artworks</span>
               </div>
               <div className="stat">
