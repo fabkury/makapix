@@ -15,6 +15,10 @@ interface Post {
   created_at: string;
   kind?: string;
   hidden_by_user?: boolean;
+  hidden_by_mod?: boolean;
+  public_visibility?: boolean;
+  promoted?: boolean;
+  promoted_category?: string;
   owner?: {
     id: string;
     handle: string;
@@ -30,6 +34,7 @@ export default function PostPage() {
   const [error, setError] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<{ id: string } | null>(null);
   const [isOwner, setIsOwner] = useState(false);
+  const [isModerator, setIsModerator] = useState(false);
   
   const API_BASE_URL = typeof window !== 'undefined' 
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
@@ -43,7 +48,13 @@ export default function PostPage() {
       setError(null);
       
       try {
-        const response = await fetch(`${API_BASE_URL}/api/posts/${id}`);
+        const accessToken = localStorage.getItem('access_token');
+        const headers: HeadersInit = {};
+        if (accessToken) {
+          headers['Authorization'] = `Bearer ${accessToken}`;
+        }
+        
+        const response = await fetch(`${API_BASE_URL}/api/posts/${id}`, { headers });
         
         if (!response.ok) {
           if (response.status === 404) {
@@ -58,7 +69,6 @@ export default function PostPage() {
         const data = await response.json();
         setPost(data);
         
-        const accessToken = localStorage.getItem('access_token');
         if (accessToken) {
           try {
             const userResponse = await fetch(`${API_BASE_URL}/api/auth/me`, {
@@ -70,10 +80,13 @@ export default function PostPage() {
               const userData = await userResponse.json();
               setCurrentUser({ id: userData.user.id });
               setIsOwner(userData.user.id === data.owner_id);
+              const roles = userData.user.roles || userData.roles || [];
+              setIsModerator(roles.includes('moderator') || roles.includes('owner'));
             }
           } catch (err) {
             setCurrentUser(null);
             setIsOwner(false);
+            setIsModerator(false);
           }
         }
       } catch (err) {
@@ -199,7 +212,11 @@ export default function PostPage() {
       });
       
       if (response.ok || response.status === 201 || response.status === 204) {
-        const refreshResponse = await fetch(`${API_BASE_URL}/api/posts/${id}`);
+        const refreshResponse = await fetch(`${API_BASE_URL}/api/posts/${id}`, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
         if (refreshResponse.ok) {
           const updatedPost = await refreshResponse.json();
           setPost(updatedPost);
@@ -211,6 +228,196 @@ export default function PostPage() {
     } catch (err) {
       console.error(`Error ${action}ing post:`, err);
       alert(`Failed to ${action} post.`);
+    }
+  };
+
+  // Moderator: Hide/Unhide as moderator
+  const handleModHide = async () => {
+    if (!post || !id || typeof id !== 'string') return;
+    
+    const isHidden = post.hidden_by_mod;
+    const action = isHidden ? 'unhide' : 'hide';
+    const confirmed = confirm(
+      isHidden
+        ? 'Unhide this post (moderator action)? It will become visible again.'
+        : 'Hide this post as moderator? This is a moderation action that will be logged.'
+    );
+    
+    if (!confirmed) return;
+    
+    const accessToken = localStorage.getItem('access_token');
+    if (!accessToken) return;
+    
+    try {
+      const url = `${API_BASE_URL}/api/posts/${id}/hide`;
+      const method = isHidden ? 'DELETE' : 'POST';
+      
+      const response = await fetch(url, {
+        method: method,
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ by: 'mod' })
+      });
+      
+      if (response.ok || response.status === 201 || response.status === 204) {
+        const refreshResponse = await fetch(`${API_BASE_URL}/api/posts/${id}`, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+        if (refreshResponse.ok) {
+          setPost(await refreshResponse.json());
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        alert(errorData.detail || `Failed to ${action} post.`);
+      }
+    } catch (err) {
+      console.error(`Error ${action}ing post:`, err);
+    }
+  };
+
+  // Moderator: Promote/Demote
+  const handlePromote = async () => {
+    if (!post || !id || typeof id !== 'string') return;
+    
+    const isPromoted = post.promoted;
+    const action = isPromoted ? 'demote' : 'promote';
+    const confirmed = confirm(
+      isPromoted
+        ? 'Remove this post from promoted posts?'
+        : 'Promote this post to the frontpage?'
+    );
+    
+    if (!confirmed) return;
+    
+    const accessToken = localStorage.getItem('access_token');
+    if (!accessToken) return;
+    
+    try {
+      const url = `${API_BASE_URL}/api/posts/${id}/promote`;
+      const method = isPromoted ? 'DELETE' : 'POST';
+      
+      const response = await fetch(url, {
+        method: method,
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: isPromoted ? undefined : JSON.stringify({ category: 'frontpage' })
+      });
+      
+      if (response.ok || response.status === 201 || response.status === 204) {
+        const refreshResponse = await fetch(`${API_BASE_URL}/api/posts/${id}`, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+        if (refreshResponse.ok) {
+          setPost(await refreshResponse.json());
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        alert(errorData.detail || `Failed to ${action} post.`);
+      }
+    } catch (err) {
+      console.error(`Error ${action}ing post:`, err);
+    }
+  };
+
+  // Moderator: Approve public visibility (one-time action, cannot be revoked)
+  const handleApprovePublicVisibility = async () => {
+    if (!post || !id || typeof id !== 'string') return;
+    
+    // Only allow approving, not revoking
+    if (post.public_visibility) return;
+    
+    const confirmed = confirm(
+      'Approve public visibility? This artwork will appear in Recent Artworks and search results.\n\n' +
+      'Note: This is a one-time action. To hide the artwork later, use the "Hide (Mod)" action instead.'
+    );
+    
+    if (!confirmed) return;
+    
+    const accessToken = localStorage.getItem('access_token');
+    if (!accessToken) return;
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/posts/${id}/approve-public`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      
+      if (response.ok || response.status === 201) {
+        const refreshResponse = await fetch(`${API_BASE_URL}/api/posts/${id}`, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+        if (refreshResponse.ok) {
+          setPost(await refreshResponse.json());
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        alert(errorData.detail || 'Failed to approve public visibility.');
+      }
+    } catch (err) {
+      console.error('Error approving public visibility:', err);
+    }
+  };
+
+  // Moderator: Permanent delete (only for hidden posts)
+  const handlePermanentDelete = async () => {
+    if (!post || !id || typeof id !== 'string') return;
+    
+    // Only allow deletion of hidden posts
+    if (!post.hidden_by_mod && !post.hidden_by_user) {
+      alert('Post must be hidden before it can be permanently deleted.');
+      return;
+    }
+    
+    const confirmed = confirm(
+      '⚠️ PERMANENT DELETE ⚠️\n\n' +
+      'This will permanently delete this artwork and cannot be undone.\n\n' +
+      'Are you absolutely sure you want to proceed?'
+    );
+    
+    if (!confirmed) return;
+    
+    // Double confirmation for safety
+    const doubleConfirmed = confirm(
+      'This is your final warning.\n\n' +
+      'Click OK to permanently delete this artwork.'
+    );
+    
+    if (!doubleConfirmed) return;
+    
+    const accessToken = localStorage.getItem('access_token');
+    if (!accessToken) return;
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/posts/${id}/permanent`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      
+      if (response.ok || response.status === 204) {
+        alert('Artwork has been permanently deleted.');
+        // Redirect to home page
+        window.location.href = '/';
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        alert(errorData.detail || 'Failed to delete artwork.');
+      }
+    } catch (err) {
+      console.error('Error deleting artwork:', err);
+      alert('Failed to delete artwork.');
     }
   };
 
@@ -339,6 +546,48 @@ export default function PostPage() {
               >
                 🗑 Delete
               </button>
+            </div>
+          )}
+
+          {isModerator && (
+            <div className="moderator-actions">
+              <div className="mod-actions-grid">
+                <button
+                  onClick={handleModHide}
+                  className={`mod-button ${post.hidden_by_mod ? 'active' : ''}`}
+                >
+                  {post.hidden_by_mod ? '👁 Unhide' : '🚫 Hide'}
+                </button>
+                <button
+                  onClick={handlePromote}
+                  className={`mod-button ${post.promoted ? 'active' : ''}`}
+                >
+                  {post.promoted ? '⬇️ Demote' : '⭐ Promote'}
+                </button>
+                {!post.public_visibility && (
+                  <button
+                    onClick={handleApprovePublicVisibility}
+                    className="mod-button"
+                  >
+                    ✅ Approve
+                  </button>
+                )}
+                {(post.hidden_by_mod || post.hidden_by_user) && (
+                  <button
+                    onClick={handlePermanentDelete}
+                    className="mod-button danger"
+                  >
+                    🗑️ Delete Permanently
+                  </button>
+                )}
+              </div>
+              {(post.hidden_by_mod || post.promoted || !post.public_visibility) && (
+                <div className="mod-status-badges">
+                  {post.hidden_by_mod && <span className="status-badge hidden">Hidden by mod</span>}
+                  {post.promoted && <span className="status-badge promoted">Promoted</span>}
+                  {!post.public_visibility && <span className="status-badge pending">Pending approval</span>}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -503,6 +752,84 @@ export default function PostPage() {
 
         .action-button.delete:hover {
           background: rgba(239, 68, 68, 0.3);
+        }
+
+        .moderator-actions {
+          margin-top: 16px;
+        }
+
+        .mod-actions-grid {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          justify-content: flex-end;
+        }
+
+        .mod-button {
+          padding: 10px 16px;
+          border-radius: 8px;
+          font-size: 0.85rem;
+          font-weight: 600;
+          background: var(--bg-tertiary);
+          color: var(--text-secondary);
+          transition: all var(--transition-fast);
+          border: 1px solid transparent;
+        }
+
+        .mod-button:hover {
+          background: rgba(180, 78, 255, 0.2);
+          color: var(--accent-purple);
+          border-color: var(--accent-purple);
+        }
+
+        .mod-button.active {
+          background: rgba(180, 78, 255, 0.15);
+          color: var(--accent-purple);
+          border-color: rgba(180, 78, 255, 0.3);
+        }
+
+        .mod-button.danger {
+          background: rgba(239, 68, 68, 0.15);
+          color: #ef4444;
+          border-color: rgba(239, 68, 68, 0.3);
+        }
+
+        .mod-button.danger:hover {
+          background: rgba(239, 68, 68, 0.3);
+          color: #f87171;
+          border-color: #ef4444;
+          box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
+        }
+
+        .mod-status-badges {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-top: 16px;
+        }
+
+        .status-badge {
+          font-size: 0.75rem;
+          font-weight: 600;
+          padding: 4px 10px;
+          border-radius: 12px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .status-badge.hidden {
+          background: rgba(239, 68, 68, 0.2);
+          color: #ef4444;
+        }
+
+        .status-badge.promoted {
+          background: rgba(245, 158, 11, 0.2);
+          color: #f59e0b;
+        }
+
+        .status-badge.pending {
+          background: rgba(59, 130, 246, 0.2);
+          color: #3b82f6;
         }
 
         .widget-section {

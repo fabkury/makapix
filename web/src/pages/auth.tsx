@@ -75,7 +75,14 @@ export default function AuthPage() {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-          const errorMessage = errorData.detail || 'Failed to login';
+          let errorMessage = 'Failed to login';
+          
+          // Handle FastAPI validation errors (array of error objects)
+          if (Array.isArray(errorData.detail)) {
+            errorMessage = errorData.detail.map((err: { msg?: string }) => err.msg || 'Validation error').join(', ');
+          } else if (typeof errorData.detail === 'string') {
+            errorMessage = errorData.detail;
+          }
           
           // Check if the error is about email not being verified
           if (response.status === 403 && errorMessage.toLowerCase().includes('email not verified')) {
