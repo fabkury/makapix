@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Script from 'next/script';
 import Layout from '../../components/Layout';
+import StatsPanel from '../../components/StatsPanel';
 
 interface Post {
   id: string;
@@ -43,6 +44,9 @@ export default function PostPage() {
   const [editHashtags, setEditHashtags] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  
+  // Stats panel state
+  const [showStats, setShowStats] = useState(false);
   
   const API_BASE_URL = typeof window !== 'undefined' 
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
@@ -620,6 +624,19 @@ export default function PostPage() {
             </div>
           )}
 
+          {/* Stats button - visible to owner and moderators */}
+          {(isOwner || isModerator) && (
+            <div className="stats-action">
+              <button
+                onClick={() => setShowStats(true)}
+                className="action-button stats"
+                title="View Statistics"
+              >
+                📈 Statistics
+              </button>
+            </div>
+          )}
+
           {isOwner && !isEditing && (
             <div className="owner-actions">
               <button
@@ -745,6 +762,13 @@ export default function PostPage() {
           <div id={`makapix-widget-${post.id}`} data-post-id={post.id}></div>
         </div>
       </div>
+
+      {/* Stats Panel Modal */}
+      <StatsPanel
+        postId={post.id}
+        isOpen={showStats}
+        onClose={() => setShowStats(false)}
+      />
 
       <Script
         src={`${API_BASE_URL}/makapix-widget.js`}
@@ -918,6 +942,22 @@ export default function PostPage() {
 
         .action-button.edit:hover:not(:disabled) {
           background: rgba(78, 159, 255, 0.3);
+        }
+
+        .action-button.stats {
+          background: rgba(180, 78, 255, 0.2);
+          color: #b44eff;
+        }
+
+        .action-button.stats:hover:not(:disabled) {
+          background: rgba(180, 78, 255, 0.3);
+          box-shadow: 0 0 12px rgba(180, 78, 255, 0.3);
+        }
+
+        .stats-action {
+          margin-top: 16px;
+          padding-top: 16px;
+          border-top: 1px solid rgba(255, 255, 255, 0.05);
         }
 
         .action-button.save {

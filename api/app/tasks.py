@@ -324,6 +324,16 @@ celery_app.conf.update(
             "task": "app.tasks.periodic_check_post_hashes",
             "schedule": 21600.0,  # Every 6 hours (in seconds)
         },
+        "rollup-view-events": {
+            "task": "app.tasks.rollup_view_events",
+            "schedule": 86400.0,  # Daily (in seconds)
+            "options": {"queue": "default"},
+        },
+        "cleanup-expired-stats-cache": {
+            "task": "app.tasks.cleanup_expired_stats_cache",
+            "schedule": 3600.0,  # Every hour (in seconds)
+            "options": {"queue": "default"},
+        },
     },
     timezone="UTC",
 )
@@ -770,6 +780,179 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
                 db.commit()
         except Exception as rollback_error:
             logger.error("Failed to update job status after error: %s", rollback_error)
+        return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
+
+
+# ============================================================================
+# VIEW TRACKING & STATISTICS TASKS
+# ============================================================================
+
+
+@celery_app.task(name="app.tasks.rollup_view_events", bind=True)
+def rollup_view_events(self) -> dict[str, Any]:
+    """
+    Daily task: Roll up view events older than 7 days into daily aggregates.
+    
+    This task:
+    1. Selects view events older than 7 days
+    2. Aggregates them by (post_id, date)
+    3. Upserts into post_stats_daily table
+    4. Deletes the old raw events
+    
+    Should run daily (configured in beat_schedule).
+    """
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import func, cast, Date
+    from . import models
+    from .db import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        logger.info("Starting view events rollup task")
+        
+        # Get events older than 7 days
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=7)
+        
+        # Query events to aggregate, grouped by post_id and date
+        old_events = db.query(models.ViewEvent).filter(
+            models.ViewEvent.created_at < cutoff_date
+        ).all()
+        
+        if not old_events:
+            logger.info("No old view events to roll up")
+            return {"status": "success", "rolled_up": 0, "deleted": 0}
+        
+        logger.info(f"Found {len(old_events)} old view events to roll up")
+        
+        # Aggregate events by (post_id, date)
+        aggregates: dict[tuple, dict] = {}  # (post_id, date) -> aggregate data
+        
+        for event in old_events:
+            key = (event.post_id, event.created_at.date())
+            
+            if key not in aggregates:
+                aggregates[key] = {
+                    "total_views": 0,
+                    "unique_ip_hashes": set(),
+                    "views_by_country": {},
+                    "views_by_device": {},
+                    "views_by_type": {},
+                }
+            
+            agg = aggregates[key]
+            agg["total_views"] += 1
+            agg["unique_ip_hashes"].add(event.viewer_ip_hash)
+            
+            if event.country_code:
+                agg["views_by_country"][event.country_code] = \
+                    agg["views_by_country"].get(event.country_code, 0) + 1
+            
+            agg["views_by_device"][event.device_type] = \
+                agg["views_by_device"].get(event.device_type, 0) + 1
+            
+            agg["views_by_type"][event.view_type] = \
+                agg["views_by_type"].get(event.view_type, 0) + 1
+        
+        # Upsert aggregates into post_stats_daily
+        rolled_up = 0
+        for (post_id, date), agg in aggregates.items():
+            # Check if record exists
+            existing = db.query(models.PostStatsDaily).filter(
+                models.PostStatsDaily.post_id == post_id,
+                models.PostStatsDaily.date == date
+            ).first()
+            
+            if existing:
+                # Merge with existing data
+                existing.total_views += agg["total_views"]
+                existing.unique_viewers += len(agg["unique_ip_hashes"])
+                
+                # Merge country data
+                existing_countries = existing.views_by_country or {}
+                for country, count in agg["views_by_country"].items():
+                    existing_countries[country] = existing_countries.get(country, 0) + count
+                existing.views_by_country = existing_countries
+                
+                # Merge device data
+                existing_devices = existing.views_by_device or {}
+                for device, count in agg["views_by_device"].items():
+                    existing_devices[device] = existing_devices.get(device, 0) + count
+                existing.views_by_device = existing_devices
+                
+                # Merge type data
+                existing_types = existing.views_by_type or {}
+                for vtype, count in agg["views_by_type"].items():
+                    existing_types[vtype] = existing_types.get(vtype, 0) + count
+                existing.views_by_type = existing_types
+            else:
+                # Create new record
+                daily_stat = models.PostStatsDaily(
+                    post_id=post_id,
+                    date=date,
+                    total_views=agg["total_views"],
+                    unique_viewers=len(agg["unique_ip_hashes"]),
+                    views_by_country=agg["views_by_country"],
+                    views_by_device=agg["views_by_device"],
+                    views_by_type=agg["views_by_type"],
+                )
+                db.add(daily_stat)
+            
+            rolled_up += 1
+        
+        # Delete old events
+        deleted_count = db.query(models.ViewEvent).filter(
+            models.ViewEvent.created_at < cutoff_date
+        ).delete(synchronize_session=False)
+        
+        db.commit()
+        
+        logger.info(f"Rolled up {rolled_up} daily aggregates, deleted {deleted_count} old events")
+        return {"status": "success", "rolled_up": rolled_up, "deleted": deleted_count}
+        
+    except Exception as e:
+        logger.error(f"Error in rollup_view_events task: {e}", exc_info=True)
+        db.rollback()
+        return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.cleanup_expired_stats_cache", bind=True)
+def cleanup_expired_stats_cache(self) -> dict[str, Any]:
+    """
+    Hourly task: Clean up expired stats cache entries from the database.
+    
+    Note: Redis cache expires automatically, but we also store cache in
+    the post_stats_cache table for persistence. This task cleans up
+    expired entries from that table.
+    
+    Should run hourly (configured in beat_schedule).
+    """
+    from datetime import datetime, timezone
+    from . import models
+    from .db import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        logger.info("Starting stats cache cleanup task")
+        
+        now = datetime.now(timezone.utc)
+        
+        # Delete expired cache entries
+        deleted_count = db.query(models.PostStatsCache).filter(
+            models.PostStatsCache.expires_at < now
+        ).delete(synchronize_session=False)
+        
+        db.commit()
+        
+        logger.info(f"Cleaned up {deleted_count} expired stats cache entries")
+        return {"status": "success", "deleted": deleted_count}
+        
+    except Exception as e:
+        logger.error(f"Error in cleanup_expired_stats_cache task: {e}", exc_info=True)
+        db.rollback()
         return {"status": "error", "message": str(e)}
     finally:
         db.close()

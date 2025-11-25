@@ -31,6 +31,7 @@ from .routers import (
     reports,
     reputation,
     search,
+    stats,
     system,
     users,
 )
@@ -166,6 +167,7 @@ app.include_router(devices.router)
 app.include_router(categories.router)
 app.include_router(admin.router)
 app.include_router(search.router)
+app.include_router(stats.router)
 app.include_router(relay.router)
 app.include_router(mqtt.router)
 app.include_router(legacy.router)
