@@ -137,9 +137,6 @@ export default function HashtagsPage() {
               <span className="empty-icon">#</span>
             </div>
             <h2>No hashtags yet</h2>
-            <p className="empty-description">
-              Hashtags will appear here once artists start tagging their pixel art creations.
-            </p>
             <p className="empty-hint">
               Be the first to add hashtags to your artworks!
             </p>

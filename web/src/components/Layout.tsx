@@ -213,7 +213,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
         .nav {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 16px;
         }
 
         .nav-item {
@@ -264,12 +264,16 @@ export default function Layout({ children, title, description }: LayoutProps) {
         .nav-icon-hash {
           font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
           font-weight: 700;
-          font-size: 24px;
+          font-size: 28px;
           color: var(--text-secondary);
           background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          height: 100%;
         }
 
         .nav-item-active .nav-icon-hash {
