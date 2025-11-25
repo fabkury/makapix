@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
+import io
+import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from PIL import Image
 from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
@@ -14,6 +18,17 @@ from ..deps import get_db
 from ..pagination import apply_cursor_filter, create_page_response
 from ..mqtt.notifications import publish_new_post_notification, publish_category_promotion_notification
 from ..utils.audit import log_moderation_action
+from ..vault import (
+    ALLOWED_MIME_TYPES,
+    MAX_CANVAS_SIZE,
+    MAX_FILE_SIZE_BYTES,
+    get_artwork_url,
+    save_artwork_to_vault,
+    validate_file_size,
+    validate_image_dimensions,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/posts", tags=["Posts"])
 
@@ -36,6 +51,9 @@ def list_posts(
     """
     query = db.query(models.Post)
     
+    is_moderator = "moderator" in current_user.roles or "owner" in current_user.roles
+    is_viewing_own_posts = owner_id and owner_id == current_user.id
+    
     if owner_id:
         query = query.filter(models.Post.owner_id == owner_id)
     
@@ -44,15 +62,19 @@ def list_posts(
         query = query.filter(models.Post.visible == True)
         
         # Hide posts hidden by moderators unless current user is moderator/owner
-        if not ("moderator" in current_user.roles or "owner" in current_user.roles):
+        if not is_moderator:
             query = query.filter(models.Post.hidden_by_mod == False)
         
         # Hide posts hidden by users (should always be hidden from public view)
         query = query.filter(models.Post.hidden_by_user == False)
         
         # Hide non-conformant posts unless current user is moderator/owner
-        if not ("moderator" in current_user.roles or "owner" in current_user.roles):
+        if not is_moderator:
             query = query.filter(models.Post.non_conformant == False)
+        
+        # Apply public_visibility filter unless viewing own posts or is moderator
+        if not is_viewing_own_posts and not is_moderator:
+            query = query.filter(models.Post.public_visibility == True)
     
     if promoted is not None:
         query = query.filter(models.Post.promoted == promoted)
@@ -152,6 +174,155 @@ def create_post(
     return schemas.Post.model_validate(post)
 
 
+@router.post(
+    "/upload",
+    response_model=schemas.ArtworkUploadResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_artwork(
+    image: UploadFile = File(...),
+    title: str = Form(..., min_length=1, max_length=200),
+    description: str | None = Form(None, max_length=5000),
+    hashtags: str = Form(""),  # Comma-separated hashtags
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.ArtworkUploadResponse:
+    """
+    Upload a single artwork image directly to the vault.
+    
+    The image must be:
+    - A perfect square (width == height)
+    - Max 256x256 pixels
+    - Max 5 MB file size
+    - PNG, GIF, or WebP format
+    
+    Public visibility is automatically set based on the user's auto_public_approval privilege.
+    If the user does not have this privilege, the artwork will not appear in Recent Artworks
+    until a moderator approves it.
+    """
+    # Read the file content
+    file_content = await image.read()
+    file_size = len(file_content)
+    
+    # Validate file size
+    is_valid, error = validate_file_size(file_size)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error,
+        )
+    
+    # Determine MIME type from content-type header or file extension
+    mime_type = image.content_type
+    if mime_type not in ALLOWED_MIME_TYPES:
+        # Try to detect from file extension
+        filename = image.filename or ""
+        ext = filename.lower().split(".")[-1] if "." in filename else ""
+        ext_to_mime = {"png": "image/png", "gif": "image/gif", "webp": "image/webp"}
+        mime_type = ext_to_mime.get(ext)
+        
+        if mime_type not in ALLOWED_MIME_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid image format. Allowed formats: PNG, GIF, WebP",
+            )
+    
+    # Validate image dimensions using PIL
+    try:
+        img = Image.open(io.BytesIO(file_content))
+        width, height = img.size
+    except Exception as e:
+        logger.error(f"Failed to open image: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not read image file. Please ensure it's a valid image.",
+        )
+    
+    # Validate dimensions (must be square, max 256x256)
+    is_valid, error = validate_image_dimensions(width, height)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error,
+        )
+    
+    # Calculate SHA256 hash of the file content
+    file_hash = hashlib.sha256(file_content).hexdigest()
+    
+    # Parse hashtags (comma-separated, normalize to lowercase)
+    parsed_hashtags = []
+    if hashtags.strip():
+        for tag in hashtags.split(","):
+            normalized_tag = tag.strip().lower()
+            # Remove # prefix if present
+            if normalized_tag.startswith("#"):
+                normalized_tag = normalized_tag[1:]
+            if normalized_tag and normalized_tag not in parsed_hashtags:
+                parsed_hashtags.append(normalized_tag)
+    
+    # Limit hashtags to 10
+    parsed_hashtags = parsed_hashtags[:10]
+    
+    # Determine public visibility based on user's auto_public_approval privilege
+    public_visibility = getattr(current_user, 'auto_public_approval', False)
+    
+    # Create the post record first to get the ID
+    post = models.Post(
+        owner_id=current_user.id,
+        kind="art",
+        title=title,
+        description=description,
+        hashtags=parsed_hashtags,
+        art_url="",  # Will be updated after saving to vault
+        canvas=f"{width}x{height}",
+        file_kb=file_size // 1024,
+        expected_hash=file_hash,
+        mime_type=mime_type,
+        public_visibility=public_visibility,
+    )
+    db.add(post)
+    db.flush()  # Get the post ID without committing
+    
+    # Save to vault using the post ID
+    try:
+        extension = ALLOWED_MIME_TYPES[mime_type]
+        save_artwork_to_vault(post.id, file_content, mime_type)
+        
+        # Update the art_url to point to the vault
+        art_url = get_artwork_url(post.id, extension)
+        post.art_url = art_url
+        
+        db.commit()
+        db.refresh(post)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to save artwork to vault: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save artwork. Please try again.",
+        )
+    
+    # Invalidate feed caches since a new post was created
+    if public_visibility:
+        cache_invalidate("feed:recent:*")
+    cache_invalidate("hashtags:*")
+    
+    # Publish MQTT notification to followers
+    try:
+        publish_new_post_notification(post.id, db)
+    except Exception as e:
+        logger.error(f"Failed to publish MQTT notification for post {post.id}: {e}")
+    
+    message = "Artwork uploaded successfully"
+    if not public_visibility:
+        message += ". Awaiting moderator approval for public visibility."
+    
+    return schemas.ArtworkUploadResponse(
+        post=schemas.Post.model_validate(post),
+        message=message,
+    )
+
+
 @router.get("/recent", response_model=schemas.Page[schemas.Post])
 def list_recent_posts(
     cursor: str | None = None,
@@ -180,6 +351,7 @@ def list_recent_posts(
         models.Post.visible == True,
         models.Post.hidden_by_mod == False,
         models.Post.hidden_by_user == False,
+        models.Post.public_visibility == True,  # Only show publicly visible posts
     )
     
     # Hide non-conformant posts unless current user is moderator/owner
@@ -543,6 +715,86 @@ def demote_post(
         target_type="post",
         target_id=id,
     )
+
+
+@router.post(
+    "/{id}/approve-public",
+    response_model=schemas.PublicVisibilityResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Admin"],
+)
+def approve_public_visibility(
+    id: UUID,
+    db: Session = Depends(get_db),
+    moderator: models.User = Depends(require_moderator),
+) -> schemas.PublicVisibilityResponse:
+    """
+    Approve public visibility for an artwork (moderator only).
+    
+    This allows the artwork to appear in Recent Artworks, search results,
+    and other public browsing pages.
+    """
+    post = db.query(models.Post).filter(models.Post.id == id).first()
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    
+    post.public_visibility = True
+    db.commit()
+    
+    # Invalidate feed caches since public visibility changed
+    cache_invalidate("feed:recent:*")
+    cache_invalidate("hashtags:*")
+    
+    # Log to audit
+    log_moderation_action(
+        db=db,
+        actor_id=moderator.id,
+        action="approve_public_visibility",
+        target_type="post",
+        target_id=id,
+    )
+    
+    return schemas.PublicVisibilityResponse(post_id=id, public_visibility=True)
+
+
+@router.delete(
+    "/{id}/approve-public",
+    response_model=schemas.PublicVisibilityResponse,
+    tags=["Admin"],
+)
+def revoke_public_visibility(
+    id: UUID,
+    db: Session = Depends(get_db),
+    moderator: models.User = Depends(require_moderator),
+) -> schemas.PublicVisibilityResponse:
+    """
+    Revoke public visibility for an artwork (moderator only).
+    
+    This hides the artwork from Recent Artworks, search results,
+    and other public browsing pages. The artwork will still be
+    visible on the owner's profile page.
+    """
+    post = db.query(models.Post).filter(models.Post.id == id).first()
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    
+    post.public_visibility = False
+    db.commit()
+    
+    # Invalidate feed caches since public visibility changed
+    cache_invalidate("feed:recent:*")
+    cache_invalidate("hashtags:*")
+    
+    # Log to audit
+    log_moderation_action(
+        db=db,
+        actor_id=moderator.id,
+        action="revoke_public_visibility",
+        target_type="post",
+        target_id=id,
+    )
+    
+    return schemas.PublicVisibilityResponse(post_id=id, public_visibility=False)
 
 
 @router.get(
