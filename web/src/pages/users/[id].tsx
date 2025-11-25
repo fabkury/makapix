@@ -10,6 +10,7 @@ interface User {
   avatar_url?: string;
   reputation: number;
   created_at: string;
+  roles?: string[];
 }
 
 interface Post {
@@ -40,6 +41,15 @@ export default function UserProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   
+  // Edit mode state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editHandle, setEditHandle] = useState('');
+  const [editBio, setEditBio] = useState('');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isOwnProfile, setIsOwnProfile] = useState(false);
+  const [isOwner, setIsOwner] = useState(false);
+  
   const observerTarget = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const hasMoreRef = useRef(true);
@@ -59,6 +69,7 @@ export default function UserProfilePage() {
       
       try {
         const token = localStorage.getItem('access_token');
+        const currentUserId = localStorage.getItem('user_id');
         const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
         
         const response = await fetch(`${API_BASE_URL}/api/users/${id}`, { headers });
@@ -75,6 +86,10 @@ export default function UserProfilePage() {
         
         const data = await response.json();
         setUser(data);
+        setEditHandle(data.handle);
+        setEditBio(data.bio || '');
+        setIsOwnProfile(currentUserId === data.id);
+        setIsOwner(data.roles?.includes('owner') || false);
       } catch (err) {
         setError('Failed to load profile');
         console.error('Error fetching user:', err);
@@ -132,6 +147,104 @@ export default function UserProfilePage() {
       loadPosts();
     }
   }, [user, loadPosts]);
+
+  // Handle entering edit mode
+  const handleEditClick = () => {
+    if (user) {
+      setEditHandle(user.handle);
+      setEditBio(user.bio || '');
+      setSaveError(null);
+      setIsEditing(true);
+    }
+  };
+
+  // Handle canceling edit mode
+  const handleCancelEdit = () => {
+    if (user) {
+      setEditHandle(user.handle);
+      setEditBio(user.bio || '');
+      setSaveError(null);
+      setIsEditing(false);
+    }
+  };
+
+  // Handle saving profile changes
+  const handleSaveProfile = async () => {
+    if (!user) return;
+    
+    setIsSaving(true);
+    setSaveError(null);
+    
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        setSaveError('You must be logged in to edit your profile');
+        setIsSaving(false);
+        return;
+      }
+      
+      const payload: { handle?: string; bio?: string } = {};
+      
+      // Only include handle if it changed
+      if (editHandle.trim() !== user.handle) {
+        payload.handle = editHandle.trim();
+      }
+      
+      // Only include bio if it changed
+      if (editBio !== (user.bio || '')) {
+        payload.bio = editBio;
+      }
+      
+      // If nothing changed, just exit edit mode
+      if (Object.keys(payload).length === 0) {
+        setIsEditing(false);
+        setIsSaving(false);
+        return;
+      }
+      
+      const response = await fetch(`${API_BASE_URL}/api/users/${user.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        if (response.status === 409) {
+          setSaveError('This handle is already taken');
+        } else if (response.status === 400) {
+          setSaveError(errorData.detail || 'Invalid handle format');
+        } else {
+          setSaveError(errorData.detail || 'Failed to save changes');
+        }
+        setIsSaving(false);
+        return;
+      }
+      
+      const updatedUser = await response.json();
+      setUser(updatedUser);
+      setIsEditing(false);
+    } catch (err) {
+      console.error('Error saving profile:', err);
+      setSaveError('Failed to save changes');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Handle logout with confirmation
+  const handleLogout = () => {
+    if (window.confirm('Are you sure you want to log out?')) {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('user_id');
+      localStorage.removeItem('user_handle');
+      localStorage.removeItem('user_display_name');
+      router.push('/');
+    }
+  };
 
   // Intersection Observer for infinite scroll
   useEffect(() => {
@@ -236,10 +349,40 @@ export default function UserProfilePage() {
           </div>
           
           <div className="profile-info">
-            <h1 className="display-name">{user.handle}</h1>
-            
-            {user.bio && (
-              <p className="bio">{user.bio}</p>
+            {isEditing ? (
+              <>
+                {!isOwner && (
+                  <input
+                    type="text"
+                    className="edit-handle-input"
+                    value={editHandle}
+                    onChange={(e) => setEditHandle(e.target.value)}
+                    placeholder="Handle"
+                    maxLength={50}
+                  />
+                )}
+                {isOwner && (
+                  <h1 className="display-name">{user.handle}</h1>
+                )}
+                <textarea
+                  className="edit-bio-input"
+                  value={editBio}
+                  onChange={(e) => setEditBio(e.target.value)}
+                  placeholder="Write something about yourself..."
+                  maxLength={1000}
+                  rows={3}
+                />
+                {saveError && (
+                  <p className="save-error">{saveError}</p>
+                )}
+              </>
+            ) : (
+              <>
+                <h1 className="display-name">{user.handle}</h1>
+                {user.bio && (
+                  <p className="bio">{user.bio}</p>
+                )}
+              </>
             )}
             
             <div className="stats">
@@ -256,6 +399,42 @@ export default function UserProfilePage() {
                 <span className="stat-label">joined</span>
               </div>
             </div>
+            
+            {isEditing ? (
+              <div className="edit-actions">
+                <button 
+                  className="save-btn"
+                  onClick={handleSaveProfile}
+                  disabled={isSaving}
+                >
+                  {isSaving ? 'Saving...' : 'Save changes'}
+                </button>
+                <button 
+                  className="cancel-btn"
+                  onClick={handleCancelEdit}
+                  disabled={isSaving}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : isOwnProfile && (
+              <div className="profile-actions">
+                <button 
+                  className="edit-profile-btn"
+                  onClick={handleEditClick}
+                  aria-label="Edit profile"
+                >
+                  ✏️
+                </button>
+                <button 
+                  className="logout-btn"
+                  onClick={handleLogout}
+                  aria-label="Log out"
+                >
+                  🚪
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -352,6 +531,138 @@ export default function UserProfilePage() {
 
         .profile-info {
           flex: 1;
+        }
+
+        .profile-actions {
+          display: flex;
+          gap: 16px;
+          margin-top: 20px;
+        }
+
+        @media (max-width: 600px) {
+          .profile-actions {
+            justify-content: center;
+          }
+        }
+
+        .edit-profile-btn,
+        .logout-btn {
+          background: var(--bg-tertiary);
+          border: none;
+          border-radius: 8px;
+          padding: 10px 16px;
+          font-size: 1.3rem;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .edit-profile-btn:hover {
+          background: var(--accent-cyan);
+          transform: scale(1.05);
+        }
+
+        .logout-btn:hover {
+          background: var(--accent-pink);
+          transform: scale(1.05);
+        }
+
+        .edit-handle-input {
+          font-size: 1.75rem;
+          font-weight: 700;
+          color: var(--text-primary);
+          background: var(--bg-tertiary);
+          border: 2px solid var(--bg-tertiary);
+          border-radius: 8px;
+          padding: 8px 12px;
+          width: 100%;
+          max-width: 300px;
+          margin-bottom: 12px;
+          transition: border-color var(--transition-fast);
+        }
+
+        .edit-handle-input:focus {
+          outline: none;
+          border-color: var(--accent-cyan);
+        }
+
+        .edit-bio-input {
+          font-size: 1rem;
+          color: var(--text-secondary);
+          background: var(--bg-tertiary);
+          border: 2px solid var(--bg-tertiary);
+          border-radius: 8px;
+          padding: 12px;
+          width: 100%;
+          max-width: 600px;
+          resize: vertical;
+          min-height: 80px;
+          margin-bottom: 12px;
+          font-family: inherit;
+          line-height: 1.6;
+          transition: border-color var(--transition-fast);
+        }
+
+        .edit-bio-input:focus {
+          outline: none;
+          border-color: var(--accent-cyan);
+        }
+
+        .save-error {
+          color: var(--accent-pink);
+          font-size: 0.9rem;
+          margin: 0 0 12px 0;
+        }
+
+        .edit-actions {
+          display: flex;
+          gap: 12px;
+          margin-top: 16px;
+        }
+
+        .save-btn {
+          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          color: white;
+          border: none;
+          border-radius: 8px;
+          padding: 12px 32px;
+          font-size: 1rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+        }
+
+        .save-btn:hover:not(:disabled) {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 20px rgba(255, 110, 180, 0.4);
+        }
+
+        .save-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .cancel-btn {
+          background: var(--bg-tertiary);
+          color: var(--text-secondary);
+          border: none;
+          border-radius: 8px;
+          padding: 12px 24px;
+          font-size: 1rem;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+        }
+
+        .cancel-btn:hover:not(:disabled) {
+          background: var(--bg-secondary);
+          color: var(--text-primary);
+        }
+
+        .cancel-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
 
         .display-name {

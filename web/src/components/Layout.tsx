@@ -33,7 +33,7 @@ const navItems: NavItem[] = [
     href: '/', 
     icon: '🐣', 
     label: 'Recent',
-    matchPaths: ['/', '/recent']
+    matchPaths: ['/', '/recent', '/posts']
   },
   { 
     href: '/hashtags', 
@@ -54,6 +54,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [isModerator, setIsModerator] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
@@ -61,7 +62,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
     setIsLoggedIn(!!token);
     setUserId(storedUserId);
 
-    // Fetch user roles if logged in
+    // Fetch user roles and avatar if logged in
     if (token) {
       const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
       fetch(`${apiBaseUrl}/api/auth/me`, {
@@ -73,11 +74,38 @@ export default function Layout({ children, title, description }: LayoutProps) {
             const roles = data.roles as string[];
             setIsModerator(roles.includes('moderator') || roles.includes('owner'));
           }
+          if (data?.user?.avatar_url) {
+            setAvatarUrl(data.user.avatar_url);
+          }
         })
         .catch(() => {
           // Silently ignore errors - user just won't see mod icon
         });
     }
+  }, []);
+
+  // Listen for OAuth success message from popup
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Verify message origin for security (in production, check against your domain)
+      if (event.data && event.data.type === 'OAUTH_SUCCESS') {
+        const { tokens } = event.data;
+        if (tokens) {
+          localStorage.setItem('access_token', tokens.access_token);
+          localStorage.setItem('refresh_token', tokens.refresh_token || '');
+          localStorage.setItem('user_id', tokens.user_id);
+          localStorage.setItem('user_handle', tokens.user_handle || '');
+          
+          // Reload the page to update authentication state
+          window.location.reload();
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
   }, []);
 
   const isActive = (item: NavItem): boolean => {
@@ -105,7 +133,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
       <div className="app-container">
         <header className="header">
           <div className="header-left">
-            <Link href="/" className="logo-link" aria-label="Makapix Club Home">
+            <Link href={isLoggedIn ? "/" : "/recommended"} className="logo-link" aria-label="Makapix Club Home">
               <div className="logo-container">
                 <img 
                   src="/logo.png" 
@@ -116,17 +144,25 @@ export default function Layout({ children, title, description }: LayoutProps) {
             </Link>
             
             {isLoggedIn && userId && (
-              <Link href={`/users/${userId}`} className="user-profile-link" aria-label="My Profile">
+              <Link href={`/users/${userId}`} className={`user-profile-link ${router.pathname === '/users/[id]' && router.query.id === userId ? 'active' : ''}`} aria-label="My Profile">
                 <div className="user-icon">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                  </svg>
+                  {avatarUrl ? (
+                    <img 
+                      src={avatarUrl.startsWith('http') ? avatarUrl : `${typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin) : ''}${avatarUrl}`}
+                      alt="Profile" 
+                      className="user-avatar"
+                    />
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                    </svg>
+                  )}
                 </div>
               </Link>
             )}
 
             {isLoggedIn && isModerator && (
-              <Link href="/mod-dashboard" className="mod-dashboard-link" aria-label="Moderator Dashboard">
+              <Link href="/mod-dashboard" className={`mod-dashboard-link ${router.pathname === '/mod-dashboard' ? 'active' : ''}`} aria-label="Moderator Dashboard">
                 <div className="mod-icon">🎛️</div>
               </Link>
             )}
@@ -212,7 +248,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
           object-fit: cover;
         }
 
-        .user-profile-link {
+        .header-left :global(a.user-profile-link) {
           display: flex;
           align-items: center;
         }
@@ -227,15 +263,37 @@ export default function Layout({ children, title, description }: LayoutProps) {
           justify-content: center;
           color: var(--text-secondary);
           transition: all var(--transition-fast);
+          overflow: hidden;
         }
 
-        .user-profile-link:hover .user-icon {
+        .user-avatar {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          border-radius: 50%;
+        }
+
+        .header-left :global(a.user-profile-link:hover) .user-icon {
           background: var(--accent-cyan);
           color: var(--bg-primary);
           box-shadow: var(--glow-cyan);
         }
 
-        .mod-dashboard-link {
+        .header-left :global(a.user-profile-link:hover) .user-icon .user-avatar {
+          opacity: 0.9;
+        }
+
+        .header-left :global(a.user-profile-link.active) .user-icon {
+          background: rgba(255, 255, 255, 0.15);
+          color: var(--accent-cyan);
+          box-shadow: 0 0 16px rgba(0, 212, 255, 0.4), inset 0 0 0 2px rgba(0, 212, 255, 0.3);
+        }
+
+        .header-left :global(a.user-profile-link.active) .user-icon .user-avatar {
+          opacity: 0.9;
+        }
+
+        .header-left :global(a.mod-dashboard-link) {
           display: flex;
           align-items: center;
         }
@@ -252,9 +310,14 @@ export default function Layout({ children, title, description }: LayoutProps) {
           transition: all var(--transition-fast);
         }
 
-        .mod-dashboard-link:hover .mod-icon {
+        .header-left :global(a.mod-dashboard-link:hover) .mod-icon {
           background: var(--accent-purple);
           box-shadow: var(--glow-purple);
+        }
+
+        .header-left :global(a.mod-dashboard-link.active) .mod-icon {
+          background: rgba(255, 255, 255, 0.15);
+          box-shadow: 0 0 16px rgba(180, 78, 255, 0.4), inset 0 0 0 2px rgba(180, 78, 255, 0.3);
         }
 
         .nav {
@@ -263,7 +326,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
           gap: 16px;
         }
 
-        .nav-item {
+        .nav :global(a.nav-item) {
           display: flex;
           align-items: center;
           justify-content: center;
@@ -275,15 +338,17 @@ export default function Layout({ children, title, description }: LayoutProps) {
           position: relative;
         }
 
-        .nav-item:hover {
+        .nav :global(a.nav-item:hover) {
           background: var(--bg-tertiary);
         }
 
-        .nav-item-active {
-          background: var(--bg-tertiary);
+        .nav :global(a.nav-item-active) {
+          background: rgba(255, 255, 255, 0.15);
+          box-shadow: 0 0 16px rgba(0, 212, 255, 0.4), inset 0 0 0 2px rgba(0, 212, 255, 0.3);
+          border-radius: 12px;
         }
 
-        .nav-item-active::after {
+        .nav :global(a.nav-item-active::after) {
           content: '';
           position: absolute;
           bottom: 4px;
@@ -303,8 +368,8 @@ export default function Layout({ children, title, description }: LayoutProps) {
           transition: filter var(--transition-fast);
         }
 
-        .nav-item:hover .nav-icon,
-        .nav-item-active .nav-icon {
+        .nav :global(a.nav-item:hover) .nav-icon,
+        .nav :global(a.nav-item-active) .nav-icon {
           filter: grayscale(0);
         }
 
@@ -323,7 +388,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
           height: 100%;
         }
 
-        .nav-item-active .nav-icon-hash {
+        .nav :global(a.nav-item-active) .nav-icon-hash {
           text-shadow: var(--glow-purple);
         }
 

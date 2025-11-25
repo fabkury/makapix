@@ -485,11 +485,11 @@ export default function SubmitPage() {
           flex-direction: column;
           align-items: center;
           gap: 16px;
+          width: 100%;
         }
 
         .preview-container {
-          width: 200px;
-          height: 200px;
+          width: 100%;
           background: var(--bg-tertiary);
           border-radius: 12px;
           overflow: hidden;
@@ -499,9 +499,9 @@ export default function SubmitPage() {
         }
 
         .preview-image {
-          max-width: 100%;
-          max-height: 100%;
-          object-fit: contain;
+          width: 100%;
+          height: auto;
+          display: block;
           image-rendering: -webkit-optimize-contrast !important;
           image-rendering: -moz-crisp-edges !important;
           image-rendering: crisp-edges !important;
@@ -772,11 +772,6 @@ export default function SubmitPage() {
 
           .upload-zone {
             padding: 24px 16px;
-          }
-
-          .preview-container {
-            width: 160px;
-            height: 160px;
           }
 
           .success-actions {
