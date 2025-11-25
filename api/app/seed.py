@@ -24,7 +24,7 @@ def ensure_seed_data() -> None:
     - Is the sole owner of the site (only one can exist)
     - Has roles: ["user", "moderator", "owner"]
     - Has auto_public_approval enabled
-    - Uses a placeholder email: {handle}@makapix.local
+    - Uses hardcoded email: owner@makapix.club
     """
     admin_user = os.getenv("MAKAPIX_ADMIN_USER")
     admin_password = os.getenv("MAKAPIX_ADMIN_PASSWORD")
@@ -70,8 +70,8 @@ def _ensure_owner_exists(db: Session, handle: str, password: str) -> None:
         )
         return
     
-    # Create the owner user
-    email = f"{handle}@makapix.local"
+    # Create the owner user with hardcoded email
+    email = "owner@makapix.club"
     
     owner = User(
         handle=handle,
