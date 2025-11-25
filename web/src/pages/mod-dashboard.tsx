@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import Head from 'next/head';
 import { useRouter } from 'next/router';
+import Layout from '../components/Layout';
 
 interface User {
   id: string;
@@ -67,27 +67,22 @@ export default function ModDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('reports');
   
-  // Reports state
   const [reports, setReports] = useState<Report[]>([]);
   const [reportsCursor, setReportsCursor] = useState<string | null>(null);
   const [reportsLoading, setReportsLoading] = useState(false);
   
-  // Posts state
   const [posts, setPosts] = useState<Post[]>([]);
   const [postsCursor, setPostsCursor] = useState<string | null>(null);
   const [postsLoading, setPostsLoading] = useState(false);
   
-  // Profiles state
   const [profiles, setProfiles] = useState<User[]>([]);
   const [profilesCursor, setProfilesCursor] = useState<string | null>(null);
   const [profilesLoading, setProfilesLoading] = useState(false);
   
-  // Audit log state
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
   const [auditCursor, setAuditCursor] = useState<string | null>(null);
   const [auditLoading, setAuditLoading] = useState(false);
   
-  // Admin notes state
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [adminNotes, setAdminNotes] = useState<AdminNote[]>([]);
   const [noteText, setNoteText] = useState('');
@@ -150,18 +145,10 @@ export default function ModDashboardPage() {
 
   const loadTabData = async (tab: Tab) => {
     switch (tab) {
-      case 'reports':
-        await loadReports();
-        break;
-      case 'posts':
-        await loadRecentPosts();
-        break;
-      case 'profiles':
-        await loadRecentProfiles();
-        break;
-      case 'audit':
-        await loadAuditLog();
-        break;
+      case 'reports': await loadReports(); break;
+      case 'posts': await loadRecentPosts(); break;
+      case 'profiles': await loadRecentProfiles(); break;
+      case 'audit': await loadAuditLog(); break;
     }
   };
 
@@ -171,9 +158,7 @@ export default function ModDashboardPage() {
     try {
       const accessToken = localStorage.getItem('access_token');
       const url = `${API_BASE_URL}/api/reports?status=open&limit=50${reportsCursor ? `&cursor=${reportsCursor}` : ''}`;
-      const response = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
+      const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
       if (response.ok) {
         const data: PageResponse<Report> = await response.json();
         setReports([...reports, ...data.items]);
@@ -192,9 +177,7 @@ export default function ModDashboardPage() {
     try {
       const accessToken = localStorage.getItem('access_token');
       const url = `${API_BASE_URL}/api/admin/recent-posts?limit=50${postsCursor ? `&cursor=${postsCursor}` : ''}`;
-      const response = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
+      const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
       if (response.ok) {
         const data: PageResponse<Post> = await response.json();
         setPosts([...posts, ...data.items]);
@@ -213,9 +196,7 @@ export default function ModDashboardPage() {
     try {
       const accessToken = localStorage.getItem('access_token');
       const url = `${API_BASE_URL}/api/admin/recent-profiles?limit=50${profilesCursor ? `&cursor=${profilesCursor}` : ''}`;
-      const response = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
+      const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
       if (response.ok) {
         const data: PageResponse<User> = await response.json();
         setProfiles([...profiles, ...data.items]);
@@ -234,9 +215,7 @@ export default function ModDashboardPage() {
     try {
       const accessToken = localStorage.getItem('access_token');
       const url = `${API_BASE_URL}/api/admin/audit-log?limit=50${auditCursor ? `&cursor=${auditCursor}` : ''}`;
-      const response = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
+      const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
       if (response.ok) {
         const data: PageResponse<AuditLogEntry> = await response.json();
         setAuditLog([...auditLog, ...data.items]);
@@ -269,19 +248,11 @@ export default function ModDashboardPage() {
       const accessToken = localStorage.getItem('access_token');
       const response = await fetch(`${API_BASE_URL}/api/reports/${reportId}`, {
         method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          status: 'resolved',
-          action_taken: action,
-          notes: `Action: ${action}`
-        })
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'resolved', action_taken: action, notes: `Action: ${action}` })
       });
       if (response.ok) {
         setReports(reports.filter(r => r.id !== reportId));
-        await loadReports();
       }
     } catch (error) {
       console.error('Error resolving report:', error);
@@ -291,17 +262,14 @@ export default function ModDashboardPage() {
   const promotePost = async (postId: string) => {
     try {
       const accessToken = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/api/posts/${postId}/promote`, {
+      await fetch(`${API_BASE_URL}/api/posts/${postId}/promote`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ category: 'frontpage' })
       });
-      if (response.ok) {
-        await loadRecentPosts();
-      }
+      setPosts([]);
+      setPostsCursor(null);
+      loadRecentPosts();
     } catch (error) {
       console.error('Error promoting post:', error);
     }
@@ -310,17 +278,14 @@ export default function ModDashboardPage() {
   const hidePost = async (postId: string) => {
     try {
       const accessToken = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/api/posts/${postId}/hide`, {
+      await fetch(`${API_BASE_URL}/api/posts/${postId}/hide`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ by: 'mod' })
       });
-      if (response.ok) {
-        await loadRecentPosts();
-      }
+      setPosts([]);
+      setPostsCursor(null);
+      loadRecentPosts();
     } catch (error) {
       console.error('Error hiding post:', error);
     }
@@ -329,17 +294,14 @@ export default function ModDashboardPage() {
   const banUser = async (userId: string) => {
     try {
       const accessToken = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/api/admin/users/${userId}/ban`, {
+      await fetch(`${API_BASE_URL}/api/admin/users/${userId}/ban`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ duration_days: 7 })
       });
-      if (response.ok) {
-        await loadRecentProfiles();
-      }
+      setProfiles([]);
+      setProfilesCursor(null);
+      loadRecentProfiles();
     } catch (error) {
       console.error('Error banning user:', error);
     }
@@ -352,10 +314,7 @@ export default function ModDashboardPage() {
       const accessToken = localStorage.getItem('access_token');
       const response = await fetch(`${API_BASE_URL}/api/posts/${selectedPostId}/admin-notes`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ note: noteText })
       });
       if (response.ok) {
@@ -370,235 +329,401 @@ export default function ModDashboardPage() {
   };
 
   if (loading) {
-    return <div style={{ padding: '20px' }}>Loading...</div>;
+    return (
+      <Layout title="Moderator Dashboard">
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
+        </div>
+        <style jsx>{`
+          .loading-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: calc(100vh - var(--header-height));
+          }
+          .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--bg-tertiary);
+            border-top-color: var(--accent-cyan);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+          }
+          @keyframes spin { to { transform: rotate(360deg); } }
+        `}</style>
+      </Layout>
+    );
   }
 
-  if (!isModerator) {
-    return null;
-  }
+  if (!isModerator) return null;
+
+  const tabs: Tab[] = ['reports', 'posts', 'profiles', 'audit', 'notes'];
 
   return (
-    <>
-      <Head>
-        <title>Moderator Dashboard - Makapix</title>
-      </Head>
-      <div style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto' }}>
+    <Layout title="Moderator Dashboard">
+      <div className="dashboard">
         <h1>Moderator Dashboard</h1>
         
-        {/* Tabs */}
-        <div style={{ borderBottom: '1px solid #ccc', marginBottom: '20px' }}>
-          {(['reports', 'posts', 'profiles', 'audit', 'notes'] as Tab[]).map(tab => (
+        <div className="tabs">
+          {tabs.map(tab => (
             <button
               key={tab}
               onClick={() => {
                 setActiveTab(tab);
-                if (tab === 'reports') setReports([]);
-                if (tab === 'posts') setPosts([]);
-                if (tab === 'profiles') setProfiles([]);
-                if (tab === 'audit') setAuditLog([]);
+                if (tab === 'reports') { setReports([]); setReportsCursor(null); }
+                if (tab === 'posts') { setPosts([]); setPostsCursor(null); }
+                if (tab === 'profiles') { setProfiles([]); setProfilesCursor(null); }
+                if (tab === 'audit') { setAuditLog([]); setAuditCursor(null); }
               }}
-              style={{
-                padding: '10px 20px',
-                marginRight: '10px',
-                border: 'none',
-                background: activeTab === tab ? '#0070f3' : 'transparent',
-                color: activeTab === tab ? 'white' : '#0070f3',
-                cursor: 'pointer',
-                textTransform: 'capitalize'
-              }}
+              className={`tab ${activeTab === tab ? 'active' : ''}`}
             >
               {tab}
             </button>
           ))}
         </div>
 
-        {/* Reports Tab */}
-        {activeTab === 'reports' && (
-          <div>
-            <h2>Reports Queue</h2>
-            {reports.length === 0 && !reportsLoading ? (
-              <p>No open reports</p>
-            ) : (
-              <>
-                {reports.map(report => (
-                  <div key={report.id} style={{ border: '1px solid #ccc', padding: '15px', marginBottom: '10px', borderRadius: '5px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                      <div>
+        <div className="tab-content">
+          {activeTab === 'reports' && (
+            <div className="section">
+              <h2>Reports Queue</h2>
+              {reports.length === 0 && !reportsLoading ? (
+                <p className="empty">No open reports</p>
+              ) : (
+                <>
+                  {reports.map(report => (
+                    <div key={report.id} className="item-card">
+                      <div className="item-info">
                         <strong>{report.target_type}</strong> - {report.reason_code}
-                        {report.notes && <p style={{ marginTop: '5px', color: '#666' }}>{report.notes}</p>}
-                        <p style={{ fontSize: '0.9em', color: '#999' }}>Reported {new Date(report.created_at).toLocaleString()}</p>
+                        {report.notes && <p className="item-notes">{report.notes}</p>}
+                        <p className="item-date">{new Date(report.created_at).toLocaleString()}</p>
                       </div>
-                      <div>
-                        <button onClick={() => resolveReport(report.id, 'hide')} style={{ marginRight: '5px', padding: '5px 10px' }}>Hide</button>
-                        <button onClick={() => resolveReport(report.id, 'delete')} style={{ marginRight: '5px', padding: '5px 10px' }}>Delete</button>
-                        <button onClick={() => resolveReport(report.id, 'none')} style={{ padding: '5px 10px' }}>Dismiss</button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {reportsCursor && (
-                  <button onClick={loadReports} disabled={reportsLoading} style={{ marginTop: '10px' }}>
-                    {reportsLoading ? 'Loading...' : 'Load More'}
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Posts Tab */}
-        {activeTab === 'posts' && (
-          <div>
-            <h2>Recent Posts</h2>
-            {posts.length === 0 && !postsLoading ? (
-              <p>No posts found</p>
-            ) : (
-              <>
-                {posts.map(post => (
-                  <div key={post.id} style={{ border: '1px solid #ccc', padding: '15px', marginBottom: '10px', borderRadius: '5px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                      <div>
-                        <h3>{post.title}</h3>
-                        {post.description && <p>{post.description}</p>}
-                        <p style={{ fontSize: '0.9em', color: '#999' }}>Created {new Date(post.created_at).toLocaleString()}</p>
-                      </div>
-                      <div>
-                        {!post.promoted && (
-                          <button onClick={() => promotePost(post.id)} style={{ marginRight: '5px', padding: '5px 10px' }}>Promote</button>
-                        )}
-                        {!post.hidden_by_mod && (
-                          <button onClick={() => hidePost(post.id)} style={{ padding: '5px 10px' }}>Hide</button>
-                        )}
+                      <div className="item-actions">
+                        <button onClick={() => resolveReport(report.id, 'hide')} className="action-btn">Hide</button>
+                        <button onClick={() => resolveReport(report.id, 'delete')} className="action-btn danger">Delete</button>
+                        <button onClick={() => resolveReport(report.id, 'none')} className="action-btn secondary">Dismiss</button>
                       </div>
                     </div>
-                  </div>
-                ))}
-                {postsCursor && (
-                  <button onClick={loadRecentPosts} disabled={postsLoading} style={{ marginTop: '10px' }}>
-                    {postsLoading ? 'Loading...' : 'Load More'}
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Profiles Tab */}
-        {activeTab === 'profiles' && (
-          <div>
-            <h2>Recent Profiles</h2>
-            {profiles.length === 0 && !profilesLoading ? (
-              <p>No profiles found</p>
-            ) : (
-              <>
-                {profiles.map(profile => (
-                  <div key={profile.id} style={{ border: '1px solid #ccc', padding: '15px', marginBottom: '10px', borderRadius: '5px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                      <div>
-                        <h3>{profile.display_name} (@{profile.handle})</h3>
-                        <p>Reputation: {profile.reputation}</p>
-                        <p style={{ fontSize: '0.9em', color: '#999' }}>Joined {new Date(profile.created_at).toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <button onClick={() => banUser(profile.id)} style={{ padding: '5px 10px' }}>Ban</button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {profilesCursor && (
-                  <button onClick={loadRecentProfiles} disabled={profilesLoading} style={{ marginTop: '10px' }}>
-                    {profilesLoading ? 'Loading...' : 'Load More'}
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Audit Log Tab */}
-        {activeTab === 'audit' && (
-          <div>
-            <h2>Audit Log</h2>
-            {auditLog.length === 0 && !auditLoading ? (
-              <p>No audit log entries</p>
-            ) : (
-              <>
-                {auditLog.map(entry => (
-                  <div key={entry.id} style={{ border: '1px solid #ccc', padding: '15px', marginBottom: '10px', borderRadius: '5px' }}>
-                    <div>
-                      <strong>{entry.action}</strong> - {entry.target_type || 'N/A'}
-                      {entry.reason_code && <span style={{ marginLeft: '10px', color: '#666' }}>({entry.reason_code})</span>}
-                      {entry.note && <p style={{ marginTop: '5px', color: '#666' }}>{entry.note}</p>}
-                      <p style={{ fontSize: '0.9em', color: '#999' }}>{new Date(entry.created_at).toLocaleString()}</p>
-                    </div>
-                  </div>
-                ))}
-                {auditCursor && (
-                  <button onClick={loadAuditLog} disabled={auditLoading} style={{ marginTop: '10px' }}>
-                    {auditLoading ? 'Loading...' : 'Load More'}
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Admin Notes Tab */}
-        {activeTab === 'notes' && (
-          <div>
-            <h2>Admin Notes</h2>
-            <div style={{ marginBottom: '20px' }}>
-              <input
-                type="text"
-                placeholder="Enter post ID"
-                value={selectedPostId || ''}
-                onChange={(e) => setSelectedPostId(e.target.value)}
-                style={{ padding: '8px', marginRight: '10px', width: '300px' }}
-              />
-              <button onClick={() => selectedPostId && loadAdminNotes(selectedPostId)}>Load Notes</button>
-            </div>
-            {selectedPostId && (
-              <>
-                <div style={{ marginBottom: '20px' }}>
-                  <textarea
-                    value={noteText}
-                    onChange={(e) => setNoteText(e.target.value)}
-                    placeholder="Add admin note..."
-                    style={{ width: '100%', padding: '8px', minHeight: '80px' }}
-                  />
-                  <button onClick={addAdminNote} disabled={addingNote || !noteText.trim()} style={{ marginTop: '10px' }}>
-                    {addingNote ? 'Adding...' : 'Add Note'}
-                  </button>
-                </div>
-                <div>
-                  <h3>Notes for Post {selectedPostId}</h3>
-                  {adminNotes.length === 0 ? (
-                    <p>No notes yet</p>
-                  ) : (
-                    adminNotes.map(note => (
-                      <div key={note.id} style={{ border: '1px solid #ccc', padding: '10px', marginBottom: '10px', borderRadius: '5px' }}>
-                        <p>{note.note}</p>
-                        <p style={{ fontSize: '0.9em', color: '#999' }}>{new Date(note.created_at).toLocaleString()}</p>
-                      </div>
-                    ))
+                  ))}
+                  {reportsCursor && (
+                    <button onClick={loadReports} disabled={reportsLoading} className="load-more">
+                      {reportsLoading ? 'Loading...' : 'Load More'}
+                    </button>
                   )}
-                </div>
-              </>
-            )}
-          </div>
-        )}
+                </>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'posts' && (
+            <div className="section">
+              <h2>Recent Posts</h2>
+              {posts.length === 0 && !postsLoading ? (
+                <p className="empty">No posts found</p>
+              ) : (
+                <>
+                  {posts.map(post => (
+                    <div key={post.id} className="item-card">
+                      <div className="item-info">
+                        <h3>{post.title}</h3>
+                        {post.description && <p className="item-notes">{post.description}</p>}
+                        <p className="item-date">{new Date(post.created_at).toLocaleString()}</p>
+                      </div>
+                      <div className="item-actions">
+                        {!post.promoted && <button onClick={() => promotePost(post.id)} className="action-btn success">Promote</button>}
+                        {!post.hidden_by_mod && <button onClick={() => hidePost(post.id)} className="action-btn">Hide</button>}
+                      </div>
+                    </div>
+                  ))}
+                  {postsCursor && (
+                    <button onClick={loadRecentPosts} disabled={postsLoading} className="load-more">
+                      {postsLoading ? 'Loading...' : 'Load More'}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'profiles' && (
+            <div className="section">
+              <h2>Recent Profiles</h2>
+              {profiles.length === 0 && !profilesLoading ? (
+                <p className="empty">No profiles found</p>
+              ) : (
+                <>
+                  {profiles.map(profile => (
+                    <div key={profile.id} className="item-card">
+                      <div className="item-info">
+                        <h3>{profile.display_name} <span className="handle">@{profile.handle}</span></h3>
+                        <p className="item-notes">Reputation: {profile.reputation}</p>
+                        <p className="item-date">Joined {new Date(profile.created_at).toLocaleString()}</p>
+                      </div>
+                      <div className="item-actions">
+                        <button onClick={() => banUser(profile.id)} className="action-btn danger">Ban</button>
+                      </div>
+                    </div>
+                  ))}
+                  {profilesCursor && (
+                    <button onClick={loadRecentProfiles} disabled={profilesLoading} className="load-more">
+                      {profilesLoading ? 'Loading...' : 'Load More'}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'audit' && (
+            <div className="section">
+              <h2>Audit Log</h2>
+              {auditLog.length === 0 && !auditLoading ? (
+                <p className="empty">No audit log entries</p>
+              ) : (
+                <>
+                  {auditLog.map(entry => (
+                    <div key={entry.id} className="item-card">
+                      <div className="item-info">
+                        <strong>{entry.action}</strong> - {entry.target_type || 'N/A'}
+                        {entry.reason_code && <span className="badge">{entry.reason_code}</span>}
+                        {entry.note && <p className="item-notes">{entry.note}</p>}
+                        <p className="item-date">{new Date(entry.created_at).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {auditCursor && (
+                    <button onClick={loadAuditLog} disabled={auditLoading} className="load-more">
+                      {auditLoading ? 'Loading...' : 'Load More'}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'notes' && (
+            <div className="section">
+              <h2>Admin Notes</h2>
+              <div className="notes-search">
+                <input
+                  type="text"
+                  placeholder="Enter post ID"
+                  value={selectedPostId || ''}
+                  onChange={(e) => setSelectedPostId(e.target.value)}
+                />
+                <button onClick={() => selectedPostId && loadAdminNotes(selectedPostId)} className="action-btn">
+                  Load Notes
+                </button>
+              </div>
+              {selectedPostId && (
+                <>
+                  <div className="note-form">
+                    <textarea
+                      value={noteText}
+                      onChange={(e) => setNoteText(e.target.value)}
+                      placeholder="Add admin note..."
+                    />
+                    <button onClick={addAdminNote} disabled={addingNote || !noteText.trim()} className="action-btn success">
+                      {addingNote ? 'Adding...' : 'Add Note'}
+                    </button>
+                  </div>
+                  <div className="notes-list">
+                    <h3>Notes for Post {selectedPostId}</h3>
+                    {adminNotes.length === 0 ? (
+                      <p className="empty">No notes yet</p>
+                    ) : (
+                      adminNotes.map(note => (
+                        <div key={note.id} className="item-card">
+                          <p>{note.note}</p>
+                          <p className="item-date">{new Date(note.created_at).toLocaleString()}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
-    </>
+
+      <style jsx>{`
+        .dashboard {
+          max-width: 1200px;
+          margin: 0 auto;
+          padding: 24px;
+        }
+
+        h1 {
+          font-size: 1.75rem;
+          color: var(--text-primary);
+          margin-bottom: 24px;
+        }
+
+        .tabs {
+          display: flex;
+          gap: 8px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+          margin-bottom: 24px;
+          padding-bottom: 12px;
+          flex-wrap: wrap;
+        }
+
+        .tab {
+          padding: 10px 20px;
+          background: transparent;
+          color: var(--text-muted);
+          border-radius: 8px;
+          text-transform: capitalize;
+          transition: all var(--transition-fast);
+        }
+
+        .tab:hover {
+          background: var(--bg-tertiary);
+          color: var(--text-secondary);
+        }
+
+        .tab.active {
+          background: var(--accent-cyan);
+          color: var(--bg-primary);
+        }
+
+        .section h2 {
+          font-size: 1.25rem;
+          color: var(--text-primary);
+          margin-bottom: 16px;
+        }
+
+        .section h3 {
+          font-size: 1rem;
+          color: var(--text-primary);
+          margin: 0;
+        }
+
+        .handle {
+          color: var(--text-muted);
+          font-weight: normal;
+        }
+
+        .empty {
+          color: var(--text-muted);
+          text-align: center;
+          padding: 32px;
+        }
+
+        .item-card {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 16px;
+          background: var(--bg-secondary);
+          border-radius: 12px;
+          padding: 16px;
+          margin-bottom: 12px;
+        }
+
+        .item-info {
+          flex: 1;
+        }
+
+        .item-notes {
+          color: var(--text-secondary);
+          font-size: 0.9rem;
+          margin: 8px 0;
+        }
+
+        .item-date {
+          color: var(--text-muted);
+          font-size: 0.8rem;
+          margin: 4px 0 0 0;
+        }
+
+        .item-actions {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .action-btn {
+          padding: 8px 16px;
+          background: var(--bg-tertiary);
+          color: var(--text-secondary);
+          border-radius: 6px;
+          font-size: 0.85rem;
+          transition: all var(--transition-fast);
+        }
+
+        .action-btn:hover {
+          background: var(--accent-cyan);
+          color: var(--bg-primary);
+        }
+
+        .action-btn.danger:hover {
+          background: #ef4444;
+        }
+
+        .action-btn.success:hover {
+          background: #10b981;
+        }
+
+        .action-btn.secondary:hover {
+          background: var(--text-muted);
+        }
+
+        .badge {
+          margin-left: 8px;
+          padding: 2px 8px;
+          background: var(--bg-tertiary);
+          border-radius: 4px;
+          font-size: 0.8rem;
+          color: var(--text-muted);
+        }
+
+        .load-more {
+          display: block;
+          width: 100%;
+          padding: 12px;
+          background: var(--bg-secondary);
+          color: var(--accent-cyan);
+          border-radius: 8px;
+          margin-top: 16px;
+          transition: all var(--transition-fast);
+        }
+
+        .load-more:hover:not(:disabled) {
+          background: var(--bg-tertiary);
+        }
+
+        .load-more:disabled {
+          opacity: 0.5;
+        }
+
+        .notes-search {
+          display: flex;
+          gap: 12px;
+          margin-bottom: 20px;
+        }
+
+        .notes-search input {
+          flex: 1;
+          padding: 12px 16px;
+        }
+
+        .note-form {
+          margin-bottom: 24px;
+        }
+
+        .note-form textarea {
+          width: 100%;
+          min-height: 100px;
+          padding: 12px;
+          margin-bottom: 12px;
+          resize: vertical;
+        }
+
+        .notes-list h3 {
+          margin-bottom: 12px;
+        }
+      `}</style>
+    </Layout>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
