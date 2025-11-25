@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
+import Link from 'next/link';
 import Layout from '../components/Layout';
 
 interface User {
@@ -149,26 +150,31 @@ export default function ModDashboardPage() {
     }
   };
 
-  const loadTabData = async (tab: Tab) => {
+  const loadTabData = async (tab: Tab, reset = true) => {
     switch (tab) {
-      case 'pending': await loadPendingApproval(); break;
-      case 'reports': await loadReports(); break;
-      case 'posts': await loadRecentPosts(); break;
-      case 'profiles': await loadRecentProfiles(); break;
-      case 'audit': await loadAuditLog(); break;
+      case 'pending': await loadPendingApproval(reset); break;
+      case 'reports': await loadReports(reset); break;
+      case 'posts': await loadRecentPosts(reset); break;
+      case 'profiles': await loadRecentProfiles(reset); break;
+      case 'audit': await loadAuditLog(reset); break;
     }
   };
 
-  const loadPendingApproval = async () => {
+  const loadPendingApproval = async (reset = false) => {
     if (pendingLoading) return;
     setPendingLoading(true);
     try {
       const accessToken = localStorage.getItem('access_token');
-      const url = `${API_BASE_URL}/api/admin/pending-approval?limit=50${pendingCursor ? `&cursor=${pendingCursor}` : ''}`;
+      const cursor = reset ? null : pendingCursor;
+      const url = `${API_BASE_URL}/api/admin/pending-approval?limit=50${cursor ? `&cursor=${cursor}` : ''}`;
       const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
       if (response.ok) {
         const data: PageResponse<Post> = await response.json();
-        setPendingPosts([...pendingPosts, ...data.items]);
+        if (reset) {
+          setPendingPosts(data.items);
+        } else {
+          setPendingPosts(prev => [...prev, ...data.items]);
+        }
         setPendingCursor(data.next_cursor);
       }
     } catch (error) {
@@ -210,16 +216,21 @@ export default function ModDashboardPage() {
     }
   };
 
-  const loadReports = async () => {
+  const loadReports = async (reset = false) => {
     if (reportsLoading) return;
     setReportsLoading(true);
     try {
       const accessToken = localStorage.getItem('access_token');
-      const url = `${API_BASE_URL}/api/reports?status=open&limit=50${reportsCursor ? `&cursor=${reportsCursor}` : ''}`;
+      const cursor = reset ? null : reportsCursor;
+      const url = `${API_BASE_URL}/api/reports?status=open&limit=50${cursor ? `&cursor=${cursor}` : ''}`;
       const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
       if (response.ok) {
         const data: PageResponse<Report> = await response.json();
-        setReports([...reports, ...data.items]);
+        if (reset) {
+          setReports(data.items);
+        } else {
+          setReports(prev => [...prev, ...data.items]);
+        }
         setReportsCursor(data.next_cursor);
       }
     } catch (error) {
@@ -229,17 +240,23 @@ export default function ModDashboardPage() {
     }
   };
 
-  const loadRecentPosts = async () => {
+  const loadRecentPosts = async (reset = false) => {
     if (postsLoading) return;
     setPostsLoading(true);
     try {
       const accessToken = localStorage.getItem('access_token');
-      const url = `${API_BASE_URL}/api/admin/recent-posts?limit=50${postsCursor ? `&cursor=${postsCursor}` : ''}`;
+      const cursor = reset ? null : postsCursor;
+      const url = `${API_BASE_URL}/api/admin/recent-posts?limit=50${cursor ? `&cursor=${cursor}` : ''}`;
       const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
       if (response.ok) {
         const data: PageResponse<Post> = await response.json();
-        setPosts([...posts, ...data.items]);
-        setPostsCursor(data.next_cursor);
+        if (reset) {
+          setPosts(data.items);
+          setPostsCursor(data.next_cursor);
+        } else {
+          setPosts(prev => [...prev, ...data.items]);
+          setPostsCursor(data.next_cursor);
+        }
       }
     } catch (error) {
       console.error('Error loading posts:', error);
@@ -248,16 +265,21 @@ export default function ModDashboardPage() {
     }
   };
 
-  const loadRecentProfiles = async () => {
+  const loadRecentProfiles = async (reset = false) => {
     if (profilesLoading) return;
     setProfilesLoading(true);
     try {
       const accessToken = localStorage.getItem('access_token');
-      const url = `${API_BASE_URL}/api/admin/recent-profiles?limit=50${profilesCursor ? `&cursor=${profilesCursor}` : ''}`;
+      const cursor = reset ? null : profilesCursor;
+      const url = `${API_BASE_URL}/api/admin/recent-profiles?limit=50${cursor ? `&cursor=${cursor}` : ''}`;
       const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
       if (response.ok) {
         const data: PageResponse<User> = await response.json();
-        setProfiles([...profiles, ...data.items]);
+        if (reset) {
+          setProfiles(data.items);
+        } else {
+          setProfiles(prev => [...prev, ...data.items]);
+        }
         setProfilesCursor(data.next_cursor);
       }
     } catch (error) {
@@ -267,16 +289,21 @@ export default function ModDashboardPage() {
     }
   };
 
-  const loadAuditLog = async () => {
+  const loadAuditLog = async (reset = false) => {
     if (auditLoading) return;
     setAuditLoading(true);
     try {
       const accessToken = localStorage.getItem('access_token');
-      const url = `${API_BASE_URL}/api/admin/audit-log?limit=50${auditCursor ? `&cursor=${auditCursor}` : ''}`;
+      const cursor = reset ? null : auditCursor;
+      const url = `${API_BASE_URL}/api/admin/audit-log?limit=50${cursor ? `&cursor=${cursor}` : ''}`;
       const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
       if (response.ok) {
         const data: PageResponse<AuditLogEntry> = await response.json();
-        setAuditLog([...auditLog, ...data.items]);
+        if (reset) {
+          setAuditLog(data.items);
+        } else {
+          setAuditLog(prev => [...prev, ...data.items]);
+        }
         setAuditCursor(data.next_cursor);
       }
     } catch (error) {
@@ -325,9 +352,7 @@ export default function ModDashboardPage() {
         headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ category: 'frontpage' })
       });
-      setPosts([]);
-      setPostsCursor(null);
-      loadRecentPosts();
+      await loadRecentPosts(true);
     } catch (error) {
       console.error('Error promoting post:', error);
     }
@@ -341,11 +366,52 @@ export default function ModDashboardPage() {
         headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ by: 'mod' })
       });
-      setPosts([]);
-      setPostsCursor(null);
-      loadRecentPosts();
+      await loadRecentPosts(true);
     } catch (error) {
       console.error('Error hiding post:', error);
+    }
+  };
+
+  const unhidePost = async (postId: string) => {
+    try {
+      const accessToken = localStorage.getItem('access_token');
+      await fetch(`${API_BASE_URL}/api/posts/${postId}/unhide`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ by: 'mod' })
+      });
+      await loadRecentPosts(true);
+    } catch (error) {
+      console.error('Error unhiding post:', error);
+    }
+  };
+
+  const demotePost = async (postId: string) => {
+    try {
+      const accessToken = localStorage.getItem('access_token');
+      await fetch(`${API_BASE_URL}/api/posts/${postId}/demote`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      await loadRecentPosts(true);
+    } catch (error) {
+      console.error('Error demoting post:', error);
+    }
+  };
+
+  const deletePostPermanently = async (postId: string) => {
+    if (!confirm('Are you sure you want to permanently delete this post? This action cannot be undone.')) {
+      return;
+    }
+    try {
+      const accessToken = localStorage.getItem('access_token');
+      await fetch(`${API_BASE_URL}/api/posts/${postId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      await loadRecentPosts(true);
+    } catch (error) {
+      console.error('Error deleting post:', error);
     }
   };
 
@@ -357,9 +423,7 @@ export default function ModDashboardPage() {
         headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ duration_days: 7 })
       });
-      setProfiles([]);
-      setProfilesCursor(null);
-      loadRecentProfiles();
+      await loadRecentProfiles(true);
     } catch (error) {
       console.error('Error banning user:', error);
     }
@@ -436,11 +500,12 @@ export default function ModDashboardPage() {
               key={tab}
               onClick={() => {
                 setActiveTab(tab);
+                // Reset data when switching tabs - loadTabData will reload fresh
                 if (tab === 'pending') { setPendingPosts([]); setPendingCursor(null); }
-                if (tab === 'reports') { setReports([]); setReportsCursor(null); }
-                if (tab === 'posts') { setPosts([]); setPostsCursor(null); }
-                if (tab === 'profiles') { setProfiles([]); setProfilesCursor(null); }
-                if (tab === 'audit') { setAuditLog([]); setAuditCursor(null); }
+                else if (tab === 'reports') { setReports([]); setReportsCursor(null); }
+                else if (tab === 'posts') { setPosts([]); setPostsCursor(null); }
+                else if (tab === 'profiles') { setProfiles([]); setProfilesCursor(null); }
+                else if (tab === 'audit') { setAuditLog([]); setAuditCursor(null); }
               }}
               className={`tab ${activeTab === tab ? 'active' : ''}`}
             >
@@ -535,15 +600,27 @@ export default function ModDashboardPage() {
               ) : (
                 <>
                   {posts.map(post => (
-                    <div key={post.id} className="item-card">
+                    <div key={post.id} className="item-card pending-card">
+                      {post.art_url && (
+                        <div className="pending-thumbnail">
+                          <img src={post.art_url} alt={post.title} className="pixel-art" />
+                        </div>
+                      )}
                       <div className="item-info">
-                        <h3>{post.title}</h3>
+                        <h3>
+                          <Link href={`/posts/${post.id}`} className="post-title-link">
+                            {post.title}
+                          </Link>
+                        </h3>
                         {post.description && <p className="item-notes">{post.description}</p>}
                         <p className="item-date">{new Date(post.created_at).toLocaleString()}</p>
                       </div>
                       <div className="item-actions">
                         {!post.promoted && <button onClick={() => promotePost(post.id)} className="action-btn success">Promote</button>}
+                        {post.promoted && <button onClick={() => demotePost(post.id)} className="action-btn">Demote</button>}
                         {!post.hidden_by_mod && <button onClick={() => hidePost(post.id)} className="action-btn">Hide</button>}
+                        {post.hidden_by_mod && <button onClick={() => unhidePost(post.id)} className="action-btn success">Unhide</button>}
+                        {post.hidden_by_mod && <button onClick={() => deletePostPermanently(post.id)} className="action-btn danger">Delete</button>}
                       </div>
                     </div>
                   ))}
@@ -567,7 +644,11 @@ export default function ModDashboardPage() {
                   {profiles.map(profile => (
                     <div key={profile.id} className="item-card">
                       <div className="item-info">
-                        <h3>{profile.display_name} <span className="handle">@{profile.handle}</span></h3>
+                        <h3>
+                          <Link href={`/users/${profile.id}`} className="profile-link">
+                            {profile.display_name} <span className="handle">@{profile.handle}</span>
+                          </Link>
+                        </h3>
                         <p className="item-notes">Reputation: {profile.reputation}</p>
                         <p className="item-date">Joined {new Date(profile.created_at).toLocaleString()}</p>
                       </div>
@@ -710,6 +791,30 @@ export default function ModDashboardPage() {
           font-size: 1rem;
           color: var(--text-primary);
           margin: 0;
+        }
+
+        .post-title-link {
+          color: var(--text-primary);
+          text-decoration: none;
+          transition: color var(--transition-fast);
+        }
+
+        .post-title-link:hover {
+          color: var(--accent-cyan);
+        }
+
+        .profile-link {
+          color: var(--text-primary);
+          text-decoration: none;
+          transition: color var(--transition-fast);
+        }
+
+        .profile-link:hover {
+          color: var(--accent-cyan);
+        }
+
+        .profile-link:hover .handle {
+          color: var(--accent-cyan);
         }
 
         .handle {

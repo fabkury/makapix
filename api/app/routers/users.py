@@ -157,6 +157,13 @@ def update_user(
     
     # Update handle if provided
     if payload.handle is not None:
+        # Prevent owner from changing their handle
+        if "owner" in user.roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="The site owner's handle cannot be changed",
+            )
+        
         # Validate handle format
         is_valid, error_msg = validate_handle(payload.handle)
         if not is_valid:

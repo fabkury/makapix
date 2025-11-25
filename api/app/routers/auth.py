@@ -299,7 +299,16 @@ def change_handle(
     
     Requires authentication. Handle must be unique and URL-safe.
     Changes are logged for audit purposes.
+    
+    Note: The site owner's handle cannot be changed via the API.
     """
+    # Prevent owner from changing their handle
+    if "owner" in current_user.roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The site owner's handle cannot be changed",
+        )
+    
     new_handle = payload.new_handle.lower().strip()
     
     # Validate handle format
