@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Script from 'next/script';
@@ -22,21 +22,12 @@ interface Post {
   };
 }
 
-interface ArtworkSize {
-  width: number;
-  height: number;
-}
-
 export default function PostPage() {
   const router = useRouter();
   const { id } = router.query;
   const [post, setPost] = useState<Post | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [imageSize, setImageSize] = useState<ArtworkSize | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const imageRef = useRef<HTMLImageElement>(null);
-  const updateSizeRef = useRef<(() => void) | null>(null);
   const [currentUser, setCurrentUser] = useState<{ id: string } | null>(null);
   const [isOwner, setIsOwner] = useState(false);
   
@@ -95,79 +86,6 @@ export default function PostPage() {
 
     fetchPost();
   }, [id, API_BASE_URL]);
-
-  // Calculate pixel art scaling
-  useEffect(() => {
-    if (!post) return;
-
-    const parseCanvas = (canvas: string): ArtworkSize | null => {
-      const match = canvas.match(/(\d+)x(\d+)/);
-      if (!match) return null;
-      return {
-        width: parseInt(match[1], 10),
-        height: parseInt(match[2], 10),
-      };
-    };
-
-    const calculateScaledSize = (
-      originalSize: ArtworkSize,
-      containerWidth: number,
-      maxHeight: number,
-      padding: number = 80
-    ): ArtworkSize => {
-      const availableWidth = containerWidth - padding;
-      const availableHeight = maxHeight - padding;
-
-      const scaleX = Math.floor(availableWidth / originalSize.width);
-      const scaleY = Math.floor(availableHeight / originalSize.height);
-      const scale = Math.max(1, Math.min(scaleX, scaleY));
-
-      return {
-        width: originalSize.width * scale,
-        height: originalSize.height * scale,
-      };
-    };
-
-    const updateSize = () => {
-      const container = containerRef.current;
-      const image = imageRef.current;
-      if (!container || !image) return;
-
-      const originalSize = parseCanvas(post.canvas);
-      if (!originalSize) return;
-
-      const containerRect = container.getBoundingClientRect();
-      if (containerRect.width === 0) {
-        setTimeout(updateSize, 50);
-        return;
-      }
-
-      const maxHeight = window.innerHeight * 0.7;
-      const scaledSize = calculateScaledSize(originalSize, containerRect.width, maxHeight, 80);
-
-      if (scaledSize.width > 0 && scaledSize.height > 0) {
-        setImageSize(scaledSize);
-      }
-    };
-
-    updateSizeRef.current = updateSize;
-
-    const timer = setTimeout(() => {
-      updateSize();
-    }, 0);
-
-    const handleResize = () => {
-      updateSize();
-    };
-
-    window.addEventListener('resize', handleResize);
-    
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener('resize', handleResize);
-      updateSizeRef.current = null;
-    };
-  }, [post]);
 
   // Set API URL for widget
   useEffect(() => {
@@ -364,23 +282,11 @@ export default function PostPage() {
   return (
     <Layout title={post.title} description={post.description || post.title}>
       <div className="post-container">
-        <div className="artwork-section" ref={containerRef}>
-          <img
-            ref={imageRef}
-            src={post.art_url}
-            alt={post.title}
-            className="artwork-image"
-            style={{
-              width: imageSize ? `${imageSize.width}px` : undefined,
-              height: imageSize ? `${imageSize.height}px` : undefined,
-            }}
-            onLoad={() => {
-              if (updateSizeRef.current) {
-                updateSizeRef.current();
-              }
-            }}
-          />
-        </div>
+        <img
+          src={post.art_url}
+          alt={post.title}
+          className="artwork-image pixel-art"
+        />
 
         <div className="post-info">
           <h1 className="post-title">{post.title}</h1>
@@ -471,22 +377,16 @@ export default function PostPage() {
           padding: 24px;
         }
 
-        .artwork-section {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: var(--bg-secondary);
-          border-radius: 12px;
-          padding: 40px;
-          margin-bottom: 24px;
-        }
-
         .artwork-image {
           display: block;
-          image-rendering: pixelated;
-          image-rendering: -moz-crisp-edges;
-          image-rendering: crisp-edges;
-          -ms-interpolation-mode: nearest-neighbor;
+          width: 100%;
+          height: auto;
+          margin-bottom: 24px;
+          image-rendering: -webkit-optimize-contrast !important;
+          image-rendering: -moz-crisp-edges !important;
+          image-rendering: crisp-edges !important;
+          image-rendering: pixelated !important;
+          -ms-interpolation-mode: nearest-neighbor !important;
         }
 
         .post-info {
@@ -609,6 +509,11 @@ export default function PostPage() {
           background: var(--bg-secondary);
           border-radius: 12px;
           padding: 24px;
+        }
+
+        /* Ensure widget inherits dark theme properly */
+        .widget-section :global(.makapix-widget) {
+          background: transparent;
         }
       `}</style>
     </Layout>
