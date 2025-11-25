@@ -36,22 +36,10 @@ const navItems: NavItem[] = [
     matchPaths: ['/', '/recent', '/posts']
   },
   { 
-    href: '/hashtags', 
-    icon: '#', 
-    label: 'Hashtags',
-    matchPaths: ['/hashtags']
-  },
-  { 
-    href: '/users', 
-    icon: '👥', 
-    label: 'Users',
-    matchPaths: ['/users']
-  },
-  { 
     href: '/search', 
     icon: '🔍', 
     label: 'Search',
-    matchPaths: ['/search']
+    matchPaths: ['/search', '/hashtags', '/users']
   },
 ];
 
@@ -121,6 +109,12 @@ export default function Layout({ children, title, description }: LayoutProps) {
         if (path === '/') return currentPath === '/';
         // For /users, match exactly (not /users/[id])
         if (path === '/users') return currentPath === '/users';
+        // For /hashtags, match exactly (not /hashtags/[tag])
+        if (path === '/hashtags') return currentPath === '/hashtags';
+        // For search, also match /hashtags and /users when redirected
+        if (path === '/search') {
+          return currentPath === '/search' || currentPath === '/hashtags' || currentPath === '/users';
+        }
         return currentPath.startsWith(path);
       });
     }
