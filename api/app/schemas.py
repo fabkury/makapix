@@ -288,17 +288,19 @@ class Comment(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     
     _author_handle_cache: str | None = None
+    _author_display_name_cache: str | None = None
     
     @model_validator(mode='wrap')
     @classmethod
-    def extract_author_handle(cls, data, handler):
-        """Extract author handle from the ORM model during validation."""
+    def extract_author_info(cls, data, handler):
+        """Extract author info from the ORM model during validation."""
         # Call the default validation
         instance = handler(data)
         
-        # If data is an ORM model with author relationship loaded, extract handle
+        # If data is an ORM model with author relationship loaded, extract info
         if hasattr(data, 'author') and data.author:
             instance._author_handle_cache = data.author.handle
+            instance._author_display_name_cache = data.author.handle  # Use handle as display name
         
         return instance
     
@@ -315,13 +317,38 @@ class Comment(BaseModel):
             # Generate guest name from IP
             import hashlib
             hash_digest = hashlib.sha256(self.author_ip.encode()).hexdigest()
-            return f"guest-{hash_digest[:6]}"
+            return f"Guest_{hash_digest[:6]}"
         
         # Return cached handle if available
         if self._author_handle_cache:
             return self._author_handle_cache
         
         return "unknown"  # Fallback if user not found or not loaded
+    
+    @computed_field
+    @property
+    def author_display_name(self) -> str:
+        """
+        Display name for the comment author.
+        
+        Returns guest name for anonymous users, or the cached display name
+        from the author relationship for authenticated users.
+        """
+        if self.author_id is None and self.author_ip:
+            # Generate guest name from IP
+            import hashlib
+            hash_digest = hashlib.sha256(self.author_ip.encode()).hexdigest()
+            return f"Guest_{hash_digest[:6]}"
+        
+        # Return cached display name if available
+        if self._author_display_name_cache:
+            return self._author_display_name_cache
+        
+        # Fall back to handle
+        if self._author_handle_cache:
+            return self._author_handle_cache
+        
+        return "Unknown"  # Fallback if user not found or not loaded
 
     @computed_field
     @property
