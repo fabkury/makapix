@@ -78,7 +78,6 @@ class UserPublic(BaseModel):
 
     id: UUID
     handle: str
-    display_name: str
     bio: str | None = None
     website: str | None = None
     avatar_url: HttpUrl | None = None
@@ -97,6 +96,7 @@ class UserFull(UserPublic):
     """Full user profile (for authenticated user or admin)."""
 
     email: str | None = None
+    email_verified: bool = False
     banned_until: datetime | None = None
     roles: list[Literal["user", "moderator", "owner"]] = Field(default_factory=list)
 
@@ -105,7 +105,6 @@ class UserCreate(BaseModel):
     """Create user request."""
 
     handle: str = Field(..., min_length=2, max_length=50)
-    display_name: str = Field(..., min_length=1, max_length=100)
     bio: str | None = Field(None, max_length=1000)
     website: str | None = Field(None, max_length=500)
 
@@ -113,7 +112,7 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     """Update user request."""
 
-    display_name: str | None = Field(None, min_length=1, max_length=100)
+    handle: str | None = Field(None, min_length=2, max_length=50)
     bio: str | None = Field(None, max_length=1000)
     website: str | None = Field(None, max_length=500)
     avatar_url: HttpUrl | None = None
@@ -265,41 +264,41 @@ class Comment(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
     
-    _author_display_name_cache: str | None = None
+    _author_handle_cache: str | None = None
     
     @model_validator(mode='wrap')
     @classmethod
-    def extract_author_display_name(cls, data, handler):
-        """Extract author display name from the ORM model during validation."""
+    def extract_author_handle(cls, data, handler):
+        """Extract author handle from the ORM model during validation."""
         # Call the default validation
         instance = handler(data)
         
-        # If data is an ORM model with author relationship loaded, extract display name
+        # If data is an ORM model with author relationship loaded, extract handle
         if hasattr(data, 'author') and data.author:
-            instance._author_display_name_cache = data.author.display_name
+            instance._author_handle_cache = data.author.handle
         
         return instance
     
     @computed_field
     @property
-    def author_display_name(self) -> str:
+    def author_handle(self) -> str:
         """
-        Display name for the comment author.
+        Handle for the comment author.
         
-        Returns guest name for anonymous users, or the cached display name
+        Returns guest name for anonymous users, or the cached handle
         from the author relationship for authenticated users.
         """
         if self.author_id is None and self.author_ip:
             # Generate guest name from IP
             import hashlib
             hash_digest = hashlib.sha256(self.author_ip.encode()).hexdigest()
-            return f"Guest_{hash_digest[:6]}"
+            return f"guest-{hash_digest[:6]}"
         
-        # Return cached display name if available
-        if self._author_display_name_cache:
-            return self._author_display_name_cache
+        # Return cached handle if available
+        if self._author_handle_cache:
+            return self._author_handle_cache
         
-        return "User"  # Fallback if user not found or not loaded
+        return "unknown"  # Fallback if user not found or not loaded
 
 
 class CommentCreate(BaseModel):
@@ -484,6 +483,136 @@ class MeResponse(BaseModel):
 
     user: UserFull
     roles: list[Literal["user", "moderator", "owner"]]
+
+
+class RegisterRequest(BaseModel):
+    """User registration request - only email required."""
+
+    email: str = Field(..., max_length=255)
+
+
+class RegisterResponse(BaseModel):
+    """User registration response - email verification required."""
+
+    message: str = "Please check your email to verify your account"
+    user_id: UUID
+    email: str
+    handle: str  # User's generated handle
+
+
+class LoginRequest(BaseModel):
+    """User login request - email and password."""
+
+    email: str = Field(..., min_length=1, max_length=255)
+    password: str = Field(..., min_length=1, max_length=100)
+
+
+class AuthIdentityResponse(BaseModel):
+    """Authentication identity response."""
+
+    id: UUID
+    provider: str
+    provider_user_id: str
+    email: str | None = None
+    provider_metadata: dict[str, Any] | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AuthIdentitiesList(BaseModel):
+    """List of authentication identities."""
+
+    identities: list[AuthIdentityResponse]
+
+
+class LinkProviderRequest(BaseModel):
+    """Link OAuth provider request (used internally, not exposed as endpoint)."""
+
+    provider: str
+    provider_user_id: str
+    email: str | None = None
+    provider_metadata: dict[str, Any] | None = None
+
+
+class VerifyEmailRequest(BaseModel):
+    """Email verification request."""
+
+    token: str = Field(..., min_length=1)
+
+
+class VerifyEmailResponse(BaseModel):
+    """Email verification response."""
+
+    message: str = "Email verified successfully"
+    verified: bool = True
+    handle: str  # User's current handle
+    can_change_password: bool = True  # Invite user to optionally change password
+    can_change_handle: bool = True  # Invite user to optionally change handle
+
+
+class ResendVerificationRequest(BaseModel):
+    """Resend verification email request."""
+
+    email: str | None = Field(None, max_length=255)  # Optional: verify different email
+
+
+class ResendVerificationResponse(BaseModel):
+    """Resend verification email response."""
+
+    message: str = "Verification email sent"
+    email: str
+
+
+class ChangePasswordRequest(BaseModel):
+    """Change password request."""
+
+    current_password: str = Field(..., min_length=1, max_length=100)
+    new_password: str = Field(..., min_length=8, max_length=100)
+
+
+class ChangePasswordResponse(BaseModel):
+    """Change password response."""
+
+    message: str = "Password changed successfully"
+
+
+class ChangeHandleRequest(BaseModel):
+    """Change handle request."""
+
+    new_handle: str = Field(..., min_length=2, max_length=50)
+
+
+class ChangeHandleResponse(BaseModel):
+    """Change handle response."""
+
+    message: str = "Handle changed successfully"
+    handle: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Forgot password request - initiates password reset."""
+
+    email: str = Field(..., max_length=255)
+
+
+class ForgotPasswordResponse(BaseModel):
+    """Forgot password response."""
+
+    message: str = "If an account exists with this email, a password reset link has been sent."
+
+
+class ResetPasswordRequest(BaseModel):
+    """Reset password request - completes password reset with token."""
+
+    token: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8, max_length=100)
+
+
+class ResetPasswordResponse(BaseModel):
+    """Reset password response."""
+
+    message: str = "Password reset successfully. You can now log in with your new password."
 
 
 # ============================================================================

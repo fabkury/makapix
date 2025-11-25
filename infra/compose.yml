@@ -1,13 +1,19 @@
 services:
   db:
     image: postgres:16
+    env_file: ../.env
     environment:
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_USER: postgres
-      POSTGRES_DB: makapix
-    volumes: [ "pgdata:/var/lib/postgresql/data" ]
+      POSTGRES_USER: ${DB_ADMIN_USER}
+      POSTGRES_PASSWORD: ${DB_ADMIN_PASSWORD}
+      POSTGRES_DB: ${DB_DATABASE}
+      DB_API_WORKER_USER: ${DB_API_WORKER_USER}
+      DB_API_WORKER_PASSWORD: ${DB_API_WORKER_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../db/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+      - ../db/init-users.sh:/docker-entrypoint-initdb.d/20-init-users.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d makapix"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 20

@@ -2,12 +2,18 @@ services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
-    env_file:
-      - .env
+    environment:
+      # PostgreSQL uses POSTGRES_* for the superuser that initializes the DB
+      POSTGRES_USER: ${DB_ADMIN_USER}
+      POSTGRES_PASSWORD: ${DB_ADMIN_PASSWORD}
+      POSTGRES_DB: ${DB_DATABASE}
+      # Pass these for init.sql to create the API worker user
+      DB_API_WORKER_USER: ${DB_API_WORKER_USER}
+      DB_API_WORKER_PASSWORD: ${DB_API_WORKER_PASSWORD}
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
-      - ./db/seed.sql:/docker-entrypoint-initdb.d/20-seed.sql:ro
+      - ./db/init-users.sh:/docker-entrypoint-initdb.d/20-init-users.sh:ro
     ports:
       - "${DB_PORT:-5432}:5432"
     healthcheck:

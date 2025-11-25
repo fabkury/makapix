@@ -26,7 +26,8 @@ def ensure_system_user(db: Session) -> models.User:
         system_user = models.User(
             id=SYSTEM_USER_UUID,
             handle="system",
-            display_name="System",
+            email="system@notification.makapix.club",
+            email_verified=True,
             bio="Automated system actions",
             roles=["user"],  # System user has minimal roles
             deactivated=False,

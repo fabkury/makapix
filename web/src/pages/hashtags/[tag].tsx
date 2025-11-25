@@ -35,15 +35,40 @@ export default function HashtagPage() {
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
     : '';
 
+  // Check authentication on mount
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      router.push('/auth');
+    }
+  }, [router]);
+
   const loadPosts = useCallback(async (hashtag: string, cursor: string | null = null) => {
     if (loading || (!hasMore && cursor !== null) || !hashtag) return;
+    
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      router.push('/auth');
+      return;
+    }
     
     setLoading(true);
     setError(null);
     
     try {
-      const url = `${API_BASE_URL}/api/hashtags/${encodeURIComponent(hashtag)}/posts?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
-      const response = await fetch(url);
+      const url = `${API_BASE_URL}/api/posts?hashtag=${encodeURIComponent(hashtag)}&limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      
+      if (response.status === 401) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('user_id');
+        router.push('/auth');
+        return;
+      }
       
       if (!response.ok) {
         throw new Error(`Failed to load posts: ${response.statusText}`);

@@ -5,6 +5,10 @@ from __future__ import annotations
 import logging
 import os
 import re
+import secrets
+import string
+from datetime import datetime
+from uuid import UUID
 from urllib.parse import urlencode
 
 import httpx
@@ -16,6 +20,21 @@ from .. import models, schemas
 from ..auth import create_access_token, create_refresh_token, get_current_user, revoke_refresh_token, verify_refresh_token
 from ..deps import get_db
 from ..github import verify_installation_belongs_to_app
+from ..services.auth_identities import (
+    create_password_identity,
+    create_oauth_identity,
+    find_identity_by_password,
+    find_identity_by_oauth,
+    get_user_identities,
+    delete_identity,
+    link_oauth_identity,
+    update_password,
+)
+from ..services.email_verification import (
+    send_verification_email_for_user,
+    mark_email_verified,
+)
+from ..utils.handles import generate_default_handle, validate_handle, is_handle_taken
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +44,535 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 GITHUB_CLIENT_ID = os.getenv("GITHUB_OAUTH_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_OAUTH_CLIENT_SECRET")
 GITHUB_REDIRECT_URI = os.getenv("GITHUB_REDIRECT_URI", "http://localhost/auth/github/callback")
+
+
+def generate_random_password(length: int = 8) -> str:
+    """Generate a random password with letters and digits."""
+    alphabet = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+
+@router.post(
+    "/register",
+    response_model=schemas.RegisterResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def register(
+    payload: schemas.RegisterRequest,
+    db: Session = Depends(get_db),
+) -> schemas.RegisterResponse:
+    """
+    Register a new user with email only.
+    
+    - Generates a unique handle (makapix-user-X)
+    - Generates a random 8-character password
+    - Sends a verification email with the password
+    - User must verify email before logging in
+    - After verification, user can optionally change password/handle
+    """
+    email = payload.email.lower().strip()
+    
+    # Check if email is already registered
+    existing_user = db.query(models.User).filter(
+        models.User.email == email
+    ).first()
+    
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account with this email already exists",
+        )
+    
+    # Generate default handle (makapix-user-X)
+    default_handle = generate_default_handle(db)
+    
+    # Generate random 8-character password
+    generated_password = generate_random_password(8)
+    
+    # Create user with email_verified=False
+    user = models.User(
+        handle=default_handle,
+        email=email,
+        email_verified=False,  # Requires email verification
+        roles=["user"],
+    )
+    db.add(user)
+    try:
+        db.commit()
+        db.refresh(user)
+    except IntegrityError as e:
+        db.rollback()
+        error_str = str(e.orig) if hasattr(e, 'orig') else str(e)
+        if "email" in error_str.lower():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An account with this email already exists",
+            )
+        logger.error(f"Failed to create user: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create user account",
+        )
+    
+    # Create password identity (using email as the identifier)
+    try:
+        create_password_identity(
+            db=db,
+            user_id=user.id,
+            email=email,
+            password=generated_password,
+        )
+    except IntegrityError:
+        db.rollback()
+        # Clean up user if identity creation fails
+        db.delete(user)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account with this email already exists",
+        )
+    except Exception as e:
+        db.rollback()
+        # Clean up user if identity creation fails
+        db.delete(user)
+        db.commit()
+        logger.error(f"Failed to create password identity: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create authentication identity",
+        )
+    
+    # Send verification email with the generated password
+    email_sent = send_verification_email_for_user(db, user, password=generated_password)
+    if not email_sent:
+        logger.warning(f"Failed to send verification email to user {user.id}")
+    
+    # Return registration response (NO tokens - user must verify email first)
+    return schemas.RegisterResponse(
+        message="Please check your email to verify your account",
+        user_id=user.id,
+        email=email,
+        handle=default_handle,
+    )
+
+
+@router.post(
+    "/login",
+    response_model=schemas.OAuthTokens,
+)
+def login(
+    payload: schemas.LoginRequest,
+    db: Session = Depends(get_db),
+) -> schemas.OAuthTokens:
+    """
+    Login with email and password.
+    
+    Requires email verification for password-based login.
+    """
+    email = payload.email.lower().strip()
+    
+    # Find identity and verify password
+    identity = find_identity_by_password(db, email, payload.password)
+    
+    if not identity:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+        )
+    
+    # Get user
+    user = db.query(models.User).filter(models.User.id == identity.user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+    
+    # Check if email is verified for password-based login
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email not verified. Please check your email for verification link.",
+        )
+    
+    # Check if user is banned or deactivated
+    if user.deactivated:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account deactivated",
+        )
+    
+    from datetime import timezone
+    if user.banned_until and user.banned_until > datetime.now(timezone.utc).replace(tzinfo=None):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account banned",
+        )
+    
+    # Generate tokens
+    access_token = create_access_token(user.id)
+    refresh_token = create_refresh_token(user.id, db)
+    
+    return schemas.OAuthTokens(
+        token=access_token,
+        user_id=user.id,
+        expires_at=user.created_at,  # This should be calculated from JWT expiration
+    )
+
+
+@router.get(
+    "/verify-email",
+    response_model=schemas.VerifyEmailResponse,
+)
+def verify_email(
+    token: str = Query(..., description="Email verification token"),
+    db: Session = Depends(get_db),
+) -> schemas.VerifyEmailResponse:
+    """
+    Verify email address using the token sent via email.
+    
+    After verification, user can optionally change their password and/or handle.
+    """
+    user = mark_email_verified(db, token)
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification token",
+        )
+    
+    return schemas.VerifyEmailResponse(
+        message="Email verified successfully. You can now log in.",
+        verified=True,
+        handle=user.handle,
+        can_change_password=True,
+        can_change_handle=True,
+    )
+
+
+@router.post(
+    "/change-password",
+    response_model=schemas.ChangePasswordResponse,
+)
+def change_password(
+    payload: schemas.ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.ChangePasswordResponse:
+    """
+    Change the current user's password.
+    
+    Requires authentication and current password verification.
+    """
+    # Verify current password
+    identity = find_identity_by_password(db, current_user.email, payload.current_password)
+    if not identity:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Current password is incorrect",
+        )
+    
+    # Update password
+    success = update_password(db, current_user.id, payload.new_password)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to change password",
+        )
+    
+    return schemas.ChangePasswordResponse(
+        message="Password changed successfully",
+    )
+
+
+@router.post(
+    "/change-handle",
+    response_model=schemas.ChangeHandleResponse,
+)
+def change_handle(
+    payload: schemas.ChangeHandleRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.ChangeHandleResponse:
+    """
+    Change the current user's handle.
+    
+    Requires authentication. Handle must be unique and URL-safe.
+    Changes are logged for audit purposes.
+    """
+    new_handle = payload.new_handle.lower().strip()
+    
+    # Validate handle format
+    is_valid, error_msg = validate_handle(new_handle)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid handle: {error_msg}",
+        )
+    
+    # Check if same as current
+    if new_handle == current_user.handle:
+        return schemas.ChangeHandleResponse(
+            message="Handle unchanged",
+            handle=current_user.handle,
+        )
+    
+    # Check if handle is already taken
+    if is_handle_taken(db, new_handle, exclude_user_id=str(current_user.id)):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This handle is already taken",
+        )
+    
+    # Store old handle for audit
+    old_handle = current_user.handle
+    
+    # Update handle
+    current_user.handle = new_handle
+    
+    # Create audit log entry for handle change
+    audit_log = models.AuditLog(
+        actor_id=current_user.id,
+        action="handle_change",
+        target_type="user",
+        target_id=current_user.id,
+        note=f"Handle changed from '{old_handle}' to '{new_handle}'",
+    )
+    db.add(audit_log)
+    
+    try:
+        db.commit()
+        db.refresh(current_user)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This handle is already taken",
+        )
+    
+    logger.info(f"User {current_user.id} changed handle from '{old_handle}' to '{new_handle}'")
+    
+    return schemas.ChangeHandleResponse(
+        message="Handle changed successfully",
+        handle=current_user.handle,
+    )
+
+
+@router.post(
+    "/resend-verification",
+    response_model=schemas.ResendVerificationResponse,
+)
+def resend_verification(
+    payload: schemas.ResendVerificationRequest | None = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.ResendVerificationResponse:
+    """
+    Resend verification email to the current user.
+    
+    Requires authentication (user must have registered but not yet verified).
+    Rate limited to 6 emails per hour.
+    """
+    if current_user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already verified",
+        )
+    
+    # Use provided email or user's current email
+    email = (payload.email if payload else None) or current_user.email
+    
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No email address provided",
+        )
+    
+    # Send verification email
+    try:
+        email_sent = send_verification_email_for_user(db, current_user, email)
+        if not email_sent:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to send verification email. Please try again later.",
+            )
+    except ValueError as e:
+        # Rate limit exceeded
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(e),
+        )
+    
+    return schemas.ResendVerificationResponse(
+        message="Verification email sent",
+        email=email,
+    )
+
+
+@router.post(
+    "/forgot-password",
+    response_model=schemas.ForgotPasswordResponse,
+)
+def forgot_password(
+    payload: schemas.ForgotPasswordRequest,
+    db: Session = Depends(get_db),
+) -> schemas.ForgotPasswordResponse:
+    """
+    Request a password reset email.
+    
+    For security, always returns success even if email doesn't exist.
+    This prevents email enumeration attacks.
+    """
+    email = payload.email.lower().strip()
+    
+    # Find user by email
+    user = db.query(models.User).filter(
+        models.User.email == email
+    ).first()
+    
+    if user:
+        # Check if user has a password identity (OAuth-only users can't reset password)
+        password_identity = db.query(models.AuthIdentity).filter(
+            models.AuthIdentity.user_id == user.id,
+            models.AuthIdentity.provider == "password",
+        ).first()
+        
+        if password_identity:
+            # Send reset email
+            try:
+                from ..services.password_reset import send_reset_email_for_user
+                send_reset_email_for_user(db, user)
+            except ValueError as e:
+                # Rate limit exceeded - still return success for security
+                logger.warning(f"Password reset rate limit for {email}: {e}")
+            except Exception as e:
+                logger.error(f"Failed to send password reset email: {e}")
+        else:
+            logger.info(f"Password reset requested for OAuth-only user {user.id}")
+    else:
+        logger.info(f"Password reset requested for non-existent email: {email}")
+    
+    # Always return success to prevent email enumeration
+    return schemas.ForgotPasswordResponse(
+        message="If an account exists with this email, a password reset link has been sent."
+    )
+
+
+@router.post(
+    "/reset-password",
+    response_model=schemas.ResetPasswordResponse,
+)
+def reset_password(
+    payload: schemas.ResetPasswordRequest,
+    db: Session = Depends(get_db),
+) -> schemas.ResetPasswordResponse:
+    """
+    Reset password using a token from email.
+    
+    The password is only changed if the token is valid.
+    """
+    from ..services.password_reset import verify_reset_token, mark_token_used
+    
+    # Verify token
+    reset_token = verify_reset_token(db, payload.token)
+    
+    if not reset_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired password reset token. Please request a new password reset.",
+        )
+    
+    # Get user
+    user = db.query(models.User).filter(
+        models.User.id == reset_token.user_id
+    ).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found.",
+        )
+    
+    # Check if user is banned or deactivated
+    if user.deactivated:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account deactivated.",
+        )
+    
+    from datetime import timezone as tz
+    if user.banned_until and user.banned_until > datetime.now(tz.utc).replace(tzinfo=None):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account banned.",
+        )
+    
+    # Update password
+    success = update_password(db, user.id, payload.new_password)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to reset password. This account may not support password login.",
+        )
+    
+    # Mark token as used
+    mark_token_used(db, reset_token.id)
+    
+    logger.info(f"Password reset successful for user {user.id}")
+    
+    return schemas.ResetPasswordResponse(
+        message="Password reset successfully. You can now log in with your new password."
+    )
+
+
+@router.get(
+    "/providers",
+    response_model=schemas.AuthIdentitiesList,
+)
+def list_providers(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> schemas.AuthIdentitiesList:
+    """
+    List all authentication providers linked to the current user.
+    """
+    identities = get_user_identities(db, current_user.id)
+    
+    return schemas.AuthIdentitiesList(
+        identities=[
+            schemas.AuthIdentityResponse.model_validate(identity)
+            for identity in identities
+        ],
+    )
+
+
+@router.delete(
+    "/providers/{provider}/{identity_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def unlink_provider(
+    provider: str,
+    identity_id: UUID,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Unlink an authentication provider from the current user.
+    
+    Prevents unlinking if it's the last authentication method.
+    """
+    try:
+        deleted = delete_identity(db, identity_id, current_user.id)
+        if not deleted:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot unlink the last authentication method",
+            )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
 
 
 @router.get("/github/login")
@@ -182,52 +730,75 @@ def github_callback(
                 detail=f"Failed to authenticate with GitHub: {str(e)}"
             )
         
-        # Find or create Makapix user
+        # Find or create Makapix user via GitHub identity
         github_user_id = str(github_user["id"])
         github_username = github_user["login"]
         
         logger.info(f"Looking up user with GitHub ID: {github_user_id}")
-        # Check if user already exists
-        user = db.query(models.User).filter(
-            models.User.github_user_id == github_user_id
-        ).first()
         
-        if not user:
-            logger.info(f"Creating new user for GitHub username: {github_username}")
-            # Create new user
-            # Generate handle from GitHub username (ensure uniqueness)
-            base_handle = re.sub(r'[^a-zA-Z0-9_-]', '', github_username.lower())
-            
-            # Ensure handle is not empty and has reasonable length
-            if not base_handle:
-                base_handle = "user"
-            elif len(base_handle) > 47:  # Leave room for counter suffix
-                base_handle = base_handle[:47]
-            
-            handle = base_handle
-            counter = 1
-            max_attempts = 100  # Prevent infinite loop
-            
-            while db.query(models.User).filter(models.User.handle == handle).first() and counter < max_attempts:
-                handle = f"{base_handle}{counter}"
-                counter += 1
-            
-            if counter >= max_attempts:
-                logger.error(f"Failed to find unique handle after {max_attempts} attempts for username: {github_username}")
+        # Check if user is already logged in (from state or session)
+        # TODO: Extract user_id from state if provided for account linking
+        
+        # Check if GitHub identity already exists
+        identity = find_identity_by_oauth(db, "github", github_user_id)
+        
+        if identity:
+            # Existing user - update profile and identity metadata
+            user = db.query(models.User).filter(models.User.id == identity.user_id).first()
+            if not user:
+                logger.error(f"Identity found but user not found: {identity.user_id}")
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Unable to generate unique username. Please contact support."
+                    detail="User account not found"
                 )
             
+            logger.info(f"Found existing user: {user.id} ({user.handle})")
+            
+            # Update identity metadata
+            identity.provider_metadata = {
+                "username": github_username,
+                "avatar_url": github_user.get("avatar_url"),
+            }
+            if github_email:
+                identity.email = github_email
+            
+            # Update user profile (bio and avatar from GitHub)
+            user.bio = github_user.get("bio") or user.bio
+            user.avatar_url = github_user.get("avatar_url") or user.avatar_url
+            if github_email:
+                user.email = github_email
+            
+            db.commit()
+            db.refresh(user)
+        else:
+            # New user - check if we're linking to an existing logged-in user
+            # (This would be handled by checking for a session/cookie, but for now we create new user)
+            logger.info(f"Creating new user for GitHub username: {github_username}")
+            
+            # Generate default handle
+            handle = generate_default_handle(db)
+            
+            # Check if email is already registered
+            email_to_use = github_email or github_user.get("email")
+            if email_to_use:
+                existing_user = db.query(models.User).filter(
+                    models.User.email == email_to_use.lower()
+                ).first()
+                if existing_user:
+                    logger.error(f"Email {email_to_use} already registered for user {existing_user.id}")
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="An account with this email already exists. Please log in with your existing account.",
+                    )
+            
+            # Create user - OAuth users are automatically verified since GitHub already verified their email
             user = models.User(
-                github_user_id=github_user_id,
-                github_username=github_username,
                 handle=handle,
-                display_name=github_user.get("name") or github_username,
                 bio=github_user.get("bio"),
                 avatar_url=github_user.get("avatar_url"),
-                email=github_email or github_user.get("email"),
-                roles=["user"]  # Default role
+                email=email_to_use.lower() if email_to_use else None,
+                email_verified=True,  # OAuth users are pre-verified by the provider
+                roles=["user"],
             )
             db.add(user)
             try:
@@ -238,66 +809,43 @@ def github_callback(
                 db.rollback()
                 error_str = str(e.orig) if hasattr(e, 'orig') else str(e)
                 logger.error(f"Database integrity error creating user: {error_str}", exc_info=True)
-                
-                # Check if it's a handle collision and retry with a different handle
-                if "handle" in error_str.lower() or "ix_users_handle" in error_str.lower():
-                    logger.info(f"Handle collision detected for '{handle}', retrying with different handle")
-                    # Use UUID-based suffix to ensure uniqueness
-                    import uuid
-                    handle = f"{base_handle}{uuid.uuid4().hex[:8]}"
-                    user.handle = handle
-                    db.add(user)
-                    try:
-                        db.commit()
-                        db.refresh(user)
-                        logger.info(f"Successfully created user with UUID-based handle: {user.id} ({user.handle})")
-                    except IntegrityError as e2:
-                        db.rollback()
-                        logger.error(f"Still failed after retry: {e2}", exc_info=True)
-                        raise HTTPException(
-                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail=f"Failed to create user account due to handle conflict. Please try again later."
-                        )
-                # Check if it's a github_user_id collision (user might have been created concurrently)
-                elif "github_user_id" in error_str.lower() or "ix_users_github_user_id" in error_str.lower():
-                    logger.info(f"GitHub user ID collision detected for '{github_user_id}', checking if user exists")
-                    # Check if user was created concurrently
-                    existing_user = db.query(models.User).filter(
-                        models.User.github_user_id == github_user_id
-                    ).first()
-                    if existing_user:
-                        logger.info(f"Found existing user created concurrently: {existing_user.id} ({existing_user.handle})")
-                        user = existing_user
-                    else:
-                        logger.error(f"GitHub user ID collision but user not found: {github_user_id}")
-                        raise HTTPException(
-                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail="Account creation conflict. Please try logging in again."
-                        )
-                else:
-                    # Unknown constraint violation
-                    logger.error(f"Unknown integrity error: {error_str}")
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail=f"Failed to create user account: {error_str}. Please try again."
-                    )
-        
-        # Update user profile with latest GitHub data (for both new and existing users)
-        if user:
-            logger.info(f"Updating user profile for user: {user.id} ({user.handle})")
-            user.github_username = github_username
-            user.display_name = github_user.get("name") or user.display_name or github_username
-            user.bio = github_user.get("bio") or user.bio
-            user.avatar_url = github_user.get("avatar_url") or user.avatar_url
-            if github_email:
-                user.email = github_email
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to create user account. Please try again."
+                )
+            
+            # Create GitHub identity
             try:
-                db.commit()
-                db.refresh(user)
-            except IntegrityError as e:
+                create_oauth_identity(
+                    db=db,
+                    user_id=user.id,
+                    provider="github",
+                    provider_user_id=github_user_id,
+                    email=github_email or github_user.get("email"),
+                    provider_metadata={
+                        "username": github_username,
+                        "avatar_url": github_user.get("avatar_url"),
+                    },
+                )
+            except IntegrityError:
                 db.rollback()
-                logger.error(f"Database integrity error updating user: {e}", exc_info=True)
-                # Don't fail the auth flow if profile update fails
+                # Clean up user if identity creation fails
+                db.delete(user)
+                db.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to create authentication identity. Please try again."
+                )
+            except Exception as e:
+                db.rollback()
+                # Clean up user if identity creation fails
+                db.delete(user)
+                db.commit()
+                logger.error(f"Failed to create GitHub identity: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to create authentication identity. Please try again."
+                )
 
         # Handle GitHub App installation if installation_id is provided
         if installation_id and setup_action == "install":
@@ -386,7 +934,7 @@ def github_callback(
         </head>
         <body>
             <div class="success">✅ Authentication Successful!</div>
-            <div class="info">Welcome to Makapix, {user.display_name}!</div>
+            <div class="info">Welcome to Makapix, {user.handle}!</div>
             <div class="info">You can now close this window and return to the main application.</div>
             <a href="{base_url}" class="button">Go to Makapix</a>
             <a href="{base_url}/publish" class="button">Publish Artwork</a>
@@ -395,7 +943,6 @@ def github_callback(
                 <p>Debug Info:</p>
                 <p>User ID: {user.id}</p>
                 <p>Handle: {user.handle}</p>
-                <p>Display Name: {user.display_name}</p>
                 <p>Access Token: {makapix_access_token[:20]}...</p>
             </div>
             
@@ -411,12 +958,8 @@ def github_callback(
                     localStorage.setItem('refresh_token', '{makapix_refresh_token}');
                     localStorage.setItem('user_id', '{user.id}');
                     localStorage.setItem('user_handle', '{user.handle}');
-                    localStorage.setItem('user_display_name', '{user.display_name}');
                     
-                    console.log('Tokens stored successfully!');
-                    console.log('localStorage contents:', Object.keys(localStorage));
-                    
-                    // Also try to communicate with parent window if opened in popup
+                    // Close popup and notify parent window
                     if (window.opener) {{
                         window.opener.postMessage({{
                             type: 'OAUTH_SUCCESS',
@@ -424,12 +967,17 @@ def github_callback(
                                 access_token: '{makapix_access_token}',
                                 refresh_token: '{makapix_refresh_token}',
                                 user_id: '{user.id}',
-                                user_handle: '{user.handle}',
-                                user_display_name: '{user.display_name}'
+                                user_handle: '{user.handle}'
                             }}
                         }}, '*');
                         window.close();
+                    }} else {{
+                        // If not in popup, redirect to home
+                        window.location.href = '{base_url}';
                     }}
+                    
+                    console.log('Tokens stored successfully!');
+                    console.log('localStorage contents:', Object.keys(localStorage));
                 }} catch (error) {{
                     console.error('Error storing tokens:', error);
                 }}
@@ -510,39 +1058,61 @@ def exchange_github_code(payload: schemas.GithubExchangeRequest, db: Session = D
             detail=f"Failed to authenticate with GitHub: {str(e)}"
         )
     
-    # Find or create Makapix user
+    # Find or create Makapix user via GitHub identity
     github_user_id = str(github_user["id"])
     github_username = github_user["login"]
     
-    # Check if user already exists
-    user = db.query(models.User).filter(
-        models.User.github_user_id == github_user_id
-    ).first()
+    # Check if GitHub identity already exists
+    identity = find_identity_by_oauth(db, "github", github_user_id)
     
+    if identity:
+        # Existing user
+        user = db.query(models.User).filter(models.User.id == identity.user_id).first()
     if not user:
-        # Create new user
-        # Generate handle from GitHub username (ensure uniqueness)
-        base_handle = re.sub(r'[^a-zA-Z0-9_-]', '', github_username.lower())
-        handle = base_handle
-        counter = 1
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="User account not found"
+            )
+    else:
+        # Create new user - OAuth users are automatically verified
+        handle = generate_default_handle(db)
+        email_to_use = github_user.get("email")
         
-        while db.query(models.User).filter(models.User.handle == handle).first():
-            handle = f"{base_handle}{counter}"
-            counter += 1
+        # Check if email already exists
+        if email_to_use:
+            existing_user = db.query(models.User).filter(
+                models.User.email == email_to_use.lower()
+            ).first()
+            if existing_user:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="An account with this email already exists",
+                )
         
         user = models.User(
-            github_user_id=github_user_id,
-            github_username=github_username,
             handle=handle,
-            display_name=github_user.get("name", github_username),
             bio=github_user.get("bio"),
             avatar_url=github_user.get("avatar_url"),
-            email=github_user.get("email"),
-            roles=["user"]  # Default role
+            email=email_to_use.lower() if email_to_use else None,
+            email_verified=True,  # OAuth users are pre-verified by the provider
+            roles=["user"],
         )
         db.add(user)
         db.commit()
         db.refresh(user)
+        
+        # Create GitHub identity
+        create_oauth_identity(
+            db=db,
+            user_id=user.id,
+            provider="github",
+            provider_user_id=github_user_id,
+            email=email_to_use,
+            provider_metadata={
+                "username": github_username,
+                "avatar_url": github_user.get("avatar_url"),
+            },
+        )
     
     # Check if installation_id is provided (from GitHub App installation)
     installation_id = payload.installation_id

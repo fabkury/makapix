@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import JSZip from 'jszip';
 
 interface Artwork {
@@ -13,6 +14,7 @@ interface Artwork {
 }
 
 export default function PublishPage() {
+  const router = useRouter();
   const [artworks, setArtworks] = useState<Artwork[]>([]);
   const [uploading, setUploading] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -102,6 +104,12 @@ export default function PublishPage() {
         userDisplayName: userDisplayName || 'missing',
         allKeys: Object.keys(localStorage)
       });
+
+      if (!accessToken) {
+        // Redirect to auth page if not authenticated
+        router.push('/auth');
+        return;
+      }
 
       if (accessToken && userHandle) {
         setIsAuthenticated(true);
@@ -202,15 +210,11 @@ export default function PublishPage() {
           // Handle token expiration
           if (response.status === 401) {
             console.error('Authentication error - token may be expired');
-            // Clear expired tokens and redirect to login
+            // Clear expired tokens and redirect to auth
             localStorage.clear();
             setIsAuthenticated(false);
             setUserInfo(null);
-            // Only show alert if not already shown
-            if (!expiredAlertShownRef.current) {
-              expiredAlertShownRef.current = true;
-              alert('Your session has expired. Please log in again.');
-            }
+            router.push('/auth');
             return;
           } else if (response.status === 500) {
             console.error('Server error - check if GITHUB_APP_SLUG is configured in environment');
@@ -614,36 +618,7 @@ export default function PublishPage() {
                 Logout & Refresh
               </button>
             </div>
-          ) : (
-                 <div>
-                   ⚠️ <strong>Not authenticated</strong>
-                   <br />
-                   <small>
-                    Please                     <a
-                      href="/api/auth/github/login"
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        const apiBaseUrl = typeof window !== 'undefined' 
-                          ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
-                          : '';
-                        window.open(`${apiBaseUrl}/api/auth/github/login`, 'oauth', 'width=600,height=700,scrollbars=yes,resizable=yes');
-                      }}
-                    >log in with GitHub</a> first.
-                <br />
-                <button 
-                  onClick={() => {
-                    localStorage.clear();
-                    window.location.reload();
-                  }}
-                  style={{ marginTop: '5px', padding: '5px 10px', fontSize: '12px' }}
-                >
-                  Clear localStorage & Refresh
-                </button>
-              </small>
-            </div>
-          )}
+          ) : null}
         </div>
 
         {/* GitHub App Installation Status */}
