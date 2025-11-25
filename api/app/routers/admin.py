@@ -327,6 +327,41 @@ def recent_profiles(
     )
 
 
+@router.get("/pending-approval", response_model=schemas.Page[schemas.Post])
+def pending_approval(
+    cursor: str | None = None,
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    _moderator: models.User = Depends(require_moderator),
+) -> schemas.Page[schemas.Post]:
+    """
+    List posts pending public visibility approval (moderator only).
+    
+    Returns posts where public_visibility is False, ordered by creation date (newest first).
+    These are artworks uploaded by users without auto_public_approval privilege
+    that need moderator review before appearing in Recent Artworks and search results.
+    """
+    query = db.query(models.Post).filter(
+        models.Post.public_visibility == False,
+        models.Post.hidden_by_user == False,
+        models.Post.hidden_by_mod == False,
+    )
+    
+    # Apply cursor pagination
+    query = apply_cursor_filter(query, models.Post, cursor, "created_at", sort_desc=True)
+    
+    # Order and limit
+    query = query.order_by(models.Post.created_at.desc()).limit(limit + 1)
+    posts = query.all()
+    
+    page_data = create_page_response(posts, limit, cursor)
+    
+    return schemas.Page(
+        items=[schemas.Post.model_validate(p) for p in page_data["items"]],
+        next_cursor=page_data["next_cursor"],
+    )
+
+
 @router.get("/recent-posts", response_model=schemas.Page[schemas.Post])
 def recent_posts(
     cursor: str | None = None,

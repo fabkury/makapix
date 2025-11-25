@@ -539,6 +539,64 @@ def delete_post_by_moderator(
     )
 
 
+@router.delete(
+    "/{id}/permanent",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["Posts", "Admin"],
+)
+def permanent_delete_post(
+    id: UUID,
+    db: Session = Depends(get_db),
+    moderator: models.User = Depends(require_moderator),
+) -> None:
+    """
+    Permanently delete a post (moderator only).
+    
+    This action cannot be undone. The post must be hidden before it can be permanently deleted.
+    This also removes the artwork image from the vault.
+    """
+    post = db.query(models.Post).filter(models.Post.id == id).first()
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    
+    # Only allow permanent deletion of hidden posts
+    if not post.hidden_by_mod and not post.hidden_by_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Post must be hidden before it can be permanently deleted"
+        )
+    
+    # Delete the artwork from vault if it exists
+    if post.art_url:
+        # Extract extension from art_url (e.g., "/api/vault/a1/b2/c3/uuid.png" -> ".png")
+        from app import vault
+        try:
+            ext = "." + post.art_url.rsplit(".", 1)[-1].lower()
+            if ext in vault.ALLOWED_MIME_TYPES.values():
+                vault.delete_artwork_from_vault(id, ext)
+        except Exception as e:
+            logger.warning(f"Failed to delete artwork file for post {id}: {e}")
+    
+    # Log to audit before deletion
+    log_moderation_action(
+        db=db,
+        actor_id=moderator.id,
+        action="permanent_delete_post",
+        target_type="post",
+        target_id=id,
+        note=f"Permanently deleted post: {post.title}",
+    )
+    
+    # Delete the post from database
+    db.delete(post)
+    db.commit()
+    
+    # Invalidate caches
+    cache_invalidate("feed:recent:*")
+    cache_invalidate("feed:promoted:*")
+    cache_invalidate("hashtags:*")
+
+
 @router.post("/{id}/hide", status_code=status.HTTP_201_CREATED)
 def hide_post(
     id: UUID,
