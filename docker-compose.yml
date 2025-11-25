@@ -74,6 +74,7 @@ services:
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://cache:6379/0}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://cache:6379/0}
       MQTT_CA_FILE: ${MQTT_CA_FILE:-/certs/ca.crt}
+      VAULT_LOCATION: ${VAULT_LOCATION}
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./api:/workspace/api

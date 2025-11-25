@@ -74,9 +74,9 @@ export default function GitHubAppSetupPage() {
       setStatus('success');
       setMessage(`GitHub App installed successfully! Installation ID: ${result.installation_id}`);
       
-      // Redirect to publish page after 2 seconds
+      // Redirect to submit page after 2 seconds
       setTimeout(() => {
-        router.push('/publish');
+        router.push('/submit');
       }, 2000);
       
     } catch (error: any) {
@@ -119,9 +119,9 @@ export default function GitHubAppSetupPage() {
               <div className="success-icon">✅</div>
               <h2>Success!</h2>
               <p>{message}</p>
-              <p>Redirecting to publish page...</p>
-              <a href="/publish" className="button primary">
-                Go to Publish Page
+              <p>Redirecting to submit page...</p>
+              <a href="/submit" className="button primary">
+                Go to Submit Page
               </a>
             </>
           )}
@@ -135,8 +135,8 @@ export default function GitHubAppSetupPage() {
                 <button onClick={() => window.location.reload()} className="button">
                   Try Again
                 </button>
-                <a href="/publish" className="button secondary">
-                  Back to Publish Page
+                <a href="/submit" className="button secondary">
+                  Back to Submit Page
                 </a>
               </div>
             </>
@@ -147,7 +147,7 @@ export default function GitHubAppSetupPage() {
           <h3>What's happening?</h3>
           <p>
             This page handles the completion of your GitHub App installation. 
-            The app needs to be linked to your Makapix account to enable publishing artwork to GitHub Pages.
+            The app needs to be linked to your Makapix account to enable certain features.
           </p>
           <p>
             If you're not already logged in, you'll be redirected to GitHub to authenticate first.

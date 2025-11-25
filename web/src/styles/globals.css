@@ -55,12 +55,13 @@ body {
 
 /* Pixel art images - crisp nearest neighbor scaling */
 .pixel-art,
-img[data-pixel-art="true"] {
-  image-rendering: -webkit-optimize-contrast;
-  image-rendering: -moz-crisp-edges;
-  image-rendering: crisp-edges;
-  image-rendering: pixelated;
-  -ms-interpolation-mode: nearest-neighbor;
+img[data-pixel-art="true"],
+.artwork-image {
+  image-rendering: -webkit-optimize-contrast !important;
+  image-rendering: -moz-crisp-edges !important;
+  image-rendering: crisp-edges !important;
+  image-rendering: pixelated !important;
+  -ms-interpolation-mode: nearest-neighbor !important;
 }
 
 /* Scrollbar styling for dark theme */

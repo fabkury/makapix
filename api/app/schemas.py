@@ -99,6 +99,7 @@ class UserFull(UserPublic):
     email_verified: bool = False
     banned_until: datetime | None = None
     roles: list[Literal["user", "moderator", "owner"]] = Field(default_factory=list)
+    auto_public_approval: bool = False  # Privilege to auto-approve public visibility for uploads
 
 
 class UserCreate(BaseModel):
@@ -158,13 +159,14 @@ class Post(BaseModel):
     title: str
     description: str | None = None
     hashtags: list[str] = []
-    art_url: HttpUrl
+    art_url: str  # Can be relative URL for vault-hosted images or full URL for external
     canvas: str
     file_kb: int
     visible: bool
     hidden_by_user: bool
     hidden_by_mod: bool
     non_conformant: bool
+    public_visibility: bool = False  # Controls visibility in Recent Artworks, search, etc.
     promoted: bool
     promoted_category: str | None = None
     created_at: datetime
@@ -181,7 +183,7 @@ class PostCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     description: str | None = Field(None, max_length=5000)
     hashtags: list[str] = Field(default_factory=list, max_length=10)
-    art_url: HttpUrl
+    art_url: str  # Can be relative URL for vault-hosted images or full URL for external
     canvas: str = Field(..., pattern=r"^\d+x\d+$")
     file_kb: int = Field(..., gt=0, le=15 * 1024)  # 15 MB max
 
@@ -200,6 +202,27 @@ class PostRead(Post):
     """Alias for consistency."""
 
     pass
+
+
+class ArtworkUploadResponse(BaseModel):
+    """Response for artwork upload endpoint."""
+
+    post: Post
+    message: str = "Artwork uploaded successfully"
+
+
+class PublicVisibilityResponse(BaseModel):
+    """Response for public visibility toggle."""
+
+    post_id: UUID
+    public_visibility: bool
+
+
+class AutoApprovalResponse(BaseModel):
+    """Response for auto-approval privilege toggle."""
+
+    user_id: UUID
+    auto_public_approval: bool
 
 
 # ============================================================================
