@@ -185,13 +185,13 @@ def search_all(
 
 
 @router.get("/hashtags", response_model=schemas.HashtagList, tags=["Hashtags"])
-def list_hashtags(
+async def list_hashtags(
     q: str | None = None,
-    sort: str = Query("popularity", regex="^(popularity|recent)$"),
+    sort: str = Query("alphabetical", regex="^(alphabetical|popularity|recent)$"),
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User | None = Depends(get_current_user_optional),
 ) -> schemas.HashtagList:
     """
     List hashtags with popularity counts.
@@ -246,7 +246,9 @@ def list_hashtags(
     # Convert to list and sort
     hashtag_items = list(hashtag_counts.values())
     
-    if sort == "popularity":
+    if sort == "alphabetical":
+        hashtag_items.sort(key=lambda x: x["tag"].lower())
+    elif sort == "popularity":
         hashtag_items.sort(key=lambda x: (-x["count"], x["tag"]))
     else:  # recent
         hashtag_items.sort(key=lambda x: (-x["most_recent"].timestamp(), x["tag"]))
@@ -286,12 +288,12 @@ def list_hashtags(
 
 
 @router.get("/hashtags/{tag}/posts", response_model=schemas.Page[schemas.Post], tags=["Hashtags"])
-def list_hashtag_posts(
+async def list_hashtag_posts(
     tag: str,
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User | None = Depends(get_current_user_optional),
 ) -> schemas.Page[schemas.Post]:
     """
     List posts with a specific hashtag.
