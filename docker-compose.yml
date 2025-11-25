@@ -75,6 +75,8 @@ services:
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://cache:6379/0}
       MQTT_CA_FILE: ${MQTT_CA_FILE:-/certs/ca.crt}
       VAULT_LOCATION: ${VAULT_LOCATION}
+      MAKAPIX_ADMIN_USER: ${MAKAPIX_ADMIN_USER}
+      MAKAPIX_ADMIN_PASSWORD: ${MAKAPIX_ADMIN_PASSWORD}
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./api:/workspace/api

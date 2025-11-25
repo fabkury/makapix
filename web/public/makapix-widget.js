@@ -312,9 +312,6 @@
     createReactionsSection() {
       const section = createElement('div', { className: 'makapix-reactions-section' });
       
-      const title = createElement('h3', { text: 'Reactions' });
-      section.appendChild(title);
-      
       const reactionsContainer = createElement('div', { 
         className: 'makapix-reactions-container'
       });
@@ -343,9 +340,6 @@
     
     createCommentsSection() {
       const section = createElement('div', { className: 'makapix-comments-section' });
-      
-      const title = createElement('h3', { text: 'Comments' });
-      section.appendChild(title);
       
       // Comment form
       const form = createElement('form', { className: 'makapix-comment-form' });
@@ -408,20 +402,13 @@
 
       if (!hasAuthenticated && !hasAnonymous && !hasLegacyTotals) {
         container.innerHTML = '<p class="makapix-no-reactions">No reactions yet. Be the first!</p>';
+        this.updatePickerHighlights(mine);
         return;
       }
       
-      const createRow = (totalsMap, className, titleText) => {
+      const createRow = (totalsMap, className) => {
         if (!totalsMap || Object.keys(totalsMap).length === 0) {
           return null;
-        }
-
-        const group = createElement('div', { className: 'makapix-reaction-row-group' });
-        if (titleText) {
-          group.appendChild(createElement('div', {
-            className: 'makapix-reaction-row-title',
-            text: titleText
-          }));
         }
 
         const row = createElement('div', { className: `makapix-reaction-row ${className}` });
@@ -444,27 +431,44 @@
           return null;
         }
 
-        group.appendChild(row);
-        return group;
+        return row;
       };
 
-      const authenticatedGroup = createRow(authenticatedTotals, 'makapix-reactions-authenticated', hasAnonymous ? 'Member reactions' : 'Reactions');
-      if (authenticatedGroup) {
-        container.appendChild(authenticatedGroup);
+      const authenticatedRow = createRow(authenticatedTotals, 'makapix-reactions-authenticated');
+      if (authenticatedRow) {
+        container.appendChild(authenticatedRow);
       }
 
-      const anonymousGroup = createRow(anonymousTotals, 'makapix-reactions-anonymous', 'Guest reactions');
-      if (anonymousGroup) {
-        container.appendChild(anonymousGroup);
+      const anonymousRow = createRow(anonymousTotals, 'makapix-reactions-anonymous');
+      if (anonymousRow) {
+        container.appendChild(anonymousRow);
       }
 
       // Fallback for any remaining totals that might not have been categorized (legacy support)
-      if (!authenticatedGroup && !anonymousGroup && hasLegacyTotals) {
-        const legacyGroup = createRow(totals, 'makapix-reactions-legacy', 'Reactions');
-        if (legacyGroup) {
-          container.appendChild(legacyGroup);
+      if (!authenticatedRow && !anonymousRow && hasLegacyTotals) {
+        const legacyRow = createRow(totals, 'makapix-reactions-legacy');
+        if (legacyRow) {
+          container.appendChild(legacyRow);
         }
       }
+      
+      // Update picker button highlights
+      this.updatePickerHighlights(mine);
+    }
+    
+    updatePickerHighlights(mine) {
+      // Update the reaction picker buttons to show which reactions the user has made
+      const picker = this.container.querySelector('.makapix-reaction-picker');
+      if (!picker) return;
+      
+      picker.querySelectorAll('.makapix-reaction-btn').forEach(btn => {
+        const emoji = btn.getAttribute('data-emoji');
+        if (mine.includes(emoji)) {
+          btn.classList.add('makapix-reaction-btn-active');
+        } else {
+          btn.classList.remove('makapix-reaction-btn-active');
+        }
+      });
     }
     
     async toggleReaction(emoji) {
@@ -533,7 +537,6 @@
       container.innerHTML = '';
       
       if (!this.comments || this.comments.length === 0) {
-        container.innerHTML = '<p class="makapix-no-comments">No comments yet. Be the first to comment!</p>';
         return;
       }
       
@@ -541,7 +544,6 @@
       const topLevel = this.comments.filter(c => c && !c.parent_id);
       
       if (topLevel.length === 0) {
-        container.innerHTML = '<p class="makapix-no-comments">No visible comments.</p>';
         return;
       }
       
@@ -866,40 +868,30 @@
           flex-direction: column;
           gap: 12px;
           margin-bottom: 16px;
-        }
-
-        .makapix-reaction-row-group {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .makapix-reaction-row-title {
-          font-size: 0.75rem;
-          font-weight: 500;
-          text-transform: uppercase;
-          letter-spacing: 0.08em;
-          color: #6a6a80;
+          min-height: 70px;
         }
 
         .makapix-reaction-row {
           display: flex;
           flex-wrap: wrap;
           gap: 8px;
+          padding: 8px 12px;
+          border-radius: 12px;
         }
 
         .makapix-reactions-authenticated {
           background: rgba(180, 78, 255, 0.1);
-          padding: 8px 12px;
-          border-radius: 12px;
           border: 1px solid rgba(180, 78, 255, 0.2);
         }
 
         .makapix-reactions-anonymous {
           background: rgba(106, 106, 128, 0.1);
-          padding: 8px 12px;
-          border-radius: 12px;
           border: 1px dashed rgba(106, 106, 128, 0.3);
+        }
+        
+        .makapix-reactions-legacy {
+          background: rgba(180, 78, 255, 0.1);
+          border: 1px solid rgba(180, 78, 255, 0.2);
         }
 
         .makapix-reaction-badge {
@@ -952,6 +944,17 @@
           border-color: #ff6eb4;
           transform: scale(1.1);
           box-shadow: 0 0 12px rgba(255, 110, 180, 0.4);
+        }
+        
+        .makapix-reaction-btn-active {
+          background: rgba(0, 212, 255, 0.15);
+          border-color: #00d4ff;
+          box-shadow: 0 0 12px rgba(0, 212, 255, 0.3);
+        }
+        
+        .makapix-reaction-btn-active:hover {
+          border-color: #00d4ff;
+          box-shadow: 0 0 16px rgba(0, 212, 255, 0.5);
         }
         
         .makapix-comment-form,
@@ -1138,7 +1141,19 @@
           border-left: 2px solid rgba(180, 78, 255, 0.2);
         }
         
-        .makapix-no-reactions,
+        .makapix-no-reactions {
+          color: #6a6a80;
+          font-style: italic;
+          text-align: center;
+          padding: 24px;
+          background: #16161f;
+          border-radius: 12px;
+          min-height: 22px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        
         .makapix-no-comments {
           color: #6a6a80;
           font-style: italic;
