@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
+import Layout from '../components/Layout';
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -17,7 +17,6 @@ export default function ResetPasswordPage() {
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
     : '';
 
-  // Redirect if no token
   useEffect(() => {
     if (router.isReady && !token) {
       router.push('/forgot-password');
@@ -28,15 +27,13 @@ export default function ResetPasswordPage() {
     e.preventDefault();
     setError(null);
 
-    // Validate passwords match
     if (newPassword !== confirmPassword) {
       setError('Passwords do not match');
       return;
     }
 
-    // Validate password length
-    if (newPassword.length < 6) {
-      setError('Password must be at least 6 characters');
+    if (newPassword.length < 8) {
+      setError('Password must be at least 8 characters');
       return;
     }
 
@@ -56,7 +53,15 @@ export default function ResetPasswordPage() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-        throw new Error(errorData.detail || 'Failed to reset password');
+        // Handle both string and array error formats from FastAPI
+        let errorMessage = 'Failed to reset password';
+        if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail;
+        } else if (Array.isArray(errorData.detail) && errorData.detail.length > 0) {
+          // Pydantic validation errors come as an array of objects with 'msg' field
+          errorMessage = errorData.detail.map((e: { msg?: string }) => e.msg || 'Validation error').join('. ');
+        }
+        throw new Error(errorMessage);
       }
 
       setSuccess(true);
@@ -68,244 +73,186 @@ export default function ResetPasswordPage() {
   };
 
   if (!token && router.isReady) {
-    return null; // Will redirect
+    return null;
   }
 
   return (
-    <>
-      <Head>
-        <title>Set New Password - Makapix</title>
-      </Head>
-      <div style={styles.container}>
-        <header style={styles.header}>
-          <h1 style={styles.title}>Makapix</h1>
-          <nav style={styles.nav}>
-            <Link href="/" style={styles.navLink}>Home</Link>
-            <Link href="/auth" style={styles.navLink}>Login</Link>
-          </nav>
-        </header>
+    <Layout title="Set New Password">
+      <div className="page-container">
+        {success ? (
+          <div className="card">
+            <div className="icon">✅</div>
+            <h2>Password Reset Complete</h2>
+            <p className="message">
+              Your password has been successfully reset. 
+              You can now log in with your new password.
+            </p>
+            <Link href="/auth" className="primary-button">
+              Go to Login
+            </Link>
+          </div>
+        ) : (
+          <div className="card">
+            <h2>Set New Password</h2>
+            <p className="description">
+              Enter your new password below. Make sure it&apos;s at least 8 characters long.
+            </p>
 
-        <main style={styles.main}>
-          {success ? (
-            <div style={styles.successBox}>
-              <div style={styles.successIcon}>✅</div>
-              <h2 style={styles.successTitle}>Password Reset Complete</h2>
-              <p style={styles.successMessage}>
-                Your password has been successfully reset. 
-                You can now log in with your new password.
-              </p>
-              <Link href="/auth" style={styles.loginLink}>
-                Go to Login
-              </Link>
-            </div>
-          ) : (
-            <div style={styles.formBox}>
-              <h2 style={styles.formTitle}>Set New Password</h2>
-              <p style={styles.formDescription}>
-                Enter your new password below. Make sure it's at least 6 characters long.
-              </p>
+            <form onSubmit={handleSubmit} className="form">
+              {error && <div className="error-alert">{error}</div>}
 
-              <form onSubmit={handleSubmit} style={styles.form}>
-                {error && (
-                  <div style={styles.error}>
-                    {error}
-                  </div>
-                )}
-
-                <div style={styles.field}>
-                  <label style={styles.label}>New Password</label>
-                  <input
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    required
-                    minLength={6}
-                    style={styles.input}
-                    placeholder="Enter new password"
-                    autoFocus
-                  />
-                </div>
-
-                <div style={styles.field}>
-                  <label style={styles.label}>Confirm Password</label>
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    required
-                    minLength={6}
-                    style={styles.input}
-                    placeholder="Confirm new password"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  style={{
-                    ...styles.submitButton,
-                    ...(loading ? styles.submitButtonDisabled : {}),
-                  }}
-                >
-                  {loading ? 'Resetting...' : 'Reset Password'}
-                </button>
-              </form>
-
-              <div style={styles.linkSection}>
-                <p style={styles.expireNote}>
-                  This link expires in 1 hour. If it has expired, 
-                  you can <Link href="/forgot-password" style={styles.requestLink}>request a new one</Link>.
-                </p>
+              <div className="field">
+                <label htmlFor="newPassword">New Password</label>
+                <input
+                  id="newPassword"
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                  minLength={8}
+                  placeholder="Enter new password"
+                  autoFocus
+                />
               </div>
+
+              <div className="field">
+                <label htmlFor="confirmPassword">Confirm Password</label>
+                <input
+                  id="confirmPassword"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  minLength={8}
+                  placeholder="Confirm new password"
+                />
+              </div>
+
+              <button type="submit" disabled={loading} className="primary-button">
+                {loading ? 'Resetting...' : 'Reset Password'}
+              </button>
+            </form>
+
+            <div className="link-section">
+              <p className="expire-note">
+                This link expires in 1 hour. If it has expired, 
+                you can <Link href="/forgot-password" className="text-link">request a new one</Link>.
+              </p>
             </div>
-          )}
-        </main>
+          </div>
+        )}
       </div>
-    </>
+
+      <style jsx>{`
+        .page-container {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: calc(100vh - var(--header-height));
+          padding: 24px;
+        }
+
+        .card {
+          width: 100%;
+          max-width: 420px;
+          background: var(--bg-secondary);
+          border-radius: 16px;
+          padding: 32px;
+          text-align: center;
+        }
+
+        .icon {
+          font-size: 3.5rem;
+          margin-bottom: 16px;
+        }
+
+        h2 {
+          font-size: 1.5rem;
+          color: var(--text-primary);
+          margin-bottom: 12px;
+        }
+
+        .description,
+        .message {
+          color: var(--text-secondary);
+          margin-bottom: 24px;
+          line-height: 1.5;
+        }
+
+        .form {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+          text-align: left;
+        }
+
+        .field {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .field label {
+          font-size: 0.9rem;
+          font-weight: 500;
+          color: var(--text-secondary);
+        }
+
+        .field input {
+          padding: 14px 16px;
+          font-size: 1rem;
+        }
+
+        .error-alert {
+          padding: 12px 16px;
+          background: rgba(239, 68, 68, 0.15);
+          border: 1px solid rgba(239, 68, 68, 0.3);
+          border-radius: 8px;
+          color: #f87171;
+          font-size: 0.9rem;
+        }
+
+        .primary-button {
+          display: block;
+          width: 100%;
+          padding: 14px;
+          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          color: white;
+          font-size: 1rem;
+          font-weight: 600;
+          border-radius: 10px;
+          border: none;
+          cursor: pointer;
+          text-align: center;
+          text-decoration: none;
+          transition: all var(--transition-fast);
+        }
+
+        .primary-button:hover:not(:disabled) {
+          box-shadow: 0 0 20px rgba(255, 110, 180, 0.4);
+        }
+
+        .primary-button:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .link-section {
+          margin-top: 24px;
+          padding-top: 24px;
+          border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .expire-note {
+          font-size: 0.9rem;
+          color: var(--text-muted);
+          margin: 0;
+        }
+
+        .text-link {
+          color: var(--accent-cyan);
+        }
+      `}</style>
+    </Layout>
   );
 }
-
-const styles: { [key: string]: React.CSSProperties } = {
-  container: {
-    minHeight: '100vh',
-    backgroundColor: '#f5f5f5',
-  },
-  header: {
-    backgroundColor: '#fff',
-    borderBottom: '1px solid #e0e0e0',
-    padding: '1rem 2rem',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: '1.5rem',
-    fontWeight: 'bold',
-    margin: 0,
-    color: '#333',
-  },
-  nav: {
-    display: 'flex',
-    gap: '1.5rem',
-  },
-  navLink: {
-    color: '#666',
-    textDecoration: 'none',
-    fontSize: '0.9rem',
-  },
-  main: {
-    maxWidth: '450px',
-    margin: '3rem auto',
-    padding: '0 2rem',
-  },
-  formBox: {
-    backgroundColor: '#fff',
-    borderRadius: '8px',
-    padding: '2rem',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-  },
-  formTitle: {
-    fontSize: '1.5rem',
-    fontWeight: 'bold',
-    color: '#333',
-    marginTop: 0,
-    marginBottom: '0.75rem',
-  },
-  formDescription: {
-    fontSize: '0.95rem',
-    color: '#666',
-    marginBottom: '1.5rem',
-    lineHeight: '1.5',
-  },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1.5rem',
-  },
-  field: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.5rem',
-  },
-  label: {
-    fontSize: '0.9rem',
-    fontWeight: '500',
-    color: '#333',
-  },
-  input: {
-    padding: '0.75rem',
-    border: '1px solid #e0e0e0',
-    borderRadius: '4px',
-    fontSize: '1rem',
-  },
-  error: {
-    padding: '0.75rem',
-    backgroundColor: '#fee',
-    border: '1px solid #fcc',
-    borderRadius: '4px',
-    color: '#c00',
-    fontSize: '0.9rem',
-  },
-  submitButton: {
-    padding: '0.75rem',
-    backgroundColor: '#0070f3',
-    color: 'white',
-    border: 'none',
-    borderRadius: '4px',
-    fontSize: '1rem',
-    fontWeight: '600',
-    cursor: 'pointer',
-  },
-  submitButtonDisabled: {
-    opacity: 0.6,
-    cursor: 'not-allowed',
-  },
-  linkSection: {
-    marginTop: '1.5rem',
-    paddingTop: '1.5rem',
-    borderTop: '1px solid #e0e0e0',
-    textAlign: 'center',
-  },
-  expireNote: {
-    fontSize: '0.9rem',
-    color: '#666',
-    margin: 0,
-  },
-  requestLink: {
-    color: '#0070f3',
-    textDecoration: 'none',
-  },
-  successBox: {
-    backgroundColor: '#fff',
-    borderRadius: '8px',
-    padding: '2rem',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    textAlign: 'center',
-  },
-  successIcon: {
-    fontSize: '3rem',
-    marginBottom: '1rem',
-  },
-  successTitle: {
-    fontSize: '1.5rem',
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: '1rem',
-  },
-  successMessage: {
-    color: '#666',
-    marginBottom: '1.5rem',
-    lineHeight: '1.5',
-  },
-  loginLink: {
-    display: 'inline-block',
-    padding: '0.75rem 1.5rem',
-    backgroundColor: '#0070f3',
-    color: 'white',
-    textDecoration: 'none',
-    borderRadius: '4px',
-    fontSize: '1rem',
-    fontWeight: '600',
-  },
-};
-

@@ -410,6 +410,54 @@ def resend_verification(
 
 
 @router.post(
+    "/request-verification",
+    response_model=schemas.ResendVerificationResponse,
+)
+def request_verification(
+    payload: schemas.ForgotPasswordRequest,  # Reuse ForgotPasswordRequest schema (just needs email)
+    db: Session = Depends(get_db),
+) -> schemas.ResendVerificationResponse:
+    """
+    Request verification email for an unverified account (no authentication required).
+    
+    This endpoint allows users who cannot log in (because their email is not verified)
+    to request a new verification email. For security, always returns success to prevent
+    email enumeration attacks.
+    """
+    email = payload.email.lower().strip()
+    
+    # Find user by email
+    user = db.query(models.User).filter(
+        models.User.email == email
+    ).first()
+    
+    if user and not user.email_verified:
+        # Check if user has a password identity (only password users need verification)
+        password_identity = db.query(models.AuthIdentity).filter(
+            models.AuthIdentity.user_id == user.id,
+            models.AuthIdentity.provider == "password",
+        ).first()
+        
+        if password_identity:
+            # Send verification email
+            try:
+                send_verification_email_for_user(db, user, email)
+            except ValueError as e:
+                # Rate limit exceeded - still return success for security
+                logger.warning(f"Verification email rate limit for {email}: {e}")
+            except Exception as e:
+                logger.error(f"Failed to send verification email: {e}")
+    else:
+        logger.info(f"Verification requested for non-existent or already verified email: {email}")
+    
+    # Always return success to prevent email enumeration
+    return schemas.ResendVerificationResponse(
+        message="If an unverified account exists with this email, a verification link has been sent.",
+        email=email,
+    )
+
+
+@router.post(
     "/forgot-password",
     response_model=schemas.ForgotPasswordResponse,
 )

@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Script from 'next/script';
+import Layout from '../../components/Layout';
 
 interface Post {
   id: string;
@@ -67,7 +67,6 @@ export default function PostPage() {
         const data = await response.json();
         setPost(data);
         
-        // Check if current user is the owner
         const accessToken = localStorage.getItem('access_token');
         if (accessToken) {
           try {
@@ -82,7 +81,6 @@ export default function PostPage() {
               setIsOwner(userData.user.id === data.owner_id);
             }
           } catch (err) {
-            // User not authenticated or token expired
             setCurrentUser(null);
             setIsOwner(false);
           }
@@ -115,7 +113,7 @@ export default function PostPage() {
       originalSize: ArtworkSize,
       containerWidth: number,
       maxHeight: number,
-      padding: number = 120
+      padding: number = 80
     ): ArtworkSize => {
       const availableWidth = containerWidth - padding;
       const availableHeight = maxHeight - padding;
@@ -145,7 +143,7 @@ export default function PostPage() {
       }
 
       const maxHeight = window.innerHeight * 0.7;
-      const scaledSize = calculateScaledSize(originalSize, containerRect.width, maxHeight, 120);
+      const scaledSize = calculateScaledSize(originalSize, containerRect.width, maxHeight, 80);
 
       if (scaledSize.width > 0 && scaledSize.height > 0) {
         setImageSize(scaledSize);
@@ -154,7 +152,6 @@ export default function PostPage() {
 
     updateSizeRef.current = updateSize;
 
-    // Wait for refs to be set
     const timer = setTimeout(() => {
       updateSize();
     }, 0);
@@ -172,53 +169,43 @@ export default function PostPage() {
     };
   }, [post]);
 
-  // Set API URL for widget (only once)
+  // Set API URL for widget
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
-    // Set API URL for widget before script loads
     if ((window as any).MAKAPIX_API_URL === undefined) {
       (window as any).MAKAPIX_API_URL = `${API_BASE_URL}/api`;
     }
   }, [API_BASE_URL]);
 
-  // Initialize widget after component mounts and script loads
+  // Initialize widget
   useEffect(() => {
     if (!post || !id || typeof id !== 'string') return;
 
-    // Function to initialize widget
     const initializeWidget = () => {
-      // Check if widget script is loaded
       if (typeof (window as any).MakapixWidget === 'undefined') {
-        // Script not loaded yet, try again after a short delay
         setTimeout(initializeWidget, 100);
         return;
       }
 
-      // Find the widget container
       const container = document.getElementById(`makapix-widget-${post.id}`);
       if (!container) {
-        // Container not found, try again after a short delay
         setTimeout(initializeWidget, 100);
         return;
       }
 
-      // Check if already initialized
       if ((container as any).__makapix_initialized) {
         return;
       }
 
-      // Initialize the widget
       try {
         new (window as any).MakapixWidget(container);
         (container as any).__makapix_initialized = true;
-        console.log('Makapix widget initialized for post:', post.id);
       } catch (error) {
         console.error('Failed to initialize Makapix widget:', error);
       }
     };
 
-    // Start initialization after a short delay to ensure DOM is ready
     const timer = setTimeout(initializeWidget, 100);
 
     return () => {
@@ -231,7 +218,7 @@ export default function PostPage() {
     
     const confirmed = confirm(
       'Are you sure you want to delete this post?\n\n' +
-      'This action cannot be undone. The post will be permanently removed from all feeds and searches.'
+      'This action cannot be undone.'
     );
     
     if (!confirmed) return;
@@ -251,15 +238,14 @@ export default function PostPage() {
       });
       
       if (response.ok || response.status === 204) {
-        alert('Post deleted successfully.');
         router.push('/');
       } else {
         const errorData = await response.json().catch(() => ({ detail: 'Failed to delete post' }));
-        alert(errorData.detail || 'Failed to delete post. Please try again.');
+        alert(errorData.detail || 'Failed to delete post.');
       }
     } catch (err) {
       console.error('Error deleting post:', err);
-      alert('Failed to delete post. Please try again.');
+      alert('Failed to delete post.');
     }
   };
 
@@ -270,15 +256,15 @@ export default function PostPage() {
     const action = isHidden ? 'unhide' : 'hide';
     const confirmed = confirm(
       isHidden
-        ? 'Are you sure you want to unhide this post? It will become visible again in feeds.'
-        : 'Are you sure you want to hide this post? It will be removed from feeds temporarily but can be unhidden later.'
+        ? 'Unhide this post? It will become visible again in feeds.'
+        : 'Hide this post? It will be removed from feeds temporarily.'
     );
     
     if (!confirmed) return;
     
     const accessToken = localStorage.getItem('access_token');
     if (!accessToken) {
-      alert('You must be logged in to hide/unhide posts.');
+      alert('You must be logged in.');
       return;
     }
     
@@ -295,346 +281,171 @@ export default function PostPage() {
       });
       
       if (response.ok || response.status === 201 || response.status === 204) {
-        // Refresh the post to get updated hidden_by_user status
         const refreshResponse = await fetch(`${API_BASE_URL}/api/posts/${id}`);
         if (refreshResponse.ok) {
           const updatedPost = await refreshResponse.json();
           setPost(updatedPost);
         }
-        alert(`Post ${isHidden ? 'unhidden' : 'hidden'} successfully.`);
       } else {
         const errorData = await response.json().catch(() => ({ detail: `Failed to ${action} post` }));
-        alert(errorData.detail || `Failed to ${action} post. Please try again.`);
+        alert(errorData.detail || `Failed to ${action} post.`);
       }
     } catch (err) {
       console.error(`Error ${action}ing post:`, err);
-      alert(`Failed to ${action} post. Please try again.`);
+      alert(`Failed to ${action} post.`);
     }
   };
 
   if (loading) {
     return (
-      <>
-        <Head>
-          <title>Loading Post - Makapix</title>
-        </Head>
-        <div style={{ 
-          minHeight: '100vh', 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'center',
-          background: '#f5f5f5'
-        }}>
-          <p style={{ fontSize: '18px', color: '#666' }}>Loading post...</p>
+      <Layout title="Loading...">
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
         </div>
-      </>
+        <style jsx>{`
+          .loading-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: calc(100vh - var(--header-height));
+          }
+          .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--bg-tertiary);
+            border-top-color: var(--accent-cyan);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+          }
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
+      </Layout>
     );
   }
 
   if (error || !post) {
     return (
-      <>
-        <Head>
-          <title>Post Not Found - Makapix</title>
-        </Head>
-        <div style={{ 
-          minHeight: '100vh', 
-          display: 'flex', 
-          flexDirection: 'column',
-          alignItems: 'center', 
-          justifyContent: 'center',
-          background: '#f5f5f5',
-          padding: '2rem'
-        }}>
-          <h1 style={{ fontSize: '24px', marginBottom: '1rem', color: '#333' }}>
-            {error || 'Post not found'}
-          </h1>
-          <Link href="/" style={{ 
-            color: '#0070f3', 
-            textDecoration: 'none',
-            fontSize: '16px'
-          }}>
-            ← Back to Home
-          </Link>
+      <Layout title="Not Found">
+        <div className="error-container">
+          <span className="error-icon">😢</span>
+          <h1>{error || 'Post not found'}</h1>
+          <Link href="/" className="back-link">← Back to Home</Link>
         </div>
-      </>
+        <style jsx>{`
+          .error-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: calc(100vh - var(--header-height));
+            padding: 2rem;
+            text-align: center;
+          }
+          .error-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+          }
+          h1 {
+            font-size: 1.5rem;
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+          }
+          .back-link {
+            color: var(--accent-cyan);
+            font-size: 1rem;
+          }
+        `}</style>
+      </Layout>
     );
   }
 
-  const styles = {
-    container: {
-      minHeight: '100vh',
-      background: '#f5f5f5',
-    },
-    header: {
-      background: '#fff',
-      borderBottom: '1px solid #e0e0e0',
-      padding: '1rem 2rem',
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
-    headerTitle: {
-      fontSize: '1.5rem',
-      fontWeight: 'bold',
-      margin: 0,
-      color: '#333',
-    },
-    nav: {
-      display: 'flex',
-      gap: '1.5rem',
-    },
-    navLink: {
-      color: '#666',
-      textDecoration: 'none',
-      fontSize: '0.9rem',
-    },
-    main: {
-      maxWidth: '1200px',
-      margin: '0 auto',
-      padding: '2rem',
-    },
-    artworkContainer: {
-      background: '#fff',
-      borderRadius: '8px',
-      padding: '80px',
-      marginBottom: '2rem',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-      display: 'flex',
-      flexDirection: 'column' as const,
-      alignItems: 'center',
-    },
-    artworkImage: {
-      display: 'block',
-    },
-    postTitle: {
-      fontSize: '2rem',
-      fontWeight: 'bold',
-      margin: '1.5rem 0 0.5rem 0',
-      color: '#333',
-      textAlign: 'center' as const,
-    },
-    postMeta: {
-      display: 'flex',
-      gap: '1rem',
-      justifyContent: 'center',
-      marginBottom: '1rem',
-      fontSize: '0.9rem',
-      color: '#666',
-    },
-    postDescription: {
-      fontSize: '1rem',
-      lineHeight: '1.6',
-      color: '#555',
-      marginTop: '1rem',
-      textAlign: 'center' as const,
-      maxWidth: '800px',
-    },
-    hashtags: {
-      display: 'flex',
-      flexWrap: 'wrap' as const,
-      gap: '0.5rem',
-      justifyContent: 'center',
-      marginTop: '1rem',
-    },
-    hashtag: {
-      background: '#e3f2fd',
-      color: '#1976d2',
-      padding: '0.25rem 0.75rem',
-      borderRadius: '16px',
-      fontSize: '0.875rem',
-      textDecoration: 'none',
-    },
-    widgetContainer: {
-      background: '#fff',
-      borderRadius: '8px',
-      padding: '2rem',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-    },
-  };
-
   return (
-    <>
-      <Head>
-        <title>{post.title} - Makapix</title>
-        <meta name="description" content={post.description || post.title} />
-      </Head>
+    <Layout title={post.title} description={post.description || post.title}>
+      <div className="post-container">
+        <div className="artwork-section" ref={containerRef}>
+          <img
+            ref={imageRef}
+            src={post.art_url}
+            alt={post.title}
+            className="artwork-image"
+            style={{
+              width: imageSize ? `${imageSize.width}px` : undefined,
+              height: imageSize ? `${imageSize.height}px` : undefined,
+            }}
+            onLoad={() => {
+              if (updateSizeRef.current) {
+                updateSizeRef.current();
+              }
+            }}
+          />
+        </div>
 
-      <div style={styles.container}>
-        <header style={styles.header}>
-          <h1 style={styles.headerTitle}>Makapix</h1>
-          <nav style={styles.nav}>
-            <Link href="/" style={styles.navLink}>Home</Link>
-            <Link href="/recent" style={styles.navLink}>Recent</Link>
-            <Link href="/search" style={styles.navLink}>Search</Link>
-            <Link href="/publish" style={styles.navLink}>Publish</Link>
-          </nav>
-        </header>
-
-        <main style={styles.main}>
-          <div style={styles.artworkContainer} ref={containerRef}>
-            <style dangerouslySetInnerHTML={{
-              __html: `
-                .pixel-art-image {
-                  /* Safari - vendor prefix */
-                  image-rendering: -webkit-optimize-contrast;
-                  /* Firefox - vendor prefix */
-                  image-rendering: -moz-crisp-edges;
-                  /* Standard - Firefox */
-                  image-rendering: crisp-edges;
-                  /* Standard - Chrome/Edge */
-                  image-rendering: pixelated;
-                  /* IE/Edge legacy */
-                  -ms-interpolation-mode: nearest-neighbor;
-                }
-              `
-            }} />
-            <img
-              ref={imageRef}
-              src={post.art_url}
-              alt={post.title}
-              className="pixel-art-image"
-              style={{
-                ...styles.artworkImage,
-                width: imageSize ? `${imageSize.width}px` : undefined,
-                height: imageSize ? `${imageSize.height}px` : undefined,
-                // Force pixelated for Chrome/Edge - this must be set inline
-                imageRendering: 'pixelated' as any,
-                // Also set msInterpolationMode for IE/Edge legacy
-                msInterpolationMode: 'nearest-neighbor' as any,
-              }}
-              onLoad={(e) => {
-                const img = e.currentTarget;
-                img.style.imageRendering = 'pixelated';
-                if (updateSizeRef.current) {
-                  updateSizeRef.current();
-                }
-              }}
-            />
-            <h1 style={styles.postTitle}>{post.title}</h1>
-            
-            <div style={styles.postMeta}>
-              {post.owner && (
-                <Link href={`/users/${post.owner.id}`} style={{ color: '#666', textDecoration: 'none' }}>
-                  by {post.owner.display_name || post.owner.handle}
-                </Link>
-              )}
-              <span>•</span>
-              <span>{new Date(post.created_at).toLocaleDateString()}</span>
-            </div>
-
-            {post.description && (
-              <div style={styles.postDescription}>
-                {post.description.split('\n').map((line, i) => (
-                  <p key={i} style={{ margin: i > 0 ? '0.5rem 0' : 0 }}>{line}</p>
-                ))}
-              </div>
+        <div className="post-info">
+          <h1 className="post-title">{post.title}</h1>
+          
+          <div className="post-meta">
+            {post.owner && (
+              <Link href={`/users/${post.owner.id}`} className="author-link">
+                {post.owner.display_name || post.owner.handle}
+              </Link>
             )}
-
-            {post.hashtags && post.hashtags.length > 0 && (
-              <div style={styles.hashtags}>
-                {post.hashtags.map((tag) => (
-                  <Link
-                    key={tag}
-                    href={`/hashtags/${encodeURIComponent(tag)}`}
-                    style={styles.hashtag}
-                  >
-                    #{tag}
-                  </Link>
-                ))}
-              </div>
-            )}
+            <span className="meta-separator">•</span>
+            <span className="post-date">{new Date(post.created_at).toLocaleDateString()}</span>
+            <span className="meta-separator">•</span>
+            <span className="post-canvas">{post.canvas}</span>
           </div>
 
-          {isOwner && (
-            <div style={{
-              background: '#fff',
-              borderRadius: '8px',
-              padding: '1.5rem',
-              marginBottom: '2rem',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-              border: '1px solid #e0e0e0'
-            }}>
-              <h3 style={{ fontSize: '1.2rem', marginBottom: '1rem', color: '#333' }}>Post Management</h3>
-              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                {post.hidden_by_user ? (
-                  <button
-                    onClick={handleHide}
-                    style={{
-                      padding: '0.75rem 1.5rem',
-                      backgroundColor: '#10b981',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      fontSize: '0.9rem',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      transition: 'background-color 0.2s'
-                    }}
-                    onMouseOver={(e) => (e.currentTarget.style.backgroundColor = '#059669')}
-                    onMouseOut={(e) => (e.currentTarget.style.backgroundColor = '#10b981')}
-                  >
-                    Unhide Post
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleHide}
-                    style={{
-                      padding: '0.75rem 1.5rem',
-                      backgroundColor: '#f59e0b',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      fontSize: '0.9rem',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      transition: 'background-color 0.2s'
-                    }}
-                    onMouseOver={(e) => (e.currentTarget.style.backgroundColor = '#d97706')}
-                    onMouseOut={(e) => (e.currentTarget.style.backgroundColor = '#f59e0b')}
-                  >
-                    Hide Post
-                  </button>
-                )}
-                <button
-                  onClick={handleDelete}
-                  style={{
-                    padding: '0.75rem 1.5rem',
-                    backgroundColor: '#ef4444',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '6px',
-                    fontSize: '0.9rem',
-                    fontWeight: '600',
-                    cursor: 'pointer',
-                    transition: 'background-color 0.2s'
-                  }}
-                  onMouseOver={(e) => (e.currentTarget.style.backgroundColor = '#dc2626')}
-                  onMouseOut={(e) => (e.currentTarget.style.backgroundColor = '#ef4444')}
-                >
-                  Delete Post
-                </button>
-              </div>
-              <p style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.75rem' }}>
-                {post.hidden_by_user 
-                  ? 'This post is currently hidden. Click "Unhide Post" to make it visible again.'
-                  : 'Hide removes the post from feeds temporarily. Delete permanently removes it (cannot be undone).'}
-              </p>
+          {post.description && (
+            <div className="post-description">
+              {post.description.split('\n').map((line, i) => (
+                <p key={i}>{line}</p>
+              ))}
             </div>
           )}
 
-          <div style={styles.widgetContainer}>
-            <div id={`makapix-widget-${post.id}`} data-post-id={post.id}></div>
-          </div>
-        </main>
+          {post.hashtags && post.hashtags.length > 0 && (
+            <div className="hashtags">
+              {post.hashtags.map((tag) => (
+                <Link
+                  key={tag}
+                  href={`/hashtags/${encodeURIComponent(tag)}`}
+                  className="hashtag"
+                >
+                  #{tag}
+                </Link>
+              ))}
+            </div>
+          )}
+
+          {isOwner && (
+            <div className="owner-actions">
+              <button
+                onClick={handleHide}
+                className={`action-button ${post.hidden_by_user ? 'unhide' : 'hide'}`}
+              >
+                {post.hidden_by_user ? '👁 Unhide' : '👁‍🗨 Hide'}
+              </button>
+              <button
+                onClick={handleDelete}
+                className="action-button delete"
+              >
+                🗑 Delete
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="widget-section">
+          <div id={`makapix-widget-${post.id}`} data-post-id={post.id}></div>
+        </div>
       </div>
 
-      {/* Load Makapix Widget Script */}
       <Script
         src={`${API_BASE_URL}/makapix-widget.js`}
         strategy="afterInteractive"
         onLoad={() => {
-          // Script loaded, trigger widget initialization
           if (post && id && typeof id === 'string') {
             setTimeout(() => {
               const container = document.getElementById(`makapix-widget-${post.id}`);
@@ -643,7 +454,6 @@ export default function PostPage() {
                   try {
                     new (window as any).MakapixWidget(container);
                     (container as any).__makapix_initialized = true;
-                    console.log('Makapix widget initialized via script onLoad');
                   } catch (error) {
                     console.error('Failed to initialize Makapix widget:', error);
                   }
@@ -653,7 +463,154 @@ export default function PostPage() {
           }
         }}
       />
-    </>
+
+      <style jsx>{`
+        .post-container {
+          max-width: 1000px;
+          margin: 0 auto;
+          padding: 24px;
+        }
+
+        .artwork-section {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--bg-secondary);
+          border-radius: 12px;
+          padding: 40px;
+          margin-bottom: 24px;
+        }
+
+        .artwork-image {
+          display: block;
+          image-rendering: pixelated;
+          image-rendering: -moz-crisp-edges;
+          image-rendering: crisp-edges;
+          -ms-interpolation-mode: nearest-neighbor;
+        }
+
+        .post-info {
+          background: var(--bg-secondary);
+          border-radius: 12px;
+          padding: 24px;
+          margin-bottom: 24px;
+        }
+
+        .post-title {
+          font-size: 1.75rem;
+          font-weight: 700;
+          color: var(--text-primary);
+          margin-bottom: 12px;
+        }
+
+        .post-meta {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 8px;
+          font-size: 0.9rem;
+          color: var(--text-muted);
+          margin-bottom: 16px;
+        }
+
+        .author-link {
+          color: var(--accent-cyan);
+          font-weight: 500;
+        }
+
+        .author-link:hover {
+          color: var(--accent-pink);
+        }
+
+        .meta-separator {
+          opacity: 0.5;
+        }
+
+        .post-description {
+          color: var(--text-secondary);
+          line-height: 1.6;
+          margin-bottom: 16px;
+        }
+
+        .post-description p {
+          margin-bottom: 0.5rem;
+        }
+
+        .post-description p:last-child {
+          margin-bottom: 0;
+        }
+
+        .hashtags {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .hashtag {
+          background: linear-gradient(135deg, rgba(180, 78, 255, 0.2), rgba(78, 159, 255, 0.2));
+          color: var(--accent-purple);
+          padding: 6px 14px;
+          border-radius: 20px;
+          font-size: 0.85rem;
+          font-weight: 500;
+          transition: all var(--transition-fast);
+        }
+
+        .hashtag:hover {
+          background: linear-gradient(135deg, rgba(180, 78, 255, 0.4), rgba(78, 159, 255, 0.4));
+          box-shadow: var(--glow-purple);
+        }
+
+        .owner-actions {
+          display: flex;
+          gap: 12px;
+          margin-top: 24px;
+          padding-top: 24px;
+          border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .action-button {
+          padding: 10px 20px;
+          border-radius: 8px;
+          font-size: 0.9rem;
+          font-weight: 600;
+          transition: all var(--transition-fast);
+        }
+
+        .action-button.hide {
+          background: var(--bg-tertiary);
+          color: var(--text-secondary);
+        }
+
+        .action-button.hide:hover {
+          background: rgba(245, 158, 11, 0.2);
+          color: #f59e0b;
+        }
+
+        .action-button.unhide {
+          background: rgba(16, 185, 129, 0.2);
+          color: #10b981;
+        }
+
+        .action-button.unhide:hover {
+          background: rgba(16, 185, 129, 0.3);
+        }
+
+        .action-button.delete {
+          background: rgba(239, 68, 68, 0.2);
+          color: #ef4444;
+        }
+
+        .action-button.delete:hover {
+          background: rgba(239, 68, 68, 0.3);
+        }
+
+        .widget-section {
+          background: var(--bg-secondary);
+          border-radius: 12px;
+          padding: 24px;
+        }
+      `}</style>
+    </Layout>
   );
 }
-
