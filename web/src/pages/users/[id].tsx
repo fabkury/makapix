@@ -11,6 +11,7 @@ interface User {
   reputation: number;
   created_at: string;
   roles?: string[];
+  auto_public_approval?: boolean;
 }
 
 interface Post {
@@ -49,6 +50,7 @@ export default function UserProfilePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isOwnProfile, setIsOwnProfile] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
+  const [isModerator, setIsModerator] = useState(false);
   
   const observerTarget = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
@@ -90,6 +92,22 @@ export default function UserProfilePage() {
         setEditBio(data.bio || '');
         setIsOwnProfile(currentUserId === data.id);
         setIsOwner(data.roles?.includes('owner') || false);
+        
+        // Check if current viewer is a moderator
+        if (token) {
+          try {
+            const meResponse = await fetch(`${API_BASE_URL}/api/auth/me`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (meResponse.ok) {
+              const meData = await meResponse.json();
+              const roles = meData.roles || [];
+              setIsModerator(roles.includes('moderator') || roles.includes('owner'));
+            }
+          } catch (err) {
+            console.error('Error checking moderator status:', err);
+          }
+        }
       } catch (err) {
         setError('Failed to load profile');
         console.error('Error fetching user:', err);
@@ -243,6 +261,55 @@ export default function UserProfilePage() {
       localStorage.removeItem('user_handle');
       localStorage.removeItem('user_display_name');
       router.push('/');
+    }
+  };
+
+  // Trust/Distrust functions for moderators
+  const trustUser = async () => {
+    if (!user) return;
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+      
+      await fetch(`${API_BASE_URL}/api/admin/users/${user.id}/auto-approval`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      // Refresh user data
+      const response = await fetch(`${API_BASE_URL}/api/users/${user.id}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const updatedUser = await response.json();
+        setUser(updatedUser);
+      }
+    } catch (error) {
+      console.error('Error trusting user:', error);
+    }
+  };
+
+  const distrustUser = async () => {
+    if (!user) return;
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+      
+      await fetch(`${API_BASE_URL}/api/admin/users/${user.id}/auto-approval`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      // Refresh user data
+      const response = await fetch(`${API_BASE_URL}/api/users/${user.id}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const updatedUser = await response.json();
+        setUser(updatedUser);
+      }
+    } catch (error) {
+      console.error('Error distrusting user:', error);
     }
   };
 
@@ -417,22 +484,47 @@ export default function UserProfilePage() {
                   Cancel
                 </button>
               </div>
-            ) : isOwnProfile && (
+            ) : (
               <div className="profile-actions">
-                <button 
-                  className="edit-profile-btn"
-                  onClick={handleEditClick}
-                  aria-label="Edit profile"
-                >
-                  ✏️
-                </button>
-                <button 
-                  className="logout-btn"
-                  onClick={handleLogout}
-                  aria-label="Log out"
-                >
-                  🚪
-                </button>
+                {isOwnProfile && (
+                  <>
+                    <button 
+                      className="edit-profile-btn"
+                      onClick={handleEditClick}
+                      aria-label="Edit profile"
+                    >
+                      ✏️
+                    </button>
+                    <button 
+                      className="logout-btn"
+                      onClick={handleLogout}
+                      aria-label="Log out"
+                    >
+                      🚪
+                    </button>
+                  </>
+                )}
+                {isModerator && !isOwnProfile && (
+                  <>
+                    {user.auto_public_approval ? (
+                      <button 
+                        className="distrust-btn"
+                        onClick={distrustUser}
+                        aria-label="Distrust user"
+                      >
+                        ⚠️ Distrust
+                      </button>
+                    ) : (
+                      <button 
+                        className="trust-btn"
+                        onClick={trustUser}
+                        aria-label="Trust user"
+                      >
+                        🫱🏽‍🫲🏼 Trust
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -546,17 +638,24 @@ export default function UserProfilePage() {
         }
 
         .edit-profile-btn,
-        .logout-btn {
+        .logout-btn,
+        .trust-btn,
+        .distrust-btn {
           background: var(--bg-tertiary);
           border: none;
           border-radius: 8px;
           padding: 10px 16px;
-          font-size: 1.3rem;
+          font-size: 1rem;
           cursor: pointer;
           transition: all var(--transition-fast);
           display: flex;
           align-items: center;
           justify-content: center;
+          color: var(--text-secondary);
+        }
+
+        .edit-profile-btn {
+          font-size: 1.3rem;
         }
 
         .edit-profile-btn:hover {
@@ -566,6 +665,18 @@ export default function UserProfilePage() {
 
         .logout-btn:hover {
           background: var(--accent-pink);
+          transform: scale(1.05);
+        }
+
+        .trust-btn:hover {
+          background: #10b981;
+          color: white;
+          transform: scale(1.05);
+        }
+
+        .distrust-btn:hover {
+          background: #ef4444;
+          color: white;
           transform: scale(1.05);
         }
 

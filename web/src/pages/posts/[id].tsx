@@ -626,7 +626,7 @@ export default function PostPage() {
                 onClick={handleHide}
                 className={`action-button ${post.hidden_by_user ? 'unhide' : 'hide'}`}
               >
-                {post.hidden_by_user ? '👁 Unhide' : '👁‍🗨 Hide'}
+                {post.hidden_by_user ? '👁️ Unhide' : '🙈 Hide'}
               </button>
               {post.hidden_by_user && (
                 <button
@@ -705,7 +705,7 @@ export default function PostPage() {
                   onClick={handleModHide}
                   className={`mod-button ${post.hidden_by_mod ? 'active' : ''}`}
                 >
-                  {post.hidden_by_mod ? '👁 Unhide' : '🚫 Hide'}
+                  {post.hidden_by_mod ? '👁️ Unhide' : '🙈 Hide'}
                 </button>
                 <button
                   onClick={handlePromote}
