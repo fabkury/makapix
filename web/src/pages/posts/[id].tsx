@@ -38,6 +38,7 @@ export default function PostPage() {
   
   // Edit mode state
   const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editHashtags, setEditHashtags] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -238,9 +239,10 @@ export default function PostPage() {
     }
   };
 
-  // Owner: Edit description and hashtags
+  // Owner: Edit title, description and hashtags
   const handleEditClick = () => {
     if (!post) return;
+    setEditTitle(post.title || '');
     setEditDescription(post.description || '');
     setEditHashtags(post.hashtags?.join(', ') || '');
     setSaveError(null);
@@ -279,6 +281,7 @@ export default function PostPage() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
+          title: editTitle.trim(),
           description: editDescription,
           hashtags: hashtagsArray
         })
@@ -565,7 +568,23 @@ export default function PostPage() {
         />
 
         <div className="post-info">
-          <h1 className="post-title">{post.title}</h1>
+          {isOwner && isEditing ? (
+            <div className="edit-field">
+              <label htmlFor="edit-title">Title</label>
+              <input
+                id="edit-title"
+                type="text"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                placeholder="Artwork title..."
+                maxLength={200}
+                disabled={isSaving}
+                className="edit-title-input"
+              />
+            </div>
+          ) : (
+            <h1 className="post-title">{post.title}</h1>
+          )}
           
           <div className="post-meta">
             {post.owner && (
@@ -956,6 +975,12 @@ export default function PostPage() {
           font-size: 0.95rem;
           font-family: inherit;
           transition: border-color var(--transition-fast);
+        }
+
+        .edit-title-input {
+          font-size: 1.75rem;
+          font-weight: 700;
+          padding: 12px;
         }
 
         .edit-field textarea:focus,

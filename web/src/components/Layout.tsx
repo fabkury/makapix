@@ -42,6 +42,12 @@ const navItems: NavItem[] = [
     matchPaths: ['/hashtags']
   },
   { 
+    href: '/users', 
+    icon: '👥', 
+    label: 'Users',
+    matchPaths: ['/users']
+  },
+  { 
     href: '/search', 
     icon: '🔍', 
     label: 'Search',
@@ -113,6 +119,8 @@ export default function Layout({ children, title, description }: LayoutProps) {
     if (item.matchPaths) {
       return item.matchPaths.some(path => {
         if (path === '/') return currentPath === '/';
+        // For /users, match exactly (not /users/[id])
+        if (path === '/users') return currentPath === '/users';
         return currentPath.startsWith(path);
       });
     }
@@ -171,10 +179,18 @@ export default function Layout({ children, title, description }: LayoutProps) {
           <nav className="nav" aria-label="Main navigation">
             {navItems.map((item) => {
               const active = isActive(item);
+              // For Recent artworks (/), redirect unauthenticated users to /auth
+              const handleClick = (e: React.MouseEvent) => {
+                if (item.href === '/' && !isLoggedIn) {
+                  e.preventDefault();
+                  router.push('/auth');
+                }
+              };
               return (
                 <Link
                   key={item.href}
                   href={item.href}
+                  onClick={handleClick}
                   className={`nav-item ${active ? 'nav-item-active' : ''}`}
                   aria-label={item.label}
                   aria-current={active ? 'page' : undefined}
