@@ -34,15 +34,11 @@ class User(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     handle = Column(String(50), unique=True, nullable=False, index=True)
-    display_name = Column(String(100), nullable=False)
     bio = Column(Text, nullable=True)
     website = Column(String(500), nullable=True)
     avatar_url = Column(String(500), nullable=True)
-    email = Column(String(255), nullable=True, index=True)
-    
-    # GitHub OAuth fields
-    github_user_id = Column(String(50), nullable=True, unique=True, index=True)
-    github_username = Column(String(100), nullable=True, index=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)  # Email must be unique
+    email_verified = Column(Boolean, nullable=False, default=False, index=True)
     
     # Reputation & roles
     reputation = Column(Integer, nullable=False, default=0, index=True)
@@ -69,6 +65,9 @@ class User(Base):
     badges = relationship("BadgeGrant", back_populates="user", cascade="all, delete-orphan")
     reputation_history = relationship("ReputationHistory", back_populates="user", cascade="all, delete-orphan")
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
+    auth_identities = relationship("AuthIdentity", back_populates="user", cascade="all, delete-orphan")
+    email_verification_tokens = relationship("EmailVerificationToken", back_populates="user", cascade="all, delete-orphan")
+    password_reset_tokens = relationship("PasswordResetToken", back_populates="user", cascade="all, delete-orphan")
 
 
 class RefreshToken(Base):
@@ -88,6 +87,79 @@ class RefreshToken(Base):
 
     # Relationships
     user = relationship("User", back_populates="refresh_tokens")
+
+
+class AuthIdentity(Base):
+    """Authentication identity for a user (password, OAuth provider, etc.)."""
+
+    __tablename__ = "auth_identities"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    
+    # Provider identification
+    provider = Column(String(50), nullable=False, index=True)  # "password", "github", "reddit", etc.
+    provider_user_id = Column(String(255), nullable=False, index=True)  # Username for password, OAuth ID for OAuth
+    
+    # Authentication secret (hashed password for password provider, null for OAuth)
+    secret_hash = Column(String(255), nullable=True)
+    
+    # Optional metadata
+    email = Column(String(255), nullable=True, index=True)
+    provider_metadata = Column(JSON, nullable=True)  # Provider-specific data (e.g., GitHub username, avatar URL)
+    
+    # Timestamps
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+    updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
+
+    # Relationships
+    user = relationship("User", back_populates="auth_identities")
+
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_user_id", name="uq_auth_identity_provider_user"),
+        Index("ix_auth_identities_user_provider", user_id, provider),
+    )
+
+
+class EmailVerificationToken(Base):
+    """Email verification token for verifying user email addresses."""
+
+    __tablename__ = "email_verification_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    token_hash = Column(String(255), nullable=False, unique=True, index=True)
+    email = Column(String(255), nullable=False)  # Email being verified
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+
+    # Relationships
+    user = relationship("User", back_populates="email_verification_tokens")
+
+
+class PasswordResetToken(Base):
+    """Password reset token for resetting user passwords."""
+
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    token_hash = Column(String(255), nullable=False, unique=True, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+
+    # Relationships
+    user = relationship("User", back_populates="password_reset_tokens")
 
 
 class Post(Base):

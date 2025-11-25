@@ -12,6 +12,7 @@ from .. import models, schemas
 from ..auth import get_current_user
 from ..deps import get_db
 from ..github import verify_installation_belongs_to_app
+from ..services.auth_identities import get_user_identities
 
 logger = logging.getLogger(__name__)
 
@@ -78,8 +79,16 @@ def bind_github_app(
         models.GitHubInstallation.user_id == current_user.id
     ).first()
     
+    # Get GitHub username from identity
+    github_username = None
+    identities = get_user_identities(db, current_user.id)
+    for identity in identities:
+        if identity.provider == "github":
+            github_username = identity.provider_metadata.get("username") if identity.provider_metadata else None
+            break
+    
     # Calculate target_repo (used for both new and update cases)
-    target_repo = f"{current_user.github_username or 'unknown'}.github.io"
+    target_repo = f"{github_username or 'unknown'}.github.io"
     
     if user_installation:
         # Update existing installation with new ID
@@ -88,7 +97,7 @@ def bind_github_app(
             f"old_id={user_installation.installation_id}, new_id={payload.installation_id}"
         )
         user_installation.installation_id = payload.installation_id
-        user_installation.account_login = current_user.github_username or "unknown"
+        user_installation.account_login = github_username or "unknown"
         user_installation.target_repo = target_repo  # Always update target_repo
         db.commit()
         logger.info(f"Successfully updated installation for user {current_user.id}")
@@ -114,7 +123,7 @@ def bind_github_app(
     installation = models.GitHubInstallation(
         user_id=current_user.id,
         installation_id=payload.installation_id,
-        account_login=current_user.github_username or "unknown",
+        account_login=github_username or "unknown",
         account_type="User",
         target_repo=target_repo
     )

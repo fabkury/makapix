@@ -23,7 +23,7 @@ def search_all(
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
-    current_user: models.User | None = Depends(get_current_user_optional),
+    current_user: models.User = Depends(get_current_user),
 ) -> schemas.SearchResults:
     """
     Multi-type search using PostgreSQL trigram similarity.
@@ -38,21 +38,15 @@ def search_all(
     results: list[schemas.SearchResultUser | schemas.SearchResultPost | schemas.SearchResultPlaylist] = []
     
     # Determine if user can see hidden/non-conformant content
-    is_moderator = current_user and ("moderator" in current_user.roles or "owner" in current_user.roles)
+    is_moderator = "moderator" in current_user.roles or "owner" in current_user.roles
     
-    # Search users with trigram similarity
+    # Search users with trigram similarity (search by handle only)
     if "users" in types:
         user_query = db.query(
             models.User,
-            func.greatest(
-                func.similarity(models.User.handle, q_normalized),
-                func.similarity(models.User.display_name, q_normalized)
-            ).label("similarity")
+            func.similarity(models.User.handle, q_normalized).label("similarity")
         ).filter(
-            or_(
-                func.similarity(models.User.handle, q_normalized) > 0.1,
-                func.similarity(models.User.display_name, q_normalized) > 0.1,
-            )
+            func.similarity(models.User.handle, q_normalized) > 0.1,
         )
         
         # Apply visibility filters
@@ -70,20 +64,14 @@ def search_all(
             if cursor_data:
                 last_id, last_similarity = cursor_data
                 user_query = user_query.filter(
-                    func.greatest(
-                        func.similarity(models.User.handle, q_normalized),
-                        func.similarity(models.User.display_name, q_normalized)
-                    ) < float(last_similarity) if last_similarity else True
+                    func.similarity(models.User.handle, q_normalized) < float(last_similarity) if last_similarity else True
                 )
         
         # Order by similarity descending, then by ID
         users_with_similarity = (
             user_query
             .order_by(
-                func.greatest(
-                    func.similarity(models.User.handle, q_normalized),
-                    func.similarity(models.User.display_name, q_normalized)
-                ).desc(),
+                func.similarity(models.User.handle, q_normalized).desc(),
                 models.User.id.desc()
             )
             .limit((limit // len(types)) + 1)
@@ -197,6 +185,7 @@ def list_hashtags(
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ) -> schemas.HashtagList:
     """
     List hashtags with popularity counts.
@@ -295,7 +284,7 @@ def list_hashtag_posts(
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
-    current_user: models.User | None = Depends(get_current_user_optional),
+    current_user: models.User = Depends(get_current_user),
 ) -> schemas.Page[schemas.Post]:
     """
     List posts with a specific hashtag.
@@ -358,7 +347,7 @@ def feed_promoted(
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
-    current_user: models.User | None = Depends(get_current_user_optional),
+    current_user: models.User = Depends(get_current_user),
 ) -> schemas.Page[schemas.Post]:
     """
     Promoted posts feed with infinite scroll support.

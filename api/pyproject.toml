@@ -15,6 +15,8 @@ dependencies = [
     "fastapi>=0.110.0",
     "httpx>=0.27.0",
     "paho-mqtt>=1.6.1",
+    "passlib[bcrypt]>=1.7.4",
+    "bcrypt>=4.0.0,<5.0.0",
     "psycopg[binary]>=3.1.18",
     "pydantic>=2.7.0",
     "PyJWT[crypto]>=2.8.0",
@@ -23,7 +25,8 @@ dependencies = [
     "redis>=5.0.4",
     "requests>=2.32.0",
     "SQLAlchemy>=2.0.29",
-    "uvicorn[standard]>=0.29.0"
+    "uvicorn[standard]>=0.29.0",
+    "resend>=2.0.0"
 ]
 
 [project.optional-dependencies]
