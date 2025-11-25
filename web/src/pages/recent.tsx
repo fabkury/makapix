@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 
 interface Post {
   id: string;
@@ -21,6 +22,7 @@ interface PageResponse<T> {
 }
 
 export default function RecentPage() {
+  const router = useRouter();
   const [posts, setPosts] = useState<Post[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -37,9 +39,23 @@ export default function RecentPage() {
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
     : '';
 
+  // Check authentication on mount
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      router.push('/auth');
+    }
+  }, [router]);
+
   const loadPosts = useCallback(async (cursor: string | null = null) => {
     // Prevent loading if already loading or if no more data and trying to load more
     if (loadingRef.current || (cursor !== null && !hasMoreRef.current)) {
+      return;
+    }
+    
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      router.push('/auth');
       return;
     }
     
@@ -48,9 +64,20 @@ export default function RecentPage() {
     setError(null);
     
     try {
-      const url = `${API_BASE_URL}/api/posts/recent?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const url = `${API_BASE_URL}/api/posts?limit=20&sort=created_at&order=desc${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       console.log('Fetching posts from:', url);
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      
+      if (response.status === 401) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('user_id');
+        router.push('/auth');
+        return;
+      }
       
       if (!response.ok) {
         const errorText = await response.text().catch(() => response.statusText);
@@ -94,7 +121,7 @@ export default function RecentPage() {
       loadingRef.current = false;
       setLoading(false);
     }
-  }, [API_BASE_URL]);
+  }, [API_BASE_URL, router]);
 
   // Initial load
   useEffect(() => {

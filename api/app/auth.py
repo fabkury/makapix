@@ -263,13 +263,16 @@ def ensure_not_owner(user: models.User) -> None:
         )
 
 
-def ensure_authenticated_user(user: models.User) -> None:
+def ensure_authenticated_user(user: models.User, db: Session) -> None:
     """
-    Ensure the user is authenticated (has github_user_id).
+    Ensure the user is authenticated (has at least one auth identity).
     
     Raises 400 Bad Request if user is not authenticated.
     """
-    if not user.github_user_id:
+    from .services.auth_identities import get_user_identities
+    
+    identities = get_user_identities(db, user.id)
+    if not identities:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only authenticated users can be promoted to moderator"

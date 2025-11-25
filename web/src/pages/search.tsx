@@ -49,6 +49,14 @@ export default function SearchPage() {
   
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
   
+  // Check authentication on mount
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      router.push('/auth');
+    }
+  }, [router]);
+  
   const API_BASE_URL = typeof window !== 'undefined' 
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
     : '';
@@ -69,12 +77,29 @@ export default function SearchPage() {
       return;
     }
 
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      router.push('/auth');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
       const url = `${API_BASE_URL}/api/search?q=${encodeURIComponent(searchQuery)}&types=users&types=posts&limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.status === 401) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('user_id');
+        router.push('/auth');
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(`Failed to search: ${response.statusText}`);

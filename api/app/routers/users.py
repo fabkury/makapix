@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..auth import check_ownership, get_current_user, get_current_user_optional, require_moderator, require_ownership
 from ..deps import get_db
+from ..utils.handles import validate_handle, is_handle_taken
 from ..pagination import apply_cursor_filter, create_page_response
 
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -32,13 +33,10 @@ def list_users_admin(
     """
     query = db.query(models.User)
     
-    # Apply search filter
+    # Apply search filter (search by handle only since display_name no longer exists)
     if q:
         search_term = f"%{q}%"
-        query = query.filter(
-            (models.User.handle.ilike(search_term)) |
-            (models.User.display_name.ilike(search_term))
-        )
+        query = query.filter(models.User.handle.ilike(search_term))
     
     # Apply filters
     if hidden is not None:
@@ -106,7 +104,6 @@ def create_user(
     # PLACEHOLDER: Create user (in production this would be done during OAuth)
     user = models.User(
         handle=payload.handle,
-        display_name=payload.display_name,
         bio=payload.bio,
         website=payload.website,
         roles=["user"],
@@ -158,9 +155,26 @@ def update_user(
     
     require_ownership(user.id, current_user)
     
+    # Update handle if provided
+    if payload.handle is not None:
+        # Validate handle format
+        is_valid, error_msg = validate_handle(payload.handle)
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid handle: {error_msg}",
+            )
+        
+        # Check if handle is already taken (excluding current user)
+        if is_handle_taken(db, payload.handle.lower(), exclude_user_id=str(user.id)):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Handle already taken",
+            )
+        
+        user.handle = payload.handle.lower()
+    
     # Update fields
-    if payload.display_name is not None:
-        user.display_name = payload.display_name
     if payload.bio is not None:
         user.bio = payload.bio
     if payload.website is not None:

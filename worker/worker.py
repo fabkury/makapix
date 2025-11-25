@@ -5,11 +5,30 @@ from sqlalchemy import create_engine, inspect
 
 from app.tasks import celery_app
 
+def get_database_url() -> str:
+    """Get the database URL for API operations (uses API worker user)."""
+    from urllib.parse import quote_plus
+    
+    # Construct from components using API worker credentials
+    api_user = os.getenv("DB_API_WORKER_USER")
+    api_pass = os.getenv("DB_API_WORKER_PASSWORD")
+    db_name = os.getenv("DB_DATABASE")
+    db_host = os.getenv("DB_HOST", "db")
+    db_port = os.getenv("DB_PORT", "5432")
+    
+    if api_user and api_pass and db_name:
+        # URL-encode the password in case it contains special characters
+        encoded_pass = quote_plus(api_pass)
+        return f"postgresql+psycopg://{api_user}:{encoded_pass}@{db_host}:{db_port}/{db_name}"
+    
+    raise RuntimeError(
+        "DB_API_WORKER_USER, DB_API_WORKER_PASSWORD, and DB_DATABASE must all be set."
+    )
+
+
 if __name__ == "__main__":
     # Connect to the database and print table names
-    DATABASE_URL = os.getenv(
-        "DATABASE_URL", "postgresql+psycopg://appuser:apppassword@db:5432/appdb"
-    )
+    DATABASE_URL = get_database_url()
     
     print("=" * 60)
     print("Connecting to database...")

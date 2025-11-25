@@ -29,7 +29,7 @@ def list_posts(
     sort: str | None = "created_at",
     order: str = Query("desc", regex="^(asc|desc)$"),
     db: Session = Depends(get_db),
-    current_user: models.User | None = Depends(get_current_user_optional),
+    current_user: models.User = Depends(get_current_user),
 ) -> schemas.Page[schemas.Post]:
     """
     List posts with filters.
@@ -44,14 +44,14 @@ def list_posts(
         query = query.filter(models.Post.visible == True)
         
         # Hide posts hidden by moderators unless current user is moderator/owner
-        if not current_user or not ("moderator" in current_user.roles or "owner" in current_user.roles):
+        if not ("moderator" in current_user.roles or "owner" in current_user.roles):
             query = query.filter(models.Post.hidden_by_mod == False)
         
         # Hide posts hidden by users (should always be hidden from public view)
         query = query.filter(models.Post.hidden_by_user == False)
         
         # Hide non-conformant posts unless current user is moderator/owner
-        if not current_user or not ("moderator" in current_user.roles or "owner" in current_user.roles):
+        if not ("moderator" in current_user.roles or "owner" in current_user.roles):
             query = query.filter(models.Post.non_conformant == False)
     
     if promoted is not None:

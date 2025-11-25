@@ -108,7 +108,7 @@ def promote_moderator(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
     # Ensure user is authenticated
-    ensure_authenticated_user(user)
+    ensure_authenticated_user(user, db)
     
     # Ensure not trying to modify owner's own moderator status
     ensure_not_owner_self(user, _owner)
@@ -334,9 +334,12 @@ def list_authenticated_users(
     """
     List authenticated users (owner only).
     
-    Returns users with github_user_id set, ordered alphabetically by handle.
+    Returns users with at least one auth identity, ordered alphabetically by handle.
     """
-    query = db.query(models.User).filter(models.User.github_user_id.isnot(None))
+    from ..models import AuthIdentity
+    # Get user IDs that have at least one auth identity
+    authenticated_user_ids = db.query(AuthIdentity.user_id).distinct().subquery()
+    query = db.query(models.User).filter(models.User.id.in_(db.query(authenticated_user_ids.c.user_id)))
     
     # Apply cursor pagination (handle-based, alphabetical)
     # Note: Using handle as sort field for alphabetical ordering
@@ -364,9 +367,12 @@ def list_anonymous_users(
     """
     List non-authenticated users (owner only).
     
-    Returns users without github_user_id, ordered alphabetically by handle.
+    Returns users without any auth identity, ordered alphabetically by handle.
     """
-    query = db.query(models.User).filter(models.User.github_user_id.is_(None))
+    from ..models import AuthIdentity
+    # Get user IDs that have at least one auth identity
+    authenticated_user_ids = db.query(AuthIdentity.user_id).distinct().subquery()
+    query = db.query(models.User).filter(~models.User.id.in_(db.query(authenticated_user_ids.c.user_id)))
     
     # Apply cursor pagination (handle-based, alphabetical)
     query = apply_cursor_filter(query, models.User, cursor, "handle", sort_desc=False)
