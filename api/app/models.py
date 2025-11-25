@@ -51,6 +51,9 @@ class User(Base):
     deactivated = Column(Boolean, nullable=False, default=False, index=True)
     banned_until = Column(DateTime(timezone=True), nullable=True, index=True)
     
+    # Publishing privileges
+    auto_public_approval = Column(Boolean, nullable=False, default=False, index=True)  # Auto-approve public visibility for uploads
+    
     # Timestamps
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
@@ -188,6 +191,7 @@ class Post(Base):
     hidden_by_user = Column(Boolean, nullable=False, default=False)
     hidden_by_mod = Column(Boolean, nullable=False, default=False, index=True)
     non_conformant = Column(Boolean, nullable=False, default=False, index=True)
+    public_visibility = Column(Boolean, nullable=False, default=False, index=True)  # Controls visibility in Recent Artworks, search, etc.
     
     # Promotion
     promoted = Column(Boolean, nullable=False, default=False, index=True)

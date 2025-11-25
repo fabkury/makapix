@@ -18,6 +18,12 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { 
+    href: '/submit', 
+    icon: '➕', 
+    label: 'Submit',
+    matchPaths: ['/submit']
+  },
+  { 
     href: '/recommended', 
     icon: '⭐', 
     label: 'Recommended',

@@ -99,7 +99,10 @@ def search_all(
         )
         
         # Apply visibility filters
-        post_query = post_query.filter(models.Post.visible == True)
+        post_query = post_query.filter(
+            models.Post.visible == True,
+            models.Post.public_visibility == True,  # Only show publicly visible posts
+        )
         if not is_moderator:
             post_query = post_query.filter(
                 models.Post.hidden_by_mod == False,
@@ -147,7 +150,10 @@ def search_all(
             )
             
             # Apply visibility filters
-            post_query = post_query.filter(models.Post.visible == True)
+            post_query = post_query.filter(
+                models.Post.visible == True,
+                models.Post.public_visibility == True,  # Only show publicly visible posts
+            )
             if not is_moderator:
                 post_query = post_query.filter(
                     models.Post.hidden_by_mod == False,
@@ -207,6 +213,7 @@ def list_hashtags(
         models.Post.visible == True,
         models.Post.hidden_by_mod == False,
         models.Post.non_conformant == False,
+        models.Post.public_visibility == True,  # Only show publicly visible posts
     )
     
     # Apply search filter if provided
@@ -313,6 +320,7 @@ def list_hashtag_posts(
         models.Post.visible == True,
         models.Post.hidden_by_mod == False,
         models.Post.hidden_by_user == False,
+        models.Post.public_visibility == True,  # Only show publicly visible posts
     )
     
     # Hide non-conformant posts unless current user is moderator/owner
@@ -372,6 +380,7 @@ def feed_promoted(
             models.Post.visible == True,
             models.Post.hidden_by_mod == False,
             models.Post.hidden_by_user == False,
+            models.Post.public_visibility == True,  # Only show publicly visible posts
         )
     
     # Hide non-conformant posts unless current user is moderator/owner
@@ -432,6 +441,7 @@ def feed_following(
             models.Post.owner_id.in_(following_ids),
             models.Post.visible == True,
             models.Post.hidden_by_mod == False,
+            models.Post.public_visibility == True,  # Only show publicly visible posts
         )
         .order_by(models.Post.created_at.desc())
         .limit(limit)

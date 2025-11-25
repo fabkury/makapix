@@ -839,48 +839,47 @@
         attributes: { id: 'makapix-widget-styles' }
       });
       
+      // Dark theme matching the main website
       style.textContent = `
         .makapix-widget {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          max-width: 800px;
-          margin: 20px auto;
-          padding: 20px;
-          background: #fff;
-          border-radius: 8px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+          font-family: 'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          display: flex;
+          flex-direction: column;
+          gap: 24px;
         }
         
         .makapix-reactions-section,
         .makapix-comments-section {
-          margin-bottom: 30px;
+          background: transparent;
         }
         
         .makapix-widget h3 {
-          font-size: 18px;
+          font-size: 1rem;
           font-weight: 600;
-          margin: 0 0 15px 0;
-          color: #333;
+          margin: 0 0 16px 0;
+          color: #e8e8f0;
+          letter-spacing: 0.02em;
         }
         
         .makapix-reactions-container {
           display: flex;
           flex-direction: column;
           gap: 12px;
-          margin-bottom: 15px;
+          margin-bottom: 16px;
         }
 
         .makapix-reaction-row-group {
           display: flex;
           flex-direction: column;
-          gap: 6px;
+          gap: 8px;
         }
 
         .makapix-reaction-row-title {
-          font-size: 12px;
-          font-weight: 600;
+          font-size: 0.75rem;
+          font-weight: 500;
           text-transform: uppercase;
-          letter-spacing: 0.05em;
-          color: #666;
+          letter-spacing: 0.08em;
+          color: #6a6a80;
         }
 
         .makapix-reaction-row {
@@ -890,42 +889,47 @@
         }
 
         .makapix-reactions-authenticated {
-          background: #f3f4ff;
-          padding: 6px 8px;
+          background: rgba(180, 78, 255, 0.1);
+          padding: 8px 12px;
           border-radius: 12px;
+          border: 1px solid rgba(180, 78, 255, 0.2);
         }
 
         .makapix-reactions-anonymous {
-          background: #fafafa;
-          padding: 6px 8px;
+          background: rgba(106, 106, 128, 0.1);
+          padding: 8px 12px;
           border-radius: 12px;
-          border: 1px dashed #d4d4d8;
+          border: 1px dashed rgba(106, 106, 128, 0.3);
         }
 
         .makapix-reaction-badge {
           display: inline-flex;
           align-items: center;
-          gap: 4px;
-          padding: 6px 12px;
-          background: #f0f0f0;
-          border-radius: 16px;
-          font-size: 14px;
+          gap: 6px;
+          padding: 8px 14px;
+          background: #1a1a24;
+          border-radius: 20px;
+          font-size: 0.9rem;
           cursor: pointer;
-          transition: background 0.2s;
+          transition: all 0.15s ease;
+          border: 1px solid transparent;
         }
         
         .makapix-reaction-badge:hover {
-          background: #e0e0e0;
+          background: #252530;
+          border-color: rgba(0, 212, 255, 0.3);
+          box-shadow: 0 0 12px rgba(0, 212, 255, 0.2);
         }
         
         .makapix-reaction-badge.makapix-reaction-mine {
-          background: #e3f2fd;
-          border: 2px solid #2196f3;
+          background: rgba(0, 212, 255, 0.15);
+          border: 2px solid #00d4ff;
+          box-shadow: 0 0 12px rgba(0, 212, 255, 0.3);
         }
         
         .makapix-reaction-count {
           font-weight: 600;
-          color: #666;
+          color: #a0a0b8;
         }
         
         .makapix-reaction-picker {
@@ -935,18 +939,19 @@
         }
         
         .makapix-reaction-btn {
-          padding: 8px 12px;
-          font-size: 20px;
-          background: #fff;
-          border: 2px solid #e0e0e0;
-          border-radius: 8px;
+          padding: 10px 14px;
+          font-size: 1.25rem;
+          background: #1a1a24;
+          border: 2px solid #252530;
+          border-radius: 10px;
           cursor: pointer;
-          transition: all 0.2s;
+          transition: all 0.15s ease;
         }
         
         .makapix-reaction-btn:hover {
-          border-color: #2196f3;
+          border-color: #ff6eb4;
           transform: scale(1.1);
+          box-shadow: 0 0 12px rgba(255, 110, 180, 0.4);
         }
         
         .makapix-comment-form,
@@ -956,46 +961,64 @@
         
         .makapix-comment-input {
           width: 100%;
-          padding: 12px;
-          border: 2px solid #e0e0e0;
-          border-radius: 8px;
+          padding: 14px 16px;
+          background: #1a1a24;
+          border: 1px solid #252530;
+          border-radius: 10px;
           font-family: inherit;
-          font-size: 14px;
+          font-size: 0.95rem;
+          color: #e8e8f0;
           resize: vertical;
           min-height: 80px;
           box-sizing: border-box;
+          transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        
+        .makapix-comment-input::placeholder {
+          color: #6a6a80;
         }
         
         .makapix-comment-input:focus {
           outline: none;
-          border-color: #2196f3;
+          border-color: #00d4ff;
+          box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.15);
         }
         
-        .makapix-comment-submit,
-        .makapix-reply-cancel {
-          margin-top: 8px;
-          padding: 10px 20px;
-          background: #2196f3;
+        .makapix-comment-submit {
+          margin-top: 10px;
+          padding: 12px 24px;
+          background: linear-gradient(135deg, #ff6eb4, #b44eff);
           color: #fff;
           border: none;
-          border-radius: 6px;
-          font-size: 14px;
+          border-radius: 10px;
+          font-size: 0.95rem;
           font-weight: 600;
           cursor: pointer;
-          transition: background 0.2s;
+          transition: all 0.15s ease;
         }
         
         .makapix-comment-submit:hover {
-          background: #1976d2;
+          box-shadow: 0 0 20px rgba(255, 110, 180, 0.4);
+          transform: translateY(-1px);
         }
         
         .makapix-reply-cancel {
-          background: #757575;
+          margin-top: 10px;
+          padding: 12px 24px;
+          background: #1a1a24;
+          color: #a0a0b8;
+          border: 1px solid #252530;
+          border-radius: 10px;
+          font-size: 0.95rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s ease;
           margin-left: 8px;
         }
         
         .makapix-reply-cancel:hover {
-          background: #616161;
+          background: #252530;
+          color: #e8e8f0;
         }
         
         .makapix-reply-actions {
@@ -1004,35 +1027,37 @@
         }
         
         .makapix-comment {
-          padding: 15px;
-          border: 1px solid #e0e0e0;
-          border-radius: 8px;
+          padding: 16px;
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 12px;
           margin-bottom: 12px;
-          background: #fafafa;
+          background: #16161f;
         }
         
         .makapix-comment-header {
           display: flex;
           align-items: center;
-          gap: 8px;
-          margin-bottom: 8px;
+          gap: 10px;
+          margin-bottom: 10px;
         }
         
         .makapix-comment-fold-btn {
-          padding: 2px 6px;
+          padding: 4px 8px;
           background: transparent;
           border: none;
-          color: #666;
-          font-size: 12px;
+          color: #6a6a80;
+          font-size: 0.75rem;
           cursor: pointer;
           line-height: 1;
-          min-width: 20px;
+          min-width: 24px;
           text-align: center;
-          transition: color 0.2s;
+          transition: color 0.15s ease;
+          border-radius: 4px;
         }
         
         .makapix-comment-fold-btn:hover {
-          color: #2196f3;
+          color: #00d4ff;
+          background: rgba(0, 212, 255, 0.1);
         }
         
         .makapix-comment-content {
@@ -1045,72 +1070,82 @@
         
         .makapix-comment-author {
           font-weight: 600;
-          color: #333;
+          color: #00d4ff;
         }
         
         .makapix-comment-author.makapix-guest {
-          color: #757575;
+          color: #6a6a80;
           font-style: italic;
         }
         
         .makapix-comment-date {
-          font-size: 12px;
-          color: #999;
+          font-size: 0.8rem;
+          color: #6a6a80;
         }
         
         .makapix-comment-body {
-          color: #333;
-          line-height: 1.5;
-          margin-bottom: 8px;
+          color: #a0a0b8;
+          line-height: 1.6;
+          margin-bottom: 10px;
           white-space: pre-wrap;
           word-wrap: break-word;
         }
         
         .makapix-comment-reply-btn {
-          padding: 4px 12px;
+          padding: 6px 14px;
           background: transparent;
-          color: #2196f3;
+          color: #b44eff;
           border: none;
-          font-size: 13px;
+          font-size: 0.85rem;
           font-weight: 600;
           cursor: pointer;
+          border-radius: 6px;
+          transition: all 0.15s ease;
         }
         
         .makapix-comment-reply-btn:hover {
-          text-decoration: underline;
+          background: rgba(180, 78, 255, 0.1);
+          color: #c77aff;
         }
         
         .makapix-comment-actions {
           display: flex;
-          gap: 12px;
-          margin-top: 8px;
+          gap: 8px;
+          margin-top: 10px;
         }
         
         .makapix-comment-delete-btn {
-          padding: 4px 12px;
+          padding: 6px 14px;
           background: transparent;
-          color: #f44336;
+          color: #ef4444;
           border: none;
-          font-size: 13px;
+          font-size: 0.85rem;
           font-weight: 600;
           cursor: pointer;
+          border-radius: 6px;
+          transition: all 0.15s ease;
         }
         
         .makapix-comment-delete-btn:hover {
-          text-decoration: underline;
-          color: #d32f2f;
+          background: rgba(239, 68, 68, 0.1);
+          color: #f87171;
         }
         
         .makapix-comment-replies {
-          margin-left: 40px;
+          margin-left: 24px;
+          margin-top: 12px;
+          padding-left: 16px;
+          border-left: 2px solid rgba(180, 78, 255, 0.2);
         }
         
         .makapix-no-reactions,
         .makapix-no-comments {
-          color: #999;
+          color: #6a6a80;
           font-style: italic;
           text-align: center;
-          padding: 20px;
+          padding: 24px;
+          background: #16161f;
+          border-radius: 12px;
         }
       `;
       
