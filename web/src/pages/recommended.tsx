@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
+import { useArtworkScaling } from '../hooks/useArtworkScaling';
 
 interface Post {
   id: string;
@@ -30,10 +31,14 @@ export default function RecommendedPage() {
   const [hasMore, setHasMore] = useState(true);
   
   const observerTarget = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const hasMoreRef = useRef(true);
   const nextCursorRef = useRef<string | null>(null);
   const initialLoadRef = useRef(false);
+  
+  // Apply integer multiple scaling to artworks
+  useArtworkScaling(gridRef);
   
   const API_BASE_URL = typeof window !== 'undefined' 
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
@@ -157,7 +162,7 @@ export default function RecommendedPage() {
           </div>
         )}
 
-        <div className="artwork-grid">
+        <div className="artwork-grid" ref={gridRef}>
           {posts.map((post) => (
             <Link key={post.id} href={`/posts/${post.id}`} className="artwork-card">
               <div className="artwork-image-container">
@@ -165,6 +170,7 @@ export default function RecommendedPage() {
                   src={post.art_url}
                   alt={post.title}
                   className="artwork-image pixel-art"
+                  data-canvas={post.canvas}
                   loading="lazy"
                 />
                 <div className="promoted-badge">⭐</div>
@@ -235,29 +241,25 @@ export default function RecommendedPage() {
         }
 
         .artwork-grid {
+          --artwork-card-size: 256px;
           display: grid;
-          grid-template-columns: repeat(1, 1fr);
+          grid-template-columns: repeat(2, var(--artwork-card-size));
           gap: var(--grid-gap);
           padding: var(--grid-gap);
           max-width: 1200px;
           margin: 0 auto;
-        }
-
-        @media (min-width: 500px) {
-          .artwork-grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
+          justify-content: center;
         }
 
         @media (min-width: 768px) {
           .artwork-grid {
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(3, var(--artwork-card-size));
           }
         }
 
         @media (min-width: 1024px) {
           .artwork-grid {
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(4, var(--artwork-card-size));
           }
         }
 
@@ -266,7 +268,7 @@ export default function RecommendedPage() {
           aspect-ratio: 1;
           background: var(--bg-secondary);
           overflow: hidden;
-          transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+          transition: transform var(--transition-fast), box-shadow var(--transition-fast), width var(--transition-fast), height var(--transition-fast);
           position: relative;
         }
 

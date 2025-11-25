@@ -227,7 +227,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
         .header-left {
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: 16px;
         }
 
         .logo-link {

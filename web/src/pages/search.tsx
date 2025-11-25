@@ -228,6 +228,30 @@ export default function SearchPage() {
   );
 }
 
+// Artwork Grid Component with Scaling
+function SearchArtworkGrid({ posts }: { posts: Array<{ id: string; art_url: string; title: string; canvas: string }> }) {
+  const gridRef = useRef<HTMLDivElement>(null);
+  useArtworkScaling(gridRef);
+  
+  return (
+    <div className="artwork-grid" ref={gridRef}>
+      {posts.map((post) => (
+        <Link key={post.id} href={`/posts/${post.id}`} className="artwork-card">
+          <div className="artwork-image-container">
+            <img
+              src={post.art_url}
+              alt={post.title}
+              className="artwork-image pixel-art"
+              data-canvas={post.canvas}
+              loading="lazy"
+            />
+          </div>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 // Search Tab Component
 function SearchTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any }) {
   const [query, setQuery] = useState('');
@@ -399,20 +423,7 @@ function SearchTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any
 
       {postResults.length > 0 && (
         <section className="results-section">
-          <div className="artwork-grid">
-            {postResults.map((result) => (
-              <Link key={result.post.id} href={`/posts/${result.post.id}`} className="artwork-card">
-                <div className="artwork-image-container">
-                  <img
-                    src={result.post.art_url}
-                    alt={result.post.title}
-                    className="artwork-image pixel-art"
-                    loading="lazy"
-                  />
-                </div>
-              </Link>
-            ))}
-          </div>
+          <SearchArtworkGrid posts={postResults.map(r => r.post)} />
         </section>
       )}
 
@@ -565,28 +576,24 @@ function SearchTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any
         }
 
         .artwork-grid {
+          --artwork-card-size: 256px;
           display: grid;
-          grid-template-columns: repeat(1, 1fr);
+          grid-template-columns: repeat(2, var(--artwork-card-size));
           gap: var(--grid-gap);
           max-width: 1200px;
           margin: 0 auto;
-        }
-
-        @media (min-width: 500px) {
-          .artwork-grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
+          justify-content: center;
         }
 
         @media (min-width: 768px) {
           .artwork-grid {
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(3, var(--artwork-card-size));
           }
         }
 
         @media (min-width: 1024px) {
           .artwork-grid {
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(4, var(--artwork-card-size));
           }
         }
 
@@ -595,7 +602,7 @@ function SearchTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any
           aspect-ratio: 1;
           background: var(--bg-secondary);
           overflow: hidden;
-          transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+          transition: transform var(--transition-fast), box-shadow var(--transition-fast), width var(--transition-fast), height var(--transition-fast);
         }
 
         .artwork-card:hover {

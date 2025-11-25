@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
+import { useArtworkScaling } from '../hooks/useArtworkScaling';
 
 interface Post {
   id: string;
@@ -31,10 +32,30 @@ export default function HomePage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   
   const observerTarget = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const hasMoreRef = useRef(true);
   const nextCursorRef = useRef<string | null>(null);
   const initialLoadRef = useRef(false);
+  
+  // Apply integer multiple scaling to artworks
+  // Recalculate when posts change
+  useArtworkScaling(gridRef);
+  
+  // Recalculate scaling when posts are updated
+  useEffect(() => {
+    if (posts.length > 0) {
+      // Small delay to ensure images are loaded
+      const timeoutId = setTimeout(() => {
+        const grid = gridRef.current;
+        if (grid) {
+          // Trigger recalculation by dispatching a resize event
+          window.dispatchEvent(new Event('resize'));
+        }
+      }, 100);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [posts]);
   
   const API_BASE_URL = typeof window !== 'undefined' 
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
@@ -185,7 +206,7 @@ export default function HomePage() {
           </div>
         )}
 
-        <div className="artwork-grid">
+        <div className="artwork-grid" ref={gridRef}>
           {posts.map((post) => (
             <Link key={post.id} href={`/posts/${post.id}`} className="artwork-card">
               <div className="artwork-image-container">
@@ -193,6 +214,7 @@ export default function HomePage() {
                   src={post.art_url}
                   alt={post.title}
                   className="artwork-image pixel-art"
+                  data-canvas={post.canvas}
                   loading="lazy"
                 />
               </div>
@@ -262,29 +284,25 @@ export default function HomePage() {
         }
 
         .artwork-grid {
+          --artwork-card-size: 256px;
           display: grid;
-          grid-template-columns: repeat(1, 1fr);
+          grid-template-columns: repeat(2, var(--artwork-card-size));
           gap: var(--grid-gap);
           padding: var(--grid-gap);
           max-width: 1200px;
           margin: 0 auto;
-        }
-
-        @media (min-width: 500px) {
-          .artwork-grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
+          justify-content: center;
         }
 
         @media (min-width: 768px) {
           .artwork-grid {
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(3, var(--artwork-card-size));
           }
         }
 
         @media (min-width: 1024px) {
           .artwork-grid {
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(4, var(--artwork-card-size));
           }
         }
 
@@ -293,7 +311,7 @@ export default function HomePage() {
           aspect-ratio: 1;
           background: var(--bg-secondary);
           overflow: hidden;
-          transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+          transition: transform var(--transition-fast), box-shadow var(--transition-fast), width var(--transition-fast), height var(--transition-fast);
         }
 
         .artwork-card:hover {

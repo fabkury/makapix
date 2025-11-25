@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
+import { useArtworkScaling } from '../../hooks/useArtworkScaling';
 
 interface User {
   id: string;
@@ -12,6 +13,7 @@ interface User {
   created_at: string;
   roles?: string[];
   auto_public_approval?: boolean;
+  banned_until?: string | null;
 }
 
 interface Post {
@@ -53,9 +55,13 @@ export default function UserProfilePage() {
   const [isModerator, setIsModerator] = useState(false);
   
   const observerTarget = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const hasMoreRef = useRef(true);
   const nextCursorRef = useRef<string | null>(null);
+  
+  // Apply integer multiple scaling to artworks
+  useArtworkScaling(gridRef);
   
   const API_BASE_URL = typeof window !== 'undefined' 
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
@@ -313,6 +319,65 @@ export default function UserProfilePage() {
     }
   };
 
+  // Ban/Unban functions for moderators
+  const banUser = async () => {
+    if (!user) return;
+    if (!confirm('Are you sure you want to ban this user? Bans persist until revoked by a moderator.')) {
+      return;
+    }
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+      
+      await fetch(`${API_BASE_URL}/api/admin/users/${user.id}/ban`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ duration_days: null })
+      });
+      
+      // Refresh user data
+      const response = await fetch(`${API_BASE_URL}/api/users/${user.id}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const updatedUser = await response.json();
+        setUser(updatedUser);
+      }
+    } catch (error) {
+      console.error('Error banning user:', error);
+    }
+  };
+
+  const unbanUser = async () => {
+    if (!user) return;
+    if (!confirm('Are you sure you want to unban this user?')) {
+      return;
+    }
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+      
+      await fetch(`${API_BASE_URL}/api/admin/users/${user.id}/ban`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      // Refresh user data
+      const response = await fetch(`${API_BASE_URL}/api/users/${user.id}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const updatedUser = await response.json();
+        setUser(updatedUser);
+      }
+    } catch (error) {
+      console.error('Error unbanning user:', error);
+    }
+  };
+
   // Intersection Observer for infinite scroll
   useEffect(() => {
     if (!user || posts.length === 0 || !hasMoreRef.current) return;
@@ -523,6 +588,23 @@ export default function UserProfilePage() {
                         🫱🏽‍🫲🏼 Trust
                       </button>
                     )}
+                    {user.banned_until ? (
+                      <button 
+                        className="unban-btn"
+                        onClick={unbanUser}
+                        aria-label="Unban user"
+                      >
+                        ✅ Unban
+                      </button>
+                    ) : (
+                      <button 
+                        className="ban-btn"
+                        onClick={banUser}
+                        aria-label="Ban user"
+                      >
+                        🚷 Ban
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -538,7 +620,7 @@ export default function UserProfilePage() {
             </div>
           )}
 
-          <div className="artwork-grid">
+          <div className="artwork-grid" ref={gridRef}>
             {posts.map((post) => (
               <Link key={post.id} href={`/posts/${post.id}`} className="artwork-card">
                 <div className="artwork-image-container">
@@ -546,6 +628,7 @@ export default function UserProfilePage() {
                     src={post.art_url}
                     alt={post.title}
                     className="artwork-image pixel-art"
+                    data-canvas={post.canvas}
                     loading="lazy"
                   />
                 </div>
@@ -640,7 +723,9 @@ export default function UserProfilePage() {
         .edit-profile-btn,
         .logout-btn,
         .trust-btn,
-        .distrust-btn {
+        .distrust-btn,
+        .ban-btn,
+        .unban-btn {
           background: var(--bg-tertiary);
           border: none;
           border-radius: 8px;
@@ -676,6 +761,18 @@ export default function UserProfilePage() {
 
         .distrust-btn:hover {
           background: #ef4444;
+          color: white;
+          transform: scale(1.05);
+        }
+
+        .ban-btn:hover {
+          background: #ef4444;
+          color: white;
+          transform: scale(1.05);
+        }
+
+        .unban-btn:hover {
+          background: #10b981;
           color: white;
           transform: scale(1.05);
         }
@@ -848,29 +945,25 @@ export default function UserProfilePage() {
         }
 
         .artwork-grid {
+          --artwork-card-size: 256px;
           display: grid;
-          grid-template-columns: repeat(1, 1fr);
+          grid-template-columns: repeat(2, var(--artwork-card-size));
           gap: var(--grid-gap);
           padding: var(--grid-gap);
           max-width: 1200px;
           margin: 0 auto;
-        }
-
-        @media (min-width: 500px) {
-          .artwork-grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
+          justify-content: center;
         }
 
         @media (min-width: 768px) {
           .artwork-grid {
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(3, var(--artwork-card-size));
           }
         }
 
         @media (min-width: 1024px) {
           .artwork-grid {
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(4, var(--artwork-card-size));
           }
         }
 
@@ -880,7 +973,7 @@ export default function UserProfilePage() {
           background: var(--bg-secondary);
           overflow: hidden;
           border-radius: 8px;
-          transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+          transition: transform var(--transition-fast), box-shadow var(--transition-fast), width var(--transition-fast), height var(--transition-fast);
         }
 
         .artwork-card:hover {
