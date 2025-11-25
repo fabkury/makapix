@@ -193,9 +193,6 @@ export default function HashtagsPage() {
             ) : (
               <>
                 <h2>No hashtags yet</h2>
-                <p className="empty-description">
-                  Hashtags will appear here once artists start tagging their pixel art creations.
-                </p>
                 <Link href="/" className="browse-link">
                   Browse Recent Art →
                 </Link>
