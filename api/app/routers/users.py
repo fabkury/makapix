@@ -11,9 +11,96 @@ from .. import models, schemas
 from ..auth import check_ownership, get_current_user, get_current_user_optional, require_moderator, require_ownership
 from ..deps import get_db
 from ..utils.handles import validate_handle, is_handle_taken
-from ..pagination import apply_cursor_filter, create_page_response
+from ..pagination import apply_cursor_filter, create_page_response, decode_cursor, encode_cursor
 
 router = APIRouter(prefix="/users", tags=["Users"])
+
+
+@router.get("/browse", response_model=schemas.Page[schemas.UserPublic])
+def browse_users(
+    q: str | None = None,
+    sort: str = Query("alphabetical", regex="^(alphabetical|recent|reputation)$"),
+    cursor: str | None = None,
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.Page[schemas.UserPublic]:
+    """
+    Browse and search users (requires authentication).
+    """
+    query = db.query(models.User)
+    
+    # Apply visibility filters for non-moderators
+    is_moderator = current_user and ("moderator" in current_user.roles or "owner" in current_user.roles)
+    if not is_moderator:
+        query = query.filter(
+            models.User.hidden_by_user == False,
+            models.User.hidden_by_mod == False,
+            models.User.non_conformant == False,
+            models.User.deactivated == False,
+            models.User.banned_until.is_(None),
+        )
+    
+    # Apply search filter
+    if q:
+        search_term = f"%{q}%"
+        query = query.filter(models.User.handle.ilike(search_term))
+    
+    # Apply sorting and cursor pagination
+    if sort == "alphabetical":
+        sort_field = "handle"
+        sort_desc = False
+        query = apply_cursor_filter(query, models.User, cursor, sort_field, sort_desc=sort_desc)
+        query = query.order_by(models.User.handle.asc())
+    elif sort == "recent":
+        sort_field = "created_at"
+        sort_desc = True
+        query = apply_cursor_filter(query, models.User, cursor, sort_field, sort_desc=sort_desc)
+        query = query.order_by(models.User.created_at.desc())
+    elif sort == "reputation":
+        sort_field = "reputation"
+        sort_desc = True
+        # For reputation, we need to handle cursor differently since it's an integer
+        if cursor:
+            cursor_data = decode_cursor(cursor)
+            if cursor_data:
+                last_id, sort_value = cursor_data
+                # Filter: reputation < sort_value OR (reputation == sort_value AND id < last_id)
+                if sort_value is not None:
+                    try:
+                        last_reputation = int(sort_value)
+                        last_uuid = UUID(last_id)
+                        query = query.filter(
+                            (models.User.reputation < last_reputation) |
+                            ((models.User.reputation == last_reputation) & (models.User.id < last_uuid))
+                        )
+                    except (ValueError, TypeError):
+                        pass
+        query = query.order_by(models.User.reputation.desc(), models.User.id.desc())
+    
+    # Fetch limit + 1 to check if there are more results
+    users = query.limit(limit + 1).all()
+    
+    # Create paginated response
+    if sort == "reputation":
+        # Handle reputation cursor encoding manually
+        next_cursor = None
+        if len(users) > limit:
+            users = users[:limit]
+            if users:
+                last_user = users[-1]
+                next_cursor = encode_cursor(str(last_user.id), last_user.reputation)
+        page_data = {
+            "items": users,
+            "next_cursor": next_cursor
+        }
+    else:
+        page_data = create_page_response(users, limit, cursor, sort_field=sort_field)
+    
+    return schemas.Page(
+        items=[schemas.UserPublic.model_validate(u) for u in page_data["items"]],
+        next_cursor=page_data["next_cursor"],
+    )
 
 
 @router.get("", response_model=schemas.Page[schemas.UserFull])
