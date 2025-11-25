@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import Layout from '../components/Layout';
 
 interface Post {
   id: string;
@@ -48,6 +48,7 @@ export default function SearchPage() {
   const [error, setError] = useState<string | null>(null);
   
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   
   // Check authentication on mount
   useEffect(() => {
@@ -56,6 +57,11 @@ export default function SearchPage() {
       router.push('/auth');
     }
   }, [router]);
+
+  // Focus input on mount
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
   
   const API_BASE_URL = typeof window !== 'undefined' 
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
@@ -125,19 +131,16 @@ export default function SearchPage() {
   const handleSearchChange = (value: string) => {
     setQuery(value);
 
-    // Clear existing timer
     if (debounceTimer.current) {
       clearTimeout(debounceTimer.current);
     }
 
-    // Update URL without triggering navigation
     if (value.trim()) {
       router.replace({ query: { ...router.query, q: value } }, undefined, { shallow: true });
     } else {
       router.replace({ query: {} }, undefined, { shallow: true });
     }
 
-    // Debounce search
     debounceTimer.current = setTimeout(() => {
       performSearch(value);
     }, 300);
@@ -149,330 +152,327 @@ export default function SearchPage() {
     }
   };
 
-  // Group results by type
-  const userResults = results.filter((r): r is SearchResultUser => r.type === 'users');
   const postResults = results.filter((r): r is SearchResultPost => r.type === 'posts');
+  const userResults = results.filter((r): r is SearchResultUser => r.type === 'users');
 
   return (
-    <>
-      <Head>
-        <title>Search - Makapix</title>
-      </Head>
-      <div style={styles.container}>
-        <header style={styles.header}>
-          <h1 style={styles.title}>Makapix</h1>
-          <nav style={styles.nav}>
-            <Link href="/" style={styles.navLink}>Home</Link>
-            <Link href="/recent" style={styles.navLink}>Recent</Link>
-            <Link href="/search" style={styles.navLink}>Search</Link>
-            <Link href="/publish" style={styles.navLink}>Publish</Link>
-          </nav>
-        </header>
-
-        <main style={styles.main}>
-          <h2 style={styles.sectionTitle}>Search</h2>
-
-          <div style={styles.searchContainer}>
+    <Layout title="Search" description="Search for pixel art and users">
+      <div className="search-container">
+        <div className="search-header">
+          <div className="search-input-wrapper">
+            <span className="search-icon">🔍</span>
             <input
+              ref={inputRef}
               type="text"
               value={query}
               onChange={(e) => handleSearchChange(e.target.value)}
-              placeholder="Search users, posts, or hashtags..."
-              style={styles.searchInput}
+              placeholder="Search artworks, users, hashtags..."
+              className="search-input"
             />
-            {loading && <div style={styles.loadingIndicator}>Searching...</div>}
+            {loading && <div className="search-spinner"></div>}
           </div>
+        </div>
 
-          {error && (
-            <div style={styles.error}>
-              <p>{error}</p>
-            </div>
-          )}
+        {error && (
+          <div className="error-message">
+            <p>{error}</p>
+          </div>
+        )}
 
-          {results.length === 0 && !loading && query.trim() && (
-            <div style={styles.empty}>
-              <p>No results found for &quot;{query}&quot;</p>
-            </div>
-          )}
+        {results.length === 0 && !loading && query.trim() && (
+          <div className="empty-state">
+            <span className="empty-icon">🔍</span>
+            <p>No results found for &quot;{query}&quot;</p>
+          </div>
+        )}
 
-          {results.length === 0 && !query.trim() && (
-            <div style={styles.empty}>
-              <p>Enter a search query to find users, posts, or hashtags</p>
-            </div>
-          )}
+        {results.length === 0 && !query.trim() && (
+          <div className="empty-state">
+            <span className="empty-icon">🔍</span>
+            <p>Start typing to search</p>
+          </div>
+        )}
 
-          {userResults.length > 0 && (
-            <section style={styles.section}>
-              <h3 style={styles.resultGroupTitle}>Users ({userResults.length})</h3>
-              <div style={styles.userGrid}>
-                {userResults.map((result) => (
-                  <Link
-                    key={result.user.id}
-                    href={`/users/${result.user.id}`}
-                    style={styles.userCard}
-                  >
-                    {result.user.avatar_url && (
-                      <img
-                        src={result.user.avatar_url}
-                        alt={result.user.display_name}
-                        style={styles.userAvatar}
-                      />
+        {userResults.length > 0 && (
+          <section className="results-section">
+            <div className="user-results">
+              {userResults.map((result) => (
+                <Link
+                  key={result.user.id}
+                  href={`/users/${result.user.id}`}
+                  className="user-card"
+                >
+                  <div className="user-avatar">
+                    {result.user.avatar_url ? (
+                      <img src={result.user.avatar_url} alt="" className="avatar-image" />
+                    ) : (
+                      <span className="avatar-placeholder">👤</span>
                     )}
-                    <div style={styles.userInfo}>
-                      <div style={styles.userHandle}>@{result.user.handle}</div>
-                      <div style={styles.userDisplayName}>{result.user.display_name}</div>
-                      <div style={styles.userReputation}>Rep: {result.user.reputation}</div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {postResults.length > 0 && (
-            <section style={styles.section}>
-              <h3 style={styles.resultGroupTitle}>Posts ({postResults.length})</h3>
-              <div style={styles.grid}>
-                {postResults.map((result) => (
-                  <div key={result.post.id} style={styles.card}>
-                    <Link href={`/posts/${result.post.id}`} style={styles.cardLink}>
-                      <div style={styles.imageContainer}>
-                        <img
-                          src={result.post.art_url}
-                          alt={result.post.title}
-                          style={styles.image}
-                          loading="lazy"
-                        />
-                      </div>
-                      <div style={styles.cardContent}>
-                        <h4 style={styles.cardTitle}>{result.post.title}</h4>
-                        {result.post.description && (
-                          <p style={styles.cardDescription}>{result.post.description}</p>
-                        )}
-                        {result.post.hashtags && result.post.hashtags.length > 0 && (
-                          <div style={styles.hashtags}>
-                            {result.post.hashtags.map((tag, idx) => (
-                              <Link
-                                key={idx}
-                                href={`/hashtags/${tag}`}
-                                style={styles.hashtag}
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                #{tag}
-                              </Link>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </Link>
                   </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {nextCursor && (
-            <div style={styles.loadMoreContainer}>
-              <button onClick={handleLoadMore} disabled={loading} style={styles.loadMoreButton}>
-                {loading ? 'Loading...' : 'Load More'}
-              </button>
+                  <div className="user-info">
+                    <span className="user-handle">@{result.user.handle}</span>
+                    <span className="user-name">{result.user.display_name}</span>
+                  </div>
+                </Link>
+              ))}
             </div>
-          )}
-        </main>
+          </section>
+        )}
+
+        {postResults.length > 0 && (
+          <section className="results-section">
+            <div className="artwork-grid">
+              {postResults.map((result) => (
+                <Link key={result.post.id} href={`/posts/${result.post.id}`} className="artwork-card">
+                  <div className="artwork-image-container">
+                    <img
+                      src={result.post.art_url}
+                      alt={result.post.title}
+                      className="artwork-image pixel-art"
+                      loading="lazy"
+                    />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {nextCursor && (
+          <div className="load-more-container">
+            <button onClick={handleLoadMore} disabled={loading} className="load-more-button">
+              {loading ? 'Loading...' : 'Load More'}
+            </button>
+          </div>
+        )}
       </div>
-    </>
+
+      <style jsx>{`
+        .search-container {
+          width: 100%;
+          min-height: calc(100vh - var(--header-height));
+        }
+
+        .search-header {
+          position: sticky;
+          top: var(--header-height);
+          z-index: 50;
+          background: var(--bg-primary);
+          padding: 16px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .search-input-wrapper {
+          max-width: 600px;
+          margin: 0 auto;
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+
+        .search-icon {
+          position: absolute;
+          left: 16px;
+          font-size: 18px;
+          pointer-events: none;
+        }
+
+        .search-input {
+          width: 100%;
+          padding: 14px 48px;
+          font-size: 1rem;
+          background: var(--bg-secondary);
+          border: 2px solid var(--bg-tertiary);
+          border-radius: 24px;
+          color: var(--text-primary);
+          transition: all var(--transition-fast);
+        }
+
+        .search-input:focus {
+          border-color: var(--accent-cyan);
+          box-shadow: var(--glow-cyan);
+          outline: none;
+        }
+
+        .search-input::placeholder {
+          color: var(--text-muted);
+        }
+
+        .search-spinner {
+          position: absolute;
+          right: 16px;
+          width: 20px;
+          height: 20px;
+          border: 2px solid var(--bg-tertiary);
+          border-top-color: var(--accent-cyan);
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+          to {
+            transform: rotate(360deg);
+          }
+        }
+
+        .error-message {
+          padding: 2rem;
+          text-align: center;
+          color: var(--accent-pink);
+        }
+
+        .empty-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 4rem 2rem;
+          text-align: center;
+          color: var(--text-muted);
+        }
+
+        .empty-icon {
+          font-size: 3rem;
+          margin-bottom: 1rem;
+          opacity: 0.5;
+        }
+
+        .results-section {
+          padding: 16px;
+        }
+
+        .user-results {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px;
+          max-width: 1200px;
+          margin: 0 auto 24px;
+        }
+
+        .user-card {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 12px 16px;
+          background: var(--bg-secondary);
+          border-radius: 12px;
+          text-decoration: none;
+          transition: all var(--transition-fast);
+        }
+
+        .user-card:hover {
+          background: var(--bg-tertiary);
+          transform: translateY(-2px);
+        }
+
+        .user-avatar {
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          background: var(--bg-tertiary);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+        }
+
+        .avatar-image {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .avatar-placeholder {
+          font-size: 20px;
+        }
+
+        .user-info {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .user-handle {
+          font-size: 0.9rem;
+          font-weight: 600;
+          color: var(--accent-cyan);
+        }
+
+        .user-name {
+          font-size: 0.8rem;
+          color: var(--text-muted);
+        }
+
+        .artwork-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+          gap: var(--grid-gap);
+        }
+
+        @media (min-width: 768px) {
+          .artwork-grid {
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+          }
+        }
+
+        .artwork-card {
+          display: block;
+          aspect-ratio: 1;
+          background: var(--bg-secondary);
+          overflow: hidden;
+          transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+        }
+
+        .artwork-card:hover {
+          transform: scale(1.02);
+          box-shadow: 0 0 20px rgba(0, 212, 255, 0.2);
+          z-index: 1;
+        }
+
+        .artwork-image-container {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--bg-tertiary);
+        }
+
+        .artwork-image {
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+          image-rendering: pixelated;
+          image-rendering: -moz-crisp-edges;
+          image-rendering: crisp-edges;
+        }
+
+        .load-more-container {
+          padding: 24px;
+          text-align: center;
+        }
+
+        .load-more-button {
+          padding: 12px 32px;
+          background: var(--bg-secondary);
+          color: var(--text-primary);
+          border: 2px solid var(--accent-cyan);
+          border-radius: 24px;
+          font-size: 1rem;
+          font-weight: 500;
+          transition: all var(--transition-fast);
+        }
+
+        .load-more-button:hover:not(:disabled) {
+          background: var(--accent-cyan);
+          color: var(--bg-primary);
+          box-shadow: var(--glow-cyan);
+        }
+
+        .load-more-button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+      `}</style>
+    </Layout>
   );
 }
-
-const styles: { [key: string]: React.CSSProperties } = {
-  container: {
-    minHeight: '100vh',
-    backgroundColor: '#f5f5f5',
-  },
-  header: {
-    backgroundColor: '#fff',
-    borderBottom: '1px solid #e0e0e0',
-    padding: '1rem 2rem',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: '1.5rem',
-    fontWeight: 'bold',
-    margin: 0,
-    color: '#333',
-  },
-  nav: {
-    display: 'flex',
-    gap: '1.5rem',
-  },
-  navLink: {
-    color: '#666',
-    textDecoration: 'none',
-    fontSize: '0.9rem',
-  },
-  main: {
-    maxWidth: '1200px',
-    margin: '0 auto',
-    padding: '2rem',
-  },
-  sectionTitle: {
-    fontSize: '1.8rem',
-    marginBottom: '2rem',
-    color: '#333',
-  },
-  searchContainer: {
-    marginBottom: '2rem',
-    position: 'relative',
-  },
-  searchInput: {
-    width: '100%',
-    padding: '0.75rem 1rem',
-    fontSize: '1rem',
-    border: '1px solid #ddd',
-    borderRadius: '4px',
-    outline: 'none',
-  },
-  loadingIndicator: {
-    position: 'absolute',
-    right: '1rem',
-    top: '50%',
-    transform: 'translateY(-50%)',
-    color: '#999',
-    fontSize: '0.9rem',
-  },
-  error: {
-    backgroundColor: '#fee',
-    border: '1px solid #fcc',
-    borderRadius: '4px',
-    padding: '1rem',
-    marginBottom: '2rem',
-    textAlign: 'center',
-  },
-  empty: {
-    textAlign: 'center',
-    padding: '3rem',
-    color: '#666',
-  },
-  section: {
-    marginBottom: '3rem',
-  },
-  resultGroupTitle: {
-    fontSize: '1.3rem',
-    marginBottom: '1.5rem',
-    color: '#333',
-  },
-  userGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
-    gap: '1rem',
-    marginBottom: '2rem',
-  },
-  userCard: {
-    backgroundColor: '#fff',
-    borderRadius: '8px',
-    padding: '1rem',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '1rem',
-    textDecoration: 'none',
-    color: 'inherit',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    transition: 'transform 0.2s',
-  },
-  userAvatar: {
-    width: '50px',
-    height: '50px',
-    borderRadius: '50%',
-    objectFit: 'cover',
-  },
-  userInfo: {
-    flex: 1,
-  },
-  userHandle: {
-    fontWeight: '600',
-    fontSize: '0.95rem',
-    color: '#333',
-  },
-  userDisplayName: {
-    fontSize: '0.85rem',
-    color: '#666',
-    marginTop: '0.25rem',
-  },
-  userReputation: {
-    fontSize: '0.75rem',
-    color: '#999',
-    marginTop: '0.25rem',
-  },
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-    gap: '1.5rem',
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: '8px',
-    overflow: 'hidden',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-  },
-  cardLink: {
-    textDecoration: 'none',
-    color: 'inherit',
-    display: 'block',
-  },
-  imageContainer: {
-    width: '100%',
-    backgroundColor: '#f0f0f0',
-    aspectRatio: '1',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  image: {
-    width: '100%',
-    height: '100%',
-    objectFit: 'contain',
-    imageRendering: 'pixelated',
-  },
-  cardContent: {
-    padding: '1rem',
-  },
-  cardTitle: {
-    fontSize: '1rem',
-    fontWeight: '600',
-    margin: '0 0 0.5rem 0',
-    color: '#333',
-  },
-  cardDescription: {
-    fontSize: '0.85rem',
-    color: '#666',
-    margin: '0 0 0.5rem 0',
-    lineHeight: '1.4',
-  },
-  hashtags: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '0.5rem',
-  },
-  hashtag: {
-    fontSize: '0.8rem',
-    color: '#2563eb',
-    textDecoration: 'none',
-  },
-  loadMoreContainer: {
-    textAlign: 'center',
-    marginTop: '2rem',
-  },
-  loadMoreButton: {
-    padding: '0.75rem 2rem',
-    backgroundColor: '#2563eb',
-    color: 'white',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontSize: '1rem',
-  },
-};
-

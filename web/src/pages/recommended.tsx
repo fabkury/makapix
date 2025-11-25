@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import Layout from '../../components/Layout';
+import Layout from '../components/Layout';
 
 interface Post {
   id: string;
@@ -12,6 +12,8 @@ interface Post {
   canvas: string;
   owner_id: string;
   created_at: string;
+  promoted?: boolean;
+  visible?: boolean;
 }
 
 interface PageResponse<T> {
@@ -19,10 +21,8 @@ interface PageResponse<T> {
   next_cursor: string | null;
 }
 
-export default function HashtagPage() {
+export default function RecommendedPage() {
   const router = useRouter();
-  const { tag } = router.query;
-  
   const [posts, setPosts] = useState<Post[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -33,6 +33,7 @@ export default function HashtagPage() {
   const loadingRef = useRef(false);
   const hasMoreRef = useRef(true);
   const nextCursorRef = useRef<string | null>(null);
+  const initialLoadRef = useRef(false);
   
   const API_BASE_URL = typeof window !== 'undefined' 
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
@@ -46,8 +47,10 @@ export default function HashtagPage() {
     }
   }, [router]);
 
-  const loadPosts = useCallback(async (hashtag: string, cursor: string | null = null) => {
-    if (loadingRef.current || (!hasMoreRef.current && cursor !== null) || !hashtag) return;
+  const loadPosts = useCallback(async (cursor: string | null = null) => {
+    if (loadingRef.current || (cursor !== null && !hasMoreRef.current)) {
+      return;
+    }
     
     const token = localStorage.getItem('access_token');
     if (!token) {
@@ -60,7 +63,7 @@ export default function HashtagPage() {
     setError(null);
     
     try {
-      const url = `${API_BASE_URL}/api/posts?hashtag=${encodeURIComponent(hashtag)}&limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const url = `${API_BASE_URL}/api/feed/promoted?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -75,10 +78,15 @@ export default function HashtagPage() {
       }
       
       if (!response.ok) {
-        throw new Error(`Failed to load posts: ${response.statusText}`);
+        const errorText = await response.text().catch(() => response.statusText);
+        throw new Error(`Failed to load posts: ${response.status} ${errorText}`);
       }
       
       const data: PageResponse<Post> = await response.json();
+      
+      if (!data || typeof data !== 'object' || !Array.isArray(data.items)) {
+        throw new Error('Invalid response format from server');
+      }
       
       if (cursor) {
         setPosts(prev => [...prev, ...data.items]);
@@ -91,35 +99,42 @@ export default function HashtagPage() {
       const hasMoreValue = data.next_cursor !== null;
       hasMoreRef.current = hasMoreValue;
       setHasMore(hasMoreValue);
+      
+      if (cursor === null) {
+        initialLoadRef.current = true;
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load posts');
       console.error('Error loading posts:', err);
+      
+      if (cursor === null) {
+        initialLoadRef.current = true;
+      }
     } finally {
       loadingRef.current = false;
       setLoading(false);
     }
   }, [API_BASE_URL, router]);
 
-  // Load posts when tag changes
+  // Initial load
   useEffect(() => {
-    if (tag && typeof tag === 'string') {
-      setPosts([]);
-      setNextCursor(null);
-      nextCursorRef.current = null;
-      hasMoreRef.current = true;
-      setHasMore(true);
-      loadPosts(tag);
+    if (API_BASE_URL) {
+      loadPosts();
     }
-  }, [tag, loadPosts]);
+  }, [API_BASE_URL, loadPosts]);
 
   // Intersection Observer for infinite scroll
   useEffect(() => {
-    if (!tag || typeof tag !== 'string') return;
-
+    if (!initialLoadRef.current) return;
+    if (posts.length === 0 || !hasMoreRef.current) return;
+    
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMoreRef.current && !loadingRef.current) {
-          loadPosts(tag, nextCursorRef.current);
+        if (entries[0].isIntersecting && 
+            initialLoadRef.current && 
+            hasMoreRef.current && 
+            !loadingRef.current) {
+          loadPosts(nextCursorRef.current);
         }
       },
       { threshold: 0.1 }
@@ -135,40 +150,24 @@ export default function HashtagPage() {
         observer.unobserve(currentTarget);
       }
     };
-  }, [tag, loadPosts]);
-
-  const hashtagName = typeof tag === 'string' ? tag : '';
+  }, [posts.length, loadPosts]);
 
   return (
-    <Layout title={`#${hashtagName}`} description={`Pixel art tagged with #${hashtagName}`}>
+    <Layout title="Recommended Pixel Art" description="Curated pixel art selections promoted by moderators">
       <div className="feed-container">
-        <div className="hashtag-header">
-          <span className="hashtag-symbol">#</span>
-          <span className="hashtag-name">{hashtagName}</span>
-          {posts.length > 0 && (
-            <span className="post-count">{posts.length}+</span>
-          )}
-        </div>
-
         {error && (
           <div className="error-message">
             <p>{error}</p>
-            <button onClick={() => hashtagName && loadPosts(hashtagName)} className="retry-button">
+            <button onClick={() => loadPosts()} className="retry-button">
               Retry
             </button>
           </div>
         )}
 
-        {posts.length === 0 && !loading && !error && hashtagName && (
+        {posts.length === 0 && !loading && !error && (
           <div className="empty-state">
-            <span className="empty-icon">#</span>
-            <p>No posts found with #{hashtagName}</p>
-          </div>
-        )}
-
-        {!hashtagName && (
-          <div className="empty-state">
-            <p>Invalid hashtag</p>
+            <span className="empty-icon">⭐</span>
+            <p>No recommended posts yet. Check back later!</p>
           </div>
         )}
 
@@ -182,6 +181,7 @@ export default function HashtagPage() {
                   className="artwork-image pixel-art"
                   loading="lazy"
                 />
+                <div className="promoted-badge">⭐</div>
               </div>
             </Link>
           ))}
@@ -207,40 +207,6 @@ export default function HashtagPage() {
         .feed-container {
           width: 100%;
           min-height: calc(100vh - var(--header-height));
-        }
-
-        .hashtag-header {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 24px;
-          background: var(--bg-secondary);
-          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .hashtag-symbol {
-          font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-          font-weight: 700;
-          font-size: 2rem;
-          background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-        }
-
-        .hashtag-name {
-          font-size: 1.5rem;
-          font-weight: 600;
-          color: var(--text-primary);
-        }
-
-        .post-count {
-          font-size: 0.9rem;
-          color: var(--text-muted);
-          background: var(--bg-tertiary);
-          padding: 4px 12px;
-          border-radius: 12px;
-          margin-left: auto;
         }
 
         .error-message {
@@ -280,9 +246,6 @@ export default function HashtagPage() {
         .empty-icon {
           font-size: 4rem;
           margin-bottom: 1rem;
-          font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-          font-weight: 700;
-          opacity: 0.3;
         }
 
         .artwork-grid {
@@ -310,11 +273,12 @@ export default function HashtagPage() {
           background: var(--bg-secondary);
           overflow: hidden;
           transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+          position: relative;
         }
 
         .artwork-card:hover {
           transform: scale(1.02);
-          box-shadow: var(--glow-purple);
+          box-shadow: 0 0 20px rgba(255, 200, 50, 0.3);
           z-index: 1;
         }
 
@@ -325,6 +289,7 @@ export default function HashtagPage() {
           align-items: center;
           justify-content: center;
           background: var(--bg-tertiary);
+          position: relative;
         }
 
         .artwork-image {
@@ -334,6 +299,14 @@ export default function HashtagPage() {
           image-rendering: pixelated;
           image-rendering: -moz-crisp-edges;
           image-rendering: crisp-edges;
+        }
+
+        .promoted-badge {
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          font-size: 16px;
+          filter: drop-shadow(0 0 4px rgba(255, 200, 50, 0.8));
         }
 
         .load-more-trigger {
@@ -353,7 +326,7 @@ export default function HashtagPage() {
           width: 32px;
           height: 32px;
           border: 3px solid var(--bg-tertiary);
-          border-top-color: var(--accent-purple);
+          border-top-color: var(--accent-cyan);
           border-radius: 50%;
           animation: spin 0.8s linear infinite;
         }
@@ -372,3 +345,4 @@ export default function HashtagPage() {
     </Layout>
   );
 }
+

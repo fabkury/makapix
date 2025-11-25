@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import Layout from '../components/Layout';
 
 interface Post {
   id: string;
@@ -48,7 +48,6 @@ export default function HomePage() {
   }, [router]);
 
   const loadPosts = useCallback(async (cursor: string | null = null) => {
-    // Prevent loading if already loading or if no more data and trying to load more
     if (loadingRef.current || (cursor !== null && !hasMoreRef.current)) {
       return;
     }
@@ -64,8 +63,7 @@ export default function HomePage() {
     setError(null);
     
     try {
-      const url = `${API_BASE_URL}/api/feed/promoted?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
-      console.log('Fetching posts from:', url);
+      const url = `${API_BASE_URL}/api/posts?limit=20&sort=created_at&order=desc${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -85,17 +83,14 @@ export default function HomePage() {
       }
       
       const data: PageResponse<Post> = await response.json();
-      console.log('Received data:', data);
       
       if (!data || typeof data !== 'object' || !Array.isArray(data.items)) {
         throw new Error('Invalid response format from server');
       }
       
       if (cursor) {
-        // Append to existing posts
         setPosts(prev => [...prev, ...data.items]);
       } else {
-        // First load
         setPosts(data.items);
       }
       
@@ -105,7 +100,6 @@ export default function HomePage() {
       hasMoreRef.current = hasMoreValue;
       setHasMore(hasMoreValue);
       
-      // Mark initial load as complete after first load (success or failure)
       if (cursor === null) {
         initialLoadRef.current = true;
       }
@@ -113,7 +107,6 @@ export default function HomePage() {
       setError(err instanceof Error ? err.message : 'Failed to load posts');
       console.error('Error loading posts:', err);
       
-      // Mark initial load as complete even on error so user can retry
       if (cursor === null) {
         initialLoadRef.current = true;
       }
@@ -132,15 +125,11 @@ export default function HomePage() {
 
   // Intersection Observer for infinite scroll
   useEffect(() => {
-    // Only set up observer after initial load is complete
     if (!initialLoadRef.current) return;
-    
-    // Don't observe if no posts or no more to load
     if (posts.length === 0 || !hasMoreRef.current) return;
     
     const observer = new IntersectionObserver(
       (entries) => {
-        // Read current values from refs at callback time
         if (entries[0].isIntersecting && 
             initialLoadRef.current && 
             hasMoreRef.current && 
@@ -164,248 +153,184 @@ export default function HomePage() {
   }, [posts.length, loadPosts]);
 
   return (
-    <>
-      <Head>
-        <title>Makapix - Promoted Pixel Art</title>
-      </Head>
-      <div style={styles.container}>
-        <header style={styles.header}>
-          <h1 style={styles.title}>Makapix</h1>
-          <nav style={styles.nav}>
-            <Link href="/" style={styles.navLink}>Home</Link>
-            <Link href="/recent" style={styles.navLink}>Recent</Link>
-            <Link href="/search" style={styles.navLink}>Search</Link>
-            <Link href="/publish" style={styles.navLink}>Publish</Link>
-          </nav>
-        </header>
-
-        <main style={styles.main}>
-          <h2 style={styles.sectionTitle}>Promoted Works</h2>
-          
-          {error && (
-            <div style={styles.error}>
-              <p>{error}</p>
-              <button onClick={() => loadPosts()} style={styles.retryButton}>
-                Retry
-              </button>
-            </div>
-          )}
-
-          {posts.length === 0 && !loading && !error && (
-            <div style={styles.empty}>
-              <p>No promoted posts yet. Check back later!</p>
-            </div>
-          )}
-
-          <div style={styles.grid}>
-            {posts.map((post) => (
-              <div key={post.id} style={styles.card}>
-                <Link href={`/posts/${post.id}`} style={styles.cardLink}>
-                  <div style={styles.imageContainer}>
-                    <img
-                      src={post.art_url}
-                      alt={post.title}
-                      style={styles.image}
-                      loading="lazy"
-                    />
-                  </div>
-                  <div style={styles.cardContent}>
-                    <h3 style={styles.cardTitle}>{post.title}</h3>
-                    {post.description && (
-                      <p style={styles.cardDescription}>{post.description}</p>
-                    )}
-                    <div style={styles.cardMeta}>
-                      <span style={styles.canvas}>{post.canvas}</span>
-                      <span style={styles.date}>
-                        {new Date(post.created_at).toLocaleDateString()}
-                      </span>
-                    </div>
-                  </div>
-                </Link>
-                {post.hashtags && post.hashtags.length > 0 && (
-                  <div style={styles.hashtags}>
-                    {post.hashtags.map((tag, idx) => (
-                      <Link
-                        key={idx}
-                        href={`/hashtags/${tag}`}
-                        style={styles.hashtag}
-                      >
-                        #{tag}
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+    <Layout title="Recent Pixel Art" description="Discover the latest pixel art creations">
+      <div className="feed-container">
+        {error && (
+          <div className="error-message">
+            <p>{error}</p>
+            <button onClick={() => loadPosts()} className="retry-button">
+              Retry
+            </button>
           </div>
+        )}
 
-          {/* Loading indicator / Observer target - only render when there are posts */}
-          {posts.length > 0 && (
-            <div ref={observerTarget} style={styles.observerTarget}>
-              {loading && (
-                <div style={styles.loading}>
-                  <p>Loading more posts...</p>
-                </div>
-              )}
-              {!hasMore && (
-                <div style={styles.endMessage}>
-                  <p>You&apos;ve reached the end!</p>
-                </div>
-              )}
-            </div>
-          )}
-        </main>
+        {posts.length === 0 && !loading && !error && (
+          <div className="empty-state">
+            <span className="empty-icon">🐣</span>
+            <p>No recent posts yet. Check back later!</p>
+          </div>
+        )}
+
+        <div className="artwork-grid">
+          {posts.map((post) => (
+            <Link key={post.id} href={`/posts/${post.id}`} className="artwork-card">
+              <div className="artwork-image-container">
+                <img
+                  src={post.art_url}
+                  alt={post.title}
+                  className="artwork-image pixel-art"
+                  loading="lazy"
+                />
+              </div>
+            </Link>
+          ))}
+        </div>
+
+        {posts.length > 0 && (
+          <div ref={observerTarget} className="load-more-trigger">
+            {loading && (
+              <div className="loading-indicator">
+                <div className="loading-spinner"></div>
+              </div>
+            )}
+            {!hasMore && (
+              <div className="end-message">
+                <span>✨</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
-    </>
+
+      <style jsx>{`
+        .feed-container {
+          width: 100%;
+          min-height: calc(100vh - var(--header-height));
+        }
+
+        .error-message {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 3rem;
+          text-align: center;
+          color: var(--text-secondary);
+        }
+
+        .retry-button {
+          margin-top: 1rem;
+          padding: 0.75rem 1.5rem;
+          background: var(--accent-pink);
+          color: var(--bg-primary);
+          border-radius: 8px;
+          font-weight: 600;
+          transition: all var(--transition-fast);
+        }
+
+        .retry-button:hover {
+          box-shadow: var(--glow-pink);
+        }
+
+        .empty-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 4rem 2rem;
+          text-align: center;
+          color: var(--text-muted);
+        }
+
+        .empty-icon {
+          font-size: 4rem;
+          margin-bottom: 1rem;
+        }
+
+        .artwork-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+          gap: var(--grid-gap);
+          padding: var(--grid-gap);
+        }
+
+        @media (min-width: 768px) {
+          .artwork-grid {
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+          }
+        }
+
+        @media (min-width: 1200px) {
+          .artwork-grid {
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+          }
+        }
+
+        .artwork-card {
+          display: block;
+          aspect-ratio: 1;
+          background: var(--bg-secondary);
+          overflow: hidden;
+          transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+        }
+
+        .artwork-card:hover {
+          transform: scale(1.02);
+          box-shadow: 0 0 20px rgba(0, 212, 255, 0.2);
+          z-index: 1;
+        }
+
+        .artwork-image-container {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--bg-tertiary);
+        }
+
+        .artwork-image {
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+          image-rendering: pixelated;
+          image-rendering: -moz-crisp-edges;
+          image-rendering: crisp-edges;
+        }
+
+        .load-more-trigger {
+          height: 100px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .loading-indicator {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .loading-spinner {
+          width: 32px;
+          height: 32px;
+          border: 3px solid var(--bg-tertiary);
+          border-top-color: var(--accent-cyan);
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+          to {
+            transform: rotate(360deg);
+          }
+        }
+
+        .end-message {
+          color: var(--text-muted);
+          font-size: 1.5rem;
+        }
+      `}</style>
+    </Layout>
   );
 }
-
-const styles: { [key: string]: React.CSSProperties } = {
-  container: {
-    minHeight: '100vh',
-    backgroundColor: '#f5f5f5',
-  },
-  header: {
-    backgroundColor: '#fff',
-    borderBottom: '1px solid #e0e0e0',
-    padding: '1rem 2rem',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: '1.5rem',
-    fontWeight: 'bold',
-    margin: 0,
-    color: '#333',
-  },
-  nav: {
-    display: 'flex',
-    gap: '1.5rem',
-  },
-  navLink: {
-    color: '#666',
-    textDecoration: 'none',
-    fontSize: '0.9rem',
-  },
-  main: {
-    maxWidth: '1200px',
-    margin: '0 auto',
-    padding: '2rem',
-  },
-  sectionTitle: {
-    fontSize: '1.8rem',
-    marginBottom: '2rem',
-    color: '#333',
-  },
-  error: {
-    backgroundColor: '#fee',
-    border: '1px solid #fcc',
-    borderRadius: '4px',
-    padding: '1rem',
-    marginBottom: '2rem',
-    textAlign: 'center',
-  },
-  retryButton: {
-    marginTop: '0.5rem',
-    padding: '0.5rem 1rem',
-    backgroundColor: '#dc2626',
-    color: 'white',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-  },
-  empty: {
-    textAlign: 'center',
-    padding: '3rem',
-    color: '#666',
-  },
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-    gap: '1.5rem',
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: '8px',
-    overflow: 'hidden',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    transition: 'transform 0.2s, box-shadow 0.2s',
-  },
-  cardLink: {
-    textDecoration: 'none',
-    color: 'inherit',
-    display: 'block',
-  },
-  imageContainer: {
-    width: '100%',
-    backgroundColor: '#f0f0f0',
-    aspectRatio: '1',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  image: {
-    width: '100%',
-    height: '100%',
-    objectFit: 'contain',
-    imageRendering: 'pixelated',
-  },
-  cardContent: {
-    padding: '1rem',
-  },
-  cardTitle: {
-    fontSize: '1.1rem',
-    fontWeight: '600',
-    margin: '0 0 0.5rem 0',
-    color: '#333',
-  },
-  cardDescription: {
-    fontSize: '0.9rem',
-    color: '#666',
-    margin: '0 0 0.5rem 0',
-    lineHeight: '1.4',
-  },
-  hashtags: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '0.5rem',
-    padding: '0 1rem 1rem 1rem',
-    borderTop: '1px solid #f0f0f0',
-    marginTop: '0.5rem',
-    paddingTop: '0.5rem',
-  },
-  hashtag: {
-    fontSize: '0.85rem',
-    color: '#2563eb',
-    textDecoration: 'none',
-  },
-  cardMeta: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    fontSize: '0.8rem',
-    color: '#999',
-    marginTop: '0.5rem',
-  },
-  canvas: {
-    fontWeight: '500',
-  },
-  date: {},
-  observerTarget: {
-    height: '100px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loading: {
-    textAlign: 'center',
-    color: '#666',
-    padding: '2rem',
-  },
-  endMessage: {
-    textAlign: 'center',
-    color: '#999',
-    padding: '2rem',
-  },
-};

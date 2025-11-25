@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
+import Layout from '../components/Layout';
 
 interface VerifyResponse {
   message: string;
@@ -25,7 +25,6 @@ export default function VerifyEmailPage() {
   useEffect(() => {
     const verifyEmail = async () => {
       if (!token || typeof token !== 'string') {
-        // Wait for router to be ready
         if (router.isReady && !token) {
           setStatus('error');
           setMessage('Missing verification token');
@@ -54,199 +53,158 @@ export default function VerifyEmailPage() {
     };
 
     verifyEmail();
-  }, [token, router.isReady, API_BASE_URL, router]);
+  }, [token, router.isReady, API_BASE_URL]);
 
   return (
-    <>
-      <Head>
-        <title>Email Verification - Makapix</title>
-      </Head>
-      <div style={styles.container}>
-        <header style={styles.header}>
-          <h1 style={styles.title}>Makapix</h1>
-          <nav style={styles.nav}>
-            <Link href="/" style={styles.navLink}>Home</Link>
-            <Link href="/auth" style={styles.navLink}>Login</Link>
-          </nav>
-        </header>
+    <Layout title="Email Verification">
+      <div className="page-container">
+        <div className="card">
+          {status === 'loading' && (
+            <>
+              <div className="icon loading">⏳</div>
+              <h2>Verifying Your Email</h2>
+              <p className="message">Please wait while we verify your email address...</p>
+            </>
+          )}
 
-        <main style={styles.main}>
-          <div style={styles.box}>
-            {status === 'loading' && (
-              <>
-                <div style={styles.icon}>⏳</div>
-                <h2 style={styles.heading}>Verifying Your Email</h2>
-                <p style={styles.text}>Please wait while we verify your email address...</p>
-              </>
-            )}
+          {status === 'success' && (
+            <>
+              <div className="icon success">✅</div>
+              <h2>Email Verified!</h2>
+              <p className="message">{message}</p>
+              
+              {verifyData && (
+                <div className="info-box">
+                  <p className="info-text">
+                    Your handle: <strong>@{verifyData.handle}</strong>
+                  </p>
+                  <p className="info-hint">
+                    You can change your password and handle after logging in.
+                  </p>
+                </div>
+              )}
+              
+              <Link href="/auth" className="primary-button">
+                Go to Login
+              </Link>
+            </>
+          )}
 
-            {status === 'success' && (
-              <>
-                <div style={styles.iconSuccess}>✅</div>
-                <h2 style={styles.heading}>Email Verified!</h2>
-                <p style={styles.text}>{message}</p>
-                
-                {verifyData && (
-                  <div style={styles.infoBox}>
-                    <p style={styles.infoText}>
-                      Your handle: <strong>{verifyData.handle}</strong>
-                    </p>
-                    <p style={styles.hintSmall}>
-                      You can change your password and handle after logging in.
-                    </p>
-                  </div>
-                )}
-                
-                <Link href="/auth" style={styles.button}>
+          {status === 'error' && (
+            <>
+              <div className="icon error">❌</div>
+              <h2>Verification Failed</h2>
+              <p className="error-message">{message}</p>
+              <p className="hint">
+                The verification link may have expired or already been used.
+              </p>
+              <div className="actions">
+                <Link href="/auth" className="primary-button">
                   Go to Login
                 </Link>
-              </>
-            )}
-
-            {status === 'error' && (
-              <>
-                <div style={styles.iconError}>❌</div>
-                <h2 style={styles.heading}>Verification Failed</h2>
-                <p style={styles.errorText}>{message}</p>
-                <p style={styles.hint}>
-                  The verification link may have expired or already been used.
-                </p>
-                <div style={styles.actions}>
-                  <Link href="/auth" style={styles.button}>
-                    Go to Login
-                  </Link>
-                  <Link href="/auth" style={styles.secondaryButton}>
-                    Register Again
-                  </Link>
-                </div>
-              </>
-            )}
-          </div>
-        </main>
+              </div>
+            </>
+          )}
+        </div>
       </div>
-    </>
+
+      <style jsx>{`
+        .page-container {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: calc(100vh - var(--header-height));
+          padding: 24px;
+        }
+
+        .card {
+          width: 100%;
+          max-width: 450px;
+          background: var(--bg-secondary);
+          border-radius: 16px;
+          padding: 40px 32px;
+          text-align: center;
+        }
+
+        .icon {
+          font-size: 4rem;
+          margin-bottom: 20px;
+        }
+
+        .icon.loading {
+          animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+
+        h2 {
+          font-size: 1.5rem;
+          color: var(--text-primary);
+          margin-bottom: 12px;
+        }
+
+        .message {
+          color: var(--text-secondary);
+          margin-bottom: 24px;
+          line-height: 1.5;
+        }
+
+        .error-message {
+          color: #f87171;
+          margin-bottom: 12px;
+        }
+
+        .hint {
+          font-size: 0.9rem;
+          color: var(--text-muted);
+          margin-bottom: 24px;
+        }
+
+        .info-box {
+          background: var(--bg-tertiary);
+          border-radius: 12px;
+          padding: 16px;
+          margin-bottom: 24px;
+        }
+
+        .info-text {
+          font-size: 1rem;
+          color: var(--text-primary);
+          margin: 0;
+        }
+
+        .info-hint {
+          font-size: 0.85rem;
+          color: var(--text-muted);
+          margin: 8px 0 0 0;
+        }
+
+        .primary-button {
+          display: inline-block;
+          padding: 14px 32px;
+          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          color: white;
+          font-size: 1rem;
+          font-weight: 600;
+          border-radius: 10px;
+          text-decoration: none;
+          transition: all var(--transition-fast);
+        }
+
+        .primary-button:hover {
+          box-shadow: 0 0 20px rgba(255, 110, 180, 0.4);
+        }
+
+        .actions {
+          display: flex;
+          justify-content: center;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+      `}</style>
+    </Layout>
   );
 }
-
-const styles: { [key: string]: React.CSSProperties } = {
-  container: {
-    minHeight: '100vh',
-    backgroundColor: '#f5f5f5',
-  },
-  header: {
-    backgroundColor: '#fff',
-    borderBottom: '1px solid #e0e0e0',
-    padding: '1rem 2rem',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: '1.5rem',
-    fontWeight: 'bold',
-    margin: 0,
-    color: '#333',
-  },
-  nav: {
-    display: 'flex',
-    gap: '1.5rem',
-  },
-  navLink: {
-    color: '#666',
-    textDecoration: 'none',
-    fontSize: '0.9rem',
-  },
-  main: {
-    maxWidth: '500px',
-    margin: '3rem auto',
-    padding: '0 2rem',
-  },
-  box: {
-    backgroundColor: '#fff',
-    borderRadius: '8px',
-    padding: '3rem 2rem',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    textAlign: 'center',
-  },
-  icon: {
-    fontSize: '3rem',
-    marginBottom: '1rem',
-    animation: 'spin 1s linear infinite',
-  },
-  iconSuccess: {
-    fontSize: '3rem',
-    marginBottom: '1rem',
-  },
-  iconError: {
-    fontSize: '3rem',
-    marginBottom: '1rem',
-  },
-  heading: {
-    fontSize: '1.5rem',
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: '1rem',
-  },
-  text: {
-    color: '#666',
-    marginBottom: '1rem',
-  },
-  errorText: {
-    color: '#c00',
-    marginBottom: '1rem',
-  },
-  hint: {
-    fontSize: '0.9rem',
-    color: '#888',
-    marginBottom: '1.5rem',
-  },
-  hintSmall: {
-    fontSize: '0.85rem',
-    color: '#888',
-    margin: '0.5rem 0 0 0',
-  },
-  infoBox: {
-    backgroundColor: '#f8f9fa',
-    border: '1px solid #e9ecef',
-    borderRadius: '8px',
-    padding: '1rem',
-    marginBottom: '1.5rem',
-  },
-  infoText: {
-    fontSize: '1rem',
-    color: '#333',
-    margin: 0,
-  },
-  button: {
-    display: 'inline-block',
-    padding: '0.75rem 1.5rem',
-    backgroundColor: '#0070f3',
-    color: 'white',
-    border: 'none',
-    borderRadius: '4px',
-    fontSize: '1rem',
-    fontWeight: '600',
-    textDecoration: 'none',
-    cursor: 'pointer',
-    margin: '0.5rem',
-  },
-  secondaryButton: {
-    display: 'inline-block',
-    padding: '0.75rem 1.5rem',
-    backgroundColor: 'transparent',
-    color: '#0070f3',
-    border: '1px solid #0070f3',
-    borderRadius: '4px',
-    fontSize: '1rem',
-    fontWeight: '600',
-    textDecoration: 'none',
-    cursor: 'pointer',
-    margin: '0.5rem',
-  },
-  actions: {
-    display: 'flex',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
-    gap: '0.5rem',
-  },
-};
