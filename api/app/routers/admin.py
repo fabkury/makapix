@@ -230,6 +230,76 @@ def unhide_user(
     )
 
 
+@router.post(
+    "/users/{id}/auto-approval",
+    response_model=schemas.AutoApprovalResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def grant_auto_approval(
+    id: UUID,
+    db: Session = Depends(get_db),
+    moderator: models.User = Depends(require_moderator),
+) -> schemas.AutoApprovalResponse:
+    """
+    Grant auto-approval privilege to a user (moderator only).
+    
+    Users with this privilege have their uploaded artworks automatically
+    approved for public visibility, appearing immediately in Recent Artworks
+    and search results without requiring moderator review.
+    """
+    user = db.query(models.User).filter(models.User.id == id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    user.auto_public_approval = True
+    db.commit()
+    
+    # Log to audit
+    log_moderation_action(
+        db=db,
+        actor_id=moderator.id,
+        action="grant_auto_approval",
+        target_type="user",
+        target_id=id,
+    )
+    
+    return schemas.AutoApprovalResponse(user_id=id, auto_public_approval=True)
+
+
+@router.delete(
+    "/users/{id}/auto-approval",
+    response_model=schemas.AutoApprovalResponse,
+)
+def revoke_auto_approval(
+    id: UUID,
+    db: Session = Depends(get_db),
+    moderator: models.User = Depends(require_moderator),
+) -> schemas.AutoApprovalResponse:
+    """
+    Revoke auto-approval privilege from a user (moderator only).
+    
+    After revocation, the user's newly uploaded artworks will require
+    moderator approval before appearing in Recent Artworks and search results.
+    """
+    user = db.query(models.User).filter(models.User.id == id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    user.auto_public_approval = False
+    db.commit()
+    
+    # Log to audit
+    log_moderation_action(
+        db=db,
+        actor_id=moderator.id,
+        action="revoke_auto_approval",
+        target_type="user",
+        target_id=id,
+    )
+    
+    return schemas.AutoApprovalResponse(user_id=id, auto_public_approval=False)
+
+
 @router.get("/recent-profiles", response_model=schemas.Page[schemas.UserFull])
 def recent_profiles(
     cursor: str | None = None,
