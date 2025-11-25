@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import Layout from '../components/Layout';
+import StatsPanel from '../components/StatsPanel';
 
 interface User {
   id: string;
@@ -95,6 +96,10 @@ export default function ModDashboardPage() {
   const [adminNotes, setAdminNotes] = useState<AdminNote[]>([]);
   const [noteText, setNoteText] = useState('');
   const [addingNote, setAddingNote] = useState(false);
+  
+  // Stats panel state
+  const [statsPostId, setStatsPostId] = useState<string | null>(null);
+  const [showStats, setShowStats] = useState(false);
 
   const API_BASE_URL = typeof window !== 'undefined' 
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
@@ -569,6 +574,7 @@ export default function ModDashboardPage() {
                         <p className="item-date">{new Date(post.created_at).toLocaleString()}</p>
                       </div>
                       <div className="item-actions">
+                        <button onClick={() => { setStatsPostId(post.id); setShowStats(true); }} className="action-btn stats" title="View Statistics">📈</button>
                         <button onClick={() => approvePublicVisibility(post.id)} className="action-btn success">
                           Approve
                         </button>
@@ -643,6 +649,7 @@ export default function ModDashboardPage() {
                         <p className="item-date">{new Date(post.created_at).toLocaleString()}</p>
                       </div>
                       <div className="item-actions">
+                        <button onClick={() => { setStatsPostId(post.id); setShowStats(true); }} className="action-btn stats" title="View Statistics">📈</button>
                         {!post.promoted && <button onClick={() => promotePost(post.id)} className="action-btn success">⭐ Promote</button>}
                         {post.promoted && <button onClick={() => demotePost(post.id)} className="action-btn">⬇️ Demote</button>}
                         {!post.hidden_by_mod && <button onClick={() => hidePost(post.id)} className="action-btn">🙈 Hide</button>}
@@ -771,6 +778,15 @@ export default function ModDashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Stats Panel Modal */}
+      {statsPostId && (
+        <StatsPanel
+          postId={statsPostId}
+          isOpen={showStats}
+          onClose={() => { setShowStats(false); setStatsPostId(null); }}
+        />
+      )}
 
       <style jsx>{`
         .dashboard {
@@ -955,6 +971,16 @@ export default function ModDashboardPage() {
 
         .action-btn.secondary:hover {
           background: var(--text-muted);
+        }
+
+        .action-btn.stats {
+          background: rgba(180, 78, 255, 0.2);
+          color: #b44eff;
+        }
+
+        .action-btn.stats:hover {
+          background: rgba(180, 78, 255, 0.3);
+          box-shadow: 0 0 8px rgba(180, 78, 255, 0.3);
         }
 
         .badge {

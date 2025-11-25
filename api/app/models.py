@@ -7,6 +7,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -543,3 +544,98 @@ class AuditLog(Base):
     __table_args__ = (
         Index("ix_audit_logs_actor_created", actor_id, created_at.desc()),
     )
+
+
+# ============================================================================
+# VIEW TRACKING & STATISTICS
+# ============================================================================
+
+
+class ViewEvent(Base):
+    """Raw view event for tracking artwork views."""
+
+    __tablename__ = "view_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    viewer_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    
+    # Viewer identification (for unique viewer tracking)
+    viewer_ip_hash = Column(String(64), nullable=False)  # SHA256 hash of IP address
+    
+    # Geographic data
+    country_code = Column(String(2), nullable=True, index=True)  # ISO 3166-1 alpha-2 (e.g., "US", "BR")
+    
+    # Device & source information
+    device_type = Column(String(20), nullable=False, index=True)  # desktop, mobile, tablet, player
+    view_source = Column(String(20), nullable=False)  # web, api, widget, player
+    view_type = Column(String(20), nullable=False, index=True)  # intentional, listing, search, widget
+    
+    # Additional metadata
+    user_agent_hash = Column(String(64), nullable=True)  # For device fingerprinting
+    referrer_domain = Column(String(255), nullable=True)  # Extracted referrer domain
+    
+    # Timestamps
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+
+    # Relationships
+    post = relationship("Post", backref="view_events")
+
+    __table_args__ = (
+        Index("ix_view_events_post_created", post_id, created_at.desc()),
+    )
+
+
+class PostStatsDaily(Base):
+    """Daily aggregated statistics for a post (permanent storage)."""
+
+    __tablename__ = "post_stats_daily"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    date = Column(Date, nullable=False, index=True)
+    
+    # Aggregated counts
+    total_views = Column(Integer, nullable=False, default=0)
+    unique_viewers = Column(Integer, nullable=False, default=0)
+    
+    # Breakdown by dimension (stored as JSONB for flexibility)
+    views_by_country = Column(JSON, nullable=False, default=dict)  # {"US": 50, "BR": 30, ...}
+    views_by_device = Column(JSON, nullable=False, default=dict)  # {"desktop": 40, "mobile": 35, ...}
+    views_by_type = Column(JSON, nullable=False, default=dict)  # {"intentional": 60, "listing": 15, ...}
+    
+    # Timestamps
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    # Relationships
+    post = relationship("Post", backref="stats_daily")
+
+    __table_args__ = (
+        UniqueConstraint("post_id", "date", name="uq_post_stats_daily_post_date"),
+        Index("ix_post_stats_daily_post_date", post_id, date),
+    )
+
+
+class PostStatsCache(Base):
+    """Cached computed statistics for a post."""
+
+    __tablename__ = "post_stats_cache"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    
+    # Full computed statistics as JSON
+    stats_json = Column(JSON, nullable=False)
+    
+    # Timestamps
+    computed_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+    # Relationships
+    post = relationship("Post", backref="stats_cache")
