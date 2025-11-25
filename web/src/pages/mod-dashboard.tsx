@@ -13,6 +13,7 @@ interface User {
   reputation: number;
   hidden_by_mod?: boolean;
   banned_until?: string | null;
+  auto_public_approval?: boolean;
 }
 
 interface Post {
@@ -429,6 +430,32 @@ export default function ModDashboardPage() {
     }
   };
 
+  const trustUser = async (userId: string) => {
+    try {
+      const accessToken = localStorage.getItem('access_token');
+      await fetch(`${API_BASE_URL}/api/admin/users/${userId}/auto-approval`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      await loadRecentProfiles(true);
+    } catch (error) {
+      console.error('Error trusting user:', error);
+    }
+  };
+
+  const distrustUser = async (userId: string) => {
+    try {
+      const accessToken = localStorage.getItem('access_token');
+      await fetch(`${API_BASE_URL}/api/admin/users/${userId}/auto-approval`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      await loadRecentProfiles(true);
+    } catch (error) {
+      console.error('Error distrusting user:', error);
+    }
+  };
+
   const addAdminNote = async () => {
     if (!selectedPostId || !noteText.trim()) return;
     setAddingNote(true);
@@ -616,10 +643,10 @@ export default function ModDashboardPage() {
                         <p className="item-date">{new Date(post.created_at).toLocaleString()}</p>
                       </div>
                       <div className="item-actions">
-                        {!post.promoted && <button onClick={() => promotePost(post.id)} className="action-btn success">Promote</button>}
-                        {post.promoted && <button onClick={() => demotePost(post.id)} className="action-btn">Demote</button>}
-                        {!post.hidden_by_mod && <button onClick={() => hidePost(post.id)} className="action-btn">Hide</button>}
-                        {post.hidden_by_mod && <button onClick={() => unhidePost(post.id)} className="action-btn success">Unhide</button>}
+                        {!post.promoted && <button onClick={() => promotePost(post.id)} className="action-btn success">⭐ Promote</button>}
+                        {post.promoted && <button onClick={() => demotePost(post.id)} className="action-btn">⬇️ Demote</button>}
+                        {!post.hidden_by_mod && <button onClick={() => hidePost(post.id)} className="action-btn">🙈 Hide</button>}
+                        {post.hidden_by_mod && <button onClick={() => unhidePost(post.id)} className="action-btn success">👁️ Unhide</button>}
                         {post.hidden_by_mod && <button onClick={() => deletePostPermanently(post.id)} className="action-btn danger">Delete</button>}
                       </div>
                     </div>
@@ -653,7 +680,12 @@ export default function ModDashboardPage() {
                         <p className="item-date">Joined {new Date(profile.created_at).toLocaleString()}</p>
                       </div>
                       <div className="item-actions">
-                        <button onClick={() => banUser(profile.id)} className="action-btn danger">Ban</button>
+                        {profile.auto_public_approval ? (
+                          <button onClick={() => distrustUser(profile.id)} className="action-btn danger">⚠️ Distrust</button>
+                        ) : (
+                          <button onClick={() => trustUser(profile.id)} className="action-btn success">🫱🏽‍🫲🏼 Trust</button>
+                        )}
+                        <button onClick={() => banUser(profile.id)} className="action-btn danger">🚷 Ban</button>
                       </div>
                     </div>
                   ))}
