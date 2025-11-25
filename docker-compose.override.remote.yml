@@ -19,6 +19,9 @@ services:
     labels:
       caddy: dev.makapix.club
       caddy.reverse_proxy: "{{upstreams 3000}}"
+      caddy.log.output: "file /var/log/caddy/dev-access.log"
+      caddy.log.format: "json"
+      caddy.log.level: "INFO"
     ports: []  # Remove direct port binding - accessed via caddy-docker-proxy
     networks:
       - internal

@@ -323,6 +323,17 @@ class Comment(BaseModel):
         
         return "unknown"  # Fallback if user not found or not loaded
 
+    @computed_field
+    @property
+    def author_display_name(self) -> str:
+        """
+        Display name for the comment author (used by widget).
+        
+        Currently returns the handle, but could return a display name
+        if we add that field to users in the future.
+        """
+        return self.author_handle
+
 
 class CommentCreate(BaseModel):
     """Create comment request."""
