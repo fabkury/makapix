@@ -19,10 +19,12 @@ interface Post {
   title: string;
   description?: string;
   owner_id: string;
+  art_url?: string;
   created_at: string;
   promoted?: boolean;
   hidden_by_mod?: boolean;
   visible?: boolean;
+  public_visibility?: boolean;
 }
 
 interface Report {
@@ -59,13 +61,17 @@ interface PageResponse<T> {
   next_cursor: string | null;
 }
 
-type Tab = 'reports' | 'posts' | 'profiles' | 'audit' | 'notes';
+type Tab = 'pending' | 'reports' | 'posts' | 'profiles' | 'audit' | 'notes';
 
 export default function ModDashboardPage() {
   const router = useRouter();
   const [isModerator, setIsModerator] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<Tab>('reports');
+  const [activeTab, setActiveTab] = useState<Tab>('pending');
+  
+  const [pendingPosts, setPendingPosts] = useState<Post[]>([]);
+  const [pendingCursor, setPendingCursor] = useState<string | null>(null);
+  const [pendingLoading, setPendingLoading] = useState(false);
   
   const [reports, setReports] = useState<Report[]>([]);
   const [reportsCursor, setReportsCursor] = useState<string | null>(null);
@@ -145,10 +151,62 @@ export default function ModDashboardPage() {
 
   const loadTabData = async (tab: Tab) => {
     switch (tab) {
+      case 'pending': await loadPendingApproval(); break;
       case 'reports': await loadReports(); break;
       case 'posts': await loadRecentPosts(); break;
       case 'profiles': await loadRecentProfiles(); break;
       case 'audit': await loadAuditLog(); break;
+    }
+  };
+
+  const loadPendingApproval = async () => {
+    if (pendingLoading) return;
+    setPendingLoading(true);
+    try {
+      const accessToken = localStorage.getItem('access_token');
+      const url = `${API_BASE_URL}/api/admin/pending-approval?limit=50${pendingCursor ? `&cursor=${pendingCursor}` : ''}`;
+      const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+      if (response.ok) {
+        const data: PageResponse<Post> = await response.json();
+        setPendingPosts([...pendingPosts, ...data.items]);
+        setPendingCursor(data.next_cursor);
+      }
+    } catch (error) {
+      console.error('Error loading pending approvals:', error);
+    } finally {
+      setPendingLoading(false);
+    }
+  };
+
+  const approvePublicVisibility = async (postId: string) => {
+    try {
+      const accessToken = localStorage.getItem('access_token');
+      const response = await fetch(`${API_BASE_URL}/api/posts/${postId}/approve-public`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      if (response.ok) {
+        // Remove from pending list
+        setPendingPosts(pendingPosts.filter(p => p.id !== postId));
+      }
+    } catch (error) {
+      console.error('Error approving post:', error);
+    }
+  };
+
+  const rejectPublicVisibility = async (postId: string) => {
+    try {
+      const accessToken = localStorage.getItem('access_token');
+      const response = await fetch(`${API_BASE_URL}/api/posts/${postId}/approve-public`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      if (response.ok) {
+        // Remove from pending list (it's already not public)
+        setPendingPosts(pendingPosts.filter(p => p.id !== postId));
+      }
+    } catch (error) {
+      console.error('Error rejecting post:', error);
     }
   };
 
@@ -357,7 +415,15 @@ export default function ModDashboardPage() {
 
   if (!isModerator) return null;
 
-  const tabs: Tab[] = ['reports', 'posts', 'profiles', 'audit', 'notes'];
+  const tabs: Tab[] = ['pending', 'reports', 'posts', 'profiles', 'audit', 'notes'];
+  const tabLabels: Record<Tab, string> = {
+    pending: 'Pending Approval',
+    reports: 'Reports',
+    posts: 'Posts',
+    profiles: 'Profiles',
+    audit: 'Audit',
+    notes: 'Notes'
+  };
 
   return (
     <Layout title="Moderator Dashboard">
@@ -370,6 +436,7 @@ export default function ModDashboardPage() {
               key={tab}
               onClick={() => {
                 setActiveTab(tab);
+                if (tab === 'pending') { setPendingPosts([]); setPendingCursor(null); }
                 if (tab === 'reports') { setReports([]); setReportsCursor(null); }
                 if (tab === 'posts') { setPosts([]); setPostsCursor(null); }
                 if (tab === 'profiles') { setProfiles([]); setProfilesCursor(null); }
@@ -377,12 +444,58 @@ export default function ModDashboardPage() {
               }}
               className={`tab ${activeTab === tab ? 'active' : ''}`}
             >
-              {tab}
+              {tabLabels[tab]}
             </button>
           ))}
         </div>
 
         <div className="tab-content">
+          {activeTab === 'pending' && (
+            <div className="section">
+              <h2>Pending Public Visibility Approval</h2>
+              <p className="section-description">
+                These artworks are waiting for moderator approval before appearing in Recent Artworks and search results.
+              </p>
+              {pendingPosts.length === 0 && !pendingLoading ? (
+                <p className="empty">No pending approvals</p>
+              ) : (
+                <>
+                  {pendingPosts.map(post => (
+                    <div key={post.id} className="item-card pending-card">
+                      {post.art_url && (
+                        <div className="pending-thumbnail">
+                          <img src={post.art_url} alt={post.title} className="pixel-art" />
+                        </div>
+                      )}
+                      <div className="item-info">
+                        <h3>
+                          <a href={`/posts/${post.id}`} target="_blank" rel="noopener noreferrer">
+                            {post.title}
+                          </a>
+                        </h3>
+                        {post.description && <p className="item-notes">{post.description}</p>}
+                        <p className="item-date">{new Date(post.created_at).toLocaleString()}</p>
+                      </div>
+                      <div className="item-actions">
+                        <button onClick={() => approvePublicVisibility(post.id)} className="action-btn success">
+                          Approve
+                        </button>
+                        <button onClick={() => rejectPublicVisibility(post.id)} className="action-btn danger">
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {pendingCursor && (
+                    <button onClick={loadPendingApproval} disabled={pendingLoading} className="load-more">
+                      {pendingLoading ? 'Loading...' : 'Load More'}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
           {activeTab === 'reports' && (
             <div className="section">
               <h2>Reports Queue</h2>
@@ -619,6 +732,44 @@ export default function ModDashboardPage() {
           border-radius: 12px;
           padding: 16px;
           margin-bottom: 12px;
+        }
+
+        .pending-card {
+          align-items: center;
+        }
+
+        .pending-thumbnail {
+          width: 64px;
+          height: 64px;
+          border-radius: 8px;
+          overflow: hidden;
+          background: var(--bg-tertiary);
+          flex-shrink: 0;
+        }
+
+        .pending-thumbnail img {
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+          image-rendering: pixelated;
+          image-rendering: -moz-crisp-edges;
+          image-rendering: crisp-edges;
+        }
+
+        .section-description {
+          color: var(--text-muted);
+          font-size: 0.9rem;
+          margin-bottom: 20px;
+        }
+
+        .section h3 a {
+          color: var(--text-primary);
+          text-decoration: none;
+          transition: color var(--transition-fast);
+        }
+
+        .section h3 a:hover {
+          color: var(--accent-cyan);
         }
 
         .item-info {

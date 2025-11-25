@@ -169,7 +169,11 @@ def create_comment(
     )
     db.add(comment)
     db.commit()
-    db.refresh(comment)
+    
+    # Reload comment with author relationship to ensure display name is available
+    comment = db.query(models.Comment).options(
+        joinedload(models.Comment.author)
+    ).filter(models.Comment.id == comment.id).first()
     
     return schemas.Comment.model_validate(comment)
 
@@ -201,7 +205,11 @@ def update_comment(
     
     comment.body = payload.body
     db.commit()
-    db.refresh(comment)
+    
+    # Reload comment with author relationship to ensure display name is available
+    comment = db.query(models.Comment).options(
+        joinedload(models.Comment.author)
+    ).filter(models.Comment.id == comment.id).first()
     
     return schemas.Comment.model_validate(comment)
 

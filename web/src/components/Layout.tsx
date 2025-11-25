@@ -53,12 +53,31 @@ export default function Layout({ children, title, description }: LayoutProps) {
   const router = useRouter();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [isModerator, setIsModerator] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
     const storedUserId = localStorage.getItem('user_id');
     setIsLoggedIn(!!token);
     setUserId(storedUserId);
+
+    // Fetch user roles if logged in
+    if (token) {
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+      fetch(`${apiBaseUrl}/api/auth/me`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.roles) {
+            const roles = data.roles as string[];
+            setIsModerator(roles.includes('moderator') || roles.includes('owner'));
+          }
+        })
+        .catch(() => {
+          // Silently ignore errors - user just won't see mod icon
+        });
+    }
   }, []);
 
   const isActive = (item: NavItem): boolean => {
@@ -103,6 +122,12 @@ export default function Layout({ children, title, description }: LayoutProps) {
                     <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
                   </svg>
                 </div>
+              </Link>
+            )}
+
+            {isLoggedIn && isModerator && (
+              <Link href="/mod-dashboard" className="mod-dashboard-link" aria-label="Moderator Dashboard">
+                <div className="mod-icon">🎛️</div>
               </Link>
             )}
           </div>
@@ -210,10 +235,32 @@ export default function Layout({ children, title, description }: LayoutProps) {
           box-shadow: var(--glow-cyan);
         }
 
+        .mod-dashboard-link {
+          display: flex;
+          align-items: center;
+        }
+
+        .mod-icon {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          background: var(--bg-tertiary);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 18px;
+          transition: all var(--transition-fast);
+        }
+
+        .mod-dashboard-link:hover .mod-icon {
+          background: var(--accent-purple);
+          box-shadow: var(--glow-purple);
+        }
+
         .nav {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 16px;
         }
 
         .nav-item {
@@ -284,6 +331,10 @@ export default function Layout({ children, title, description }: LayoutProps) {
         @media (max-width: 480px) {
           .header {
             padding: 0 8px;
+          }
+
+          .nav {
+            gap: 10px;
           }
 
           .nav-item {

@@ -429,13 +429,28 @@ export default function UserProfilePage() {
 
         .artwork-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+          grid-template-columns: repeat(1, 1fr);
           gap: var(--grid-gap);
+          padding: var(--grid-gap);
+          max-width: 1200px;
+          margin: 0 auto;
+        }
+
+        @media (min-width: 500px) {
+          .artwork-grid {
+            grid-template-columns: repeat(2, 1fr);
+          }
         }
 
         @media (min-width: 768px) {
           .artwork-grid {
-            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            grid-template-columns: repeat(3, 1fr);
+          }
+        }
+
+        @media (min-width: 1024px) {
+          .artwork-grid {
+            grid-template-columns: repeat(4, 1fr);
           }
         }
 
