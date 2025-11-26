@@ -18,7 +18,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 
 from .db import Base
 
@@ -581,7 +581,11 @@ class ViewEvent(Base):
     )
 
     # Relationships
-    post = relationship("Post", backref="view_events")
+    post = relationship(
+        "Post",
+        backref=backref("view_events", passive_deletes=True),
+        passive_deletes=True,
+    )
 
     __table_args__ = (
         Index("ix_view_events_post_created", post_id, created_at.desc()),
@@ -612,7 +616,11 @@ class PostStatsDaily(Base):
     )
 
     # Relationships
-    post = relationship("Post", backref="stats_daily")
+    post = relationship(
+        "Post",
+        backref=backref("stats_daily", passive_deletes=True),
+        passive_deletes=True,
+    )
 
     __table_args__ = (
         UniqueConstraint("post_id", "date", name="uq_post_stats_daily_post_date"),
@@ -638,4 +646,8 @@ class PostStatsCache(Base):
     expires_at = Column(DateTime(timezone=True), nullable=False)
 
     # Relationships
-    post = relationship("Post", backref="stats_cache")
+    post = relationship(
+        "Post",
+        backref=backref("stats_cache", passive_deletes=True),
+        passive_deletes=True,
+    )
