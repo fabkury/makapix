@@ -169,11 +169,9 @@ export default function Layout({ children, title, description }: LayoutProps) {
               </Link>
             )}
 
-            {isLoggedIn && (
-              <Link href="/blog" className={`blog-feed-link ${router.pathname.startsWith('/blog') ? 'active' : ''}`} aria-label="Blog Feed">
-                <div className="blog-icon">📰</div>
-              </Link>
-            )}
+            <Link href="/blog" className={`blog-feed-link ${router.pathname.startsWith('/blog') ? 'active' : ''}`} aria-label="Blog Feed">
+              <div className="blog-icon">📰</div>
+            </Link>
           </div>
 
           <nav className="nav" aria-label="Main navigation">
