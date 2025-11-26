@@ -18,6 +18,7 @@ from .routers import (
     admin,
     auth,
     badges,
+    blog_posts,
     categories,
     comments,
     devices,
@@ -157,6 +158,7 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(profiles.router)
 app.include_router(posts.router)
+app.include_router(blog_posts.router)
 app.include_router(playlists.router)
 app.include_router(comments.router)
 app.include_router(reactions.router)

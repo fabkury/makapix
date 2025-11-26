@@ -1,0 +1,779 @@
+"""Blog post management endpoints."""
+
+from __future__ import annotations
+
+import hashlib
+import io
+import logging
+import re
+from datetime import datetime, timezone
+from uuid import UUID, uuid4
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from PIL import Image
+from sqlalchemy import func, or_, desc, asc
+from sqlalchemy.orm import Session, joinedload
+
+from .. import models, schemas
+from ..auth import AnonymousUser, check_ownership, get_current_user, get_current_user_or_anonymous, require_moderator, require_ownership
+from ..blog_vault import (
+    ALLOWED_MIME_TYPES as BLOG_ALLOWED_MIME_TYPES,
+    MAX_BLOG_IMAGE_SIZE_BYTES,
+    MAX_IMAGES_PER_POST,
+    get_blog_image_url,
+    save_blog_image,
+    validate_blog_image_file_size,
+)
+from ..deps import get_db
+from ..pagination import apply_cursor_filter, create_page_response
+from ..utils.audit import log_moderation_action
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/blog-posts", tags=["Blog Posts"])
+
+
+@router.get("", response_model=schemas.Page[schemas.BlogPost])
+def list_blog_posts(
+    owner_id: UUID | None = None,
+    visible_only: bool = True,
+    cursor: str | None = None,
+    limit: int = Query(50, ge=1, le=200),
+    sort: str = Query("created_at", regex="^(created_at|updated_at|reactions|comments)$"),
+    order: str = Query("desc", regex="^(asc|desc)$"),
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_or_anonymous),
+) -> schemas.Page[schemas.BlogPost]:
+    """
+    List blog posts with filters and sorting.
+    
+    Sort options:
+    - created_at: Sort by publication date
+    - updated_at: Sort by last modified date
+    - reactions: Sort by reaction count
+    - comments: Sort by comment count
+    """
+    query = db.query(models.BlogPost).options(joinedload(models.BlogPost.owner))
+    
+    is_moderator = (
+        isinstance(current_user, models.User)
+        and ("moderator" in current_user.roles or "owner" in current_user.roles)
+    )
+    is_viewing_own_posts = owner_id and isinstance(current_user, models.User) and owner_id == current_user.id
+    
+    if owner_id:
+        query = query.filter(models.BlogPost.owner_id == owner_id)
+    
+    # Apply visibility filters
+    if visible_only:
+        query = query.filter(models.BlogPost.visible == True)
+        
+        if not is_moderator:
+            query = query.filter(models.BlogPost.hidden_by_mod == False)
+        
+        query = query.filter(models.BlogPost.hidden_by_user == False)
+        
+        # Apply public_visibility filter unless viewing own posts or is moderator
+        if not is_viewing_own_posts and not is_moderator:
+            query = query.filter(models.BlogPost.public_visibility == True)
+    
+    # Handle sorting
+    sort_desc = order == "desc"
+    
+    if sort == "reactions":
+        # Count reactions per blog post
+        reaction_counts = (
+            db.query(
+                models.BlogPostReaction.blog_post_id,
+                func.count(models.BlogPostReaction.id).label("reaction_count")
+            )
+            .group_by(models.BlogPostReaction.blog_post_id)
+            .subquery()
+        )
+        query = query.outerjoin(reaction_counts, models.BlogPost.id == reaction_counts.c.blog_post_id)
+        sort_column = func.coalesce(reaction_counts.c.reaction_count, 0)
+        # For aggregated sorts, skip cursor pagination and just order
+        query = query.order_by(sort_column.desc() if sort_desc else sort_column.asc())
+    elif sort == "comments":
+        # Count comments per blog post
+        comment_counts = (
+            db.query(
+                models.BlogPostComment.blog_post_id,
+                func.count(models.BlogPostComment.id).label("comment_count")
+            )
+            .filter(models.BlogPostComment.deleted_by_owner == False)
+            .filter(models.BlogPostComment.hidden_by_mod == False)
+            .group_by(models.BlogPostComment.blog_post_id)
+            .subquery()
+        )
+        query = query.outerjoin(comment_counts, models.BlogPost.id == comment_counts.c.blog_post_id)
+        sort_column = func.coalesce(comment_counts.c.comment_count, 0)
+        # For aggregated sorts, skip cursor pagination and just order
+        query = query.order_by(sort_column.desc() if sort_desc else sort_column.asc())
+    elif sort == "updated_at":
+        query = apply_cursor_filter(query, models.BlogPost, cursor, "updated_at", sort_desc=sort_desc)
+        query = query.order_by(models.BlogPost.updated_at.desc() if sort_desc else models.BlogPost.updated_at.asc())
+    else:  # created_at
+        query = apply_cursor_filter(query, models.BlogPost, cursor, "created_at", sort_desc=sort_desc)
+        query = query.order_by(models.BlogPost.created_at.desc() if sort_desc else models.BlogPost.created_at.asc())
+    
+    # Fetch limit + 1 to check if there are more results
+    posts = query.limit(limit + 1).all()
+    
+    # Create paginated response
+    page_data = create_page_response(posts, limit, cursor)
+    
+    return schemas.Page(
+        items=[schemas.BlogPost.model_validate(p) for p in page_data["items"]],
+        next_cursor=page_data["next_cursor"],
+    )
+
+
+@router.post(
+    "",
+    response_model=schemas.BlogPost,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_blog_post(
+    payload: schemas.BlogPostCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.BlogPost:
+    """
+    Create a new blog post.
+    
+    Public visibility is automatically set based on the user's auto_public_approval privilege.
+    """
+    # Validate body length
+    if len(payload.body) > 10000:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Blog post body exceeds maximum length of 10,000 characters"
+        )
+    
+    # Validate image count
+    if len(payload.image_urls) > MAX_IMAGES_PER_POST:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Maximum {MAX_IMAGES_PER_POST} images per blog post"
+        )
+    
+    # Determine public visibility based on user's auto_public_approval privilege
+    public_visibility = getattr(current_user, 'auto_public_approval', False)
+    
+    blog_post = models.BlogPost(
+        owner_id=current_user.id,
+        title=payload.title,
+        body=payload.body,
+        image_urls=payload.image_urls[:MAX_IMAGES_PER_POST],
+        public_visibility=public_visibility,
+        published_at=datetime.now(timezone.utc) if public_visibility else None,
+    )
+    db.add(blog_post)
+    db.commit()
+    db.refresh(blog_post)
+    
+    return schemas.BlogPost.model_validate(blog_post)
+
+
+@router.get("/{id}", response_model=schemas.BlogPost)
+def get_blog_post(
+    id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_or_anonymous),
+) -> schemas.BlogPost:
+    """Get blog post by ID."""
+    blog_post = (
+        db.query(models.BlogPost)
+        .options(joinedload(models.BlogPost.owner))
+        .filter(models.BlogPost.id == id)
+        .first()
+    )
+    
+    if not blog_post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
+    
+    # Check visibility
+    if not blog_post.visible:
+        if not current_user or not isinstance(current_user, models.User) or not check_ownership(blog_post.owner_id, current_user):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
+    
+    if blog_post.hidden_by_mod:
+        if not current_user or not isinstance(current_user, models.User) or not ("moderator" in current_user.roles or "owner" in current_user.roles):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
+    
+    return schemas.BlogPost.model_validate(blog_post)
+
+
+@router.patch("/{id}", response_model=schemas.BlogPost)
+def update_blog_post(
+    id: UUID,
+    payload: schemas.BlogPostUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.BlogPost:
+    """Update blog post (owner only)."""
+    blog_post = db.query(models.BlogPost).filter(models.BlogPost.id == id).first()
+    if not blog_post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
+    
+    require_ownership(blog_post.owner_id, current_user)
+    
+    if payload.title is not None:
+        blog_post.title = payload.title
+    if payload.body is not None:
+        if len(payload.body) > 10000:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Blog post body exceeds maximum length of 10,000 characters"
+            )
+        blog_post.body = payload.body
+    if payload.image_urls is not None:
+        if len(payload.image_urls) > MAX_IMAGES_PER_POST:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Maximum {MAX_IMAGES_PER_POST} images per blog post"
+            )
+        blog_post.image_urls = payload.image_urls[:MAX_IMAGES_PER_POST]
+    if payload.hidden_by_user is not None:
+        blog_post.hidden_by_user = payload.hidden_by_user
+    
+    # Update updated_at timestamp will be handled by SQLAlchemy onupdate
+    
+    db.commit()
+    db.refresh(blog_post)
+    
+    return schemas.BlogPost.model_validate(blog_post)
+
+
+@router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_blog_post(
+    id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> None:
+    """Delete blog post (soft delete, owner only)."""
+    blog_post = db.query(models.BlogPost).filter(models.BlogPost.id == id).first()
+    if not blog_post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
+    
+    require_ownership(blog_post.owner_id, current_user)
+    
+    blog_post.visible = False
+    blog_post.hidden_by_user = True
+    db.commit()
+
+
+@router.post(
+    "/{id}/images",
+    response_model=schemas.BlogPostImageUploadResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_blog_image(
+    id: UUID,
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.BlogPostImageUploadResponse:
+    """
+    Upload an image for a blog post.
+    
+    Returns the image URL to be inserted into markdown as ![](url).
+    Maximum file size is 10 MB. Up to 10 images per blog post.
+    """
+    blog_post = db.query(models.BlogPost).filter(models.BlogPost.id == id).first()
+    if not blog_post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
+    
+    require_ownership(blog_post.owner_id, current_user)
+    
+    # Check image count limit
+    if len(blog_post.image_urls) >= MAX_IMAGES_PER_POST:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Maximum {MAX_IMAGES_PER_POST} images per blog post"
+        )
+    
+    # Read the file content
+    file_content = await image.read()
+    file_size = len(file_content)
+    
+    # Validate file size
+    is_valid, error = validate_blog_image_file_size(file_size)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error,
+        )
+    
+    # Determine MIME type
+    mime_type = image.content_type
+    if mime_type not in BLOG_ALLOWED_MIME_TYPES:
+        # Try to detect from file extension
+        filename = image.filename or ""
+        ext = filename.lower().split(".")[-1] if "." in filename else ""
+        ext_to_mime = {"png": "image/png", "gif": "image/gif", "webp": "image/webp", "jpg": "image/jpeg", "jpeg": "image/jpeg"}
+        mime_type = ext_to_mime.get(ext)
+        
+        if mime_type not in BLOG_ALLOWED_MIME_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid image format. Allowed formats: PNG, GIF, WebP, JPEG",
+            )
+    
+    # Generate unique image ID
+    image_id = uuid4()
+    
+    # Save to vault
+    try:
+        save_blog_image(image_id, file_content, mime_type)
+        extension = BLOG_ALLOWED_MIME_TYPES[mime_type.lower()]
+        image_url = get_blog_image_url(image_id, extension)
+        
+        # Add to blog post's image_urls
+        blog_post.image_urls = list(blog_post.image_urls) + [image_url]
+        db.commit()
+        
+        return schemas.BlogPostImageUploadResponse(image_url=image_url, image_id=image_id)
+    except Exception as e:
+        logger.error(f"Failed to save blog image: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save image. Please try again.",
+        )
+
+
+@router.get("/{id}/comments", response_model=schemas.Page[schemas.BlogPostComment])
+def list_blog_comments(
+    id: UUID,
+    cursor: str | None = None,
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_or_anonymous),
+) -> schemas.Page[schemas.BlogPostComment]:
+    """List comments for a blog post."""
+    query = (
+        db.query(models.BlogPostComment)
+        .options(joinedload(models.BlogPostComment.author))
+        .filter(models.BlogPostComment.blog_post_id == id)
+    )
+    
+    is_moderator = (
+        isinstance(current_user, models.User)
+        and ("moderator" in current_user.roles or "owner" in current_user.roles)
+    )
+    if not is_moderator:
+        query = query.filter(models.BlogPostComment.hidden_by_mod == False)
+    
+    query = query.filter(models.BlogPostComment.depth <= 2)
+    query = query.order_by(models.BlogPostComment.created_at.asc()).limit(limit)
+    
+    comments = query.all()
+    
+    # Filter out deleted comments (similar to artwork comments)
+    comment_dict = {c.id: c for c in comments}
+    children_map: dict[UUID, list[UUID]] = {}
+    for comment in comments:
+        if comment.parent_id is not None:
+            if comment.parent_id not in children_map:
+                children_map[comment.parent_id] = []
+            children_map[comment.parent_id].append(comment.id)
+    
+    removed_ids: set[UUID] = set()
+    changed = True
+    while changed:
+        changed = False
+        for comment_id, comment in list(comment_dict.items()):
+            if comment.deleted_by_owner and comment_id not in removed_ids:
+                has_children = False
+                if comment_id in children_map:
+                    for child_id in children_map[comment_id]:
+                        if child_id not in removed_ids:
+                            has_children = True
+                            break
+                
+                if not has_children:
+                    removed_ids.add(comment_id)
+                    changed = True
+    
+    comments = [c for c in comments if c.id not in removed_ids]
+    
+    valid_comments = []
+    comment_ids = {c.id for c in comments}
+    
+    for comment in comments:
+        if comment.parent_id is None:
+            valid_comments.append(comment)
+        elif comment.parent_id in comment_ids:
+            valid_comments.append(comment)
+    
+    return schemas.Page(
+        items=[schemas.BlogPostComment.model_validate(c) for c in valid_comments],
+        next_cursor=None,
+    )
+
+
+@router.post(
+    "/{id}/comments",
+    response_model=schemas.BlogPostComment,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_blog_comment(
+    id: UUID,
+    payload: schemas.BlogPostCommentCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User | AnonymousUser = Depends(get_current_user_or_anonymous),
+) -> schemas.BlogPostComment:
+    """Create comment on a blog post."""
+    # Check comment count limit
+    comment_count = db.query(func.count(models.BlogPostComment.id)).filter(
+        models.BlogPostComment.blog_post_id == id
+    ).scalar()
+    
+    if comment_count >= 1000:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Maximum comments per blog post (1000) exceeded"
+        )
+    
+    # Validate parent comment and calculate depth
+    depth = 0
+    if payload.parent_id:
+        parent = db.query(models.BlogPostComment).filter(models.BlogPostComment.id == payload.parent_id).first()
+        if not parent or parent.blog_post_id != id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid parent comment"
+            )
+        
+        if parent.depth >= 2:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot reply to comment at maximum depth"
+            )
+        
+        depth = parent.depth + 1
+        if depth > 2:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Maximum comment depth (2) exceeded"
+            )
+    
+    comment = models.BlogPostComment(
+        blog_post_id=id,
+        author_id=current_user.id if isinstance(current_user, models.User) else None,
+        author_ip=current_user.ip if isinstance(current_user, AnonymousUser) else None,
+        parent_id=payload.parent_id,
+        depth=depth,
+        body=payload.body,
+    )
+    db.add(comment)
+    db.commit()
+    
+    comment = (
+        db.query(models.BlogPostComment)
+        .options(joinedload(models.BlogPostComment.author))
+        .filter(models.BlogPostComment.id == comment.id)
+        .first()
+    )
+    
+    return schemas.BlogPostComment.model_validate(comment)
+
+
+@router.patch("/comments/{commentId}", response_model=schemas.BlogPostComment)
+def update_blog_comment(
+    commentId: UUID,
+    payload: schemas.BlogPostCommentUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.BlogPostComment:
+    """Update blog post comment (authenticated users only)."""
+    comment = db.query(models.BlogPostComment).filter(models.BlogPostComment.id == commentId).first()
+    if not comment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
+    
+    if comment.author_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Anonymous comments cannot be edited"
+        )
+    
+    require_ownership(comment.author_id, current_user)
+    
+    comment.body = payload.body
+    db.commit()
+    
+    comment = (
+        db.query(models.BlogPostComment)
+        .options(joinedload(models.BlogPostComment.author))
+        .filter(models.BlogPostComment.id == comment.id)
+        .first()
+    )
+    
+    return schemas.BlogPostComment.model_validate(comment)
+
+
+@router.delete("/comments/{commentId}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_blog_comment(
+    commentId: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User | AnonymousUser = Depends(get_current_user_or_anonymous),
+) -> None:
+    """Delete blog post comment (soft delete)."""
+    comment = db.query(models.BlogPostComment).filter(models.BlogPostComment.id == commentId).first()
+    if not comment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
+    
+    if isinstance(current_user, models.User):
+        if comment.author_id != current_user.id:
+            if "moderator" not in current_user.roles and "owner" not in current_user.roles:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You don't have permission to delete this comment"
+                )
+    else:
+        if comment.author_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to delete this comment"
+            )
+        if comment.author_ip != current_user.ip:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to delete this comment"
+            )
+    
+    comment.deleted_by_owner = True
+    comment.body = "[deleted]"
+    db.commit()
+
+
+@router.get("/{id}/reactions", response_model=schemas.BlogPostReactionTotals)
+def get_blog_reactions(
+    id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User | AnonymousUser = Depends(get_current_user_or_anonymous),
+) -> schemas.BlogPostReactionTotals:
+    """Get reaction totals for a blog post."""
+    reactions = db.query(models.BlogPostReaction).filter(models.BlogPostReaction.blog_post_id == id).all()
+    
+    totals: dict[str, int] = {}
+    authenticated_totals: dict[str, int] = {}
+    anonymous_totals: dict[str, int] = {}
+    mine: list[str] = []
+    
+    for reaction in reactions:
+        emoji = reaction.emoji
+        
+        totals[emoji] = totals.get(emoji, 0) + 1
+        
+        if reaction.user_id is not None:
+            authenticated_totals[emoji] = authenticated_totals.get(emoji, 0) + 1
+        else:
+            anonymous_totals[emoji] = anonymous_totals.get(emoji, 0) + 1
+        
+        if isinstance(current_user, models.User) and reaction.user_id == current_user.id:
+            if emoji not in mine:
+                mine.append(emoji)
+        elif isinstance(current_user, AnonymousUser) and reaction.user_ip == current_user.ip:
+            if emoji not in mine:
+                mine.append(emoji)
+    
+    return schemas.BlogPostReactionTotals(
+        totals=totals,
+        authenticated_totals=authenticated_totals,
+        anonymous_totals=anonymous_totals,
+        mine=mine,
+    )
+
+
+@router.put(
+    "/{id}/reactions/{emoji}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def add_blog_reaction(
+    id: UUID,
+    emoji: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User | AnonymousUser = Depends(get_current_user_or_anonymous),
+) -> None:
+    """Add reaction to a blog post."""
+    if not emoji or len(emoji) > 20:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid emoji format"
+        )
+    
+    if isinstance(current_user, models.User):
+        existing = db.query(models.BlogPostReaction).filter(
+            models.BlogPostReaction.blog_post_id == id,
+            models.BlogPostReaction.user_id == current_user.id,
+            models.BlogPostReaction.emoji == emoji,
+        ).first()
+        
+        if existing:
+            return
+        
+        reaction_count = db.query(func.count(models.BlogPostReaction.id)).filter(
+            models.BlogPostReaction.blog_post_id == id,
+            models.BlogPostReaction.user_id == current_user.id,
+        ).scalar()
+    else:
+        existing = db.query(models.BlogPostReaction).filter(
+            models.BlogPostReaction.blog_post_id == id,
+            models.BlogPostReaction.user_ip == current_user.ip,
+            models.BlogPostReaction.emoji == emoji,
+        ).first()
+        
+        if existing:
+            return
+        
+        reaction_count = db.query(func.count(models.BlogPostReaction.id)).filter(
+            models.BlogPostReaction.blog_post_id == id,
+            models.BlogPostReaction.user_ip == current_user.ip,
+        ).scalar()
+    
+    if reaction_count >= 5:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Maximum reactions per user per blog post (5) exceeded"
+        )
+    
+    reaction = models.BlogPostReaction(
+        blog_post_id=id,
+        user_id=current_user.id if isinstance(current_user, models.User) else None,
+        user_ip=current_user.ip if isinstance(current_user, AnonymousUser) else None,
+        emoji=emoji,
+    )
+    db.add(reaction)
+    db.commit()
+
+
+@router.delete(
+    "/{id}/reactions/{emoji}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def remove_blog_reaction(
+    id: UUID,
+    emoji: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User | AnonymousUser = Depends(get_current_user_or_anonymous),
+) -> None:
+    """Remove reaction from a blog post (idempotent)."""
+    if isinstance(current_user, models.User):
+        db.query(models.BlogPostReaction).filter(
+            models.BlogPostReaction.blog_post_id == id,
+            models.BlogPostReaction.user_id == current_user.id,
+            models.BlogPostReaction.emoji == emoji,
+        ).delete()
+    else:
+        db.query(models.BlogPostReaction).filter(
+            models.BlogPostReaction.blog_post_id == id,
+            models.BlogPostReaction.user_ip == current_user.ip,
+            models.BlogPostReaction.emoji == emoji,
+        ).delete()
+    
+    db.commit()
+
+
+@router.post(
+    "/{id}/approve-public",
+    response_model=schemas.PublicVisibilityResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Blog Posts", "Admin"],
+)
+def approve_blog_public_visibility(
+    id: UUID,
+    db: Session = Depends(get_db),
+    moderator: models.User = Depends(require_moderator),
+) -> schemas.PublicVisibilityResponse:
+    """Approve public visibility for a blog post (moderator only)."""
+    blog_post = db.query(models.BlogPost).filter(models.BlogPost.id == id).first()
+    if not blog_post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
+    
+    blog_post.public_visibility = True
+    if not blog_post.published_at:
+        blog_post.published_at = datetime.now(timezone.utc)
+    db.commit()
+    
+    log_moderation_action(
+        db=db,
+        actor_id=moderator.id,
+        action="approve_blog_public_visibility",
+        target_type="blog_post",
+        target_id=id,
+    )
+    
+    return schemas.PublicVisibilityResponse(post_id=id, public_visibility=True)
+
+
+@router.post("/{id}/hide", status_code=status.HTTP_201_CREATED)
+def hide_blog_post(
+    id: UUID,
+    payload: schemas.HideRequest | None = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> None:
+    """Hide blog post."""
+    blog_post = db.query(models.BlogPost).filter(models.BlogPost.id == id).first()
+    if not blog_post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
+    
+    by = payload.by if payload else "user"
+    
+    if by == "mod":
+        if "moderator" not in current_user.roles and "owner" not in current_user.roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Moderator role required to hide blog posts as moderator"
+            )
+        blog_post.hidden_by_mod = True
+        log_moderation_action(
+            db=db,
+            actor_id=current_user.id,
+            action="hide_blog_post",
+            target_type="blog_post",
+            target_id=id,
+            reason_code=payload.reason_code if payload else None,
+            note=payload.note or (payload.reason if payload else None),
+        )
+    else:
+        require_ownership(blog_post.owner_id, current_user)
+        blog_post.hidden_by_user = True
+    
+    db.commit()
+
+
+@router.delete("/{id}/hide", status_code=status.HTTP_204_NO_CONTENT)
+def unhide_blog_post(
+    id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> None:
+    """Unhide blog post."""
+    blog_post = db.query(models.BlogPost).filter(models.BlogPost.id == id).first()
+    if not blog_post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
+    
+    is_moderator = "moderator" in current_user.roles or "owner" in current_user.roles
+    if not is_moderator:
+        require_ownership(blog_post.owner_id, current_user)
+    
+    blog_post.hidden_by_user = False
+    if is_moderator and blog_post.hidden_by_mod:
+        blog_post.hidden_by_mod = False
+        log_moderation_action(
+            db=db,
+            actor_id=current_user.id,
+            action="unhide_blog_post",
+            target_type="blog_post",
+            target_id=id,
+        )
+    db.commit()
+
