@@ -18,7 +18,7 @@ from ..deps import get_db
 from ..pagination import apply_cursor_filter, create_page_response
 from ..mqtt.notifications import publish_new_post_notification, publish_category_promotion_notification
 from ..utils.audit import log_moderation_action
-from ..utils.view_tracking import record_view, record_views_batch, ViewType, ViewSource
+from ..utils.view_tracking import record_view, ViewType, ViewSource
 from ..vault import (
     ALLOWED_MIME_TYPES,
     MAX_CANVAS_SIZE,
@@ -326,7 +326,6 @@ async def upload_artwork(
 
 @router.get("/recent", response_model=schemas.Page[schemas.Post])
 def list_recent_posts(
-    request: Request,
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -376,24 +375,6 @@ def list_recent_posts(
         items=[schemas.Post.model_validate(p) for p in page_data["items"]],
         next_cursor=page_data["next_cursor"],
     )
-    
-    # Record batch views for listing (non-blocking)
-    try:
-        post_ids = [p.id for p in page_data["items"]]
-        if post_ids:
-            # Build map of post_id -> owner_id for author exclusion
-            post_owner_ids = {p.id: p.owner_id for p in page_data["items"]}
-            record_views_batch(
-                db=db,
-                post_ids=post_ids,
-                request=request,
-                user=current_user,
-                view_type=ViewType.LISTING,
-                view_source=ViewSource.WEB,
-                post_owner_ids=post_owner_ids,
-            )
-    except Exception as e:
-        logger.error(f"Failed to record batch views: {e}")
     
     # Cache for 2 minutes (120 seconds) - shorter due to high churn
     cache_set(cache_key, response.model_dump(), ttl=120)
