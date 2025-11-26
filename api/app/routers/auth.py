@@ -17,7 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..auth import create_access_token, create_refresh_token, get_current_user, revoke_refresh_token, verify_refresh_token
+from ..auth import check_user_can_authenticate, create_access_token, create_refresh_token, get_current_user, revoke_refresh_token, verify_refresh_token
 from ..deps import get_db
 from ..github import verify_installation_belongs_to_app
 from ..services.auth_identities import (
@@ -195,19 +195,8 @@ def login(
             detail="Email not verified. Please check your email for verification link.",
         )
     
-    # Check if user is banned or deactivated
-    if user.deactivated:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Account deactivated",
-        )
-    
-    from datetime import timezone
-    if user.banned_until and user.banned_until > datetime.now(timezone.utc).replace(tzinfo=None):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Account banned",
-        )
+    # Check if user is allowed to authenticate
+    check_user_can_authenticate(user)
     
     # Generate tokens
     access_token = create_access_token(user.id)
@@ -550,19 +539,8 @@ def reset_password(
             detail="User not found.",
         )
     
-    # Check if user is banned or deactivated
-    if user.deactivated:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Account deactivated.",
-        )
-    
-    from datetime import timezone as tz
-    if user.banned_until and user.banned_until > datetime.now(tz.utc).replace(tzinfo=None):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Account banned.",
-        )
+    # Check if user is allowed to authenticate
+    check_user_can_authenticate(user)
     
     # Update password
     success = update_password(db, user.id, payload.new_password)
@@ -1213,6 +1191,9 @@ def refresh_token(payload: schemas.RefreshTokenRequest, db: Session = Depends(ge
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token"
         )
+    
+    # Check if user is allowed to authenticate
+    check_user_can_authenticate(user)
     
     # Generate new access token
     access_token = create_access_token(user.id)
