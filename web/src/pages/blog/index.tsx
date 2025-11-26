@@ -31,6 +31,7 @@ export default function BlogFeedPage() {
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [sort, setSort] = useState<string>('created_at');
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   
   const observerTarget = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
@@ -41,16 +42,18 @@ export default function BlogFeedPage() {
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
     : '';
 
+  // Check if user is logged in
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    setIsLoggedIn(!!token);
+  }, []);
+
   const loadPosts = useCallback(async (cursor: string | null = null, sortBy: string = sort) => {
     if (loadingRef.current || (cursor !== null && !hasMoreRef.current)) {
       return;
     }
     
     const token = localStorage.getItem('access_token');
-    if (!token) {
-      router.push('/auth');
-      return;
-    }
     
     loadingRef.current = true;
     setLoading(true);
@@ -58,16 +61,33 @@ export default function BlogFeedPage() {
     
     try {
       const url = `${API_BASE_URL}/api/blog-posts?limit=20&sort=${sortBy}&order=desc${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
       
-      if (response.status === 401) {
+      const response = await fetch(url, { headers });
+      
+      if (response.status === 401 && token) {
+        // Only clear tokens if we were authenticated
         localStorage.removeItem('access_token');
         localStorage.removeItem('user_id');
-        router.push('/auth');
+        // Retry without token
+        const retryResponse = await fetch(url);
+        if (!retryResponse.ok) {
+          throw new Error(`Failed to load posts: ${retryResponse.status}`);
+        }
+        const retryData: PageResponse<BlogPost> = await retryResponse.json();
+        if (cursor) {
+          setPosts(prev => [...prev, ...retryData.items]);
+        } else {
+          setPosts(retryData.items);
+        }
+        setNextCursor(retryData.next_cursor);
+        nextCursorRef.current = retryData.next_cursor;
+        const hasMoreValue = retryData.next_cursor !== null;
+        hasMoreRef.current = hasMoreValue;
+        setHasMore(hasMoreValue);
         return;
       }
       
@@ -95,7 +115,7 @@ export default function BlogFeedPage() {
       loadingRef.current = false;
       setLoading(false);
     }
-  }, [API_BASE_URL, router, sort]);
+  }, [API_BASE_URL, sort]);
 
   // Load posts when sort changes
   useEffect(() => {
@@ -131,13 +151,21 @@ export default function BlogFeedPage() {
     };
   }, [posts.length, loadPosts, sort]);
 
-  // Fetch reaction and comment counts for each post
+  // Fetch reaction and comment counts for each post (only if logged in)
   const [postStats, setPostStats] = useState<Record<string, { reactions: number; comments: number }>>({});
   
   useEffect(() => {
     const fetchStats = async () => {
       const token = localStorage.getItem('access_token');
-      if (!token) return;
+      if (!token) {
+        // For unauthenticated users, set default stats to 0
+        const defaultStats: Record<string, { reactions: number; comments: number }> = {};
+        posts.forEach(post => {
+          defaultStats[post.id] = { reactions: 0, comments: 0 };
+        });
+        setPostStats(defaultStats);
+        return;
+      }
       
       const statsPromises = posts.map(async (post) => {
         try {
@@ -192,10 +220,12 @@ export default function BlogFeedPage() {
     <Layout title="Blog Feed" description="Read blog posts from the community">
       <div className="blog-feed-container">
         <div className="blog-feed-header">
-          <Link href="/blog/write" className="write-button">
-            <span className="write-icon">✍️</span>
-            <span className="write-text">Write Post</span>
-          </Link>
+          {isLoggedIn && (
+            <Link href="/blog/write" className="write-button">
+              <span className="write-icon">✍️</span>
+              <span className="write-text">Write Post</span>
+            </Link>
+          )}
           
           <div className="sort-controls">
             <label htmlFor="sort-select">Sort by:</label>
