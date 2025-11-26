@@ -48,6 +48,9 @@ export default function PostPage() {
   // Stats panel state
   const [showStats, setShowStats] = useState(false);
   
+  // Image error state
+  const [imageError, setImageError] = useState(false);
+  
   const API_BASE_URL = typeof window !== 'undefined' 
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
     : '';
@@ -120,6 +123,11 @@ export default function PostPage() {
       (window as any).MAKAPIX_API_URL = `${API_BASE_URL}/api`;
     }
   }, [API_BASE_URL]);
+
+  // Reset image error when post changes
+  useEffect(() => {
+    setImageError(false);
+  }, [post?.id]);
 
   // Initialize widget
   useEffect(() => {
@@ -565,11 +573,21 @@ export default function PostPage() {
   return (
     <Layout title={post.title} description={post.description || post.title}>
       <div className="post-container">
-        <img
-          src={post.art_url}
-          alt={post.title}
-          className="artwork-image pixel-art"
-        />
+        {!imageError ? (
+          <img
+            src={post.art_url}
+            alt={post.title}
+            className="artwork-image pixel-art"
+            onError={() => {
+              setImageError(true);
+            }}
+          />
+        ) : (
+          <div className="image-error-message">
+            <span className="error-icon">🖼️</span>
+            <p>Image not available</p>
+          </div>
+        )}
 
         <div className="post-info">
           {isOwner && isEditing ? (
@@ -809,6 +827,30 @@ export default function PostPage() {
           image-rendering: crisp-edges !important;
           image-rendering: pixelated !important;
           -ms-interpolation-mode: nearest-neighbor !important;
+        }
+
+        .image-error-message {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 3rem 2rem;
+          margin-bottom: 24px;
+          background: var(--bg-secondary);
+          border-radius: 12px;
+          color: var(--text-secondary);
+          text-align: center;
+        }
+
+        .image-error-message .error-icon {
+          font-size: 3rem;
+          margin-bottom: 1rem;
+          opacity: 0.5;
+        }
+
+        .image-error-message p {
+          margin: 0;
+          font-size: 1rem;
         }
 
         .post-info {

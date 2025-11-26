@@ -614,23 +614,40 @@ def permanent_delete_post(
             logger.warning(f"Failed to delete artwork file for post {id}: {e}")
     
     # Log to audit before deletion
-    log_moderation_action(
-        db=db,
-        actor_id=moderator.id,
-        action="permanent_delete_post",
-        target_type="post",
-        target_id=id,
-        note=f"Permanently deleted post: {post.title}",
-    )
+    # Wrap in try-except to prevent audit logging failures from blocking deletion
+    try:
+        post_title = post.title or "Untitled"
+        log_moderation_action(
+            db=db,
+            actor_id=moderator.id,
+            action="permanent_delete_post",
+            target_type="post",
+            target_id=id,
+            note=f"Permanently deleted post: {post_title}",
+        )
+    except Exception as e:
+        logger.error(f"Failed to log moderation action for permanent delete of post {id}: {e}", exc_info=True)
+        # Continue with deletion even if audit logging fails
     
     # Delete the post from database
-    db.delete(post)
-    db.commit()
+    try:
+        db.delete(post)
+        db.commit()
+    except Exception as e:
+        logger.error(f"Failed to delete post {id} from database: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete post: {str(e)}"
+        )
     
     # Invalidate caches
-    cache_invalidate("feed:recent:*")
-    cache_invalidate("feed:promoted:*")
-    cache_invalidate("hashtags:*")
+    try:
+        cache_invalidate("feed:recent:*")
+        cache_invalidate("feed:promoted:*")
+        cache_invalidate("hashtags:*")
+    except Exception as e:
+        logger.warning(f"Failed to invalidate caches after deleting post {id}: {e}")
 
 
 @router.post("/{id}/hide", status_code=status.HTTP_201_CREATED)
