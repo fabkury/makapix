@@ -1,12 +1,24 @@
 # player_client.py
-import json, time
+# Demo MQTT client that simulates a display player device
+# 
+# Required environment variables:
+#   MQTT_PLAYER_PASSWORD - Password for the player_client MQTT user
+#
+# Optional environment variables:
+#   MQTT_BROKER_HOST - MQTT broker hostname (default: 127.0.0.1)
+#   MQTT_BROKER_PORT - MQTT broker port (default: 1883)
+
+import json, os, time
 from datetime import datetime
 import paho.mqtt.client as mqtt
 
-BROKER_HOST = "127.0.0.1"
-BROKER_PORT = 1883
+BROKER_HOST = os.getenv("MQTT_BROKER_HOST", "127.0.0.1")
+BROKER_PORT = int(os.getenv("MQTT_BROKER_PORT", "1883"))
 USERNAME = "player_client"
-PASSWORD = "jrRC5P9izjw58sGs7oVFza27"
+PASSWORD = os.getenv("MQTT_PLAYER_PASSWORD")
+
+if not PASSWORD:
+    raise ValueError("MQTT_PLAYER_PASSWORD environment variable is required")
 
 RECENT_TOPIC = "art/recent"
 VIEW_PUB_PREFIX = "views/submit/"
@@ -61,4 +73,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

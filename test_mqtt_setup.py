@@ -1,8 +1,25 @@
 #!/usr/bin/env python3
-"""Quick test script to verify Mosquitto setup"""
+"""Quick test script to verify Mosquitto setup
+
+Required environment variables:
+  MQTT_BROKER_HOST - MQTT broker hostname (default: localhost)
+  MQTT_BROKER_PORT - MQTT broker port (default: 1883)
+  MQTT_BACKEND_PASSWORD - Password for svc_backend user
+  MQTT_PLAYER_PASSWORD - Password for player_client user
+"""
+import os
 import paho.mqtt.client as mqtt
 import json
 import time
+
+BROKER_HOST = os.getenv("MQTT_BROKER_HOST", "localhost")
+BROKER_PORT = int(os.getenv("MQTT_BROKER_PORT", "1883"))
+BACKEND_PASSWORD = os.getenv("MQTT_BACKEND_PASSWORD")
+PLAYER_PASSWORD = os.getenv("MQTT_PLAYER_PASSWORD")
+
+if not BACKEND_PASSWORD or not PLAYER_PASSWORD:
+    print("ERROR: MQTT_BACKEND_PASSWORD and MQTT_PLAYER_PASSWORD environment variables are required")
+    exit(1)
 
 def create_client(client_id: str) -> mqtt.Client:
     """Create an MQTT client that uses the newest callback API when available."""
@@ -13,11 +30,11 @@ def create_client(client_id: str) -> mqtt.Client:
     return mqtt.Client(**kwargs)
 
 # Test backend connection
-print("Testing backend connection...")
+print(f"Testing backend connection to {BROKER_HOST}:{BROKER_PORT}...")
 backend = create_client("test_backend")
-backend.username_pw_set("svc_backend", "MD9VZNN9BaUaveP9aMHEBY3Z")
+backend.username_pw_set("svc_backend", BACKEND_PASSWORD)
 try:
-    backend.connect("htzvps", 1883)
+    backend.connect(BROKER_HOST, BROKER_PORT)
     backend.loop_start()
     time.sleep(1)
     backend.publish("art/recent", json.dumps({"test": "data"}), qos=1)
@@ -30,11 +47,11 @@ except Exception as e:
     print(f"[ERR] Backend test failed: {e}")
 
 # Test player connection
-print("\nTesting player connection...")
+print(f"\nTesting player connection to {BROKER_HOST}:{BROKER_PORT}...")
 player = create_client("test_player")
-player.username_pw_set("player_client", "jrRC5P9izjw58sGs7oVFza27")
+player.username_pw_set("player_client", PLAYER_PASSWORD)
 try:
-    player.connect("htzvps", 1883)
+    player.connect(BROKER_HOST, BROKER_PORT)
     player.loop_start()
     time.sleep(1)
     player.subscribe("art/recent", qos=1)

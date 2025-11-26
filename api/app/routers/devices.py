@@ -124,9 +124,9 @@ def issue_device_cert(
         device.cert_serial_number = serial_number
         db.commit()
         
-        # Get broker host and port from environment
-        broker_host = os.getenv("MQTT_BROKER_HOST", "mqtt.makapix.club")
-        broker_port = int(os.getenv("MQTT_BROKER_PORT", "8883"))
+        # Get public broker host and port for device connections
+        broker_host = os.getenv("MQTT_PUBLIC_HOST", "makapix.club")
+        broker_port = int(os.getenv("MQTT_PUBLIC_PORT", "8883"))
         
         return schemas.TLSCertBundle(
             ca_pem=ca_pem,
