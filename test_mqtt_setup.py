@@ -15,7 +15,7 @@ def create_client(client_id: str) -> mqtt.Client:
 # Test backend connection
 print("Testing backend connection...")
 backend = create_client("test_backend")
-backend.username_pw_set("svc_backend", "REDACTED_BACKEND_PASSWORD")
+backend.username_pw_set("svc_backend", "MD9VZNN9BaUaveP9aMHEBY3Z")
 try:
     backend.connect("htzvps", 1883)
     backend.loop_start()
@@ -32,7 +32,7 @@ except Exception as e:
 # Test player connection
 print("\nTesting player connection...")
 player = create_client("test_player")
-player.username_pw_set("player_client", "REDACTED_PLAYER_PASSWORD")
+player.username_pw_set("player_client", "jrRC5P9izjw58sGs7oVFza27")
 try:
     player.connect("htzvps", 1883)
     player.loop_start()

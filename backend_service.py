@@ -7,7 +7,7 @@ import paho.mqtt.client as mqtt
 BROKER_HOST = "127.0.0.1"
 BROKER_PORT = 1883
 USERNAME = "svc_backend"
-PASSWORD = "REDACTED_BACKEND_PASSWORD"
+PASSWORD = "MD9VZNN9BaUaveP9aMHEBY3Z"
 
 RECENT_TOPIC = "art/recent"
 VIEWS_SUB_TOPIC = "views/submit/#"

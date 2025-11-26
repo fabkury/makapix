@@ -6,7 +6,7 @@ import paho.mqtt.client as mqtt
 BROKER_HOST = "127.0.0.1"
 BROKER_PORT = 1883
 USERNAME = "player_client"
-PASSWORD = "REDACTED_PLAYER_PASSWORD"
+PASSWORD = "jrRC5P9izjw58sGs7oVFza27"
 
 RECENT_TOPIC = "art/recent"
 VIEW_PUB_PREFIX = "views/submit/"
