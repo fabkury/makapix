@@ -20,8 +20,9 @@ def mqtt_bootstrap() -> schemas.MQTTBootstrap:
     
     TODO: Load from environment variables
     """
+    # MQTT_PUBLIC_HOST is what external clients should connect to
     return schemas.MQTTBootstrap(
-        host=os.getenv("MQTT_HOST", "mqtt.makapix.club"),
+        host=os.getenv("MQTT_PUBLIC_HOST", os.getenv("MQTT_HOST", "makapix.club")),
         port=int(os.getenv("MQTT_WS_PORT", "9001")),
         tls=False,  # WebSocket port is not TLS
         topics={"new_posts": "posts/new/#"},
