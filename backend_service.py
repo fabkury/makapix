@@ -1,13 +1,25 @@
 # backend_service.py
+# Demo MQTT backend service that publishes artwork lists and receives view events
+#
+# Required environment variables:
+#   MQTT_BACKEND_PASSWORD - Password for the svc_backend MQTT user
+#
+# Optional environment variables:
+#   MQTT_BROKER_HOST - MQTT broker hostname (default: 127.0.0.1)
+#   MQTT_BROKER_PORT - MQTT broker port (default: 1883)
+
 import json, csv, os, time, threading
 from collections import defaultdict
 from datetime import datetime
 import paho.mqtt.client as mqtt
 
-BROKER_HOST = "127.0.0.1"
-BROKER_PORT = 1883
+BROKER_HOST = os.getenv("MQTT_BROKER_HOST", "127.0.0.1")
+BROKER_PORT = int(os.getenv("MQTT_BROKER_PORT", "1883"))
 USERNAME = "svc_backend"
-PASSWORD = "MD9VZNN9BaUaveP9aMHEBY3Z"
+PASSWORD = os.getenv("MQTT_BACKEND_PASSWORD")
+
+if not PASSWORD:
+    raise ValueError("MQTT_BACKEND_PASSWORD environment variable is required")
 
 RECENT_TOPIC = "art/recent"
 VIEWS_SUB_TOPIC = "views/submit/#"
@@ -78,4 +90,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

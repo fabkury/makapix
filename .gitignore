@@ -71,6 +71,11 @@ mqtt/certs/*.pem
 mqtt/certs/*.srl
 mqtt/certs/*.csr
 
+# MQTT password file (contains hashed passwords - generate with mosquitto_passwd)
+mqtt/config/passwords
+!mqtt/config/passwords.example
+
+
 # Temp files
 api/temp/*
 !api/temp/.gitkeep

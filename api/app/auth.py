@@ -28,6 +28,30 @@ JWT_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES
 JWT_REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "30"))
 
 
+def check_user_can_authenticate(user: "models.User") -> None:
+    """
+    Check if a user is allowed to authenticate.
+    Raises HTTPException if the user is banned or deactivated.
+    
+    This function should be called during login, token refresh, and any other
+    authentication flow to ensure consistent authorization checks.
+    """
+    from datetime import timezone
+    
+    if user.deactivated:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account deactivated",
+        )
+    
+    if user.banned_until and user.banned_until > datetime.now(timezone.utc).replace(tzinfo=None):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account banned",
+        )
+
+
+
 def create_access_token(user_id: uuid.UUID, expires_in_seconds: int | None = None) -> str:
     """
     Create a JWT access token for a user.
@@ -155,19 +179,8 @@ async def get_current_user(
                 detail="User not found"
             )
         
-        # Check if user is banned or deactivated
-        if user.deactivated:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Account deactivated"
-            )
-        
-        from datetime import timezone
-        if user.banned_until and user.banned_until > datetime.now(timezone.utc).replace(tzinfo=None):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Account banned"
-            )
+        # Check if user is allowed to authenticate
+        check_user_can_authenticate(user)
         
         return user
         
