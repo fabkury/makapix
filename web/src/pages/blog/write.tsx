@@ -220,7 +220,6 @@ export default function WriteBlogPostPage() {
         body: JSON.stringify({
           title: title.trim(),
           body: body.trim(),
-          image_urls: imageUrls,
         }),
       });
       
