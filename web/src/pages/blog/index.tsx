@@ -2,11 +2,14 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface BlogPost {
   id: string;
   title: string;
   body: string;
+  image_urls: string[];
   updated_at: string | null;
   created_at: string;
   owner: {
@@ -231,21 +234,34 @@ export default function BlogFeedPage() {
             const stats = postStats[post.id] || { reactions: 0, comments: 0 };
             const displayDate = post.updated_at || post.created_at;
             
+            const firstImage = post.image_urls && post.image_urls.length > 0 ? post.image_urls[0] : null;
+            
             return (
-              <Link key={post.id} href={`/blog/${post.id}`} className="blog-post-card">
-                <h2 className="blog-post-title">{post.title}</h2>
-                <div className="blog-post-meta">
-                  <span className="blog-post-author">by {post.owner.handle}</span>
-                  <span className="meta-separator">•</span>
-                  <span className="blog-post-date">
-                    {new Date(displayDate).toLocaleDateString()}
-                  </span>
-                  <span className="meta-separator">•</span>
-                  <span className="blog-post-reactions">❤️ {stats.reactions}</span>
-                  <span className="meta-separator">•</span>
-                  <span className="blog-post-comments">💬 {stats.comments}</span>
+              <Link key={post.id} href={`/blog/${post.id}`} className={`blog-post-card ${firstImage ? 'has-image' : ''}`}>
+                {firstImage && (
+                  <div className="blog-post-thumbnail">
+                    <img src={firstImage} alt="" className="thumbnail-image pixel-art" />
+                  </div>
+                )}
+                <div className="blog-post-content">
+                  <h2 className="blog-post-title">{post.title}</h2>
+                  <div className="blog-post-meta">
+                    <span className="blog-post-author">by {post.owner.handle}</span>
+                    <span className="meta-separator">•</span>
+                    <span className="blog-post-date">
+                      {new Date(displayDate).toLocaleDateString()}
+                    </span>
+                    <span className="meta-separator">•</span>
+                    <span className="blog-post-reactions">❤️ {stats.reactions}</span>
+                    <span className="meta-separator">•</span>
+                    <span className="blog-post-comments">💬 {stats.comments}</span>
+                  </div>
+                  <div className="blog-post-preview">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {truncateBody(post.body)}
+                    </ReactMarkdown>
+                  </div>
                 </div>
-                <p className="blog-post-preview">{truncateBody(post.body)}</p>
               </Link>
             );
           })}
@@ -377,19 +393,46 @@ export default function BlogFeedPage() {
         }
 
         .blog-posts-list :global(.blog-post-card) {
-          display: block;
+          display: flex;
           background: var(--bg-secondary);
           border-radius: 12px;
-          padding: 24px;
+          overflow: hidden;
           transition: all var(--transition-fast);
           text-decoration: none;
           border: 1px solid transparent;
+          min-height: 140px;
+        }
+
+        .blog-posts-list :global(.blog-post-card:not(.has-image)) {
+          padding: 24px;
         }
 
         .blog-posts-list :global(.blog-post-card:hover) {
           border-color: var(--accent-cyan);
           transform: translateY(-2px);
           box-shadow: 0 4px 20px rgba(0, 212, 255, 0.2);
+        }
+
+        .blog-posts-list :global(.blog-post-card) .blog-post-thumbnail {
+          flex-shrink: 0;
+          width: 140px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--bg-tertiary);
+          overflow: hidden;
+        }
+
+        .blog-posts-list :global(.blog-post-card) .blog-post-thumbnail .thumbnail-image {
+          height: 100%;
+          width: auto;
+          object-fit: contain;
+        }
+
+        .blog-posts-list :global(.blog-post-card) .blog-post-content {
+          flex: 1;
+          padding: 24px;
+          min-width: 0;
         }
 
         .blog-posts-list :global(.blog-post-card) .blog-post-title {
@@ -422,6 +465,43 @@ export default function BlogFeedPage() {
           color: var(--text-secondary);
           line-height: 1.6;
           margin: 0;
+          overflow: hidden;
+          max-height: 4.8em;
+        }
+
+        .blog-posts-list :global(.blog-post-card) .blog-post-preview :global(p) {
+          margin: 0;
+        }
+
+        .blog-posts-list :global(.blog-post-card) .blog-post-preview :global(h1),
+        .blog-posts-list :global(.blog-post-card) .blog-post-preview :global(h2),
+        .blog-posts-list :global(.blog-post-card) .blog-post-preview :global(h3),
+        .blog-posts-list :global(.blog-post-card) .blog-post-preview :global(h4) {
+          font-size: 1em;
+          font-weight: 600;
+          margin: 0;
+          color: var(--text-primary);
+        }
+
+        .blog-posts-list :global(.blog-post-card) .blog-post-preview :global(ul),
+        .blog-posts-list :global(.blog-post-card) .blog-post-preview :global(ol) {
+          margin: 0;
+          padding-left: 1.5em;
+        }
+
+        .blog-posts-list :global(.blog-post-card) .blog-post-preview :global(code) {
+          background: var(--bg-tertiary);
+          padding: 0.1em 0.3em;
+          border-radius: 3px;
+          font-size: 0.9em;
+        }
+
+        .blog-posts-list :global(.blog-post-card) .blog-post-preview :global(a) {
+          color: var(--accent-cyan);
+        }
+
+        .blog-posts-list :global(.blog-post-card) .blog-post-preview :global(strong) {
+          color: var(--text-primary);
         }
 
         .load-more-trigger {
@@ -455,6 +535,24 @@ export default function BlogFeedPage() {
         .end-message {
           color: var(--text-muted);
           font-size: 1.5rem;
+        }
+
+        @media (max-width: 600px) {
+          .blog-posts-list :global(.blog-post-card) {
+            flex-direction: column;
+            min-height: auto;
+          }
+
+          .blog-posts-list :global(.blog-post-card) .blog-post-thumbnail {
+            width: 100%;
+            height: 120px;
+          }
+
+          .blog-posts-list :global(.blog-post-card) .blog-post-thumbnail .thumbnail-image {
+            width: auto;
+            height: 100%;
+            max-width: 100%;
+          }
         }
       `}</style>
     </Layout>
