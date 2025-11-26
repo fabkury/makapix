@@ -64,6 +64,8 @@ class User(Base):
     # Relationships
     posts = relationship("Post", back_populates="owner", foreign_keys="Post.owner_id")
     comments = relationship("Comment", back_populates="author", foreign_keys="Comment.author_id")
+    blog_posts = relationship("BlogPost", back_populates="owner", foreign_keys="BlogPost.owner_id")
+    blog_post_comments = relationship("BlogPostComment", back_populates="author", foreign_keys="BlogPostComment.author_id")
     playlists = relationship("Playlist", back_populates="owner")
     devices = relationship("Device", back_populates="user", cascade="all, delete-orphan")
     badges = relationship("BadgeGrant", back_populates="user", cascade="all, delete-orphan")
@@ -650,4 +652,104 @@ class PostStatsCache(Base):
         "Post",
         backref=backref("stats_cache", passive_deletes=True),
         passive_deletes=True,
+    )
+
+
+# ============================================================================
+# BLOG POSTS
+# ============================================================================
+
+
+class BlogPost(Base):
+    """Markdown-based blog post."""
+
+    __tablename__ = "blog_posts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    
+    # Content
+    title = Column(String(200), nullable=False)
+    body = Column(Text, nullable=False)  # Markdown content, up to 10,000 chars
+    image_urls = Column(ARRAY(String), nullable=False, default=list)  # Up to 10 image URLs
+    
+    # Visibility & moderation
+    visible = Column(Boolean, nullable=False, default=True, index=True)
+    hidden_by_user = Column(Boolean, nullable=False, default=False)
+    hidden_by_mod = Column(Boolean, nullable=False, default=False, index=True)
+    public_visibility = Column(Boolean, nullable=False, default=False, index=True)  # Controls visibility in blog feed
+    
+    # Timestamps
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+    updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now(), index=True)
+    published_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
+    # Relationships
+    owner = relationship("User", back_populates="blog_posts", foreign_keys=[owner_id])
+    comments = relationship("BlogPostComment", back_populates="blog_post", cascade="all, delete-orphan")
+    reactions = relationship("BlogPostReaction", back_populates="blog_post", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_blog_posts_owner_created", owner_id, created_at.desc()),
+        Index("ix_blog_posts_public_updated", public_visibility, updated_at.desc()),
+        Index("ix_blog_posts_public_created", public_visibility, created_at.desc()),
+    )
+
+
+class BlogPostComment(Base):
+    """Comment on a blog post, supporting two-level nesting."""
+
+    __tablename__ = "blog_post_comments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    blog_post_id = Column(UUID(as_uuid=True), ForeignKey("blog_posts.id"), nullable=False, index=True)
+    author_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    author_ip = Column(String(45), nullable=True, index=True)  # For anonymous users
+    parent_id = Column(UUID(as_uuid=True), ForeignKey("blog_post_comments.id"), nullable=True, index=True)
+    
+    depth = Column(Integer, nullable=False, default=0)  # 0 = top-level, max 2
+    body = Column(Text, nullable=False)
+    
+    # Moderation
+    hidden_by_mod = Column(Boolean, nullable=False, default=False, index=True)
+    deleted_by_owner = Column(Boolean, nullable=False, default=False)
+    
+    # Timestamps
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+    updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
+
+    # Relationships
+    blog_post = relationship("BlogPost", back_populates="comments")
+    author = relationship("User", back_populates="blog_post_comments", foreign_keys=[author_id])
+    parent = relationship("BlogPostComment", remote_side=[id], backref="replies")
+
+    __table_args__ = (
+        Index("ix_blog_post_comments_blog_post_created", blog_post_id, created_at.desc()),
+    )
+
+
+class BlogPostReaction(Base):
+    """Emoji reaction to a blog post."""
+
+    __tablename__ = "blog_post_reactions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    blog_post_id = Column(UUID(as_uuid=True), ForeignKey("blog_posts.id"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    user_ip = Column(String(45), nullable=True, index=True)  # For anonymous users
+    emoji = Column(String(20), nullable=False)
+    
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+
+    # Relationships
+    blog_post = relationship("BlogPost", back_populates="reactions")
+
+    __table_args__ = (
+        Index("ix_blog_post_reactions_blog_post_emoji", blog_post_id, emoji),
     )

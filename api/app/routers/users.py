@@ -5,7 +5,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
 from ..auth import check_ownership, get_current_user, get_current_user_optional, require_moderator, require_ownership
@@ -315,3 +315,91 @@ def delete_user_account(
     user.deactivated = True
     user.hidden_by_user = True
     db.commit()
+
+
+@router.get("/{id}/blog-posts/recent", response_model=list[schemas.BlogPost])
+def get_user_recent_blog_posts(
+    id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_optional),
+) -> list[schemas.BlogPost]:
+    """
+    Get the 2 most recent blog posts for a user.
+    
+    Used for displaying recent blog posts panel on user profile pages.
+    """
+    query = (
+        db.query(models.BlogPost)
+        .options(joinedload(models.BlogPost.owner))
+        .filter(models.BlogPost.owner_id == id)
+    )
+    
+    # Only show visible posts for non-owners/non-moderators
+    is_viewing_own_posts = isinstance(current_user, models.User) and current_user.id == id
+    is_moderator = (
+        isinstance(current_user, models.User)
+        and ("moderator" in current_user.roles or "owner" in current_user.roles)
+    )
+    
+    if not is_viewing_own_posts and not is_moderator:
+        query = query.filter(
+            models.BlogPost.visible == True,
+            models.BlogPost.hidden_by_user == False,
+            models.BlogPost.hidden_by_mod == False,
+            models.BlogPost.public_visibility == True,
+        )
+    
+    posts = query.order_by(models.BlogPost.created_at.desc()).limit(2).all()
+    
+    return [schemas.BlogPost.model_validate(p) for p in posts]
+
+
+@router.get("/{id}/blog-posts", response_model=schemas.Page[schemas.BlogPost])
+def get_user_blog_posts(
+    id: UUID,
+    cursor: str | None = None,
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_optional),
+) -> schemas.Page[schemas.BlogPost]:
+    """
+    Get blog posts for a user.
+    
+    Used for displaying blog posts on user profile pages.
+    """
+    query = (
+        db.query(models.BlogPost)
+        .options(joinedload(models.BlogPost.owner))
+        .filter(models.BlogPost.owner_id == id)
+    )
+    
+    # Always show user's own posts on their profile, even if not publicly visible
+    is_viewing_own_posts = isinstance(current_user, models.User) and current_user.id == id
+    is_moderator = (
+        isinstance(current_user, models.User)
+        and ("moderator" in current_user.roles or "owner" in current_user.roles)
+    )
+    
+    if not is_viewing_own_posts and not is_moderator:
+        # For other users, only show visible, non-hidden, publicly visible posts
+        query = query.filter(
+            models.BlogPost.visible == True,
+            models.BlogPost.hidden_by_user == False,
+            models.BlogPost.hidden_by_mod == False,
+            models.BlogPost.public_visibility == True,
+        )
+    
+    # Apply cursor pagination
+    query = apply_cursor_filter(query, models.BlogPost, cursor, "created_at", sort_desc=True)
+    query = query.order_by(models.BlogPost.created_at.desc())
+    
+    # Fetch limit + 1 to check if there are more results
+    posts = query.limit(limit + 1).all()
+    
+    # Create paginated response
+    page_data = create_page_response(posts, limit, cursor)
+    
+    return schemas.Page(
+        items=[schemas.BlogPost.model_validate(p) for p in page_data["items"]],
+        next_cursor=page_data["next_cursor"],
+    )

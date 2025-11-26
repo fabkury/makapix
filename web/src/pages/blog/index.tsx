@@ -1,0 +1,463 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/router';
+import Layout from '../../components/Layout';
+
+interface BlogPost {
+  id: string;
+  title: string;
+  body: string;
+  updated_at: string | null;
+  created_at: string;
+  owner: {
+    id: string;
+    handle: string;
+  };
+}
+
+interface PageResponse<T> {
+  items: T[];
+  next_cursor: string | null;
+}
+
+export default function BlogFeedPage() {
+  const router = useRouter();
+  const [posts, setPosts] = useState<BlogPost[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [sort, setSort] = useState<string>('created_at');
+  
+  const observerTarget = useRef<HTMLDivElement>(null);
+  const loadingRef = useRef(false);
+  const hasMoreRef = useRef(true);
+  const nextCursorRef = useRef<string | null>(null);
+  
+  const API_BASE_URL = typeof window !== 'undefined' 
+    ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
+    : '';
+
+  const loadPosts = useCallback(async (cursor: string | null = null, sortBy: string = sort) => {
+    if (loadingRef.current || (cursor !== null && !hasMoreRef.current)) {
+      return;
+    }
+    
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      router.push('/auth');
+      return;
+    }
+    
+    loadingRef.current = true;
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const url = `${API_BASE_URL}/api/blog-posts?limit=20&sort=${sortBy}&order=desc${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      
+      if (response.status === 401) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('user_id');
+        router.push('/auth');
+        return;
+      }
+      
+      if (!response.ok) {
+        throw new Error(`Failed to load posts: ${response.status}`);
+      }
+      
+      const data: PageResponse<BlogPost> = await response.json();
+      
+      if (cursor) {
+        setPosts(prev => [...prev, ...data.items]);
+      } else {
+        setPosts(data.items);
+      }
+      
+      setNextCursor(data.next_cursor);
+      nextCursorRef.current = data.next_cursor;
+      const hasMoreValue = data.next_cursor !== null;
+      hasMoreRef.current = hasMoreValue;
+      setHasMore(hasMoreValue);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load posts');
+      console.error('Error loading blog posts:', err);
+    } finally {
+      loadingRef.current = false;
+      setLoading(false);
+    }
+  }, [API_BASE_URL, router, sort]);
+
+  // Load posts when sort changes
+  useEffect(() => {
+    setPosts([]);
+    setNextCursor(null);
+    nextCursorRef.current = null;
+    hasMoreRef.current = true;
+    loadPosts(null, sort);
+  }, [sort, loadPosts]);
+
+  // Intersection Observer for infinite scroll
+  useEffect(() => {
+    if (posts.length === 0 || !hasMoreRef.current) return;
+    
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMoreRef.current && !loadingRef.current) {
+          loadPosts(nextCursorRef.current, sort);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const currentTarget = observerTarget.current;
+    if (currentTarget) {
+      observer.observe(currentTarget);
+    }
+
+    return () => {
+      if (currentTarget) {
+        observer.unobserve(currentTarget);
+      }
+    };
+  }, [posts.length, loadPosts, sort]);
+
+  // Fetch reaction and comment counts for each post
+  const [postStats, setPostStats] = useState<Record<string, { reactions: number; comments: number }>>({});
+  
+  useEffect(() => {
+    const fetchStats = async () => {
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+      
+      const statsPromises = posts.map(async (post) => {
+        try {
+          const [reactionsRes, commentsRes] = await Promise.all([
+            fetch(`${API_BASE_URL}/api/blog-posts/${post.id}/reactions`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            }),
+            fetch(`${API_BASE_URL}/api/blog-posts/${post.id}/comments`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            })
+          ]);
+          
+          if (reactionsRes.ok && commentsRes.ok) {
+            const reactionsData = await reactionsRes.json();
+            const commentsData = await commentsRes.json();
+            
+            const reactionCount = Object.values(reactionsData.totals || {}).reduce((sum: number, count) => sum + (count as number), 0);
+            const commentCount = commentsData.items?.length || 0;
+            
+            return { postId: post.id, reactions: reactionCount, comments: commentCount };
+          }
+        } catch (err) {
+          console.error(`Error fetching stats for post ${post.id}:`, err);
+        }
+        return null;
+      });
+      
+      const results = await Promise.all(statsPromises);
+      const statsMap: Record<string, { reactions: number; comments: number }> = {};
+      results.forEach(result => {
+        if (result) {
+          statsMap[result.postId] = { reactions: result.reactions, comments: result.comments };
+        }
+      });
+      setPostStats(statsMap);
+    };
+    
+    if (posts.length > 0) {
+      fetchStats();
+    }
+  }, [posts, API_BASE_URL]);
+
+  const truncateBody = (body: string, maxLength: number = 200): string => {
+    if (body.length <= maxLength) return body;
+    // Remove markdown images and links for preview
+    const cleaned = body.replace(/!\[.*?\]\(.*?\)/g, '').replace(/\[.*?\]\(.*?\)/g, '');
+    if (cleaned.length <= maxLength) return cleaned + '...';
+    return cleaned.substring(0, maxLength).trim() + '...';
+  };
+
+  return (
+    <Layout title="Blog Feed" description="Read blog posts from the community">
+      <div className="blog-feed-container">
+        <div className="blog-feed-header">
+          <Link href="/blog/write" className="write-button">
+            <span className="write-icon">✍️</span>
+            <span className="write-text">Write Post</span>
+          </Link>
+          
+          <div className="sort-controls">
+            <label htmlFor="sort-select">Sort by:</label>
+            <select
+              id="sort-select"
+              value={sort}
+              onChange={(e) => setSort(e.target.value)}
+              className="sort-select"
+            >
+              <option value="created_at">Recent</option>
+              <option value="updated_at">Last Modified</option>
+              <option value="reactions">Most Reactions</option>
+              <option value="comments">Most Comments</option>
+            </select>
+          </div>
+        </div>
+
+        {error && (
+          <div className="error-message">
+            <p>{error}</p>
+            <button onClick={() => loadPosts(null, sort)} className="retry-button">
+              Retry
+            </button>
+          </div>
+        )}
+
+        {posts.length === 0 && !loading && !error && (
+          <div className="empty-state">
+            <span className="empty-icon">📰</span>
+            <p>No blog posts yet. Be the first to write one!</p>
+          </div>
+        )}
+
+        <div className="blog-posts-list">
+          {posts.map((post) => {
+            const stats = postStats[post.id] || { reactions: 0, comments: 0 };
+            const displayDate = post.updated_at || post.created_at;
+            
+            return (
+              <Link key={post.id} href={`/blog/${post.id}`} className="blog-post-card">
+                <h2 className="blog-post-title">{post.title}</h2>
+                <div className="blog-post-meta">
+                  <span className="blog-post-author">by {post.owner.handle}</span>
+                  <span className="meta-separator">•</span>
+                  <span className="blog-post-date">
+                    {new Date(displayDate).toLocaleDateString()}
+                  </span>
+                  <span className="meta-separator">•</span>
+                  <span className="blog-post-reactions">❤️ {stats.reactions}</span>
+                  <span className="meta-separator">•</span>
+                  <span className="blog-post-comments">💬 {stats.comments}</span>
+                </div>
+                <p className="blog-post-preview">{truncateBody(post.body)}</p>
+              </Link>
+            );
+          })}
+        </div>
+
+        {posts.length > 0 && (
+          <div ref={observerTarget} className="load-more-trigger">
+            {loading && (
+              <div className="loading-indicator">
+                <div className="loading-spinner"></div>
+              </div>
+            )}
+            {!hasMore && (
+              <div className="end-message">
+                <span>✨</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <style jsx>{`
+        .blog-feed-container {
+          max-width: 900px;
+          margin: 0 auto;
+          padding: 24px;
+        }
+
+        .blog-feed-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 32px;
+          flex-wrap: wrap;
+          gap: 16px;
+        }
+
+        .blog-feed-header :global(.write-button) {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 12px 24px;
+          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          color: white;
+          border-radius: 8px;
+          font-weight: 600;
+          transition: all var(--transition-fast);
+          text-decoration: none;
+        }
+
+        .blog-feed-header :global(.write-button:hover) {
+          transform: translateY(-2px);
+          box-shadow: var(--glow-pink);
+        }
+
+        .blog-feed-header :global(.write-button) .write-icon {
+          font-size: 1.2rem;
+        }
+
+        .sort-controls {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .sort-controls label {
+          color: var(--text-secondary);
+          font-size: 0.9rem;
+        }
+
+        .sort-select {
+          padding: 8px 12px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--bg-tertiary);
+          color: var(--text-primary);
+          border-radius: 6px;
+          font-size: 0.9rem;
+          cursor: pointer;
+        }
+
+        .sort-select:focus {
+          outline: none;
+          border-color: var(--accent-cyan);
+        }
+
+        .error-message {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 3rem;
+          text-align: center;
+          color: var(--text-secondary);
+        }
+
+        .retry-button {
+          margin-top: 1rem;
+          padding: 0.75rem 1.5rem;
+          background: var(--accent-pink);
+          color: var(--bg-primary);
+          border-radius: 8px;
+          font-weight: 600;
+          transition: all var(--transition-fast);
+        }
+
+        .retry-button:hover {
+          box-shadow: var(--glow-pink);
+        }
+
+        .empty-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 4rem 2rem;
+          text-align: center;
+          color: var(--text-muted);
+        }
+
+        .empty-icon {
+          font-size: 4rem;
+          margin-bottom: 1rem;
+        }
+
+        .blog-posts-list {
+          display: flex;
+          flex-direction: column;
+          gap: 24px;
+        }
+
+        .blog-posts-list :global(.blog-post-card) {
+          display: block;
+          background: var(--bg-secondary);
+          border-radius: 12px;
+          padding: 24px;
+          transition: all var(--transition-fast);
+          text-decoration: none;
+          border: 1px solid transparent;
+        }
+
+        .blog-posts-list :global(.blog-post-card:hover) {
+          border-color: var(--accent-cyan);
+          transform: translateY(-2px);
+          box-shadow: 0 4px 20px rgba(0, 212, 255, 0.2);
+        }
+
+        .blog-posts-list :global(.blog-post-card) .blog-post-title {
+          font-size: 1.5rem;
+          font-weight: 700;
+          color: var(--text-primary);
+          margin-bottom: 12px;
+        }
+
+        .blog-posts-list :global(.blog-post-card) .blog-post-meta {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 8px;
+          font-size: 0.85rem;
+          color: var(--text-muted);
+          margin-bottom: 16px;
+        }
+
+        .blog-posts-list :global(.blog-post-card) .blog-post-author {
+          color: var(--accent-cyan);
+          font-weight: 500;
+        }
+
+        .blog-posts-list :global(.blog-post-card) .meta-separator {
+          opacity: 0.5;
+        }
+
+        .blog-posts-list :global(.blog-post-card) .blog-post-preview {
+          color: var(--text-secondary);
+          line-height: 1.6;
+          margin: 0;
+        }
+
+        .load-more-trigger {
+          height: 100px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .loading-indicator {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .loading-spinner {
+          width: 32px;
+          height: 32px;
+          border: 3px solid var(--bg-tertiary);
+          border-top-color: var(--accent-cyan);
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+          to {
+            transform: rotate(360deg);
+          }
+        }
+
+        .end-message {
+          color: var(--text-muted);
+          font-size: 1.5rem;
+        }
+      `}</style>
+    </Layout>
+  );
+}
+

@@ -38,6 +38,8 @@ export default function UserProfilePage() {
   
   const [user, setUser] = useState<User | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [blogPosts, setBlogPosts] = useState<any[]>([]);
+  const [blogPostStats, setBlogPostStats] = useState<Record<string, { reactions: number; comments: number }>>({});
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [postsLoading, setPostsLoading] = useState(false);
@@ -171,6 +173,66 @@ export default function UserProfilePage() {
       loadPosts();
     }
   }, [user, loadPosts]);
+
+  // Load blog posts when user is loaded
+  useEffect(() => {
+    if (user && id && typeof id === 'string') {
+      loadBlogPosts();
+    }
+  }, [user, id, API_BASE_URL]);
+
+  // Load user's blog posts
+  const loadBlogPosts = async () => {
+    if (!id || typeof id !== 'string') return;
+    
+    try {
+      const token = localStorage.getItem('access_token');
+      const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
+      
+      const response = await fetch(`${API_BASE_URL}/api/users/${id}/blog-posts?limit=2`, { headers });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setBlogPosts(data.items || []);
+        
+        // Fetch stats for each blog post
+        if (data.items && data.items.length > 0) {
+          const statsPromises = data.items.map(async (post: any) => {
+            try {
+              const [reactionsRes, commentsRes] = await Promise.all([
+                fetch(`${API_BASE_URL}/api/blog-posts/${post.id}/reactions`, { headers }),
+                fetch(`${API_BASE_URL}/api/blog-posts/${post.id}/comments`, { headers })
+              ]);
+              
+              if (reactionsRes.ok && commentsRes.ok) {
+                const reactionsData = await reactionsRes.json();
+                const commentsData = await commentsRes.json();
+                
+                const reactionCount = Object.values(reactionsData.totals || {}).reduce((sum: number, count) => sum + (count as number), 0);
+                const commentCount = commentsData.items?.length || 0;
+                
+                return { postId: post.id, reactions: reactionCount, comments: commentCount };
+              }
+            } catch (err) {
+              console.error(`Error fetching stats for blog post ${post.id}:`, err);
+            }
+            return null;
+          });
+          
+          const results = await Promise.all(statsPromises);
+          const statsMap: Record<string, { reactions: number; comments: number }> = {};
+          results.forEach(result => {
+            if (result) {
+              statsMap[result.postId] = { reactions: result.reactions, comments: result.comments };
+            }
+          });
+          setBlogPostStats(statsMap);
+        }
+      }
+    } catch (err) {
+      console.error('Error loading blog posts:', err);
+    }
+  };
 
   // Handle entering edit mode
   const handleEditClick = () => {
@@ -553,6 +615,9 @@ export default function UserProfilePage() {
               <div className="profile-actions">
                 {isOwnProfile && (
                   <>
+                    <Link href="/blog/write" className="write-blog-btn">
+                      ✍️ Write Blog
+                    </Link>
                     <button 
                       className="edit-profile-btn"
                       onClick={handleEditClick}
@@ -611,6 +676,33 @@ export default function UserProfilePage() {
             )}
           </div>
         </div>
+
+        {blogPosts.length > 0 && (
+          <div className="blog-posts-section">
+            <h2 className="section-title">Recent Blog Posts</h2>
+            <div className="blog-posts-list">
+              {blogPosts.map((blogPost) => {
+                const stats = blogPostStats[blogPost.id] || { reactions: 0, comments: 0 };
+                const displayDate = blogPost.updated_at || blogPost.created_at;
+                
+                return (
+                  <Link key={blogPost.id} href={`/blog/${blogPost.id}`} className="blog-post-item">
+                    <h3 className="blog-post-item-title">{blogPost.title}</h3>
+                    <div className="blog-post-item-meta">
+                      <span className="blog-post-item-date">
+                        {new Date(displayDate).toLocaleDateString()}
+                      </span>
+                      <span className="meta-separator">•</span>
+                      <span className="blog-post-item-reactions">❤️ {stats.reactions}</span>
+                      <span className="meta-separator">•</span>
+                      <span className="blog-post-item-comments">💬 {stats.comments}</span>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="artworks-section">
           {posts.length === 0 && !postsLoading && (
@@ -718,6 +810,29 @@ export default function UserProfilePage() {
           .profile-actions {
             justify-content: center;
           }
+        }
+
+        .profile-actions :global(.write-blog-btn) {
+          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          border: none;
+          border-radius: 8px;
+          padding: 10px 16px;
+          font-size: 0.95rem;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          text-decoration: none;
+          font-weight: 600;
+          gap: 6px;
+        }
+
+        .profile-actions :global(.write-blog-btn:hover) {
+          transform: translateY(-2px);
+          box-shadow: var(--glow-pink);
+          color: white;
         }
 
         .edit-profile-btn,
@@ -922,6 +1037,60 @@ export default function UserProfilePage() {
           color: var(--text-muted);
           text-transform: uppercase;
           letter-spacing: 0.5px;
+        }
+
+        .blog-posts-section {
+          background: var(--bg-secondary);
+          border-radius: 16px;
+          padding: 24px;
+          margin-bottom: 24px;
+        }
+
+        .section-title {
+          font-size: 1.25rem;
+          font-weight: 700;
+          color: var(--text-primary);
+          margin-bottom: 16px;
+        }
+
+        .blog-posts-list {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+
+        .blog-posts-list :global(.blog-post-item) {
+          display: block;
+          padding: 16px;
+          background: var(--bg-tertiary);
+          border-radius: 8px;
+          text-decoration: none;
+          transition: all var(--transition-fast);
+        }
+
+        .blog-posts-list :global(.blog-post-item:hover) {
+          background: var(--bg-primary);
+          transform: translateX(4px);
+        }
+
+        .blog-posts-list :global(.blog-post-item) .blog-post-item-title {
+          font-size: 1.1rem;
+          font-weight: 600;
+          color: var(--text-primary);
+          margin-bottom: 8px;
+        }
+
+        .blog-posts-list :global(.blog-post-item) .blog-post-item-meta {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 8px;
+          font-size: 0.85rem;
+          color: var(--text-muted);
+        }
+
+        .blog-posts-list :global(.blog-post-item) .blog-post-item-date {
+          color: var(--text-secondary);
         }
 
         .artworks-section {
