@@ -33,6 +33,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/blog-posts", tags=["Blog Posts"])
 
 
+def extract_image_urls_from_markdown(body: str) -> list[str]:
+    """Extract image URLs from markdown image syntax ![alt](url)."""
+    pattern = r'!\[.*?\]\((.*?)\)'
+    urls = re.findall(pattern, body)
+    return urls[:MAX_IMAGES_PER_POST]  # Limit to max allowed
+
+
 @router.get("", response_model=schemas.Page[schemas.BlogPost])
 def list_blog_posts(
     owner_id: UUID | None = None,
@@ -151,12 +158,8 @@ def create_blog_post(
             detail="Blog post body exceeds maximum length of 10,000 characters"
         )
     
-    # Validate image count
-    if len(payload.image_urls) > MAX_IMAGES_PER_POST:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Maximum {MAX_IMAGES_PER_POST} images per blog post"
-        )
+    # Extract image URLs from markdown body
+    extracted_urls = extract_image_urls_from_markdown(payload.body)
     
     # Determine public visibility based on user's auto_public_approval privilege
     public_visibility = getattr(current_user, 'auto_public_approval', False)
@@ -165,7 +168,7 @@ def create_blog_post(
         owner_id=current_user.id,
         title=payload.title,
         body=payload.body,
-        image_urls=payload.image_urls[:MAX_IMAGES_PER_POST],
+        image_urls=extracted_urls,
         public_visibility=public_visibility,
         published_at=datetime.now(timezone.utc) if public_visibility else None,
     )
@@ -228,13 +231,8 @@ def update_blog_post(
                 detail="Blog post body exceeds maximum length of 10,000 characters"
             )
         blog_post.body = payload.body
-    if payload.image_urls is not None:
-        if len(payload.image_urls) > MAX_IMAGES_PER_POST:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Maximum {MAX_IMAGES_PER_POST} images per blog post"
-            )
-        blog_post.image_urls = payload.image_urls[:MAX_IMAGES_PER_POST]
+        # Auto-extract images from updated body
+        blog_post.image_urls = extract_image_urls_from_markdown(payload.body)
     if payload.hidden_by_user is not None:
         blog_post.hidden_by_user = payload.hidden_by_user
     

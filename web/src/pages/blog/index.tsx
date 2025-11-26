@@ -430,7 +430,6 @@ export default function BlogFeedPage() {
           transition: all var(--transition-fast);
           text-decoration: none;
           border: 1px solid transparent;
-          min-height: 140px;
         }
 
         .blog-posts-list :global(.blog-post-card:not(.has-image)) {
@@ -445,15 +444,18 @@ export default function BlogFeedPage() {
 
         .blog-posts-list :global(.blog-post-card) .blog-post-thumbnail {
           flex-shrink: 0;
-          width: 140px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          width: 120px;
+          align-self: stretch;
+          position: relative;
           background: var(--bg-tertiary);
           overflow: hidden;
         }
 
         .blog-posts-list :global(.blog-post-card) .blog-post-thumbnail .thumbnail-image {
+          position: absolute;
+          top: 0;
+          left: 50%;
+          transform: translateX(-50%);
           height: 100%;
           width: auto;
           object-fit: contain;
@@ -493,10 +495,13 @@ export default function BlogFeedPage() {
 
         .blog-posts-list :global(.blog-post-card) .blog-post-preview {
           color: var(--text-secondary);
-          line-height: 1.6;
+          line-height: 1.5;
           margin: 0;
           overflow: hidden;
-          max-height: 4.8em;
+          max-height: 3em;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
         }
 
         .blog-posts-list :global(.blog-post-card) .blog-post-preview :global(p) {
@@ -570,18 +575,19 @@ export default function BlogFeedPage() {
         @media (max-width: 600px) {
           .blog-posts-list :global(.blog-post-card) {
             flex-direction: column;
-            min-height: auto;
           }
 
           .blog-posts-list :global(.blog-post-card) .blog-post-thumbnail {
             width: 100%;
-            height: 120px;
+            height: 80px;
+            align-self: auto;
           }
 
           .blog-posts-list :global(.blog-post-card) .blog-post-thumbnail .thumbnail-image {
-            width: auto;
+            left: 50%;
+            transform: translateX(-50%);
             height: 100%;
-            max-width: 100%;
+            width: auto;
           }
         }
       `}</style>
