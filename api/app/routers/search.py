@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -13,7 +13,6 @@ from ..auth import get_current_user, get_current_user_optional
 from ..cache import cache_get, cache_set
 from ..deps import get_db
 from ..pagination import apply_cursor_filter, create_page_response, encode_cursor, decode_cursor
-from ..utils.view_tracking import record_views_batch, ViewType, ViewSource
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +21,6 @@ router = APIRouter(prefix="", tags=["Search", "Feed", "Hashtags"])
 
 @router.get("/search", response_model=schemas.SearchResults, tags=["Search"])
 def search_all(
-    request: Request,
     q: str | None = None,
     types: list[str] = Query(["users", "posts", "playlists"]),
     badge: str | None = None,
@@ -186,28 +184,6 @@ def search_all(
                 next_cursor = encode_cursor(str(last_result.post.id), last_result.post.created_at.isoformat())
             elif hasattr(last_result, 'user') and last_result.user:
                 next_cursor = encode_cursor(str(last_result.user.id))
-    
-    # Record view events for posts in search results
-    try:
-        posts_with_ids = [
-            (r.post.id, r.post) for r in results 
-            if hasattr(r, 'post') and r.post is not None
-        ]
-        if posts_with_ids:
-            post_ids = [post_id for post_id, _ in posts_with_ids]
-            # Build map of post_id -> owner_id for author exclusion
-            post_owner_ids = {post_id: post.owner_id for post_id, post in posts_with_ids}
-            record_views_batch(
-                db=db,
-                post_ids=post_ids,
-                request=request,
-                user=current_user,
-                view_type=ViewType.SEARCH,
-                view_source=ViewSource.WEB,
-                post_owner_ids=post_owner_ids,
-            )
-    except Exception as e:
-        logger.error(f"Failed to record search views: {e}")
     
     return schemas.SearchResults(items=results, next_cursor=next_cursor)
 

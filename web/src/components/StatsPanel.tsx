@@ -335,9 +335,9 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
             )}
 
             {/* Reactions Breakdown */}
-            {displayedStats.total_reactions > 0 && Object.keys(displayedStats.reactions_by_emoji).length > 0 && (
-              <div className="stats-section">
-                <h3>❤️ Reactions</h3>
+            <div className="stats-section">
+              <h3>❤️ Reactions</h3>
+              {displayedStats.total_reactions > 0 && Object.keys(displayedStats.reactions_by_emoji).length > 0 ? (
                 <div className="reactions-grid">
                   {Object.entries(displayedStats.reactions_by_emoji)
                     .sort(([, a], [, b]) => b - a)
@@ -348,8 +348,10 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
                       </div>
                     ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="reactions-empty">No reactions yet.</div>
+              )}
+            </div>
 
             {/* Footer */}
             <div className="stats-footer">
@@ -688,6 +690,7 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
           display: flex;
           flex-wrap: wrap;
           gap: 8px;
+          min-height: 40px;
         }
 
         .reaction-item {
@@ -707,6 +710,15 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
           font-size: 0.85rem;
           font-weight: 600;
           color: var(--text-primary, #fff);
+        }
+
+        .reactions-empty {
+          color: var(--text-secondary, #999);
+          font-style: italic;
+          padding: 12px 0;
+          min-height: 40px;
+          display: flex;
+          align-items: center;
         }
 
         .stats-footer {
