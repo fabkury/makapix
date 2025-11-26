@@ -376,6 +376,158 @@ class CommentUpdate(BaseModel):
 
 
 # ============================================================================
+# BLOG POST SCHEMAS
+# ============================================================================
+
+
+class BlogPost(BaseModel):
+    """Blog post with Markdown content."""
+
+    id: UUID
+    owner_id: UUID
+    title: str
+    body: str  # Markdown content
+    image_urls: list[str] = []
+    visible: bool
+    hidden_by_user: bool
+    hidden_by_mod: bool
+    public_visibility: bool = False
+    created_at: datetime
+    updated_at: datetime | None = None
+    published_at: datetime | None = None
+    owner: UserPublic | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BlogPostCreate(BaseModel):
+    """Create blog post request."""
+
+    title: str = Field(..., min_length=1, max_length=200)
+    body: str = Field(..., min_length=1, max_length=10000)
+    image_urls: list[str] = Field(default_factory=list, max_length=10)
+
+
+class BlogPostUpdate(BaseModel):
+    """Update blog post request."""
+
+    title: str | None = Field(None, min_length=1, max_length=200)
+    body: str | None = Field(None, min_length=1, max_length=10000)
+    image_urls: list[str] | None = Field(None, max_length=10)
+    hidden_by_user: bool | None = None
+
+
+class BlogPostRead(BlogPost):
+    """Alias for consistency."""
+
+    pass
+
+
+class BlogPostFeedItem(BaseModel):
+    """Blog post item for feed display."""
+
+    id: UUID
+    title: str
+    updated_at: datetime | None = None
+    reaction_count: int = 0
+    comment_count: int = 0
+    body_preview: str  # Truncated body text
+
+
+class BlogPostComment(BaseModel):
+    """Comment on a blog post."""
+
+    id: UUID
+    blog_post_id: UUID
+    author_id: UUID | None = None  # None for anonymous comments
+    author_ip: str | None = None  # For anonymous users (visible to moderators)
+    parent_id: UUID | None = None
+    depth: int = Field(..., ge=0, le=2)
+    body: str
+    hidden_by_mod: bool
+    deleted_by_owner: bool
+    created_at: datetime
+    updated_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+    
+    _author_handle_cache: str | None = None
+    _author_display_name_cache: str | None = None
+    
+    @model_validator(mode='wrap')
+    @classmethod
+    def extract_author_info(cls, data, handler):
+        """Extract author info from the ORM model during validation."""
+        instance = handler(data)
+        
+        if hasattr(data, 'author') and data.author:
+            instance._author_handle_cache = data.author.handle
+            instance._author_display_name_cache = data.author.handle
+        
+        return instance
+    
+    @computed_field
+    @property
+    def author_handle(self) -> str:
+        """Handle for the comment author."""
+        if self.author_id is None and self.author_ip:
+            import hashlib
+            hash_digest = hashlib.sha256(self.author_ip.encode()).hexdigest()
+            return f"Guest_{hash_digest[:6]}"
+        
+        if self._author_handle_cache:
+            return self._author_handle_cache
+        
+        return "unknown"
+    
+    @computed_field
+    @property
+    def author_display_name(self) -> str:
+        """Display name for the comment author."""
+        if self.author_id is None and self.author_ip:
+            import hashlib
+            hash_digest = hashlib.sha256(self.author_ip.encode()).hexdigest()
+            return f"Guest_{hash_digest[:6]}"
+        
+        if self._author_display_name_cache:
+            return self._author_display_name_cache
+        
+        if self._author_handle_cache:
+            return self._author_handle_cache
+        
+        return "Unknown"
+
+
+class BlogPostCommentCreate(BaseModel):
+    """Create blog post comment request."""
+
+    body: str = Field(..., min_length=1, max_length=2000)
+    parent_id: UUID | None = None
+
+
+class BlogPostCommentUpdate(BaseModel):
+    """Update blog post comment request."""
+
+    body: str = Field(..., min_length=1, max_length=2000)
+
+
+class BlogPostReactionTotals(BaseModel):
+    """Reaction totals for a blog post."""
+
+    totals: dict[str, int]  # combined emoji totals (authenticated + anonymous)
+    authenticated_totals: dict[str, int]
+    anonymous_totals: dict[str, int]
+    mine: list[str]  # emoji list for current user
+
+
+class BlogPostImageUploadResponse(BaseModel):
+    """Response for blog post image upload."""
+
+    image_url: str
+    image_id: UUID
+
+
+# ============================================================================
 # REACTION SCHEMAS
 # ============================================================================
 
