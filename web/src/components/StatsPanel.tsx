@@ -337,8 +337,8 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
             {/* Reactions Breakdown */}
             <div className="stats-section">
               <h3>❤️ Reactions</h3>
-              {displayedStats.total_reactions > 0 && Object.keys(displayedStats.reactions_by_emoji).length > 0 ? (
-                <div className="reactions-grid">
+              <div className="reactions-container">
+                <div className={`reactions-grid ${displayedStats.total_reactions > 0 && Object.keys(displayedStats.reactions_by_emoji).length > 0 ? '' : 'hidden'}`}>
                   {Object.entries(displayedStats.reactions_by_emoji)
                     .sort(([, a], [, b]) => b - a)
                     .map(([emoji, count]) => (
@@ -348,9 +348,10 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
                       </div>
                     ))}
                 </div>
-              ) : (
-                <div className="reactions-empty">No reactions yet.</div>
-              )}
+                <div className={`reactions-empty ${displayedStats.total_reactions > 0 && Object.keys(displayedStats.reactions_by_emoji).length > 0 ? 'hidden' : ''}`}>
+                  No reactions yet.
+                </div>
+              </div>
             </div>
 
             {/* Footer */}
@@ -686,11 +687,20 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
           color: var(--text-primary, #fff);
         }
 
+        .reactions-container {
+          display: grid;
+        }
+
         .reactions-grid {
+          grid-area: 1 / 1;
           display: flex;
           flex-wrap: wrap;
           gap: 8px;
           min-height: 40px;
+        }
+
+        .reactions-grid.hidden {
+          visibility: hidden;
         }
 
         .reaction-item {
@@ -713,12 +723,17 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
         }
 
         .reactions-empty {
+          grid-area: 1 / 1;
           color: var(--text-secondary, #999);
           font-style: italic;
           padding: 12px 0;
           min-height: 40px;
           display: flex;
           align-items: center;
+        }
+
+        .reactions-empty.hidden {
+          visibility: hidden;
         }
 
         .stats-footer {
