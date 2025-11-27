@@ -17,6 +17,9 @@ interface Post {
   owner_id: string;
   created_at: string;
   owner?: PostOwner;
+  reaction_count: number;
+  comment_count: number;
+  user_has_liked: boolean;
 }
 
 interface PostStats {
@@ -35,71 +38,18 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
   const [postStats, setPostStats] = useState<Record<string, PostStats>>({});
   const [loadingStats, setLoadingStats] = useState<Record<string, boolean>>({});
 
-  // Fetch reactions and comments counts for posts
+  // Initialize stats from post data
   useEffect(() => {
-    const fetchStats = async () => {
-      const token = localStorage.getItem('access_token');
-      
-      const statsPromises = posts.map(async (post) => {
-        try {
-          const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
-          
-          const [reactionsRes, commentsRes] = await Promise.all([
-            fetch(`${API_BASE_URL}/api/posts/${post.id}/reactions`, { headers }),
-            fetch(`${API_BASE_URL}/api/posts/${post.id}/comments`, { headers })
-          ]);
-          
-          if (reactionsRes.ok && commentsRes.ok) {
-            const reactionsData = await reactionsRes.json();
-            const commentsData = await commentsRes.json();
-            
-            // Sum all reaction counts
-            const reactionCount = Object.values(reactionsData.totals || {}).reduce(
-              (sum: number, count) => sum + (count as number), 
-              0
-            );
-            const commentCount = commentsData.items?.length || 0;
-            
-            // Check if user has liked (thumbs up emoji)
-            const liked = reactionsData.mine?.includes('👍') || false;
-            
-            return { 
-              postId: post.id, 
-              stats: { 
-                reactions: reactionCount, 
-                comments: commentCount,
-                liked 
-              } 
-            };
-          }
-        } catch (err) {
-          console.error(`Error fetching stats for post ${post.id}:`, err);
-        }
-        return null;
-      });
-      
-      const results = await Promise.all(statsPromises);
-      const statsMap: Record<string, PostStats> = {};
-      results.forEach(result => {
-        if (result) {
-          statsMap[result.postId] = result.stats;
-        }
-      });
-      
-      // Set default stats for posts that didn't return results
-      posts.forEach(post => {
-        if (!statsMap[post.id]) {
-          statsMap[post.id] = { reactions: 0, comments: 0, liked: false };
-        }
-      });
-      
-      setPostStats(statsMap);
-    };
-    
-    if (posts.length > 0) {
-      fetchStats();
-    }
-  }, [posts, API_BASE_URL]);
+    const statsMap: Record<string, PostStats> = {};
+    posts.forEach(post => {
+      statsMap[post.id] = {
+        reactions: post.reaction_count || 0,
+        comments: post.comment_count || 0,
+        liked: post.user_has_liked || false
+      };
+    });
+    setPostStats(statsMap);
+  }, [posts]);
 
   // Handle like/unlike
   const handleLike = async (postId: string, currentlyLiked: boolean) => {
@@ -171,6 +121,12 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
     const calculateScales = () => {
       const artworkAreas = grid.querySelectorAll('.artwork-area');
       
+      // Determine reference size based on DPR
+      // DPR < 2: 256px, DPR >= 2: 128px
+      const dpr = window.devicePixelRatio || 1;
+
+      const referenceSize = dpr >= 2 ? 128 : 256;
+      
       artworkAreas.forEach((area) => {
         const image = area.querySelector('.artwork-image') as HTMLImageElement;
         if (!image) return;
@@ -187,8 +143,8 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
         // Use the larger dimension to calculate scale
         const nativeSize = Math.max(nativeWidth, nativeHeight);
         
-        // Calculate maximum integer scale that fits in 256px
-        const scale = Math.floor(256 / nativeSize);
+        // Calculate maximum integer scale that fits in referenceSize
+        const scale = Math.floor(referenceSize / nativeSize);
         const finalScale = Math.max(1, scale);
 
         // Calculate display size at integer multiple
@@ -359,6 +315,7 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
       })}
 
       <style jsx>{`
+        /* Base styles for DPR < 2 (reference size: 256px) */
         .card-grid {
           display: grid;
           grid-template-columns: repeat(1, 514px);
@@ -448,6 +405,53 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
           justify-content: center;
           padding: 24px;
           flex-shrink: 0;
+        }
+
+        /* High DPR styles (DPR >= 2, reference size: 128px) */
+        @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+          .card-grid {
+            grid-template-columns: repeat(1, 258px);
+          }
+
+          .artwork-card {
+            width: 258px;
+            height: 128px;
+          }
+
+          .artwork-area {
+            width: 128px;
+            height: 128px;
+          }
+
+          .info-area {
+            width: 128px;
+            height: 128px;
+            padding: 8px;
+          }
+        }
+
+        /* High DPR + wider screens: 2 columns */
+        @media (-webkit-min-device-pixel-ratio: 2) and (min-width: 520px),
+               (min-resolution: 192dpi) and (min-width: 520px) {
+          .card-grid {
+            grid-template-columns: repeat(2, 258px);
+          }
+        }
+
+        /* High DPR + even wider screens: 3 columns */
+        @media (-webkit-min-device-pixel-ratio: 2) and (min-width: 780px),
+               (min-resolution: 192dpi) and (min-width: 780px) {
+          .card-grid {
+            grid-template-columns: repeat(3, 258px);
+          }
+        }
+
+        /* High DPR + large screens: 4 columns */
+        @media (-webkit-min-device-pixel-ratio: 2) and (min-width: 1040px),
+               (min-resolution: 192dpi) and (min-width: 1040px) {
+          .card-grid {
+            grid-template-columns: repeat(4, 258px);
+          }
         }
 
         .info-content {
@@ -580,6 +584,63 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
         .like-button.liked:hover:not(:disabled) {
           background: var(--accent-cyan);
           border-color: var(--accent-cyan);
+        }
+
+        /* High DPR typography and spacing adjustments */
+        @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+          .info-content {
+            gap: 4px;
+          }
+
+          .author-handle {
+            font-size: 0.65rem;
+            gap: 4px;
+          }
+
+          .author-avatar {
+            width: 12px;
+            height: 12px;
+          }
+
+          .author-handle span {
+            line-height: 12px;
+          }
+
+          .post-title {
+            font-size: 0.75rem;
+          }
+
+          .post-date {
+            font-size: 0.55rem;
+          }
+
+          .post-description {
+            font-size: 0.5rem;
+          }
+
+          .post-actions {
+            gap: 8px;
+          }
+
+          .post-stats {
+            gap: 6px;
+          }
+
+          .stat-item {
+            font-size: 0.55rem;
+            gap: 2px;
+          }
+
+          .stat-emoji {
+            font-size: 0.65rem;
+          }
+
+          .like-button {
+            width: 20px;
+            height: 20px;
+            font-size: 0.65rem;
+            border-width: 1px;
+          }
         }
       `}</style>
     </div>
