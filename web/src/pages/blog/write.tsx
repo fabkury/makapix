@@ -28,7 +28,7 @@ export default function WriteBlogPostPage() {
   const [isDragging, setIsDragging] = useState(false);
   
   const API_BASE_URL = typeof window !== 'undefined' 
-    ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
+    ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
     : '';
 
   // Load existing post if editing

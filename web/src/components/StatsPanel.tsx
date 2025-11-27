@@ -87,7 +87,7 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
   const [includeUnauthenticated, setIncludeUnauthenticated] = useState(true);
 
   const API_BASE_URL = typeof window !== 'undefined'
-    ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
+    ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
     : '';
 
   useEffect(() => {

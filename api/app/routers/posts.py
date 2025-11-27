@@ -50,7 +50,7 @@ def list_posts(
     """
     List posts with filters.
     """
-    query = db.query(models.Post)
+    query = db.query(models.Post).options(joinedload(models.Post.owner))
     
     is_moderator = "moderator" in current_user.roles or "owner" in current_user.roles
     is_viewing_own_posts = owner_id and owner_id == current_user.id
