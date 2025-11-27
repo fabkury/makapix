@@ -172,6 +172,9 @@ class Post(BaseModel):
     created_at: datetime
     updated_at: datetime | None = None
     owner: UserPublic | None = None
+    reaction_count: int
+    comment_count: int
+    user_has_liked: bool = False  # Whether the current user has liked (👍) this post
 
     model_config = ConfigDict(from_attributes=True)
 

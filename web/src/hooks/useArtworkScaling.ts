@@ -2,8 +2,9 @@ import { useEffect, RefObject } from 'react';
 
 /**
  * Hook to scale artworks to integer multiples of their native size
- * Cards have either 256x256 or 512x512 inner space depending on available width
- * All cards in a row transition together from 256px to 512px when space allows
+ * Reference size depends on Device Pixel Ratio:
+ * - DPR < 2: 256px reference size
+ * - DPR >= 2: 128px reference size
  * Each artwork scales to the largest integer multiple that fits within the card's available space
  * Grid is kept together with extra space only on the sides
  */
@@ -18,6 +19,11 @@ export function useArtworkScaling(gridRef: RefObject<HTMLDivElement>) {
       const gridWidth = grid.clientWidth;
       
       if (gridWidth === 0) return;
+      
+      // Determine reference size based on DPR
+      // DPR < 2: 256px, DPR >= 2: 128px
+      const dpr = window.devicePixelRatio || 1;
+      const baseReferenceSize = dpr >= 2 ? 128 : 256;
       
       // Get the actual computed grid-template-columns value
       // The browser expands repeat() to individual values, so we count them
@@ -40,13 +46,14 @@ export function useArtworkScaling(gridRef: RefObject<HTMLDivElement>) {
         }
       }
       
-      // Calculate if we can fit 512px cards in this row
-      // Need: (512px * columnCount) + (gap * (columnCount - 1)) <= gridWidth
-      const requiredWidthFor512 = (512 * columnCount) + (gridGap * (columnCount - 1));
-      const use512pxCards = requiredWidthFor512 <= gridWidth;
+      // Calculate if we can fit double-size cards in this row
+      // Need: (doubleSize * columnCount) + (gap * (columnCount - 1)) <= gridWidth
+      const doubleSize = baseReferenceSize * 2;
+      const requiredWidthForDouble = (doubleSize * columnCount) + (gridGap * (columnCount - 1));
+      const useDoubleSizeCards = requiredWidthForDouble <= gridWidth;
       
       // Determine card size for this row
-      const cardSize = use512pxCards ? 512 : 256;
+      const cardSize = useDoubleSizeCards ? doubleSize : baseReferenceSize;
       const availableSize = cardSize; // Inner space equals card size (no padding)
       
       // Update CSS custom property to control card size

@@ -326,7 +326,13 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
           height: 178px;
           background: var(--bg-secondary);
           overflow: hidden;
+          transition: box-shadow var(--transition-fast);
           border: 1px solid transparent;
+        }
+
+        .artwork-card:hover {
+          box-shadow: 0 0 20px rgba(0, 212, 255, 0.2);
+          z-index: 1;
         }
 
         .card-top {
