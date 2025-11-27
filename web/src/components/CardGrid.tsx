@@ -273,7 +273,7 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
             </div>
             <div className="author-bar">
               <div className="author-line">
-                <Link href={`/users/${post.owner_id}`} className="author-handle">
+                <Link href={`/users/${post.owner_id}`} className="author-handle" style={{ fontSize: '0.7rem', color: 'white', display: 'flex', alignItems: 'center' }}>
                   {post.owner?.avatar_url && (
                     <img src={post.owner.avatar_url} alt="" className="author-avatar" />
                   )}
@@ -281,7 +281,7 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
                 </Link>
               </div>
               <div className="title-line">
-                <Link href={`/posts/${post.id}`} className="post-title">
+                <Link href={`/posts/${post.id}`} className="post-title" style={{ fontSize: '0.7rem', color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center' }}>
                   {post.title}
                 </Link>
               </div>
@@ -476,7 +476,7 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
           flex-direction: row;
           align-items: center;
           gap: 3px;
-          font-size: 0.625rem;
+          font-size: 0.35rem;
           font-weight: 600;
           color: var(--accent-cyan);
           text-decoration: none;
@@ -508,7 +508,7 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
 
         .post-title {
           display: inline-block;
-          font-size: 0.625rem;
+          font-size: 0.35rem;
           font-weight: 600;
           color: var(--accent-pink);
           text-decoration: none;
