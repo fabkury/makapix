@@ -19,6 +19,7 @@ from ..pagination import apply_cursor_filter, create_page_response
 from ..mqtt.notifications import publish_new_post_notification, publish_category_promotion_notification
 from ..utils.audit import log_moderation_action
 from ..utils.view_tracking import record_view, ViewType, ViewSource
+from ..services.post_stats import annotate_posts_with_counts, get_user_liked_post_ids
 from ..vault import (
     ALLOWED_MIME_TYPES,
     MAX_CANVAS_SIZE,
@@ -97,6 +98,9 @@ def list_posts(
     
     # Fetch limit + 1 to check if there are more results
     posts = query.limit(limit + 1).all()
+    
+    # Add reaction and comment counts, and user liked status
+    annotate_posts_with_counts(db, posts, current_user.id)
     
     # Create paginated response
     page_data = create_page_response(posts, limit, cursor)
@@ -346,7 +350,14 @@ def list_recent_posts(
     # Try to get from cache
     cached_result = cache_get(cache_key)
     if cached_result:
-        return schemas.Page(**cached_result)
+        response = schemas.Page(**cached_result)
+        # Add user-specific like status if authenticated
+        if current_user and response.items:
+            post_ids = [item.id for item in response.items]
+            liked_ids = get_user_liked_post_ids(db, post_ids, current_user.id)
+            for item in response.items:
+                item.user_has_liked = item.id in liked_ids
+        return response
     
     query = db.query(models.Post).options(joinedload(models.Post.owner)).filter(
         models.Post.visible == True,
@@ -368,6 +379,9 @@ def list_recent_posts(
     # Fetch limit + 1 to check if there are more results
     posts = query.limit(limit + 1).all()
     
+    # Add reaction and comment counts, and user liked status
+    annotate_posts_with_counts(db, posts, current_user.id if current_user else None)
+    
     # Create paginated response
     page_data = create_page_response(posts, limit, cursor, "created_at")
     
@@ -377,6 +391,7 @@ def list_recent_posts(
     )
     
     # Cache for 2 minutes (120 seconds) - shorter due to high churn
+    # Note: Cache stores base data; user_has_liked is added when retrieving from cache
     cache_set(cache_key, response.model_dump(), ttl=120)
     
     return response
@@ -423,6 +438,9 @@ def get_post(
     except Exception as e:
         # Log error but don't fail the request
         logger.error(f"Failed to record view for post {id}: {e}")
+    
+    # Add reaction and comment counts, and user liked status
+    annotate_posts_with_counts(db, [post], current_user.id if current_user else None)
     
     return schemas.Post.model_validate(post)
 

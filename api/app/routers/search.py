@@ -13,6 +13,7 @@ from ..auth import get_current_user, get_current_user_optional
 from ..cache import cache_get, cache_set
 from ..deps import get_db
 from ..pagination import apply_cursor_filter, create_page_response, encode_cursor, decode_cursor
+from ..services.post_stats import annotate_posts_with_counts, get_user_liked_post_ids
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +141,12 @@ def search_all(
             .all()
         )
         
-        for post_obj, similarity_score in posts_with_similarity[:limit // len(types)]:
+        # Extract post objects and add counts
+        post_objs = [post_obj for post_obj, _ in posts_with_similarity[:limit // len(types)]]
+        if post_objs:
+            annotate_posts_with_counts(db, post_objs, current_user.id)
+        
+        for post_obj in post_objs:
             results.append(
                 schemas.SearchResultPost(post=schemas.Post.model_validate(post_obj))
             )
@@ -167,6 +173,10 @@ def search_all(
             
             # Limit results
             hashtag_posts = post_query.order_by(models.Post.created_at.desc()).limit(limit // len(types)).all()
+            
+            # Add counts
+            if hashtag_posts:
+                annotate_posts_with_counts(db, hashtag_posts, current_user.id)
             
             for post_obj in hashtag_posts:
                 results.append(
@@ -315,7 +325,14 @@ async def list_hashtag_posts(
     # Try to get from cache
     cached_result = cache_get(cache_key)
     if cached_result:
-        return schemas.Page(**cached_result)
+        response = schemas.Page(**cached_result)
+        # Add user-specific like status if authenticated
+        if current_user and response.items:
+            post_ids = [item.id for item in response.items]
+            liked_ids = get_user_liked_post_ids(db, post_ids, current_user.id)
+            for item in response.items:
+                item.user_has_liked = item.id in liked_ids
+        return response
     
     query = db.query(models.Post).filter(
         models.Post.hashtags.contains([tag_normalized])
@@ -341,6 +358,9 @@ async def list_hashtag_posts(
     
     # Fetch limit + 1 to check if there are more results
     posts = query.limit(limit + 1).all()
+    
+    # Add reaction and comment counts, and user liked status
+    annotate_posts_with_counts(db, posts, current_user.id if current_user else None)
     
     # Create paginated response
     page_data = create_page_response(posts, limit, cursor, "created_at")
@@ -378,7 +398,14 @@ def feed_promoted(
     # Try to get from cache
     cached_result = cache_get(cache_key)
     if cached_result:
-        return schemas.Page(**cached_result)
+        response = schemas.Page(**cached_result)
+        # Add user-specific like status if authenticated
+        if current_user and response.items:
+            post_ids = [item.id for item in response.items]
+            liked_ids = get_user_liked_post_ids(db, post_ids, current_user.id)
+            for item in response.items:
+                item.user_has_liked = item.id in liked_ids
+        return response
     
     from sqlalchemy.orm import joinedload
     query = db.query(models.Post).options(joinedload(models.Post.owner)).filter(
@@ -401,6 +428,9 @@ def feed_promoted(
     
     # Fetch limit + 1 to check if there are more results
     posts = query.limit(limit + 1).all()
+    
+    # Add reaction and comment counts, and user liked status
+    annotate_posts_with_counts(db, posts, current_user.id if current_user else None)
     
     # Create paginated response
     page_data = create_page_response(posts, limit, cursor, "created_at")
@@ -453,6 +483,9 @@ def feed_following(
         .limit(limit)
         .all()
     )
+    
+    # Add reaction and comment counts, and user liked status
+    annotate_posts_with_counts(db, posts, current_user.id)
     
     return schemas.Page(
         items=[schemas.Post.model_validate(p) for p in posts],
