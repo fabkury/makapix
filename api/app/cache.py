@@ -6,6 +6,7 @@ import json
 import logging
 import os
 from typing import Any
+from uuid import UUID
 
 try:
     import redis
@@ -18,6 +19,15 @@ logger = logging.getLogger(__name__)
 
 # Redis connection
 _redis_client: redis.Redis | None = None
+
+
+class UUIDEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles UUID objects."""
+    
+    def default(self, obj):
+        if isinstance(obj, UUID):
+            return str(obj)
+        return super().default(obj)
 
 
 def get_redis_client() -> redis.Redis | None:
@@ -109,7 +119,7 @@ def cache_set(key: str, value: Any, ttl: int = 300) -> bool:
     try:
         # Serialize value to JSON if it's a dict/list
         if isinstance(value, (dict, list)):
-            serialized = json.dumps(value)
+            serialized = json.dumps(value, cls=UUIDEncoder)
         else:
             serialized = str(value)
         

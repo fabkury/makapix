@@ -5,8 +5,11 @@ export default function DebugEnv() {
   const [apiBaseUrl, setApiBaseUrl] = useState<string>('');
   const [windowOrigin, setWindowOrigin] = useState<string>('');
   const [processEnv, setProcessEnv] = useState<string>('');
+  const [devicePixelRatio, setDevicePixelRatio] = useState<number>(1);
   const [apiTest, setApiTest] = useState<any>(null);
   const [apiError, setApiError] = useState<string>('');
+  const [accessTokenStatus, setAccessTokenStatus] = useState<string>('loading...');
+  const [userHandle, setUserHandle] = useState<string>('loading...');
 
   useEffect(() => {
     // Get API base URL
@@ -17,6 +20,11 @@ export default function DebugEnv() {
     setApiBaseUrl(API_BASE_URL);
     setWindowOrigin(window.location.origin);
     setProcessEnv(process.env.NEXT_PUBLIC_API_BASE_URL || 'undefined');
+    setDevicePixelRatio(window.devicePixelRatio || 1);
+    
+    // Access localStorage only on client side
+    setAccessTokenStatus(localStorage.getItem('access_token') ? 'present' : 'missing');
+    setUserHandle(localStorage.getItem('user_handle') || 'missing');
 
     // Test API endpoint
     const testApi = async () => {
@@ -60,6 +68,7 @@ export default function DebugEnv() {
           <li><strong>API_BASE_URL (computed):</strong> {apiBaseUrl}</li>
           <li><strong>window.location.origin:</strong> {windowOrigin}</li>
           <li><strong>process.env.NEXT_PUBLIC_API_BASE_URL:</strong> {processEnv}</li>
+          <li><strong>window.devicePixelRatio (DPR):</strong> {devicePixelRatio}</li>
         </ul>
 
         <h2>API Test:</h2>
@@ -78,8 +87,8 @@ export default function DebugEnv() {
 
         <h2>LocalStorage:</h2>
         <ul>
-          <li><strong>access_token:</strong> {localStorage.getItem('access_token') ? 'present' : 'missing'}</li>
-          <li><strong>user_handle:</strong> {localStorage.getItem('user_handle') || 'missing'}</li>
+          <li><strong>access_token:</strong> {accessTokenStatus}</li>
+          <li><strong>user_handle:</strong> {userHandle}</li>
         </ul>
       </main>
     </>
