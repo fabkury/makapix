@@ -187,8 +187,8 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
         // Use the larger dimension to calculate scale
         const nativeSize = Math.max(nativeWidth, nativeHeight);
         
-        // Calculate maximum integer scale that fits in 256px
-        const scale = Math.floor(256 / nativeSize);
+        // Calculate maximum integer scale that fits in 128px
+        const scale = Math.floor(128 / nativeSize);
         const finalScale = Math.max(1, scale);
 
         // Calculate display size at integer multiple
@@ -229,131 +229,63 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
     };
   }, [posts]);
 
-  const formatDateTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
   return (
     <div className="card-grid" ref={gridRef}>
-      {posts.map((post, index) => {
-        const isTypeA = index % 2 === 0; // Even-indexed (0-based) = Type A, Odd-indexed = Type B
+      {posts.map((post) => {
         const stats = postStats[post.id] || { reactions: 0, comments: 0, liked: false };
         const isLoading = loadingStats[post.id] || false;
 
         return (
-          <div key={post.id} className={`artwork-card artwork-card-${isTypeA ? 'a' : 'b'}`}>
-            {isTypeA ? (
-              <>
-                {/* Type A: info-left, art-right */}
-                <div className="info-area">
-                  <div className="info-content">
-                    <Link href={`/users/${post.owner_id}`} className="author-handle">
-                      {post.owner?.avatar_url && (
-                        <img src={post.owner.avatar_url} alt="" className="author-avatar" />
-                      )}
-                      <span>{post.owner?.handle || 'Unknown'}</span>
-                    </Link>
-                    <Link href={`/posts/${post.id}`} className="post-title">
-                      {post.title}
-                    </Link>
-                    <div className="post-date">{formatDateTime(post.created_at)}</div>
-                    {post.description && (
-                      <div className="post-description">{post.description}</div>
-                    )}
-                    <div className="post-actions">
-                      <div className="post-stats">
-                        <span className="stat-item">
-                          <span className="stat-emoji">⚡</span>
-                          <span className="stat-count">{stats.reactions}</span>
-                        </span>
-                        <span className="stat-item">
-                          <span className="stat-emoji">💬</span>
-                          <span className="stat-count">{stats.comments}</span>
-                        </span>
-                      </div>
-                      <button
-                        className={`like-button ${stats.liked ? 'liked' : ''}`}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          handleLike(post.id, stats.liked);
-                        }}
-                        disabled={isLoading}
-                        aria-label={stats.liked ? 'Unlike' : 'Like'}
-                      >
-                        👍
-                      </button>
-                    </div>
-                  </div>
+          <div key={post.id} className="artwork-card">
+            <div className="card-top">
+              <div className="artwork-area">
+                <Link href={`/posts/${post.id}`}>
+                  <img
+                    src={post.art_url}
+                    alt={post.title}
+                    className="artwork-image pixel-art"
+                    data-canvas={post.canvas}
+                    loading="lazy"
+                  />
+                </Link>
+              </div>
+              <div className="stats-panel">
+                <div className="stat-item">
+                  <span className="stat-emoji">⚡</span>
+                  <span className="stat-count">{stats.reactions}</span>
                 </div>
-                <div className="artwork-area">
-                  <Link href={`/posts/${post.id}`}>
-                    <img
-                      src={post.art_url}
-                      alt={post.title}
-                      className="artwork-image pixel-art"
-                      data-canvas={post.canvas}
-                      loading="lazy"
-                    />
-                  </Link>
+                <div className="stat-item">
+                  <span className="stat-emoji">💬</span>
+                  <span className="stat-count">{stats.comments}</span>
                 </div>
-              </>
-            ) : (
-              <>
-                {/* Type B: art-left, info-right */}
-                <div className="artwork-area">
-                  <Link href={`/posts/${post.id}`}>
-                    <img
-                      src={post.art_url}
-                      alt={post.title}
-                      className="artwork-image pixel-art"
-                      data-canvas={post.canvas}
-                      loading="lazy"
-                    />
-                  </Link>
-                </div>
-                <div className="info-area">
-                  <div className="info-content">
-                    <Link href={`/users/${post.owner_id}`} className="author-handle">
-                      {post.owner?.avatar_url && (
-                        <img src={post.owner.avatar_url} alt="" className="author-avatar" />
-                      )}
-                      <span>{post.owner?.handle || 'Unknown'}</span>
-                    </Link>
-                    <Link href={`/posts/${post.id}`} className="post-title">
-                      {post.title}
-                    </Link>
-                    <div className="post-date">{formatDateTime(post.created_at)}</div>
-                    {post.description && (
-                      <div className="post-description">{post.description}</div>
-                    )}
-                    <div className="post-actions">
-                      <div className="post-stats">
-                        <span className="stat-item">
-                          <span className="stat-emoji">⚡</span>
-                          <span className="stat-count">{stats.reactions}</span>
-                        </span>
-                        <span className="stat-item">
-                          <span className="stat-emoji">💬</span>
-                          <span className="stat-count">{stats.comments}</span>
-                        </span>
-                      </div>
-                      <button
-                        className={`like-button ${stats.liked ? 'liked' : ''}`}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          handleLike(post.id, stats.liked);
-                        }}
-                        disabled={isLoading}
-                        aria-label={stats.liked ? 'Unlike' : 'Like'}
-                      >
-                        👍
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
+                <button
+                  className={`like-button ${stats.liked ? 'liked' : ''}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleLike(post.id, stats.liked);
+                  }}
+                  disabled={isLoading}
+                  aria-label={stats.liked ? 'Unlike' : 'Like'}
+                >
+                  👍
+                </button>
+              </div>
+            </div>
+            <div className="author-bar">
+              <div className="author-line">
+                <Link href={`/users/${post.owner_id}`} className="author-handle">
+                  {post.owner?.avatar_url && (
+                    <img src={post.owner.avatar_url} alt="" className="author-avatar" />
+                  )}
+                  <span>{post.owner?.handle || 'Unknown'}</span>
+                </Link>
+              </div>
+              <div className="title-line">
+                <Link href={`/posts/${post.id}`} className="post-title">
+                  {post.title}
+                </Link>
+              </div>
+            </div>
           </div>
         );
       })}
@@ -361,60 +293,53 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
       <style jsx>{`
         .card-grid {
           display: grid;
-          grid-template-columns: repeat(1, 514px);
-          gap: var(--grid-gap, 4px);
-          padding: var(--grid-gap, 4px);
+          grid-template-columns: repeat(1, 180px);
+          gap: 1px;
+          padding: 1px;
           max-width: 100%;
           margin: 0 auto;
           justify-content: center;
         }
 
-        @media (min-width: 1032px) {
+        @media (min-width: 362px) {
           .card-grid {
-            grid-template-columns: repeat(2, 514px);
+            grid-template-columns: repeat(2, 180px);
           }
         }
 
-        @media (min-width: 1550px) {
+        @media (min-width: 544px) {
           .card-grid {
-            grid-template-columns: repeat(3, 514px);
+            grid-template-columns: repeat(3, 180px);
           }
         }
 
-        @media (min-width: 2068px) {
+        @media (min-width: 726px) {
           .card-grid {
-            grid-template-columns: repeat(4, 514px);
+            grid-template-columns: repeat(4, 180px);
           }
         }
 
         .artwork-card {
           display: flex;
-          width: 514px;
-          height: 256px;
+          flex-direction: column;
+          width: 178px;
+          height: 178px;
           background: var(--bg-secondary);
           overflow: hidden;
-          transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+          border: 1px solid transparent;
         }
 
-        .artwork-card:hover {
-          transform: scale(1.01);
-          box-shadow: 0 0 20px rgba(0, 212, 255, 0.2);
-          z-index: 1;
-        }
-
-        .artwork-card-a {
+        .card-top {
+          display: flex;
           flex-direction: row;
-          gap: 2px;
-        }
-
-        .artwork-card-b {
-          flex-direction: row;
-          gap: 2px;
+          width: 100%;
+          height: 128px;
+          gap: 1px;
         }
 
         .artwork-area {
-          width: 256px;
-          height: 256px;
+          width: 128px;
+          height: 128px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -440,101 +365,25 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
           -ms-interpolation-mode: nearest-neighbor !important;
         }
 
-        .info-area {
-          width: 256px;
-          height: 256px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 24px;
-          flex-shrink: 0;
-        }
-
-        .info-content {
-          width: 100%;
-          height: 100%;
+        .stats-panel {
+          width: 49px;
+          height: 128px;
           display: flex;
           flex-direction: column;
-          gap: 12px;
-        }
-
-        .author-handle {
-          display: flex;
-          flex-direction: row;
           align-items: center;
+          justify-content: center;
           gap: 8px;
-          font-size: 1rem;
-          font-weight: 600;
-          color: var(--accent-cyan);
-          text-decoration: none;
-          transition: color var(--transition-fast);
-          white-space: nowrap;
-        }
-
-        .author-handle span {
-          line-height: 20px;
-          display: inline-block;
-          vertical-align: middle;
-        }
-
-        .author-handle:hover {
-          color: var(--accent-blue);
-        }
-
-        .author-avatar {
-          width: 20px;
-          height: 20px;
-          border-radius: 50%;
-          object-fit: cover;
+          background: var(--bg-secondary);
           flex-shrink: 0;
-          display: inline-block;
-          vertical-align: middle;
-        }
-
-        .post-title {
-          font-size: 1.25rem;
-          font-weight: 700;
-          color: var(--text-primary);
-          text-decoration: none;
-          transition: color var(--transition-fast);
-        }
-
-        .post-title:hover {
-          color: var(--accent-pink);
-        }
-
-        .post-date {
-          font-size: 0.875rem;
-          color: var(--text-muted);
-        }
-
-        .post-description {
-          font-size: 0.8rem;
-          color: var(--text-secondary);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          max-width: 100%;
-        }
-
-        .post-actions {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          margin-top: auto;
-        }
-
-        .post-stats {
-          display: flex;
-          align-items: center;
-          gap: 12px;
+          padding: 8px 4px;
         }
 
         .stat-item {
           display: flex;
+          flex-direction: column;
           align-items: center;
-          gap: 4px;
-          font-size: 0.85rem;
+          gap: 2px;
+          font-size: 0.75rem;
           color: var(--text-secondary);
         }
 
@@ -544,21 +393,23 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
 
         .stat-count {
           font-weight: 600;
+          font-size: 0.7rem;
         }
 
         .like-button {
-          width: 32px;
-          height: 32px;
+          width: 28px;
+          height: 28px;
           border-radius: 50%;
           border: 2px solid var(--bg-tertiary);
           background: var(--bg-secondary);
-          font-size: 1rem;
+          font-size: 0.9rem;
           cursor: pointer;
           transition: all var(--transition-fast);
           display: flex;
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
+          margin-top: 4px;
         }
 
         .like-button:hover:not(:disabled) {
@@ -580,6 +431,84 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
         .like-button.liked:hover:not(:disabled) {
           background: var(--accent-cyan);
           border-color: var(--accent-cyan);
+        }
+
+        .author-bar {
+          width: 168px;
+          height: 49px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          gap: 4px;
+          background: var(--bg-secondary);
+          padding: 4px 6px;
+          margin-top: 1px;
+        }
+
+        .author-line {
+          display: flex;
+          align-items: center;
+          width: 100%;
+          height: 20px;
+          overflow: hidden;
+        }
+
+        .title-line {
+          display: flex;
+          align-items: center;
+          width: 100%;
+          height: 20px;
+          overflow: hidden;
+        }
+
+        .author-handle {
+          display: flex;
+          flex-direction: row;
+          align-items: center;
+          gap: 4px;
+          font-size: 0.75rem;
+          font-weight: 600;
+          color: var(--accent-cyan);
+          text-decoration: none;
+          transition: color var(--transition-fast);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 100%;
+        }
+
+        .author-handle span {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .author-handle:hover {
+          color: var(--accent-blue);
+        }
+
+        .author-avatar {
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          object-fit: cover;
+          flex-shrink: 0;
+        }
+
+        .post-title {
+          font-size: 0.75rem;
+          font-weight: 700;
+          color: var(--text-primary);
+          text-decoration: none;
+          transition: color var(--transition-fast);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 100%;
+        }
+
+        .post-title:hover {
+          color: var(--accent-pink);
         }
       `}</style>
     </div>
