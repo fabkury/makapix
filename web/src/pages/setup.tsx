@@ -9,8 +9,8 @@ export default function GitHubAppSetupPage() {
   const [installationId, setInstallationId] = useState<string>('');
   
   const API_BASE_URL = typeof window !== 'undefined' 
-    ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
-    : 'http://localhost';
+    ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
+    : '';
 
   useEffect(() => {
     // Check for installation_id in URL params

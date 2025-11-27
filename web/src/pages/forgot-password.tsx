@@ -8,8 +8,8 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const API_BASE_URL = typeof window !== 'undefined'
-    ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
+const API_BASE_URL = typeof window !== 'undefined' 
+    ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
     : '';
 
   const handleSubmit = async (e: React.FormEvent) => {

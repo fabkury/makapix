@@ -2,7 +2,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
-import { useArtworkScaling } from '../hooks/useArtworkScaling';
+import CardGrid from '../components/CardGrid';
+
+interface PostOwner {
+  id: string;
+  handle: string;
+}
 
 interface Post {
   id: string;
@@ -15,6 +20,7 @@ interface Post {
   created_at: string;
   promoted?: boolean;
   visible?: boolean;
+  owner?: PostOwner;
 }
 
 interface PageResponse<T> {
@@ -32,33 +38,13 @@ export default function HomePage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   
   const observerTarget = useRef<HTMLDivElement>(null);
-  const gridRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const hasMoreRef = useRef(true);
   const nextCursorRef = useRef<string | null>(null);
   const initialLoadRef = useRef(false);
   
-  // Apply integer multiple scaling to artworks
-  // Recalculate when posts change
-  useArtworkScaling(gridRef);
-  
-  // Recalculate scaling when posts are updated
-  useEffect(() => {
-    if (posts.length > 0) {
-      // Small delay to ensure images are loaded
-      const timeoutId = setTimeout(() => {
-        const grid = gridRef.current;
-        if (grid) {
-          // Trigger recalculation by dispatching a resize event
-          window.dispatchEvent(new Event('resize'));
-        }
-      }, 100);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [posts]);
-  
   const API_BASE_URL = typeof window !== 'undefined' 
-    ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
+    ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
     : '';
 
   // Redirect non-logged-in users to Recommended page (landing page)
@@ -206,21 +192,9 @@ export default function HomePage() {
           </div>
         )}
 
-        <div className="artwork-grid" ref={gridRef}>
-          {posts.map((post) => (
-            <Link key={post.id} href={`/posts/${post.id}`} className="artwork-card">
-              <div className="artwork-image-container">
-                <img
-                  src={post.art_url}
-                  alt={post.title}
-                  className="artwork-image pixel-art"
-                  data-canvas={post.canvas}
-                  loading="lazy"
-                />
-              </div>
-            </Link>
-          ))}
-        </div>
+        {posts.length > 0 && (
+          <CardGrid posts={posts} API_BASE_URL={API_BASE_URL} />
+        )}
 
         {posts.length > 0 && (
           <div ref={observerTarget} className="load-more-trigger">
@@ -281,63 +255,6 @@ export default function HomePage() {
         .empty-icon {
           font-size: 4rem;
           margin-bottom: 1rem;
-        }
-
-        .artwork-grid {
-          --artwork-card-size: 256px;
-          display: grid;
-          grid-template-columns: repeat(2, var(--artwork-card-size));
-          gap: var(--grid-gap);
-          padding: var(--grid-gap);
-          max-width: 1200px;
-          margin: 0 auto;
-          justify-content: center;
-        }
-
-        @media (min-width: 768px) {
-          .artwork-grid {
-            grid-template-columns: repeat(3, var(--artwork-card-size));
-          }
-        }
-
-        @media (min-width: 1024px) {
-          .artwork-grid {
-            grid-template-columns: repeat(4, var(--artwork-card-size));
-          }
-        }
-
-        .artwork-card {
-          display: block;
-          aspect-ratio: 1;
-          background: var(--bg-secondary);
-          overflow: hidden;
-          transition: transform var(--transition-fast), box-shadow var(--transition-fast), width var(--transition-fast), height var(--transition-fast);
-        }
-
-        .artwork-card:hover {
-          transform: scale(1.02);
-          box-shadow: 0 0 20px rgba(0, 212, 255, 0.2);
-          z-index: 1;
-        }
-
-        .artwork-image-container {
-          width: 100%;
-          height: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: var(--bg-tertiary);
-        }
-
-        .artwork-image {
-          width: 100%;
-          height: 100%;
-          object-fit: contain;
-          image-rendering: -webkit-optimize-contrast !important;
-          image-rendering: -moz-crisp-edges !important;
-          image-rendering: crisp-edges !important;
-          image-rendering: pixelated !important;
-          -ms-interpolation-mode: nearest-neighbor !important;
         }
 
         .load-more-trigger {

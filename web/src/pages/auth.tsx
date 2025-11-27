@@ -29,7 +29,7 @@ export default function AuthPage() {
   const [verificationResent, setVerificationResent] = useState(false);
   
   const API_BASE_URL = typeof window !== 'undefined' 
-    ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
+    ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
     : '';
 
   // Check if already logged in

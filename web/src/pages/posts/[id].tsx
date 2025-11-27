@@ -52,7 +52,7 @@ export default function PostPage() {
   const [imageError, setImageError] = useState(false);
   
   const API_BASE_URL = typeof window !== 'undefined' 
-    ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
+    ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
     : '';
 
   useEffect(() => {

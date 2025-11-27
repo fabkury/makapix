@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
-import { useArtworkScaling } from '../../hooks/useArtworkScaling';
+import CardGrid from '../../components/CardGrid';
 
 interface User {
   id: string;
@@ -16,6 +16,11 @@ interface User {
   banned_until?: string | null;
 }
 
+interface PostOwner {
+  id: string;
+  handle: string;
+}
+
 interface Post {
   id: string;
   title: string;
@@ -25,6 +30,7 @@ interface Post {
   canvas: string;
   owner_id: string;
   created_at: string;
+  owner?: PostOwner;
 }
 
 interface PageResponse<T> {
@@ -57,16 +63,12 @@ export default function UserProfilePage() {
   const [isModerator, setIsModerator] = useState(false);
   
   const observerTarget = useRef<HTMLDivElement>(null);
-  const gridRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const hasMoreRef = useRef(true);
   const nextCursorRef = useRef<string | null>(null);
   
-  // Apply integer multiple scaling to artworks
-  useArtworkScaling(gridRef);
-  
   const API_BASE_URL = typeof window !== 'undefined' 
-    ? (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost')
+    ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
     : '';
 
   // Fetch user profile
@@ -712,21 +714,9 @@ export default function UserProfilePage() {
             </div>
           )}
 
-          <div className="artwork-grid" ref={gridRef}>
-            {posts.map((post) => (
-              <Link key={post.id} href={`/posts/${post.id}`} className="artwork-card">
-                <div className="artwork-image-container">
-                  <img
-                    src={post.art_url}
-                    alt={post.title}
-                    className="artwork-image pixel-art"
-                    data-canvas={post.canvas}
-                    loading="lazy"
-                  />
-                </div>
-              </Link>
-            ))}
-          </div>
+          {posts.length > 0 && (
+            <CardGrid posts={posts} API_BASE_URL={API_BASE_URL} />
+          )}
 
           {posts.length > 0 && (
             <div ref={observerTarget} className="load-more-trigger">
@@ -1111,63 +1101,6 @@ export default function UserProfilePage() {
           font-size: 4rem;
           margin-bottom: 1rem;
           opacity: 0.5;
-        }
-
-        .artwork-grid {
-          --artwork-card-size: 256px;
-          display: grid;
-          grid-template-columns: repeat(2, var(--artwork-card-size));
-          gap: var(--grid-gap);
-          padding: var(--grid-gap);
-          max-width: 1200px;
-          margin: 0 auto;
-          justify-content: center;
-        }
-
-        @media (min-width: 768px) {
-          .artwork-grid {
-            grid-template-columns: repeat(3, var(--artwork-card-size));
-          }
-        }
-
-        @media (min-width: 1024px) {
-          .artwork-grid {
-            grid-template-columns: repeat(4, var(--artwork-card-size));
-          }
-        }
-
-        .artwork-card {
-          display: block;
-          aspect-ratio: 1;
-          background: var(--bg-secondary);
-          overflow: hidden;
-          border-radius: 8px;
-          transition: transform var(--transition-fast), box-shadow var(--transition-fast), width var(--transition-fast), height var(--transition-fast);
-        }
-
-        .artwork-card:hover {
-          transform: scale(1.02);
-          box-shadow: 0 0 20px rgba(0, 212, 255, 0.2);
-        }
-
-        .artwork-image-container {
-          width: 100%;
-          height: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: var(--bg-tertiary);
-        }
-
-        .artwork-image {
-          width: 100%;
-          height: 100%;
-          object-fit: contain;
-          image-rendering: -webkit-optimize-contrast !important;
-          image-rendering: -moz-crisp-edges !important;
-          image-rendering: crisp-edges !important;
-          image-rendering: pixelated !important;
-          -ms-interpolation-mode: nearest-neighbor !important;
         }
 
         .load-more-trigger {
