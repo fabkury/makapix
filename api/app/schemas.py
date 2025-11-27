@@ -1150,6 +1150,51 @@ class PostStatsResponse(BaseModel):
     computed_at: datetime
 
 
+class DailyCount(BaseModel):
+    """Daily count for trends."""
+    
+    date: str  # ISO format date (YYYY-MM-DD)
+    count: int
+
+
+class HourlyCount(BaseModel):
+    """Hourly count for granular trends."""
+    
+    hour: str  # ISO format datetime of hour start
+    count: int
+
+
+class SitewideStatsResponse(BaseModel):
+    """Comprehensive sitewide statistics (moderator only)."""
+    
+    # Summary metrics (30 days)
+    total_page_views_30d: int
+    unique_visitors_30d: int
+    new_signups_30d: int
+    new_posts_30d: int
+    total_api_calls_30d: int
+    total_errors_30d: int
+    
+    # Trends (30 days)
+    daily_views: list[DailyCount]
+    daily_signups: list[DailyCount]
+    daily_posts: list[DailyCount]
+    
+    # Granular data (last 24h from events)
+    hourly_views: list[HourlyCount]
+    
+    # Breakdowns
+    views_by_page: dict[str, int]  # Top 20 pages: {"/recent": 500, "/posts": 300, ...}
+    views_by_country: dict[str, int]  # Top 10 countries: {"US": 200, "BR": 150, ...}
+    views_by_device: dict[str, int]  # {"desktop": 400, "mobile": 350, ...}
+    top_referrers: dict[str, int]  # Top 10 referrers: {"google.com": 100, ...}
+    
+    # Error tracking
+    errors_by_type: dict[str, int]  # {"404": 50, "500": 5, ...}
+    
+    computed_at: datetime
+
+
 # ============================================================================
 # LEGACY SCHEMAS (for backwards compatibility)
 # ============================================================================

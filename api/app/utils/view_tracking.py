@@ -215,16 +215,16 @@ def record_view(
     post_owner_id: UUID | None = None,
 ) -> None:
     """
-    Record a view event for an artwork.
+    Queue an artwork view event for async writing via Celery.
     
-    This function extracts metadata from the request and creates a ViewEvent record.
-    It uses a separate database session to avoid interfering with the main transaction.
-    It is designed to be non-blocking and fail gracefully.
+    Extracts all metadata from the request synchronously, then dispatches
+    to Celery for non-blocking database write. Zero database interaction
+    in the request path.
     
     Author views are excluded - if the authenticated user is the post owner, the view is not recorded.
     
     Args:
-        db: Database session (not used, kept for API compatibility)
+        db: Database session (used only to query post owner if not provided)
         post_id: UUID of the post being viewed
         request: FastAPI Request object
         user: Current user (if authenticated)
@@ -232,16 +232,14 @@ def record_view(
         view_source: Source of view (web, api, widget, player)
         post_owner_id: UUID of the post owner (if provided, used to exclude author views)
     """
-    # Use a separate session to avoid transaction conflicts
-    from ..db import SessionLocal
-    view_db = SessionLocal()
     try:
-        from ..models import ViewEvent, Post
+        from ..models import Post
         from ..geoip import get_country_code
+        from ..tasks import write_view_event
         
-        # Get post owner_id if not provided
+        # Get post owner_id if not provided (minimal DB query)
         if post_owner_id is None:
-            post = view_db.query(Post).filter(Post.id == post_id).first()
+            post = db.query(Post).filter(Post.id == post_id).first()
             if not post:
                 logger.debug(f"Post {post_id} not found, skipping view recording")
                 return
@@ -252,7 +250,7 @@ def record_view(
             logger.debug(f"Skipping view recording for post {post_id} - user is the owner")
             return
         
-        # Extract request metadata
+        # Extract request metadata synchronously
         client_ip = get_client_ip(request)
         user_agent = request.headers.get("User-Agent")
         referrer = request.headers.get("Referer")
@@ -267,36 +265,32 @@ def record_view(
         # Resolve country code from IP
         country_code = get_country_code(client_ip)
         
-        # Create view event
-        view_event = ViewEvent(
-            id=uuid.uuid4(),
-            post_id=post_id,
-            viewer_user_id=user.id if user else None,
-            viewer_ip_hash=hash_ip(client_ip),
-            country_code=country_code,
-            device_type=device_type.value,
-            view_source=view_source.value,
-            view_type=view_type.value,
-            user_agent_hash=hash_user_agent(user_agent),
-            referrer_domain=extract_referrer_domain(referrer),
-            created_at=datetime.now(timezone.utc),
-        )
+        # Prepare event data for Celery
+        event_data = {
+            "post_id": str(post_id),
+            "viewer_user_id": str(user.id) if user else None,
+            "viewer_ip_hash": hash_ip(client_ip),
+            "country_code": country_code,
+            "device_type": device_type.value,
+            "view_source": view_source.value,
+            "view_type": view_type.value,
+            "user_agent_hash": hash_user_agent(user_agent),
+            "referrer_domain": extract_referrer_domain(referrer),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
         
-        view_db.add(view_event)
-        view_db.commit()
+        # Dispatch to Celery for async write (non-blocking)
+        write_view_event.delay(event_data)
         
-        logger.info(
-            f"Recorded view for post {post_id}: "
+        logger.debug(
+            f"Queued view event for post {post_id}: "
             f"device={device_type.value}, source={view_source.value}, "
             f"type={view_type.value}, country={country_code}"
         )
         
     except Exception as e:
         # Log error but don't fail the request
-        view_db.rollback()
-        logger.warning(f"Failed to record view for post {post_id}: {e}", exc_info=True)
-    finally:
-        view_db.close()
+        logger.warning(f"Failed to queue view event for post {post_id}: {e}", exc_info=True)
 
 
 def record_views_batch(
@@ -309,15 +303,15 @@ def record_views_batch(
     post_owner_ids: dict[UUID, UUID] | None = None,
 ) -> None:
     """
-    Record view events for multiple artworks (batch operation).
+    Queue view events for multiple artworks for async writing via Celery (batch operation).
     
     Used when artworks appear in feeds or search results.
-    Uses a separate database session to avoid interfering with the main transaction.
+    Extracts metadata once and dispatches multiple events to Celery.
     
     Author views are excluded - posts where the authenticated user is the owner are filtered out.
     
     Args:
-        db: Database session (not used, kept for API compatibility)
+        db: Database session (used only to query post owners if not provided)
         post_ids: List of post UUIDs being viewed
         request: FastAPI Request object
         user: Current user (if authenticated)
@@ -328,16 +322,14 @@ def record_views_batch(
     if not post_ids:
         return
     
-    # Use a separate session to avoid transaction conflicts
-    from ..db import SessionLocal
-    view_db = SessionLocal()
     try:
-        from ..models import ViewEvent, Post
+        from ..models import Post
         from ..geoip import get_country_code
+        from ..tasks import write_view_event
         
-        # Get owner_ids if not provided
+        # Get owner_ids if not provided (minimal DB query)
         if post_owner_ids is None:
-            posts = view_db.query(Post.id, Post.owner_id).filter(Post.id.in_(post_ids)).all()
+            posts = db.query(Post.id, Post.owner_id).filter(Post.id.in_(post_ids)).all()
             post_owner_ids = {post.id: post.owner_id for post in posts}
         
         # Filter out posts where user is the owner
@@ -367,38 +359,30 @@ def record_views_batch(
         ip_hash = hash_ip(client_ip)
         ua_hash = hash_user_agent(user_agent)
         referrer_domain = extract_referrer_domain(referrer)
-        now = datetime.now(timezone.utc)
-        user_id = user.id if user else None
+        now_iso = datetime.now(timezone.utc).isoformat()
+        user_id_str = str(user.id) if user else None
         
-        # Create view events for filtered posts
-        view_events = [
-            ViewEvent(
-                id=uuid.uuid4(),
-                post_id=post_id,
-                viewer_user_id=user_id,
-                viewer_ip_hash=ip_hash,
-                country_code=country_code,
-                device_type=device_type.value,
-                view_source=view_source.value,
-                view_type=view_type.value,
-                user_agent_hash=ua_hash,
-                referrer_domain=referrer_domain,
-                created_at=now,
-            )
-            for post_id in filtered_post_ids
-        ]
+        # Queue events for filtered posts (non-blocking Celery dispatch)
+        for post_id in filtered_post_ids:
+            event_data = {
+                "post_id": str(post_id),
+                "viewer_user_id": user_id_str,
+                "viewer_ip_hash": ip_hash,
+                "country_code": country_code,
+                "device_type": device_type.value,
+                "view_source": view_source.value,
+                "view_type": view_type.value,
+                "user_agent_hash": ua_hash,
+                "referrer_domain": referrer_domain,
+                "created_at": now_iso,
+            }
+            write_view_event.delay(event_data)
         
-        view_db.add_all(view_events)
-        view_db.commit()
-        
-        logger.info(
-            f"Recorded {len(filtered_post_ids)} batch views (filtered {len(post_ids) - len(filtered_post_ids)} owner views): "
+        logger.debug(
+            f"Queued {len(filtered_post_ids)} batch views (filtered {len(post_ids) - len(filtered_post_ids)} owner views): "
             f"device={device_type.value}, type={view_type.value}"
         )
         
     except Exception as e:
-        view_db.rollback()
-        logger.warning(f"Failed to record batch views: {e}", exc_info=True)
-    finally:
-        view_db.close()
+        logger.warning(f"Failed to queue batch views: {e}", exc_info=True)
 

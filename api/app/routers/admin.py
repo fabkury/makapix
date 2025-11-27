@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -491,4 +492,60 @@ def list_anonymous_users(
     return schemas.Page(
         items=[schemas.UserPublic.model_validate(u, from_attributes=True) for u in page_data["items"]],
         next_cursor=page_data["next_cursor"],
+    )
+
+
+@router.get("/sitewide-stats", response_model=schemas.SitewideStatsResponse)
+def get_sitewide_stats(
+    db: Session = Depends(get_db),
+    _moderator: models.User = Depends(require_moderator),
+) -> schemas.SitewideStatsResponse:
+    """
+    Get comprehensive sitewide statistics (moderator only).
+    
+    Returns event-level granularity for the past 7 days, then daily aggregates
+    until the past 30 days. Includes hourly breakdown for the last 24 hours.
+    
+    Statistics are cached in Redis for 5 minutes.
+    """
+    from ..services.site_stats import get_sitewide_stats
+    
+    stats = get_sitewide_stats(db)
+    
+    if stats is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to compute sitewide statistics"
+        )
+    
+    # Convert to response schema
+    return schemas.SitewideStatsResponse(
+        total_page_views_30d=stats.total_page_views_30d,
+        unique_visitors_30d=stats.unique_visitors_30d,
+        new_signups_30d=stats.new_signups_30d,
+        new_posts_30d=stats.new_posts_30d,
+        total_api_calls_30d=stats.total_api_calls_30d,
+        total_errors_30d=stats.total_errors_30d,
+        daily_views=[
+            schemas.DailyCount(date=dv.date, count=dv.count)
+            for dv in stats.daily_views
+        ],
+        daily_signups=[
+            schemas.DailyCount(date=ds.date, count=ds.count)
+            for ds in stats.daily_signups
+        ],
+        daily_posts=[
+            schemas.DailyCount(date=dp.date, count=dp.count)
+            for dp in stats.daily_posts
+        ],
+        hourly_views=[
+            schemas.HourlyCount(hour=hv.hour, count=hv.count)
+            for hv in stats.hourly_views
+        ],
+        views_by_page=stats.views_by_page,
+        views_by_country=stats.views_by_country,
+        views_by_device=stats.views_by_device,
+        top_referrers=stats.top_referrers,
+        errors_by_type=stats.errors_by_type,
+        computed_at=datetime.fromisoformat(stats.computed_at),
     )
