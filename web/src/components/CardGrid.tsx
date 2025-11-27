@@ -452,27 +452,31 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
         }
 
         .author-line {
-          display: flex;
-          align-items: center;
+          display: block;
           width: 100%;
-          height: 20px;
+          height: 18px;
+          line-height: 18px;
           overflow: hidden;
+          white-space: nowrap;
+          text-overflow: ellipsis;
         }
 
         .title-line {
-          display: flex;
-          align-items: center;
+          display: block;
           width: 100%;
-          height: 20px;
+          height: 18px;
+          line-height: 18px;
           overflow: hidden;
+          white-space: nowrap;
+          text-overflow: ellipsis;
         }
 
         .author-handle {
-          display: flex;
+          display: inline-flex;
           flex-direction: row;
           align-items: center;
-          gap: 4px;
-          font-size: 0.75rem;
+          gap: 3px;
+          font-size: 0.625rem;
           font-weight: 600;
           color: var(--accent-cyan);
           text-decoration: none;
@@ -481,6 +485,7 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
           overflow: hidden;
           text-overflow: ellipsis;
           max-width: 100%;
+          vertical-align: middle;
         }
 
         .author-handle span {
@@ -494,27 +499,29 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
         }
 
         .author-avatar {
-          width: 14px;
-          height: 14px;
+          width: 12px;
+          height: 12px;
           border-radius: 50%;
           object-fit: cover;
           flex-shrink: 0;
         }
 
         .post-title {
-          font-size: 0.75rem;
-          font-weight: 700;
-          color: var(--text-primary);
+          display: inline-block;
+          font-size: 0.625rem;
+          font-weight: 600;
+          color: var(--accent-pink);
           text-decoration: none;
           transition: color var(--transition-fast);
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
           max-width: 100%;
+          vertical-align: middle;
         }
 
         .post-title:hover {
-          color: var(--accent-pink);
+          color: var(--accent-purple);
         }
       `}</style>
     </div>
