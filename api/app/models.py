@@ -656,6 +656,83 @@ class PostStatsCache(Base):
 
 
 # ============================================================================
+# SITEWIDE METRICS & STATISTICS
+# ============================================================================
+
+
+class SiteEvent(Base):
+    """Raw sitewide event for tracking site metrics (7-day retention)."""
+
+    __tablename__ = "site_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    event_type = Column(String(50), nullable=False, index=True)  # page_view, signup, upload, api_call, error
+    page_path = Column(String(500), nullable=True)  # /recent, /posts/[id], etc.
+    
+    # Visitor identification
+    visitor_ip_hash = Column(String(64), nullable=False)  # SHA256 hash of IP address
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    
+    # Device & geographic information
+    device_type = Column(String(20), nullable=False, index=True)  # desktop, mobile, tablet
+    country_code = Column(String(2), nullable=True, index=True)  # ISO 3166-1 alpha-2
+    referrer_domain = Column(String(255), nullable=True)  # Extracted referrer domain
+    
+    # Event-specific data (JSON for flexibility)
+    event_data = Column(JSON, nullable=True)  # {endpoint, status_code, error_message, etc.}
+    
+    # Timestamps
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+
+    # Relationships
+    user = relationship(
+        "User",
+        backref=backref("site_events", passive_deletes=True),
+        passive_deletes=True,
+    )
+
+    __table_args__ = (
+        Index("ix_site_events_type_created", event_type, created_at.desc()),
+        Index("ix_site_events_created", created_at.desc()),
+    )
+
+
+class SiteStatsDaily(Base):
+    """Daily aggregated sitewide statistics (permanent storage)."""
+
+    __tablename__ = "site_stats_daily"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(Date, nullable=False, unique=True, index=True)
+    
+    # Core metrics
+    total_page_views = Column(Integer, nullable=False, default=0)
+    unique_visitors = Column(Integer, nullable=False, default=0)
+    new_signups = Column(Integer, nullable=False, default=0)
+    new_posts = Column(Integer, nullable=False, default=0)
+    total_api_calls = Column(Integer, nullable=False, default=0)
+    total_errors = Column(Integer, nullable=False, default=0)
+    
+    # Breakdown by dimension (stored as JSON for flexibility)
+    views_by_page = Column(JSON, nullable=False, default=dict)  # {"/recent": 500, "/posts": 300, ...}
+    views_by_country = Column(JSON, nullable=False, default=dict)  # {"US": 200, "BR": 150, ...}
+    views_by_device = Column(JSON, nullable=False, default=dict)  # {"desktop": 400, "mobile": 350, ...}
+    errors_by_type = Column(JSON, nullable=False, default=dict)  # {"404": 50, "500": 5, ...}
+    top_referrers = Column(JSON, nullable=False, default=dict)  # {"google.com": 100, "twitter.com": 50, ...}
+    
+    # Timestamps
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_site_stats_daily_date", date),
+    )
+
+
+# ============================================================================
 # BLOG POSTS
 # ============================================================================
 

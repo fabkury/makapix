@@ -6,6 +6,7 @@ import httpx
 import json
 import logging
 import os
+import uuid
 import zipfile
 from pathlib import Path
 from typing import Any, List
@@ -327,6 +328,16 @@ celery_app.conf.update(
         "rollup-view-events": {
             "task": "app.tasks.rollup_view_events",
             "schedule": 86400.0,  # Daily (in seconds)
+            "options": {"queue": "default"},
+        },
+        "rollup-site-events": {
+            "task": "app.tasks.rollup_site_events",
+            "schedule": 86400.0,  # Daily at 1AM UTC (in seconds)
+            "options": {"queue": "default"},
+        },
+        "cleanup-old-site-events": {
+            "task": "app.tasks.cleanup_old_site_events",
+            "schedule": 86400.0,  # Daily at 2AM UTC (in seconds)
             "options": {"queue": "default"},
         },
         "cleanup-expired-stats-cache": {
@@ -786,6 +797,262 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
 
 
 # ============================================================================
+# DEFERRED EVENT WRITING TASKS
+# ============================================================================
+
+
+@celery_app.task(name="app.tasks.write_view_event", bind=True, ignore_result=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
+def write_view_event(self, event_data: dict) -> None:
+    """
+    Async Celery task to write a view event to the database.
+    
+    This task receives serialized event data and creates a ViewEvent record.
+    Called asynchronously from record_view() to avoid blocking request handlers.
+    
+    Args:
+        event_data: Dictionary containing view event fields:
+            - post_id: UUID string
+            - viewer_user_id: UUID string or None
+            - viewer_ip_hash: SHA256 hash string
+            - country_code: ISO country code or None
+            - device_type: device type string
+            - view_source: view source string
+            - view_type: view type string
+            - user_agent_hash: SHA256 hash or None
+            - referrer_domain: domain string or None
+            - created_at: ISO datetime string
+    """
+    from datetime import datetime
+    from uuid import UUID
+    from . import models
+    from .db import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        # Parse UUIDs
+        post_id = UUID(event_data["post_id"])
+        viewer_user_id = UUID(event_data["viewer_user_id"]) if event_data.get("viewer_user_id") else None
+        
+        # Parse datetime
+        created_at = datetime.fromisoformat(event_data["created_at"])
+        
+        # Create view event
+        view_event = models.ViewEvent(
+            id=uuid.uuid4(),
+            post_id=post_id,
+            viewer_user_id=viewer_user_id,
+            viewer_ip_hash=event_data["viewer_ip_hash"],
+            country_code=event_data.get("country_code"),
+            device_type=event_data["device_type"],
+            view_source=event_data["view_source"],
+            view_type=event_data["view_type"],
+            user_agent_hash=event_data.get("user_agent_hash"),
+            referrer_domain=event_data.get("referrer_domain"),
+            created_at=created_at,
+        )
+        
+        db.add(view_event)
+        db.commit()
+        
+        logger.debug(f"Wrote deferred view event for post {post_id}")
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to write deferred view event: {e}", exc_info=True)
+        raise  # Re-raise to trigger Celery retry
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.write_site_event", bind=True, ignore_result=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
+def write_site_event(self, event_data: dict) -> None:
+    """
+    Async Celery task to write a site event to the database.
+    
+    This task receives serialized event data and creates a SiteEvent record.
+    Called asynchronously from record_site_event() to avoid blocking request handlers.
+    
+    Args:
+        event_data: Dictionary containing site event fields:
+            - event_type: event type string (page_view, signup, upload, etc.)
+            - page_path: URL path string or None
+            - visitor_ip_hash: SHA256 hash string
+            - user_id: UUID string or None
+            - device_type: device type string
+            - country_code: ISO country code or None
+            - referrer_domain: domain string or None
+            - metadata: dict with event-specific data or None
+            - created_at: ISO datetime string
+    """
+    from datetime import datetime
+    from uuid import UUID
+    from . import models
+    from .db import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        # Parse UUID if present
+        user_id = UUID(event_data["user_id"]) if event_data.get("user_id") else None
+        
+        # Parse datetime
+        created_at = datetime.fromisoformat(event_data["created_at"])
+        
+        # Create site event
+        site_event = models.SiteEvent(
+            id=uuid.uuid4(),
+            event_type=event_data["event_type"],
+            page_path=event_data.get("page_path"),
+            visitor_ip_hash=event_data["visitor_ip_hash"],
+            user_id=user_id,
+            device_type=event_data["device_type"],
+            country_code=event_data.get("country_code"),
+            referrer_domain=event_data.get("referrer_domain"),
+            event_data=event_data.get("event_data"),
+            created_at=created_at,
+        )
+        
+        db.add(site_event)
+        db.commit()
+        
+        logger.debug(f"Wrote deferred site event: {event_data['event_type']}")
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to write deferred site event: {e}", exc_info=True)
+        raise  # Re-raise to trigger Celery retry
+    finally:
+        db.close()
+
+
+# ============================================================================
+# DEFERRED EVENT WRITING TASKS
+# ============================================================================
+
+
+@celery_app.task(name="app.tasks.write_view_event", bind=True, ignore_result=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
+def write_view_event(self, event_data: dict) -> None:
+    """
+    Async Celery task to write a view event to the database.
+    
+    This task receives serialized event data and creates a ViewEvent record.
+    Called asynchronously from record_view() to avoid blocking request handlers.
+    
+    Args:
+        event_data: Dictionary containing view event fields:
+            - post_id: UUID string
+            - viewer_user_id: UUID string or None
+            - viewer_ip_hash: SHA256 hash string
+            - country_code: ISO country code or None
+            - device_type: device type string
+            - view_source: view source string
+            - view_type: view type string
+            - user_agent_hash: SHA256 hash or None
+            - referrer_domain: domain string or None
+            - created_at: ISO datetime string
+    """
+    from datetime import datetime
+    from uuid import UUID
+    from . import models
+    from .db import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        # Parse UUIDs
+        post_id = UUID(event_data["post_id"])
+        viewer_user_id = UUID(event_data["viewer_user_id"]) if event_data.get("viewer_user_id") else None
+        
+        # Parse datetime
+        created_at = datetime.fromisoformat(event_data["created_at"])
+        
+        # Create view event
+        view_event = models.ViewEvent(
+            id=uuid.uuid4(),
+            post_id=post_id,
+            viewer_user_id=viewer_user_id,
+            viewer_ip_hash=event_data["viewer_ip_hash"],
+            country_code=event_data.get("country_code"),
+            device_type=event_data["device_type"],
+            view_source=event_data["view_source"],
+            view_type=event_data["view_type"],
+            user_agent_hash=event_data.get("user_agent_hash"),
+            referrer_domain=event_data.get("referrer_domain"),
+            created_at=created_at,
+        )
+        
+        db.add(view_event)
+        db.commit()
+        
+        logger.debug(f"Wrote deferred view event for post {post_id}")
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to write deferred view event: {e}", exc_info=True)
+        raise  # Re-raise to trigger Celery retry
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.write_site_event", bind=True, ignore_result=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
+def write_site_event(self, event_data: dict) -> None:
+    """
+    Async Celery task to write a site event to the database.
+    
+    This task receives serialized event data and creates a SiteEvent record.
+    Called asynchronously from record_site_event() to avoid blocking request handlers.
+    
+    Args:
+        event_data: Dictionary containing site event fields:
+            - event_type: event type string (page_view, signup, upload, etc.)
+            - page_path: URL path string or None
+            - visitor_ip_hash: SHA256 hash string
+            - user_id: UUID string or None
+            - device_type: device type string
+            - country_code: ISO country code or None
+            - referrer_domain: domain string or None
+            - metadata: dict with event-specific data or None
+            - created_at: ISO datetime string
+    """
+    from datetime import datetime
+    from uuid import UUID
+    from . import models
+    from .db import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        # Parse UUID if present
+        user_id = UUID(event_data["user_id"]) if event_data.get("user_id") else None
+        
+        # Parse datetime
+        created_at = datetime.fromisoformat(event_data["created_at"])
+        
+        # Create site event
+        site_event = models.SiteEvent(
+            id=uuid.uuid4(),
+            event_type=event_data["event_type"],
+            page_path=event_data.get("page_path"),
+            visitor_ip_hash=event_data["visitor_ip_hash"],
+            user_id=user_id,
+            device_type=event_data["device_type"],
+            country_code=event_data.get("country_code"),
+            referrer_domain=event_data.get("referrer_domain"),
+            metadata=event_data.get("metadata"),
+            created_at=created_at,
+        )
+        
+        db.add(site_event)
+        db.commit()
+        
+        logger.debug(f"Wrote deferred site event: {event_data['event_type']}")
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to write deferred site event: {e}", exc_info=True)
+        raise  # Re-raise to trigger Celery retry
+    finally:
+        db.close()
+
+
+# ============================================================================
 # VIEW TRACKING & STATISTICS TASKS
 # ============================================================================
 
@@ -952,6 +1219,214 @@ def cleanup_expired_stats_cache(self) -> dict[str, Any]:
         
     except Exception as e:
         logger.error(f"Error in cleanup_expired_stats_cache task: {e}", exc_info=True)
+        db.rollback()
+        return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.rollup_site_events", bind=True)
+def rollup_site_events(self) -> dict[str, Any]:
+    """
+    Daily task: Roll up site events older than 7 days into daily aggregates.
+    
+    This task:
+    1. Selects site events older than 7 days
+    2. Aggregates them by date
+    3. Upserts into site_stats_daily table
+    4. Deletes the old raw events
+    
+    Should run daily at 1AM UTC (configured in beat_schedule).
+    """
+    from datetime import datetime, timedelta, timezone, date
+    from . import models
+    from .db import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        logger.info("Starting site events rollup task")
+        
+        # Get events older than 7 days
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=7)
+        
+        # Query events to aggregate, grouped by date
+        old_events = db.query(models.SiteEvent).filter(
+            models.SiteEvent.created_at < cutoff_date
+        ).all()
+        
+        if not old_events:
+            logger.info("No old site events to roll up")
+            return {"status": "success", "rolled_up": 0, "deleted": 0}
+        
+        logger.info(f"Found {len(old_events)} old site events to roll up")
+        
+        # Aggregate events by date
+        aggregates: dict[date, dict] = {}  # date -> aggregate data
+        
+        for event in old_events:
+            event_date = event.created_at.date()
+            
+            if event_date not in aggregates:
+                aggregates[event_date] = {
+                    "total_page_views": 0,
+                    "unique_ip_hashes": set(),
+                    "new_signups": 0,
+                    "new_posts": 0,
+                    "total_api_calls": 0,
+                    "total_errors": 0,
+                    "views_by_page": {},
+                    "views_by_country": {},
+                    "views_by_device": {},
+                    "errors_by_type": {},
+                    "top_referrers": {},
+                }
+            
+            agg = aggregates[event_date]
+            
+            # Count by event type
+            if event.event_type == "page_view":
+                agg["total_page_views"] += 1
+                agg["unique_ip_hashes"].add(event.visitor_ip_hash)
+                
+                # Track page path
+                if event.page_path:
+                    agg["views_by_page"][event.page_path] = agg["views_by_page"].get(event.page_path, 0) + 1
+                
+                # Track country
+                if event.country_code:
+                    agg["views_by_country"][event.country_code] = agg["views_by_country"].get(event.country_code, 0) + 1
+                
+                # Track device
+                agg["views_by_device"][event.device_type] = agg["views_by_device"].get(event.device_type, 0) + 1
+                
+                # Track referrer
+                if event.referrer_domain:
+                    agg["top_referrers"][event.referrer_domain] = agg["top_referrers"].get(event.referrer_domain, 0) + 1
+                    
+            elif event.event_type == "signup":
+                agg["new_signups"] += 1
+            elif event.event_type == "upload":
+                agg["new_posts"] += 1
+            elif event.event_type == "api_call":
+                agg["total_api_calls"] += 1
+            elif event.event_type == "error":
+                agg["total_errors"] += 1
+                # Track error type from event_data
+                if event.event_data and "error_type" in event.event_data:
+                    error_type = str(event.event_data["error_type"])
+                    agg["errors_by_type"][error_type] = agg["errors_by_type"].get(error_type, 0) + 1
+        
+        # Upsert aggregates into site_stats_daily
+        rolled_up = 0
+        for event_date, agg in aggregates.items():
+            # Check if record exists
+            existing = db.query(models.SiteStatsDaily).filter(
+                models.SiteStatsDaily.date == event_date
+            ).first()
+            
+            if existing:
+                # Merge with existing data
+                existing.total_page_views += agg["total_page_views"]
+                existing.unique_visitors += len(agg["unique_ip_hashes"])
+                existing.new_signups += agg["new_signups"]
+                existing.new_posts += agg["new_posts"]
+                existing.total_api_calls += agg["total_api_calls"]
+                existing.total_errors += agg["total_errors"]
+                
+                # Merge JSON fields
+                existing_views_by_page = existing.views_by_page or {}
+                for page, count in agg["views_by_page"].items():
+                    existing_views_by_page[page] = existing_views_by_page.get(page, 0) + count
+                existing.views_by_page = existing_views_by_page
+                
+                existing_views_by_country = existing.views_by_country or {}
+                for country, count in agg["views_by_country"].items():
+                    existing_views_by_country[country] = existing_views_by_country.get(country, 0) + count
+                existing.views_by_country = existing_views_by_country
+                
+                existing_views_by_device = existing.views_by_device or {}
+                for device, count in agg["views_by_device"].items():
+                    existing_views_by_device[device] = existing_views_by_device.get(device, 0) + count
+                existing.views_by_device = existing_views_by_device
+                
+                existing_errors_by_type = existing.errors_by_type or {}
+                for error_type, count in agg["errors_by_type"].items():
+                    existing_errors_by_type[error_type] = existing_errors_by_type.get(error_type, 0) + count
+                existing.errors_by_type = existing_errors_by_type
+                
+                existing_top_referrers = existing.top_referrers or {}
+                for referrer, count in agg["top_referrers"].items():
+                    existing_top_referrers[referrer] = existing_top_referrers.get(referrer, 0) + count
+                existing.top_referrers = existing_top_referrers
+            else:
+                # Create new record
+                daily_stat = models.SiteStatsDaily(
+                    date=event_date,
+                    total_page_views=agg["total_page_views"],
+                    unique_visitors=len(agg["unique_ip_hashes"]),
+                    new_signups=agg["new_signups"],
+                    new_posts=agg["new_posts"],
+                    total_api_calls=agg["total_api_calls"],
+                    total_errors=agg["total_errors"],
+                    views_by_page=agg["views_by_page"],
+                    views_by_country=agg["views_by_country"],
+                    views_by_device=agg["views_by_device"],
+                    errors_by_type=agg["errors_by_type"],
+                    top_referrers=agg["top_referrers"],
+                )
+                db.add(daily_stat)
+            
+            rolled_up += 1
+        
+        # Delete old events
+        deleted_count = db.query(models.SiteEvent).filter(
+            models.SiteEvent.created_at < cutoff_date
+        ).delete(synchronize_session=False)
+        
+        db.commit()
+        
+        logger.info(f"Rolled up {rolled_up} daily site aggregates, deleted {deleted_count} old events")
+        return {"status": "success", "rolled_up": rolled_up, "deleted": deleted_count}
+        
+    except Exception as e:
+        logger.error(f"Error in rollup_site_events task: {e}", exc_info=True)
+        db.rollback()
+        return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.cleanup_old_site_events", bind=True)
+def cleanup_old_site_events(self) -> dict[str, Any]:
+    """
+    Daily task: Clean up site events older than 7 days.
+    
+    This is a safety net - rollup_site_events should delete events after rolling them up,
+    but this ensures any stragglers are cleaned up.
+    
+    Should run daily at 2AM UTC (configured in beat_schedule).
+    """
+    from datetime import datetime, timedelta, timezone
+    from . import models
+    from .db import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        logger.info("Starting old site events cleanup task")
+        
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=7)
+        
+        deleted_count = db.query(models.SiteEvent).filter(
+            models.SiteEvent.created_at < cutoff_date
+        ).delete(synchronize_session=False)
+        
+        db.commit()
+        
+        logger.info(f"Cleaned up {deleted_count} old site events")
+        return {"status": "success", "deleted": deleted_count}
+        
+    except Exception as e:
+        logger.error(f"Error in cleanup_old_site_events task: {e}", exc_info=True)
         db.rollback()
         return {"status": "error", "message": str(e)}
     finally:

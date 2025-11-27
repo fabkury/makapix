@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import Layout from '../components/Layout';
 import StatsPanel from '../components/StatsPanel';
+import SiteMetricsPanel from '../components/SiteMetricsPanel';
 
 interface User {
   id: string;
@@ -64,7 +65,7 @@ interface PageResponse<T> {
   next_cursor: string | null;
 }
 
-type Tab = 'pending' | 'reports' | 'posts' | 'profiles' | 'audit' | 'notes';
+type Tab = 'pending' | 'reports' | 'posts' | 'profiles' | 'audit' | 'notes' | 'metrics';
 
 export default function ModDashboardPage() {
   const router = useRouter();
@@ -511,14 +512,15 @@ export default function ModDashboardPage() {
 
   if (!isModerator) return null;
 
-  const tabs: Tab[] = ['pending', 'reports', 'posts', 'profiles', 'audit', 'notes'];
+  const tabs: Tab[] = ['pending', 'reports', 'posts', 'profiles', 'audit', 'notes', 'metrics'];
   const tabLabels: Record<Tab, string> = {
     pending: 'Pending Approval',
     reports: 'Reports',
     posts: 'Posts',
     profiles: 'Profiles',
     audit: 'Audit',
-    notes: 'Notes'
+    notes: 'Notes',
+    metrics: 'Metrics'
   };
 
   return (
@@ -733,7 +735,7 @@ export default function ModDashboardPage() {
             </div>
           )}
 
-          {activeTab === 'notes' && (
+              {activeTab === 'notes' && (
             <div className="section">
               <h2>Admin Notes</h2>
               <div className="notes-search">
@@ -775,6 +777,10 @@ export default function ModDashboardPage() {
                 </>
               )}
             </div>
+          )}
+
+          {activeTab === 'metrics' && (
+            <SiteMetricsPanel />
           )}
         </div>
       </div>
