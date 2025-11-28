@@ -18,12 +18,10 @@ interface Post {
   owner_id: string;
   created_at: string;
   owner?: PostOwner;
-}
-
-interface PostStats {
-  reactions: number;
-  comments: number;
-  liked: boolean;
+  // Stats returned by the API (from annotate_posts_with_counts)
+  reaction_count?: number;
+  comment_count?: number;
+  user_has_liked?: boolean;
 }
 
 interface CardGridProps {
@@ -31,86 +29,41 @@ interface CardGridProps {
   API_BASE_URL: string;
 }
 
+// Local state for optimistic like updates
+interface LikeState {
+  liked: boolean;
+  reactionCount: number;
+}
+
 export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
   const gridRef = useRef<HTMLDivElement>(null);
-  const [postStats, setPostStats] = useState<Record<string, PostStats>>({});
-  const [loadingStats, setLoadingStats] = useState<Record<string, boolean>>({});
+  // Track local like state for optimistic updates (keyed by post id)
+  const [likeOverrides, setLikeOverrides] = useState<Record<number, LikeState>>({});
+  const [loadingLikes, setLoadingLikes] = useState<Record<number, boolean>>({});
 
-  // Fetch reactions and comments counts for posts
+  // Reset overrides when posts change (e.g., new page loaded)
   useEffect(() => {
-    const fetchStats = async () => {
-      const token = localStorage.getItem('access_token');
-      
-      const statsPromises = posts.map(async (post) => {
-        try {
-          const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
-          
-          const [reactionsRes, commentsRes] = await Promise.all([
-            fetch(`${API_BASE_URL}/api/posts/${post.id}/reactions`, { headers }),
-            fetch(`${API_BASE_URL}/api/posts/${post.id}/comments`, { headers })
-          ]);
-          
-          if (reactionsRes.ok && commentsRes.ok) {
-            const reactionsData = await reactionsRes.json();
-            const commentsData = await commentsRes.json();
-            
-            // Sum all reaction counts
-            const reactionCount = Object.values(reactionsData.totals || {}).reduce(
-              (sum: number, count) => sum + (count as number), 
-              0
-            );
-            const commentCount = commentsData.items?.length || 0;
-            
-            // Check if user has liked (thumbs up emoji)
-            const liked = reactionsData.mine?.includes('👍') || false;
-            
-            return { 
-              postId: post.id, 
-              stats: { 
-                reactions: reactionCount, 
-                comments: commentCount,
-                liked 
-              } 
-            };
-          }
-        } catch (err) {
-          console.error(`Error fetching stats for post ${post.id}:`, err);
-        }
-        return null;
-      });
-      
-      const results = await Promise.all(statsPromises);
-      const statsMap: Record<string, PostStats> = {};
-      results.forEach(result => {
-        if (result) {
-          statsMap[result.postId] = result.stats;
-        }
-      });
-      
-      // Set default stats for posts that didn't return results
-      posts.forEach(post => {
-        if (!statsMap[post.id]) {
-          statsMap[post.id] = { reactions: 0, comments: 0, liked: false };
-        }
-      });
-      
-      setPostStats(statsMap);
-    };
-    
-    if (posts.length > 0) {
-      fetchStats();
-    }
-  }, [posts, API_BASE_URL]);
+    setLikeOverrides({});
+  }, [posts]);
 
-  // Handle like/unlike
-  const handleLike = async (postId: string, currentlyLiked: boolean) => {
+  // Handle like/unlike with optimistic update
+  const handleLike = async (postId: number, currentlyLiked: boolean, currentReactionCount: number) => {
     const token = localStorage.getItem('access_token');
     if (!token) {
       // Could redirect to login or show a message
       return;
     }
 
-    setLoadingStats(prev => ({ ...prev, [postId]: true }));
+    setLoadingLikes(prev => ({ ...prev, [postId]: true }));
+
+    // Optimistic update
+    setLikeOverrides(prev => ({
+      ...prev,
+      [postId]: {
+        liked: !currentlyLiked,
+        reactionCount: currentReactionCount + (currentlyLiked ? -1 : 1)
+      }
+    }));
 
     try {
       const url = `${API_BASE_URL}/api/posts/${postId}/reactions/👍`;
@@ -124,43 +77,28 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
         }
       });
 
-      if (response.ok || response.status === 204) {
-        // Update local state optimistically
-        setPostStats(prev => ({
+      if (!response.ok && response.status !== 204) {
+        // Revert optimistic update on failure
+        setLikeOverrides(prev => ({
           ...prev,
           [postId]: {
-            ...prev[postId],
-            liked: !currentlyLiked,
-            reactions: prev[postId]?.reactions + (currentlyLiked ? -1 : 1) || (currentlyLiked ? 0 : 1)
+            liked: currentlyLiked,
+            reactionCount: currentReactionCount
           }
         }));
-
-        // Refetch to get accurate counts
-        const reactionsRes = await fetch(`${API_BASE_URL}/api/posts/${postId}/reactions`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (reactionsRes.ok) {
-          const reactionsData = await reactionsRes.json();
-          const reactionCount = Object.values(reactionsData.totals || {}).reduce(
-            (sum: number, count) => sum + (count as number), 
-            0
-          );
-          const liked = reactionsData.mine?.includes('👍') || false;
-          
-          setPostStats(prev => ({
-            ...prev,
-            [postId]: {
-              ...prev[postId],
-              reactions: reactionCount,
-              liked
-            }
-          }));
-        }
       }
     } catch (err) {
       console.error(`Error ${currentlyLiked ? 'unliking' : 'liking'} post:`, err);
+      // Revert optimistic update on error
+      setLikeOverrides(prev => ({
+        ...prev,
+        [postId]: {
+          liked: currentlyLiked,
+          reactionCount: currentReactionCount
+        }
+      }));
     } finally {
-      setLoadingStats(prev => ({ ...prev, [postId]: false }));
+      setLoadingLikes(prev => ({ ...prev, [postId]: false }));
     }
   };
 
@@ -284,8 +222,12 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
   return (
     <div className="card-grid" ref={gridRef}>
       {posts.map((post) => {
-        const stats = postStats[post.id] || { reactions: 0, comments: 0, liked: false };
-        const isLoading = loadingStats[post.id] || false;
+        // Use local override if available (for optimistic updates), otherwise use API data
+        const override = likeOverrides[post.id];
+        const reactionCount = override?.reactionCount ?? post.reaction_count ?? 0;
+        const commentCount = post.comment_count ?? 0;
+        const isLiked = override?.liked ?? post.user_has_liked ?? false;
+        const isLoading = loadingLikes[post.id] || false;
 
         return (
           <div key={post.id} className="artwork-card">
@@ -304,20 +246,20 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
               <div className="stats-panel">
                 <div className="stat-item">
                   <span className="stat-emoji">⚡</span>
-                  <span className="stat-count">{stats.reactions}</span>
+                  <span className="stat-count">{reactionCount}</span>
                 </div>
                 <div className="stat-item">
                   <span className="stat-emoji">💬</span>
-                  <span className="stat-count">{stats.comments}</span>
+                  <span className="stat-count">{commentCount}</span>
                 </div>
                 <button
-                  className={`like-button ${stats.liked ? 'liked' : ''}`}
+                  className={`like-button ${isLiked ? 'liked' : ''}`}
                   onClick={(e) => {
                     e.preventDefault();
-                    handleLike(post.id, stats.liked);
+                    handleLike(post.id, isLiked, reactionCount);
                   }}
                   disabled={isLoading}
-                  aria-label={stats.liked ? 'Unlike' : 'Like'}
+                  aria-label={isLiked ? 'Unlike' : 'Like'}
                 >
                   👍
                 </button>
@@ -582,4 +524,3 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
     </div>
   );
 }
-
