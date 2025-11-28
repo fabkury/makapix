@@ -35,7 +35,7 @@ interface PostStats {
 }
 
 interface StatsPanelProps {
-  postId: string;
+  postId: string | number;
   isOpen: boolean;
   onClose: () => void;
 }

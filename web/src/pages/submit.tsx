@@ -3,7 +3,8 @@ import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 
 interface UploadedArtwork {
-  id: string;
+  id: number;
+  public_sqid: string;
   title: string;
   art_url: string;
   canvas: string;
@@ -270,7 +271,7 @@ export default function SubmitPage() {
             )}
             
             <div className="success-actions">
-              <button onClick={() => router.push(`/posts/${uploadedArtwork.id}`)} className="btn-primary">
+              <button onClick={() => router.push(`/p/${uploadedArtwork.public_sqid}`)} className="btn-primary">
                 View Artwork
               </button>
               <button onClick={clearSelection} className="btn-secondary">

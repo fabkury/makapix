@@ -169,6 +169,66 @@ def upgrade() -> None:
     op.drop_column("playlists", "post_ids")
     op.alter_column("playlists", "post_ids_new", new_column_name="post_ids", nullable=False, server_default="{}")
     
+    # Post view events table - update data, drop old FK
+    op.add_column("post_view_events", sa.Column("post_id_new", sa.Integer(), nullable=True))
+    op.execute("""
+        UPDATE post_view_events
+        SET post_id_new = posts.new_id
+        FROM posts
+        WHERE post_view_events.post_id = posts.id
+    """)
+    op.drop_index("ix_post_view_events_post_id", table_name="post_view_events")
+    op.drop_index("ix_post_view_events_post_created", table_name="post_view_events")
+    op.drop_index("ix_post_view_events_post_source", table_name="post_view_events")
+    op.drop_index("ix_post_view_events_post_type", table_name="post_view_events")
+    op.drop_constraint("post_view_events_post_id_fkey", "post_view_events", type_="foreignkey")
+    op.drop_column("post_view_events", "post_id")
+    op.alter_column("post_view_events", "post_id_new", new_column_name="post_id", nullable=False)
+    
+    # Post view hourly rollups table - update data, drop old FK
+    op.add_column("post_view_hourly_rollups", sa.Column("post_id_new", sa.Integer(), nullable=True))
+    op.execute("""
+        UPDATE post_view_hourly_rollups
+        SET post_id_new = posts.new_id
+        FROM posts
+        WHERE post_view_hourly_rollups.post_id = posts.id
+    """)
+    op.drop_index("ix_post_view_hourly_rollups_post_id", table_name="post_view_hourly_rollups")
+    op.drop_index("ix_post_view_hourly_rollups_post_bucket", table_name="post_view_hourly_rollups")
+    op.drop_constraint("uq_hourly_rollup", "post_view_hourly_rollups", type_="unique")
+    op.drop_constraint("post_view_hourly_rollups_post_id_fkey", "post_view_hourly_rollups", type_="foreignkey")
+    op.drop_column("post_view_hourly_rollups", "post_id")
+    op.alter_column("post_view_hourly_rollups", "post_id_new", new_column_name="post_id", nullable=False)
+    
+    # Post view daily rollups table - update data, drop old FK
+    op.add_column("post_view_daily_rollups", sa.Column("post_id_new", sa.Integer(), nullable=True))
+    op.execute("""
+        UPDATE post_view_daily_rollups
+        SET post_id_new = posts.new_id
+        FROM posts
+        WHERE post_view_daily_rollups.post_id = posts.id
+    """)
+    op.drop_index("ix_post_view_daily_rollups_post_id", table_name="post_view_daily_rollups")
+    op.drop_index("ix_post_view_daily_rollups_post_bucket", table_name="post_view_daily_rollups")
+    op.drop_constraint("uq_daily_rollup", "post_view_daily_rollups", type_="unique")
+    op.drop_constraint("post_view_daily_rollups_post_id_fkey", "post_view_daily_rollups", type_="foreignkey")
+    op.drop_column("post_view_daily_rollups", "post_id")
+    op.alter_column("post_view_daily_rollups", "post_id_new", new_column_name="post_id", nullable=False)
+    
+    # Post engagement rollups table - update data, drop old FK
+    op.add_column("post_engagement_rollups", sa.Column("post_id_new", sa.Integer(), nullable=True))
+    op.execute("""
+        UPDATE post_engagement_rollups
+        SET post_id_new = posts.new_id
+        FROM posts
+        WHERE post_engagement_rollups.post_id = posts.id
+    """)
+    op.drop_index("ix_post_engagement_rollups_post_id", table_name="post_engagement_rollups")
+    op.drop_constraint("uq_post_engagement_rollup", "post_engagement_rollups", type_="unique")
+    op.drop_constraint("post_engagement_rollups_post_id_fkey", "post_engagement_rollups", type_="foreignkey")
+    op.drop_column("post_engagement_rollups", "post_id")
+    op.alter_column("post_engagement_rollups", "post_id_new", new_column_name="post_id", nullable=False)
+    
     # ========================================================================
     # PHASE 3b: Drop old PK, rename new_id to id, create new PK
     # ========================================================================
@@ -235,6 +295,30 @@ def upgrade() -> None:
     # Post stats cache table - create FK and indexes
     op.create_foreign_key("post_stats_cache_post_id_fkey", "post_stats_cache", "posts", ["post_id"], ["id"], ondelete="CASCADE")
     op.create_index("ix_post_stats_cache_post_id", "post_stats_cache", ["post_id"], unique=True)
+    
+    # Post view events table - create FK and indexes
+    op.create_foreign_key("post_view_events_post_id_fkey", "post_view_events", "posts", ["post_id"], ["id"], ondelete="CASCADE")
+    op.create_index("ix_post_view_events_post_id", "post_view_events", ["post_id"])
+    op.create_index("ix_post_view_events_post_created", "post_view_events", ["post_id", sa.text("created_at DESC")])
+    op.create_index("ix_post_view_events_post_source", "post_view_events", ["post_id", "view_source"])
+    op.create_index("ix_post_view_events_post_type", "post_view_events", ["post_id", "view_type"])
+    
+    # Post view hourly rollups table - create FK and indexes
+    op.create_foreign_key("post_view_hourly_rollups_post_id_fkey", "post_view_hourly_rollups", "posts", ["post_id"], ["id"], ondelete="CASCADE")
+    op.create_index("ix_post_view_hourly_rollups_post_id", "post_view_hourly_rollups", ["post_id"])
+    op.create_index("ix_post_view_hourly_rollups_post_bucket", "post_view_hourly_rollups", ["post_id", sa.text("bucket_start DESC")])
+    op.create_unique_constraint("uq_hourly_rollup", "post_view_hourly_rollups", ["post_id", "bucket_start", "view_source", "view_type", "country_code"])
+    
+    # Post view daily rollups table - create FK and indexes
+    op.create_foreign_key("post_view_daily_rollups_post_id_fkey", "post_view_daily_rollups", "posts", ["post_id"], ["id"], ondelete="CASCADE")
+    op.create_index("ix_post_view_daily_rollups_post_id", "post_view_daily_rollups", ["post_id"])
+    op.create_index("ix_post_view_daily_rollups_post_bucket", "post_view_daily_rollups", ["post_id", sa.text("bucket_start DESC")])
+    op.create_unique_constraint("uq_daily_rollup", "post_view_daily_rollups", ["post_id", "bucket_start", "view_source", "view_type", "country_code"])
+    
+    # Post engagement rollups table - create FK and indexes
+    op.create_foreign_key("post_engagement_rollups_post_id_fkey", "post_engagement_rollups", "posts", ["post_id"], ["id"], ondelete="CASCADE")
+    op.create_index("ix_post_engagement_rollups_post_id", "post_engagement_rollups", ["post_id"], unique=True)
+    op.create_unique_constraint("uq_post_engagement_rollup", "post_engagement_rollups", ["post_id"])
     
     # ========================================================================
     # PHASE 4: Add public_sqid column and backfill using Sqids

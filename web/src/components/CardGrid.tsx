@@ -8,7 +8,8 @@ interface PostOwner {
 }
 
 interface Post {
-  id: string;
+  id: number;
+  public_sqid: string;
   title: string;
   description?: string;
   hashtags?: string[];
@@ -163,10 +164,56 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
     }
   };
 
-  // Apply crisp scaling to artworks
+  // Apply crisp scaling to artworks and calculate dynamic spacing
   useEffect(() => {
     const grid = gridRef.current;
     if (!grid) return;
+
+    const calculateSpacing = () => {
+      const containerWidth = grid.clientWidth;
+      if (containerWidth === 0) return;
+      
+      const gridStyles = window.getComputedStyle(grid);
+      const templateColumns = gridStyles.gridTemplateColumns;
+      const columns = templateColumns.split(' ').filter(col => col.trim().length > 0 && col.includes('px'));
+      const columnCount = Math.max(columns.length, 1);
+      
+      const cardSize = 180; // Fixed card cell size
+      const maxGapSize = cardSize; // Maximum spacing between columns equals card size
+      const totalCardsWidth = columnCount * cardSize;
+      const remainingSpace = containerWidth - totalCardsWidth;
+      
+      // Calculate spacing if distributed evenly
+      const gapCount = columnCount + 1; // sides + between columns
+      const evenSpacing = Math.max(1, Math.floor(remainingSpace / gapCount));
+      
+      // Cap the gap between columns at the card size
+      const gapBetweenColumns = Math.min(evenSpacing, maxGapSize);
+      
+      // Calculate space used by gaps between columns
+      const gapsBetweenColumnsCount = columnCount - 1;
+      const spaceUsedByGaps = gapsBetweenColumnsCount * gapBetweenColumns;
+      
+      // Remaining space goes to sides
+      const spaceForSides = remainingSpace - spaceUsedByGaps;
+      const sideSpacing = Math.max(1, Math.floor(spaceForSides / 2));
+      
+      // Set CSS variable for spacing (used by CSS as fallback)
+      grid.style.setProperty('--grid-spacing', `${sideSpacing}px`);
+      // Set gap directly (applies to both horizontal and vertical spacing)
+      // Gap between columns is capped at card size, and same applies to rows
+      // This becomes the reference spacing for the entire layout
+      grid.style.gap = `${gapBetweenColumns}px`;
+      // Set side padding (excess space goes here)
+      grid.style.paddingLeft = `${sideSpacing}px`;
+      grid.style.paddingRight = `${sideSpacing}px`;
+      // Set vertical padding to match the reference spacing (capped column gap)
+      grid.style.paddingTop = `${gapBetweenColumns}px`;
+      grid.style.paddingBottom = `${gapBetweenColumns}px`;
+      // Set margin-top based on reference spacing (capped column gap)
+      // Using quarter of the reference spacing for header-to-grid gap
+      grid.style.marginTop = `${gapBetweenColumns / 4}px`;
+    };
 
     const calculateScales = () => {
       const artworkAreas = grid.querySelectorAll('.artwork-area');
@@ -204,13 +251,18 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
       });
     };
 
-    const timeoutId = setTimeout(() => {
+    const updateLayout = () => {
+      calculateSpacing();
       calculateScales();
+    };
+
+    const timeoutId = setTimeout(() => {
+      updateLayout();
     }, 100);
 
     const resizeObserver = new ResizeObserver(() => {
       setTimeout(() => {
-        calculateScales();
+        updateLayout();
       }, 0);
     });
 
@@ -218,14 +270,14 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
 
     window.addEventListener('resize', () => {
       setTimeout(() => {
-        calculateScales();
+        updateLayout();
       }, 0);
     });
 
     return () => {
       clearTimeout(timeoutId);
       resizeObserver.disconnect();
-      window.removeEventListener('resize', calculateScales);
+      window.removeEventListener('resize', updateLayout);
     };
   }, [posts]);
 
@@ -239,7 +291,7 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
           <div key={post.id} className="artwork-card">
             <div className="card-top">
               <div className="artwork-area">
-                <Link href={`/posts/${post.id}`}>
+                <Link href={`/p/${post.public_sqid}`}>
                   <img
                     src={post.art_url}
                     alt={post.title}
@@ -281,7 +333,7 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
                 </Link>
               </div>
               <div className="title-line">
-                <Link href={`/posts/${post.id}`} className="post-title" style={{ fontSize: '0.7rem', color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center' }}>
+                <Link href={`/p/${post.public_sqid}`} className="post-title" style={{ fontSize: '0.7rem', color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center' }}>
                   {post.title}
                 </Link>
               </div>
@@ -294,11 +346,14 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
         .card-grid {
           display: grid;
           grid-template-columns: repeat(1, 180px);
-          gap: 1px;
-          padding: 1px;
+          gap: var(--grid-spacing, 1px);
+          padding-left: var(--grid-spacing, 1px);
+          padding-right: var(--grid-spacing, 1px);
+          padding-top: var(--grid-spacing, 1px);
+          padding-bottom: var(--grid-spacing, 1px);
           max-width: 100%;
           margin: 0 auto;
-          justify-content: center;
+          justify-content: start;
         }
 
         @media (min-width: 362px) {

@@ -22,7 +22,8 @@ interface PostOwner {
 }
 
 interface Post {
-  id: string;
+  id: number;
+  public_sqid: string;
   title: string;
   description?: string;
   hashtags?: string[];
