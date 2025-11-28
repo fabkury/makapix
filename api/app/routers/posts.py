@@ -418,22 +418,28 @@ def list_recent_posts(
     return response
 
 
-@router.get("/{storage_key}")
+@router.get("/{storage_key}", response_model=schemas.Post)
 def get_post_by_storage_key(
     storage_key: UUID,
     request: Request,
     db: Session = Depends(get_db),
     current_user: models.User | None = Depends(get_current_user_optional),
-) -> RedirectResponse:
+) -> schemas.Post:
     """
-    Legacy route: Get post by storage key (UUID) and redirect to canonical URL.
+    Legacy route: Get post by storage key (UUID).
     
-    This route redirects to the canonical short URL /p/{public_sqid}.
+    Returns the full post data. The canonical URL is /p/{public_sqid}.
     """
     from ..utils.visibility import can_access_post
+    from ..services.post_stats import annotate_posts_with_counts
     
-    # Query post
-    post = db.query(models.Post).filter(models.Post.storage_key == storage_key).first()
+    # Query post with owner relationship
+    post = (
+        db.query(models.Post)
+        .options(joinedload(models.Post.owner))
+        .filter(models.Post.storage_key == storage_key)
+        .first()
+    )
     
     if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
@@ -442,8 +448,10 @@ def get_post_by_storage_key(
     if not can_access_post(post, current_user):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
     
-    # Redirect to canonical URL
-    return RedirectResponse(url=f"/p/{post.public_sqid}", status_code=301)
+    # Add reaction and comment counts
+    annotate_posts_with_counts(db, [post], current_user.id if current_user else None)
+    
+    return schemas.Post.model_validate(post)
 
 
 @router.patch("/{id}", response_model=schemas.Post)

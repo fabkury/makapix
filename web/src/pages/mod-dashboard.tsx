@@ -5,6 +5,12 @@ import Layout from '../components/Layout';
 import StatsPanel from '../components/StatsPanel';
 import SiteMetricsPanel from '../components/SiteMetricsPanel';
 
+interface PostOwner {
+  id: string;
+  handle: string;
+  avatar_url?: string | null;
+}
+
 interface User {
   id: string;
   handle: string;
@@ -16,13 +22,16 @@ interface User {
   hidden_by_mod?: boolean;
   banned_until?: string | null;
   auto_public_approval?: boolean;
+  avatar_url?: string | null;
 }
 
 interface Post {
-  id: string;
+  id: number;
+  public_sqid: string;
   title: string;
   description?: string;
   owner_id: string;
+  owner?: PostOwner | null;
   art_url?: string;
   created_at: string;
   promoted?: boolean;
@@ -568,7 +577,7 @@ export default function ModDashboardPage() {
                       )}
                       <div className="item-info">
                         <h3>
-                          <a href={`/posts/${post.id}`} target="_blank" rel="noopener noreferrer">
+                          <a href={`/p/${post.public_sqid}`} target="_blank" rel="noopener noreferrer">
                             {post.title}
                           </a>
                         </h3>
@@ -637,26 +646,36 @@ export default function ModDashboardPage() {
                   {posts.map(post => (
                     <div key={post.id} className="item-card pending-card">
                       {post.art_url && (
-                        <div className="pending-thumbnail">
-                          <img src={post.art_url} alt={post.title} className="pixel-art" />
-                        </div>
+                        <Link href={`/p/${post.public_sqid}`} className="pending-thumbnail">
+                          <img src={post.art_url} alt={post.title} className="pixel-art" style={{ width: '64px', height: '64px', maxWidth: '64px', maxHeight: '64px', objectFit: 'contain' }} />
+                        </Link>
                       )}
                       <div className="item-info">
+                        {post.owner && (
+                          <div className="post-author">
+                            {post.owner.avatar_url && (
+                              <img src={post.owner.avatar_url} alt={post.owner.handle} className="author-avatar-small" />
+                            )}
+                            <Link href={`/users/${post.owner.id}`} className="author-link">
+                              {post.owner.handle}
+                            </Link>
+                          </div>
+                        )}
                         <h3>
-                          <Link href={`/posts/${post.id}`} className="post-title-link">
+                          <Link href={`/p/${post.public_sqid}`} className="post-title-link">
                             {post.title}
                           </Link>
                         </h3>
-                        {post.description && <p className="item-notes">{post.description}</p>}
+                        {post.description && <p className="item-notes description-single-line">{post.description}</p>}
                         <p className="item-date">{new Date(post.created_at).toLocaleString()}</p>
                       </div>
-                      <div className="item-actions">
+                      <div className="item-actions item-actions-vertical">
                         <button onClick={() => { setStatsPostId(post.id); setShowStats(true); }} className="action-btn stats" title="View Statistics">📈</button>
-                        {!post.promoted && <button onClick={() => promotePost(post.id)} className="action-btn success">⭐ Promote</button>}
-                        {post.promoted && <button onClick={() => demotePost(post.id)} className="action-btn">⬇️ Demote</button>}
-                        {!post.hidden_by_mod && <button onClick={() => hidePost(post.id)} className="action-btn">🙈 Hide</button>}
-                        {post.hidden_by_mod && <button onClick={() => unhidePost(post.id)} className="action-btn success">👁️ Unhide</button>}
-                        {post.hidden_by_mod && <button onClick={() => deletePostPermanently(post.id)} className="action-btn danger">Delete</button>}
+                        {!post.promoted && <button onClick={() => promotePost(post.id)} className="action-btn success" title="Promote">⭐</button>}
+                        {post.promoted && <button onClick={() => demotePost(post.id)} className="action-btn" title="Demote">⬇️</button>}
+                        {!post.hidden_by_mod && <button onClick={() => hidePost(post.id)} className="action-btn" title="Hide">🙈</button>}
+                        {post.hidden_by_mod && <button onClick={() => unhidePost(post.id)} className="action-btn success" title="Unhide">👁️</button>}
+                        {post.hidden_by_mod && <button onClick={() => deletePostPermanently(post.id)} className="action-btn danger" title="Delete">🗑️</button>}
                       </div>
                     </div>
                   ))}
@@ -682,6 +701,9 @@ export default function ModDashboardPage() {
                       <div className="item-info">
                         <h3>
                           <Link href={`/users/${profile.id}`} className="profile-link">
+                            {profile.avatar_url && (
+                              <img src={profile.avatar_url} alt={profile.handle} className="profile-avatar" />
+                            )}
                             {profile.display_name} <span className="handle">@{profile.handle}</span>
                           </Link>
                         </h3>
@@ -845,12 +867,20 @@ export default function ModDashboardPage() {
           font-size: 1rem;
           color: var(--text-primary);
           margin: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         .post-title-link {
           color: var(--text-primary);
           text-decoration: none;
           transition: color var(--transition-fast);
+          display: block;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          width: 100%;
         }
 
         .post-title-link:hover {
@@ -869,6 +899,20 @@ export default function ModDashboardPage() {
 
         .profile-link:hover .handle {
           color: var(--accent-cyan);
+        }
+
+        .profile-link {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .profile-avatar {
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          object-fit: cover;
+          flex-shrink: 0;
         }
 
         .handle {
@@ -891,6 +935,8 @@ export default function ModDashboardPage() {
           border-radius: 12px;
           padding: 16px;
           margin-bottom: 12px;
+          width: 100%;
+          box-sizing: border-box;
         }
 
         .pending-card {
@@ -904,6 +950,13 @@ export default function ModDashboardPage() {
           overflow: hidden;
           background: var(--bg-tertiary);
           flex-shrink: 0;
+          display: block;
+          cursor: pointer;
+          transition: opacity var(--transition-fast);
+        }
+
+        .pending-thumbnail:hover {
+          opacity: 0.8;
         }
 
         .pending-thumbnail img {
@@ -933,12 +986,55 @@ export default function ModDashboardPage() {
 
         .item-info {
           flex: 1;
+          min-width: 0;
+          overflow: hidden;
         }
 
         .item-notes {
           color: var(--text-secondary);
           font-size: 0.9rem;
           margin: 8px 0;
+        }
+
+        .description-single-line {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          width: 100%;
+          display: block;
+        }
+
+        .post-author {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-bottom: 6px;
+          min-width: 0;
+          overflow: hidden;
+        }
+
+        .author-avatar-small {
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          object-fit: cover;
+          flex-shrink: 0;
+        }
+
+        .author-link {
+          color: var(--text-secondary);
+          text-decoration: none;
+          font-size: 0.85rem;
+          transition: color var(--transition-fast);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          flex: 1;
+          min-width: 0;
+        }
+
+        .author-link:hover {
+          color: var(--accent-cyan);
         }
 
         .item-date {
@@ -953,6 +1049,12 @@ export default function ModDashboardPage() {
           flex-wrap: wrap;
         }
 
+        .item-actions-vertical {
+          flex-direction: column;
+          flex-wrap: nowrap;
+          align-items: stretch;
+        }
+
         .action-btn {
           padding: 8px 16px;
           background: var(--bg-tertiary);
@@ -960,6 +1062,12 @@ export default function ModDashboardPage() {
           border-radius: 6px;
           font-size: 0.85rem;
           transition: all var(--transition-fast);
+        }
+
+        .item-actions-vertical .action-btn {
+          padding: 8px;
+          text-align: center;
+          min-width: 40px;
         }
 
         .action-btn:hover {
