@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import CardGrid from '../components/CardGrid';
+import { authenticatedFetch, clearTokens } from '../lib/api';
 
 interface PostOwner {
   id: string;
@@ -75,15 +76,11 @@ export default function HomePage() {
     
     try {
       const url = `${API_BASE_URL}/api/posts?limit=20&sort=created_at&order=desc${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await authenticatedFetch(url);
       
       if (response.status === 401) {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('user_id');
+        // Token refresh failed - clear tokens and redirect to login
+        clearTokens();
         router.push('/auth');
         return;
       }

@@ -80,7 +80,8 @@ def create_refresh_token(user_id: uuid.UUID, db: Session, expires_in_days: int |
     
     # Generate secure random token
     token = secrets.token_urlsafe(32)
-    token_hash = secrets.token_urlsafe(32)  # Hash for database storage
+    # Hash the token for secure database storage
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
     
     from datetime import timezone
     expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=expires_in_days)
@@ -104,11 +105,12 @@ def verify_refresh_token(token: str, db: Session) -> models.User | None:
     """
     from . import models
     
-    # Find token by hash (in real implementation, you'd hash the token)
-    # For now, we'll use a simple lookup
+    # Hash the incoming token to compare with stored hash
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    
     from datetime import timezone
     refresh_token = db.query(models.RefreshToken).filter(
-        models.RefreshToken.token_hash == token,
+        models.RefreshToken.token_hash == token_hash,
         models.RefreshToken.expires_at > datetime.now(timezone.utc).replace(tzinfo=None),
         models.RefreshToken.revoked == False
     ).first()
@@ -125,8 +127,11 @@ def revoke_refresh_token(token: str, db: Session) -> bool:
     """
     from . import models
     
+    # Hash the incoming token to compare with stored hash
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    
     refresh_token = db.query(models.RefreshToken).filter(
-        models.RefreshToken.token_hash == token
+        models.RefreshToken.token_hash == token_hash
     ).first()
     
     if refresh_token:

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import CardGrid from '../components/CardGrid';
+import { authenticatedFetch, clearTokens } from '../lib/api';
 
 // Search Tab Interfaces
 interface PostOwner {
@@ -284,15 +285,11 @@ function SearchTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any
 
     try {
       const url = `${API_BASE_URL}/api/search?q=${encodeURIComponent(searchQuery)}&types=users&types=posts&limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await authenticatedFetch(url);
 
       if (response.status === 401) {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('user_id');
+        // Token refresh failed - clear tokens and redirect to login
+        clearTokens();
         router.push('/auth');
         return;
       }

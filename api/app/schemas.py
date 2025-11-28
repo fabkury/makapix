@@ -675,6 +675,7 @@ class OAuthTokens(BaseModel):
     """OAuth token response."""
 
     token: str
+    refresh_token: str | None = None
     user_id: UUID
     expires_at: datetime
 

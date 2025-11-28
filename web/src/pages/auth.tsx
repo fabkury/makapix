@@ -5,6 +5,7 @@ import Layout from '../components/Layout';
 
 interface AuthTokens {
   token: string;
+  refresh_token?: string;
   user_id: string;
   expires_at: string;
 }
@@ -165,6 +166,9 @@ export default function AuthPage() {
 
         const data: AuthTokens = await response.json();
         localStorage.setItem('access_token', data.token);
+        if (data.refresh_token) {
+          localStorage.setItem('refresh_token', data.refresh_token);
+        }
         localStorage.setItem('user_id', data.user_id);
         router.push('/');
       }

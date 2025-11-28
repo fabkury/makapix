@@ -2,6 +2,7 @@ import { ReactNode, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import { authenticatedFetch, clearTokens } from '../lib/api';
 
 interface LayoutProps {
   children: ReactNode;
@@ -59,10 +60,16 @@ export default function Layout({ children, title, description }: LayoutProps) {
     // Fetch user roles and avatar if logged in
     if (token) {
       const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
-      fetch(`${apiBaseUrl}/api/auth/me`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-        .then(res => res.ok ? res.json() : null)
+      authenticatedFetch(`${apiBaseUrl}/api/auth/me`)
+        .then(res => {
+          if (res.status === 401) {
+            // Token refresh failed - clear tokens and redirect to login
+            clearTokens();
+            setIsLoggedIn(false);
+            return null;
+          }
+          return res.ok ? res.json() : null;
+        })
         .then(data => {
           if (data?.roles) {
             const roles = data.roles as string[];
