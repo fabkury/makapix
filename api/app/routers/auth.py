@@ -7,7 +7,7 @@ import os
 import re
 import secrets
 import string
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 from urllib.parse import urlencode
 
@@ -207,10 +207,16 @@ def login(
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id, db)
     
+    # Calculate token expiration time
+    from ..auth import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+    from datetime import timezone
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
+    
     return schemas.OAuthTokens(
         token=access_token,
+        refresh_token=refresh_token,
         user_id=user.id,
-        expires_at=user.created_at,  # This should be calculated from JWT expiration
+        expires_at=expires_at,
     )
 
 
@@ -1178,10 +1184,16 @@ def exchange_github_code(payload: schemas.GithubExchangeRequest, db: Session = D
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id, db)
     
+    # Calculate token expiration time
+    from ..auth import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+    from datetime import timezone
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
+    
     return schemas.OAuthTokens(
         token=access_token,
+        refresh_token=refresh_token,
         user_id=user.id,
-        expires_at=user.created_at  # This should be calculated from JWT expiration
+        expires_at=expires_at,
     )
 
 
@@ -1200,14 +1212,23 @@ def refresh_token(payload: schemas.RefreshTokenRequest, db: Session = Depends(ge
     # Check if user is allowed to authenticate
     check_user_can_authenticate(user)
     
-
-    # Generate new access token
+    # Revoke the old refresh token (token rotation for security)
+    revoke_refresh_token(payload.refresh_token, db)
+    
+    # Generate new tokens
     access_token = create_access_token(user.id)
+    new_refresh_token = create_refresh_token(user.id, db)
+    
+    # Calculate token expiration time
+    from ..auth import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+    from datetime import timezone
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
     
     return schemas.OAuthTokens(
         token=access_token,
+        refresh_token=new_refresh_token,
         user_id=user.id,
-        expires_at=user.created_at  # This should be calculated from JWT expiration
+        expires_at=expires_at,
     )
 
 
