@@ -166,7 +166,12 @@ export default function RecommendedPage() {
         )}
 
         {posts.length > 0 && (
-          <CardGrid posts={posts} API_BASE_URL={API_BASE_URL} />
+          <CardGrid 
+            posts={posts} 
+            API_BASE_URL={API_BASE_URL}
+            source={{ type: 'recommended' }}
+            cursor={nextCursor}
+          />
         )}
 
         {posts.length > 0 && (

@@ -1,9 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Script from 'next/script';
 import Layout from '../../components/Layout';
 import StatsPanel from '../../components/StatsPanel';
+import { 
+  getNavigationContext, 
+  setNavigationContext, 
+  updateContextIndex, 
+  extendContext, 
+  findPostIndex,
+  NavigationContext,
+  NavigationContextPost 
+} from '../../lib/navigation-context';
+import { useSwipeNavigation } from '../../hooks/useSwipeNavigation';
 
 interface Post {
   id: number;
@@ -52,6 +62,11 @@ export default function PostPage() {
   
   // Image error state
   const [imageError, setImageError] = useState(false);
+  
+  // Navigation context state
+  const [navContext, setNavContext] = useState<NavigationContext | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  const extendingRef = useRef(false);
   
   const API_BASE_URL = typeof window !== 'undefined' 
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
@@ -117,6 +132,281 @@ export default function PostPage() {
 
     fetchPost();
   }, [sqid, API_BASE_URL]);
+
+  // Check if device is mobile
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const checkMobile = () => {
+      const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      const isSmallScreen = window.innerWidth <= 768;
+      setIsMobile(hasTouch && isSmallScreen);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Load or create navigation context
+  useEffect(() => {
+    if (!sqid || typeof sqid !== 'string' || !post) return;
+
+    const loadContext = async () => {
+      // Try to get existing context
+      let context = getNavigationContext();
+      
+      // Validate context matches current post
+      if (context) {
+        const index = findPostIndex(context, sqid);
+        if (index >= 0) {
+          // Context is valid, update index
+          updateContextIndex(index);
+          setNavContext({ ...context, currentIndex: index });
+          return;
+        }
+        // Context exists but doesn't contain current post - clear it
+        context = null;
+      }
+
+      // No valid context - fetch default (author's profile posts)
+      if (!context && post.owner_id) {
+        await fetchDefaultContext(post.owner_id, sqid);
+      }
+    };
+
+    loadContext();
+  }, [sqid, post, API_BASE_URL]);
+
+  // Fetch default context from author's profile
+  const fetchDefaultContext = async (ownerId: string, currentSqid: string) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
+      
+      const url = `${API_BASE_URL}/api/posts?owner_id=${ownerId}&limit=100&sort=created_at&order=desc`;
+      const response = await fetch(url, { headers });
+      
+      if (!response.ok) return;
+      
+      const data = await response.json();
+      const posts: NavigationContextPost[] = data.items.map((p: any) => ({
+        public_sqid: p.public_sqid,
+        id: p.id,
+        owner_id: p.owner_id,
+      }));
+      
+      const index = posts.findIndex((p) => p.public_sqid === currentSqid);
+      if (index >= 0) {
+        const context: NavigationContext = {
+          posts,
+          currentIndex: index,
+          source: { type: 'profile', id: ownerId },
+          cursor: data.next_cursor,
+          timestamp: Date.now(),
+        };
+        setNavigationContext(posts, index, context.source, context.cursor);
+        setNavContext(context);
+      }
+    } catch (err) {
+      console.error('Failed to fetch default context:', err);
+    }
+  };
+
+  // Navigate with View Transition API
+  const navigateWithTransition = (url: string, direction: 'left' | 'right') => {
+    if (typeof document === 'undefined') {
+      router.push(url);
+      return;
+    }
+
+    // Use View Transitions API if available
+    if ('startViewTransition' in document) {
+      // Inject dynamic CSS for the transition direction
+      const styleId = 'swipe-transition-style';
+      let styleEl = document.getElementById(styleId) as HTMLStyleElement | null;
+      if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = styleId;
+        document.head.appendChild(styleEl);
+      }
+      
+      // Set animations based on swipe direction (targeting main-content to keep header static)
+      if (direction === 'left') {
+        // Swiping left = going to next post
+        // Old page slides out to the left, new page slides in from right
+        styleEl.textContent = `
+          ::view-transition-old(main-content) {
+            animation: swipe-slide-out-left 0.25s ease-out forwards;
+          }
+          ::view-transition-new(main-content) {
+            animation: swipe-slide-in-from-right 0.25s ease-out forwards;
+          }
+        `;
+      } else {
+        // Swiping right = going to previous post
+        // Old page slides out to the right, new page slides in from left
+        styleEl.textContent = `
+          ::view-transition-old(main-content) {
+            animation: swipe-slide-out-right 0.25s ease-out forwards;
+          }
+          ::view-transition-new(main-content) {
+            animation: swipe-slide-in-from-left 0.25s ease-out forwards;
+          }
+        `;
+      }
+
+      const transition = (document as any).startViewTransition(() => {
+        router.push(url);
+      });
+      
+      // Clean up style after transition
+      transition.finished.finally(() => {
+        if (styleEl) {
+          styleEl.textContent = '';
+        }
+      });
+    } else {
+      // Fallback: regular navigation without animation
+      router.push(url);
+    }
+  };
+
+  // Extend context at boundaries
+  const extendContextAtBoundary = async (direction: 'forward' | 'backward'): Promise<NavigationContext | null> => {
+    if (extendingRef.current || !navContext) return null;
+    
+    extendingRef.current = true;
+    
+    try {
+      const token = localStorage.getItem('access_token');
+      const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
+      
+      let url = '';
+      if (direction === 'forward') {
+        if (!navContext.cursor) return null;
+        url = buildApiUrl(navContext.source, navContext.cursor);
+      } else {
+        // For backward, we'd need prevCursor - simplified for now
+        return null;
+      }
+      
+      const response = await fetch(url, { headers });
+      if (!response.ok) return null;
+      
+      const data = await response.json();
+      const newPosts: NavigationContextPost[] = data.items.map((p: any) => ({
+        public_sqid: p.public_sqid,
+        id: p.id,
+        owner_id: p.owner_id,
+      }));
+      
+      if (newPosts.length > 0) {
+        extendContext(newPosts, direction, data.next_cursor);
+        const updatedContext: NavigationContext = {
+          ...navContext,
+          posts: direction === 'forward' 
+            ? [...navContext.posts, ...newPosts]
+            : [...newPosts, ...navContext.posts],
+          cursor: direction === 'forward' ? data.next_cursor : navContext.cursor,
+          timestamp: Date.now(),
+        };
+        setNavContext(updatedContext);
+        return updatedContext;
+      }
+      
+      return null;
+    } catch (err) {
+      console.error('Failed to extend context:', err);
+      return null;
+    } finally {
+      extendingRef.current = false;
+    }
+  };
+
+  // Build API URL based on source type
+  const buildApiUrl = (source: NavigationContext['source'], cursor: string | null): string => {
+    const base = `${API_BASE_URL}/api/posts`;
+    const params = new URLSearchParams();
+    params.append('limit', '20');
+    params.append('sort', 'created_at');
+    params.append('order', 'desc');
+    
+    if (cursor) {
+      params.append('cursor', cursor);
+    }
+    
+    switch (source.type) {
+      case 'recent':
+        // No additional params needed
+        break;
+      case 'recommended':
+        return `${API_BASE_URL}/api/feed/promoted?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      case 'profile':
+        if (source.id) {
+          params.append('owner_id', source.id);
+        }
+        break;
+      case 'hashtag':
+        if (source.id) {
+          params.append('hashtag', source.id);
+        }
+        break;
+    }
+    
+    return `${base}?${params.toString()}`;
+  };
+
+  // Swipe handlers
+  const handleSwipeLeft = async () => {
+    if (!navContext || !isMobile) return;
+    
+    const nextIndex = navContext.currentIndex + 1;
+    
+    // Check if we need to extend context
+    if (nextIndex >= navContext.posts.length) {
+      const updatedContext = await extendContextAtBoundary('forward');
+      if (!updatedContext || nextIndex >= updatedContext.posts.length) {
+        // Reached true end - ignore swipe
+        return;
+      }
+      // Context was extended, navigate to next post
+      const nextPost = updatedContext.posts[nextIndex];
+      updateContextIndex(nextIndex);
+      navigateWithTransition(`/p/${nextPost.public_sqid}`, 'left');
+      return;
+    }
+    
+    // Navigate to next post
+    const nextPost = navContext.posts[nextIndex];
+    updateContextIndex(nextIndex);
+    navigateWithTransition(`/p/${nextPost.public_sqid}`, 'left');
+  };
+
+  const handleSwipeRight = async () => {
+    if (!navContext || !isMobile) return;
+    
+    const prevIndex = navContext.currentIndex - 1;
+    
+    if (prevIndex < 0) {
+      // Reached true beginning - ignore swipe
+      return;
+    }
+    
+    // Navigate to previous post
+    const prevPost = navContext.posts[prevIndex];
+    updateContextIndex(prevIndex);
+    navigateWithTransition(`/p/${prevPost.public_sqid}`, 'right');
+  };
+
+  // Enable swipe navigation on mobile
+  useSwipeNavigation(
+    {
+      onSwipeLeft: handleSwipeLeft,
+      onSwipeRight: handleSwipeRight,
+    },
+    isMobile && !!navContext
+  );
 
   // Set API URL for widget
   useEffect(() => {
