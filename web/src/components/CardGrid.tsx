@@ -1,5 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import Link from 'next/link';
+import { setNavigationContext, NavigationSource } from '../lib/navigation-context';
 
 interface PostOwner {
   id: string;
@@ -27,6 +28,9 @@ interface Post {
 interface CardGridProps {
   posts: Post[];
   API_BASE_URL: string;
+  source: NavigationSource;
+  cursor?: string | null;
+  prevCursor?: string | null;
 }
 
 // Local state for optimistic like updates
@@ -35,11 +39,24 @@ interface LikeState {
   reactionCount: number;
 }
 
-export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
+export default function CardGrid({ posts, API_BASE_URL, source, cursor = null, prevCursor }: CardGridProps) {
   const gridRef = useRef<HTMLDivElement>(null);
   // Track local like state for optimistic updates (keyed by post id)
   const [likeOverrides, setLikeOverrides] = useState<Record<number, LikeState>>({});
   const [loadingLikes, setLoadingLikes] = useState<Record<number, boolean>>({});
+
+  // Handle post click - store navigation context before navigating
+  const handlePostClick = (postIndex: number) => {
+    // Prepare minimal post data for context
+    const contextPosts = posts.map((post) => ({
+      public_sqid: post.public_sqid,
+      id: post.id,
+      owner_id: post.owner_id,
+    }));
+
+    // Store context in sessionStorage
+    setNavigationContext(contextPosts, postIndex, source, cursor, prevCursor);
+  };
 
   // Reset overrides when posts change (e.g., new page loaded)
   useEffect(() => {
@@ -218,7 +235,7 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
 
   return (
     <div className="card-grid" ref={gridRef}>
-      {posts.map((post) => {
+      {posts.map((post, index) => {
         // Use local override if available (for optimistic updates), otherwise use API data
         const override = likeOverrides[post.id];
         const reactionCount = override?.reactionCount ?? post.reaction_count ?? 0;
@@ -226,11 +243,13 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
         const isLiked = override?.liked ?? post.user_has_liked ?? false;
         const isLoading = loadingLikes[post.id] || false;
 
+        const postIndex = index;
+
         return (
           <div key={post.id} className="artwork-card">
             <div className="card-top">
               <div className="artwork-area">
-                <Link href={`/p/${post.public_sqid}`}>
+                <Link href={`/p/${post.public_sqid}`} onClick={() => handlePostClick(postIndex)}>
                   <img
                     src={post.art_url}
                     alt={post.title}
@@ -272,7 +291,7 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
                 </Link>
               </div>
               <div className="title-line">
-                <Link href={`/p/${post.public_sqid}`} className="post-title" style={{ fontSize: '0.7rem', color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center' }}>
+                <Link href={`/p/${post.public_sqid}`} className="post-title" style={{ fontSize: '0.7rem', color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center' }} onClick={() => handlePostClick(postIndex)}>
                   {post.title}
                 </Link>
               </div>

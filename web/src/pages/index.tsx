@@ -191,7 +191,12 @@ export default function HomePage() {
         )}
 
         {posts.length > 0 && (
-          <CardGrid posts={posts} API_BASE_URL={API_BASE_URL} />
+          <CardGrid 
+            posts={posts} 
+            API_BASE_URL={API_BASE_URL}
+            source={{ type: 'recent' }}
+            cursor={nextCursor}
+          />
         )}
 
         {posts.length > 0 && (

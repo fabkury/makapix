@@ -683,7 +683,12 @@ export default function UserProfilePage() {
           )}
 
           {posts.length > 0 && (
-            <CardGrid posts={posts} API_BASE_URL={API_BASE_URL} />
+            <CardGrid 
+              posts={posts} 
+              API_BASE_URL={API_BASE_URL}
+              source={{ type: 'profile', id: typeof id === 'string' ? id : undefined }}
+              cursor={nextCursor}
+            />
           )}
 
           {posts.length > 0 && (

@@ -141,3 +141,71 @@ select:focus {
   border: 0;
 }
 
+/* View Transitions API - Swipe Navigation Animations */
+
+/* Keep header static during transitions */
+.header {
+  view-transition-name: header;
+}
+
+/* Main content participates in slide transition */
+.main-content {
+  view-transition-name: main-content;
+}
+
+/* Don't animate the header during view transitions */
+::view-transition-group(header) {
+  animation: none;
+}
+
+::view-transition-old(header),
+::view-transition-new(header) {
+  animation: none;
+}
+
+/* Slide left: old page exits left, new page enters from right */
+@keyframes swipe-slide-out-left {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-100%);
+    opacity: 0.8;
+  }
+}
+
+@keyframes swipe-slide-in-from-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0.8;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Slide right: old page exits right, new page enters from left */
+@keyframes swipe-slide-out-right {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0.8;
+  }
+}
+
+@keyframes swipe-slide-in-from-left {
+  from {
+    transform: translateX(-100%);
+    opacity: 0.8;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
