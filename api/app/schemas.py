@@ -549,6 +549,13 @@ class ReactionTotals(BaseModel):
     mine: list[str]  # emoji list for current user
 
 
+class WidgetData(BaseModel):
+    """Combined widget data (reactions + comments) for efficient loading."""
+
+    reactions: ReactionTotals
+    comments: list["Comment"]
+
+
 # ============================================================================
 # REPORT SCHEMAS
 # ============================================================================

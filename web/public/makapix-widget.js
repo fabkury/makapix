@@ -264,12 +264,47 @@
       this.createReactionsSection();
       this.createCommentsSection();
       
-      // Load data
-      await this.loadReactions();
-      await this.loadComments();
+      // Load data using combined endpoint for efficiency (single request)
+      await this.loadWidgetData();
       
       // Inject styles
       this.injectStyles();
+    }
+    
+    async loadWidgetData() {
+      // Load both reactions and comments in a single API request
+      try {
+        const response = await apiRequest(`/posts/${this.postId}/widget-data`);
+        if (response.ok) {
+          const data = await response.json();
+          
+          // Process reactions
+          this.reactions = {
+            totals: data?.reactions?.totals || {},
+            authenticated_totals: data?.reactions?.authenticated_totals || {},
+            anonymous_totals: data?.reactions?.anonymous_totals || {},
+            mine: data?.reactions?.mine || []
+          };
+          this.renderReactions();
+          
+          // Process comments
+          this.comments = (data?.comments || []).filter(comment => {
+            if (!comment || typeof comment.id === 'undefined') return false;
+            if (typeof comment.depth !== 'number' || comment.depth > 2) return false;
+            if (!comment.body) return false;
+            return true;
+          });
+          this.renderComments();
+        } else {
+          // Fallback to separate endpoints if combined endpoint fails
+          console.warn('Combined endpoint failed, falling back to separate requests');
+          await Promise.all([this.loadReactions(), this.loadComments()]);
+        }
+      } catch (error) {
+        console.error('Failed to load widget data:', error);
+        // Fallback to separate endpoints
+        await Promise.all([this.loadReactions(), this.loadComments()]);
+      }
     }
     
     async checkAuth() {
@@ -312,19 +347,13 @@
     createReactionsSection() {
       const section = createElement('div', { className: 'makapix-reactions-section' });
       
-      const reactionsContainer = createElement('div', { 
-        className: 'makapix-reactions-container'
-      });
-      reactionsContainer.id = `reactions-${this.postId}`;
-      section.appendChild(reactionsContainer);
-      
       const picker = createElement('div', { className: 'makapix-reaction-picker' });
       picker.innerHTML = `
-        <button class="makapix-reaction-btn" data-emoji="👍">👍</button>
-        <button class="makapix-reaction-btn" data-emoji="❤️">❤️</button>
-        <button class="makapix-reaction-btn" data-emoji="🔥">🔥</button>
-        <button class="makapix-reaction-btn" data-emoji="😊">😊</button>
-        <button class="makapix-reaction-btn" data-emoji="⭐">⭐</button>
+        <button class="makapix-reaction-btn" data-emoji="👍">👍<span class="makapix-reaction-btn-count"></span></button>
+        <button class="makapix-reaction-btn" data-emoji="❤️">❤️<span class="makapix-reaction-btn-count"></span></button>
+        <button class="makapix-reaction-btn" data-emoji="🔥">🔥<span class="makapix-reaction-btn-count"></span></button>
+        <button class="makapix-reaction-btn" data-emoji="😊">😊<span class="makapix-reaction-btn-count"></span></button>
+        <button class="makapix-reaction-btn" data-emoji="⭐">⭐<span class="makapix-reaction-btn-count"></span></button>
       `;
       
       picker.querySelectorAll('.makapix-reaction-btn').forEach(btn => {
@@ -386,87 +415,39 @@
     }
     
     renderReactions() {
-      const container = document.getElementById(`reactions-${this.postId}`);
-      if (!container) return;
-      
-      container.innerHTML = '';
-      
       const totals = this.reactions.totals || {};
-      const authenticatedTotals = this.reactions.authenticated_totals || {};
-      const anonymousTotals = this.reactions.anonymous_totals || {};
       const mine = this.reactions.mine || [];
       
-      const hasAuthenticated = Object.keys(authenticatedTotals).length > 0;
-      const hasAnonymous = Object.keys(anonymousTotals).length > 0;
-      const hasLegacyTotals = Object.keys(totals).length > 0;
-
-      if (!hasAuthenticated && !hasAnonymous && !hasLegacyTotals) {
-        container.innerHTML = '<p class="makapix-no-reactions">No reactions yet. Be the first!</p>';
-        this.updatePickerHighlights(mine);
-        return;
-      }
-      
-      const createRow = (totalsMap, className) => {
-        if (!totalsMap || Object.keys(totalsMap).length === 0) {
-          return null;
-        }
-
-        const row = createElement('div', { className: `makapix-reaction-row ${className}` });
-
-        Object.entries(totalsMap).forEach(([emoji, count]) => {
-          const isMine = mine.includes(emoji);
-          const badge = createElement('span', {
-            className: `makapix-reaction-badge ${isMine ? 'makapix-reaction-mine' : ''}`,
-            html: `${emoji} <span class="makapix-reaction-count">${count}</span>`
-          });
-
-          badge.addEventListener('click', () => {
-            this.toggleReaction(emoji);
-          });
-
-          row.appendChild(badge);
-        });
-
-        if (!row.childElementCount) {
-          return null;
-        }
-
-        return row;
-      };
-
-      const authenticatedRow = createRow(authenticatedTotals, 'makapix-reactions-authenticated');
-      if (authenticatedRow) {
-        container.appendChild(authenticatedRow);
-      }
-
-      const anonymousRow = createRow(anonymousTotals, 'makapix-reactions-anonymous');
-      if (anonymousRow) {
-        container.appendChild(anonymousRow);
-      }
-
-      // Fallback for any remaining totals that might not have been categorized (legacy support)
-      if (!authenticatedRow && !anonymousRow && hasLegacyTotals) {
-        const legacyRow = createRow(totals, 'makapix-reactions-legacy');
-        if (legacyRow) {
-          container.appendChild(legacyRow);
-        }
-      }
-      
-      // Update picker button highlights
-      this.updatePickerHighlights(mine);
+      // Update picker buttons with counts and highlights
+      this.updatePickerState(totals, mine);
     }
     
-    updatePickerHighlights(mine) {
-      // Update the reaction picker buttons to show which reactions the user has made
+    updatePickerState(totals, mine) {
+      // Update the reaction picker buttons to show counts and which reactions the user has made
       const picker = this.container.querySelector('.makapix-reaction-picker');
       if (!picker) return;
       
       picker.querySelectorAll('.makapix-reaction-btn').forEach(btn => {
         const emoji = btn.getAttribute('data-emoji');
+        const count = totals[emoji] || 0;
+        const countSpan = btn.querySelector('.makapix-reaction-btn-count');
+        
+        // Update active state
         if (mine.includes(emoji)) {
           btn.classList.add('makapix-reaction-btn-active');
         } else {
           btn.classList.remove('makapix-reaction-btn-active');
+        }
+        
+        // Update count display
+        if (countSpan) {
+          if (count > 0) {
+            countSpan.textContent = count;
+            countSpan.style.display = '';
+          } else {
+            countSpan.textContent = '';
+            countSpan.style.display = 'none';
+          }
         }
       });
     }
@@ -492,7 +473,7 @@
           });
         }
         
-        // Reload reactions
+        // Reload reactions from server to show confirmed state
         await this.loadReactions();
       } catch (error) {
         console.error('Failed to toggle reaction:', error);
@@ -863,67 +844,6 @@
           letter-spacing: 0.02em;
         }
         
-        .makapix-reactions-container {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-          margin-bottom: 16px;
-          min-height: 70px;
-        }
-
-        .makapix-reaction-row {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-          padding: 8px 12px;
-          border-radius: 12px;
-        }
-
-        .makapix-reactions-authenticated {
-          background: rgba(180, 78, 255, 0.1);
-          border: 1px solid rgba(180, 78, 255, 0.2);
-        }
-
-        .makapix-reactions-anonymous {
-          background: rgba(106, 106, 128, 0.1);
-          border: 1px dashed rgba(106, 106, 128, 0.3);
-        }
-        
-        .makapix-reactions-legacy {
-          background: rgba(180, 78, 255, 0.1);
-          border: 1px solid rgba(180, 78, 255, 0.2);
-        }
-
-        .makapix-reaction-badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 8px 14px;
-          background: #1a1a24;
-          border-radius: 20px;
-          font-size: 0.9rem;
-          cursor: pointer;
-          transition: all 0.15s ease;
-          border: 1px solid transparent;
-        }
-        
-        .makapix-reaction-badge:hover {
-          background: #252530;
-          border-color: rgba(0, 212, 255, 0.3);
-          box-shadow: 0 0 12px rgba(0, 212, 255, 0.2);
-        }
-        
-        .makapix-reaction-badge.makapix-reaction-mine {
-          background: rgba(0, 212, 255, 0.15);
-          border: 2px solid #00d4ff;
-          box-shadow: 0 0 12px rgba(0, 212, 255, 0.3);
-        }
-        
-        .makapix-reaction-count {
-          font-weight: 600;
-          color: #a0a0b8;
-        }
-        
         .makapix-reaction-picker {
           display: flex;
           gap: 8px;
@@ -931,6 +851,7 @@
         }
         
         .makapix-reaction-btn {
+          position: relative;
           padding: 10px 14px;
           font-size: 1.25rem;
           background: #1a1a24;
@@ -955,6 +876,22 @@
         .makapix-reaction-btn-active:hover {
           border-color: #00d4ff;
           box-shadow: 0 0 16px rgba(0, 212, 255, 0.5);
+        }
+        
+        .makapix-reaction-btn-count {
+          position: absolute;
+          bottom: -4px;
+          right: -4px;
+          background: #00d4ff;
+          color: #1a1a24;
+          font-size: 0.7rem;
+          font-weight: 700;
+          padding: 2px 6px;
+          border-radius: 10px;
+          min-width: 18px;
+          text-align: center;
+          line-height: 1.2;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
         
         .makapix-comment-form,
@@ -1139,19 +1076,6 @@
           margin-top: 12px;
           padding-left: 16px;
           border-left: 2px solid rgba(180, 78, 255, 0.2);
-        }
-        
-        .makapix-no-reactions {
-          color: #6a6a80;
-          font-style: italic;
-          text-align: center;
-          padding: 24px;
-          background: #16161f;
-          border-radius: 12px;
-          min-height: 22px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
         }
         
         .makapix-no-comments {
