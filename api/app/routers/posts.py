@@ -21,6 +21,7 @@ from ..pagination import apply_cursor_filter, create_page_response
 from ..mqtt.notifications import publish_new_post_notification, publish_category_promotion_notification
 from ..utils.audit import log_moderation_action
 from ..utils.view_tracking import record_view, ViewType, ViewSource
+from ..utils.site_tracking import record_site_event
 from ..services.post_stats import annotate_posts_with_counts, get_user_liked_post_ids
 from ..vault import (
     ALLOWED_MIME_TYPES,
@@ -39,6 +40,7 @@ router = APIRouter(prefix="/posts", tags=["Posts"])
 
 @router.get("", response_model=schemas.Page[schemas.Post])
 def list_posts(
+    request: Request,
     owner_id: UUID | None = None,
     hashtag: str | None = None,
     promoted: bool | None = None,
@@ -106,6 +108,9 @@ def list_posts(
     
     # Create paginated response
     page_data = create_page_response(posts, limit, cursor)
+    
+    # Record site event for page view
+    record_site_event(request, "page_view", user=current_user)
     
     return schemas.Page(
         items=[schemas.Post.model_validate(p) for p in page_data["items"]],
@@ -197,6 +202,7 @@ def create_post(
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_artwork(
+    request: Request,
     image: UploadFile = File(...),
     title: str = Form(..., min_length=1, max_length=200),
     description: str | None = Form(None, max_length=5000),
@@ -343,6 +349,9 @@ async def upload_artwork(
     if not public_visibility:
         message += ". Awaiting moderator approval for public visibility."
     
+    # Record site event for upload
+    record_site_event(request, "upload", user=current_user)
+    
     return schemas.ArtworkUploadResponse(
         post=schemas.Post.model_validate(post),
         message=message,
@@ -450,6 +459,9 @@ def get_post_by_storage_key(
     
     # Add reaction and comment counts
     annotate_posts_with_counts(db, [post], current_user.id if current_user else None)
+    
+    # Record site event for page view
+    record_site_event(request, "page_view", user=current_user)
     
     return schemas.Post.model_validate(post)
 

@@ -46,7 +46,6 @@ export default function UserProfilePage() {
   const [user, setUser] = useState<User | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [blogPosts, setBlogPosts] = useState<any[]>([]);
-  const [blogPostStats, setBlogPostStats] = useState<Record<string, { reactions: number; comments: number }>>({});
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [postsLoading, setPostsLoading] = useState(false);
@@ -184,7 +183,7 @@ export default function UserProfilePage() {
     }
   }, [user, id, API_BASE_URL]);
 
-  // Load user's blog posts
+  // Load user's blog posts (stats are returned by the API)
   const loadBlogPosts = async () => {
     if (!id || typeof id !== 'string') return;
     
@@ -197,40 +196,6 @@ export default function UserProfilePage() {
       if (response.ok) {
         const data = await response.json();
         setBlogPosts(data.items || []);
-        
-        // Fetch stats for each blog post
-        if (data.items && data.items.length > 0) {
-          const statsPromises = data.items.map(async (post: any) => {
-            try {
-              const [reactionsRes, commentsRes] = await Promise.all([
-                fetch(`${API_BASE_URL}/api/blog-posts/${post.id}/reactions`, { headers }),
-                fetch(`${API_BASE_URL}/api/blog-posts/${post.id}/comments`, { headers })
-              ]);
-              
-              if (reactionsRes.ok && commentsRes.ok) {
-                const reactionsData = await reactionsRes.json();
-                const commentsData = await commentsRes.json();
-                
-                const reactionCount = Object.values(reactionsData.totals || {}).reduce((sum: number, count) => sum + (count as number), 0);
-                const commentCount = commentsData.items?.length || 0;
-                
-                return { postId: post.id, reactions: reactionCount, comments: commentCount };
-              }
-            } catch (err) {
-              console.error(`Error fetching stats for blog post ${post.id}:`, err);
-            }
-            return null;
-          });
-          
-          const results = await Promise.all(statsPromises);
-          const statsMap: Record<string, { reactions: number; comments: number }> = {};
-          results.forEach(result => {
-            if (result) {
-              statsMap[result.postId] = { reactions: result.reactions, comments: result.comments };
-            }
-          });
-          setBlogPostStats(statsMap);
-        }
       }
     } catch (err) {
       console.error('Error loading blog posts:', err);
@@ -685,8 +650,10 @@ export default function UserProfilePage() {
             <h2 className="section-title">Recent Blog Posts</h2>
             <div className="blog-posts-list">
               {blogPosts.map((blogPost) => {
-                const stats = blogPostStats[blogPost.id] || { reactions: 0, comments: 0 };
                 const displayDate = blogPost.updated_at || blogPost.created_at;
+                // Use counts from API response (batch-fetched on backend)
+                const reactionCount = blogPost.reaction_count ?? 0;
+                const commentCount = blogPost.comment_count ?? 0;
                 
                 return (
                   <Link key={blogPost.id} href={`/blog/${blogPost.id}`} className="blog-post-item">
@@ -696,9 +663,9 @@ export default function UserProfilePage() {
                         {new Date(displayDate).toLocaleDateString()}
                       </span>
                       <span className="meta-separator">•</span>
-                      <span className="blog-post-item-reactions">❤️ {stats.reactions}</span>
+                      <span className="blog-post-item-reactions">⚡ {reactionCount}</span>
                       <span className="meta-separator">•</span>
-                      <span className="blog-post-item-comments">💬 {stats.comments}</span>
+                      <span className="blog-post-item-comments">💬 {commentCount}</span>
                     </div>
                   </Link>
                 );

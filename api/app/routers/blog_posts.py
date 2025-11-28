@@ -26,6 +26,7 @@ from ..blog_vault import (
 )
 from ..deps import get_db
 from ..pagination import apply_cursor_filter, create_page_response
+from ..services.blog_post_stats import annotate_blog_posts_with_counts
 from ..utils.audit import log_moderation_action
 
 logger = logging.getLogger(__name__)
@@ -126,6 +127,9 @@ def list_blog_posts(
     
     # Fetch limit + 1 to check if there are more results
     posts = query.limit(limit + 1).all()
+    
+    # Add reaction and comment counts in batch (avoids N+1 queries on frontend)
+    annotate_blog_posts_with_counts(db, posts)
     
     # Create paginated response
     page_data = create_page_response(posts, limit, cursor)

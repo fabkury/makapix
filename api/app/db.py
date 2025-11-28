@@ -39,6 +39,11 @@ engine = create_engine(
     future=True,
     echo=os.getenv("LOG_LEVEL", "INFO").upper() == "DEBUG",
     pool_pre_ping=True,
+    # Connection pool settings for production (1K-10K MAU)
+    pool_size=10,          # Base connections kept open per worker
+    max_overflow=20,       # Extra connections under load (total max: 30 per worker)
+    pool_timeout=20,       # Wait up to 20s for a connection before timeout
+    pool_recycle=1800,     # Recycle connections after 30 minutes to prevent stale connections
 )
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)

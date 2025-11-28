@@ -16,6 +16,9 @@ interface BlogPost {
     id: string;
     handle: string;
   };
+  // Stats returned by the API (from annotate_blog_posts_with_counts)
+  reaction_count?: number;
+  comment_count?: number;
 }
 
 interface PageResponse<T> {
@@ -151,63 +154,6 @@ export default function BlogFeedPage() {
     };
   }, [posts.length, loadPosts, sort]);
 
-  // Fetch reaction and comment counts for each post (only if logged in)
-  const [postStats, setPostStats] = useState<Record<string, { reactions: number; comments: number }>>({});
-  
-  useEffect(() => {
-    const fetchStats = async () => {
-      const token = localStorage.getItem('access_token');
-      if (!token) {
-        // For unauthenticated users, set default stats to 0
-        const defaultStats: Record<string, { reactions: number; comments: number }> = {};
-        posts.forEach(post => {
-          defaultStats[post.id] = { reactions: 0, comments: 0 };
-        });
-        setPostStats(defaultStats);
-        return;
-      }
-      
-      const statsPromises = posts.map(async (post) => {
-        try {
-          const [reactionsRes, commentsRes] = await Promise.all([
-            fetch(`${API_BASE_URL}/api/blog-posts/${post.id}/reactions`, {
-              headers: { 'Authorization': `Bearer ${token}` }
-            }),
-            fetch(`${API_BASE_URL}/api/blog-posts/${post.id}/comments`, {
-              headers: { 'Authorization': `Bearer ${token}` }
-            })
-          ]);
-          
-          if (reactionsRes.ok && commentsRes.ok) {
-            const reactionsData = await reactionsRes.json();
-            const commentsData = await commentsRes.json();
-            
-            const reactionCount = Object.values(reactionsData.totals || {}).reduce((sum: number, count) => sum + (count as number), 0);
-            const commentCount = commentsData.items?.length || 0;
-            
-            return { postId: post.id, reactions: reactionCount, comments: commentCount };
-          }
-        } catch (err) {
-          console.error(`Error fetching stats for post ${post.id}:`, err);
-        }
-        return null;
-      });
-      
-      const results = await Promise.all(statsPromises);
-      const statsMap: Record<string, { reactions: number; comments: number }> = {};
-      results.forEach(result => {
-        if (result) {
-          statsMap[result.postId] = { reactions: result.reactions, comments: result.comments };
-        }
-      });
-      setPostStats(statsMap);
-    };
-    
-    if (posts.length > 0) {
-      fetchStats();
-    }
-  }, [posts, API_BASE_URL]);
-
   const truncateBody = (body: string, maxLength: number = 200): string => {
     if (body.length <= maxLength) return body;
     // Remove markdown images and links for preview
@@ -261,7 +207,9 @@ export default function BlogFeedPage() {
 
         <div className="blog-posts-list">
           {posts.map((post) => {
-            const stats = postStats[post.id] || { reactions: 0, comments: 0 };
+            // Use counts from API response (batch-fetched on backend)
+            const reactionCount = post.reaction_count ?? 0;
+            const commentCount = post.comment_count ?? 0;
             const displayDate = post.updated_at || post.created_at;
             
             const firstImage = post.image_urls && post.image_urls.length > 0 ? post.image_urls[0] : null;
@@ -282,9 +230,9 @@ export default function BlogFeedPage() {
                       {new Date(displayDate).toLocaleDateString()}
                     </span>
                     <span className="meta-separator">•</span>
-                    <span className="blog-post-reactions">❤️ {stats.reactions}</span>
+                    <span className="blog-post-reactions">⚡ {reactionCount}</span>
                     <span className="meta-separator">•</span>
-                    <span className="blog-post-comments">💬 {stats.comments}</span>
+                    <span className="blog-post-comments">💬 {commentCount}</span>
                   </div>
                   <div className="blog-post-preview">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
