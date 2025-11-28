@@ -153,7 +153,9 @@ class ReputationView(BaseModel):
 class Post(BaseModel):
     """Post with art metadata."""
 
-    id: UUID
+    id: int  # Auto-increment integer primary key
+    storage_key: UUID  # UUID used for vault lookup
+    public_sqid: str  # Sqids-encoded public ID (max 16 chars)
     kind: Literal["art"]
     owner_id: UUID
     title: str
@@ -172,8 +174,8 @@ class Post(BaseModel):
     created_at: datetime
     updated_at: datetime | None = None
     owner: UserPublic | None = None
-    reaction_count: int
-    comment_count: int
+    reaction_count: int = 0
+    comment_count: int = 0
     user_has_liked: bool = False  # Whether the current user has liked (👍) this post
 
     model_config = ConfigDict(from_attributes=True)
@@ -217,7 +219,7 @@ class ArtworkUploadResponse(BaseModel):
 class PublicVisibilityResponse(BaseModel):
     """Response for public visibility toggle."""
 
-    post_id: UUID
+    post_id: int  # Changed from UUID to int
     public_visibility: bool
 
 
@@ -240,7 +242,7 @@ class Playlist(BaseModel):
     owner_id: UUID
     title: str
     description: str | None = None
-    post_ids: list[UUID] = []
+    post_ids: list[int] = []  # Changed from UUID to int
     visible: bool
     hidden_by_user: bool
     hidden_by_mod: bool
@@ -255,7 +257,7 @@ class PlaylistCreate(BaseModel):
 
     title: str = Field(..., min_length=1, max_length=200)
     description: str | None = Field(None, max_length=1000)
-    post_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    post_ids: list[int] = Field(default_factory=list, max_length=100)  # Changed from UUID to int
 
 
 class PlaylistUpdate(BaseModel):
@@ -263,7 +265,7 @@ class PlaylistUpdate(BaseModel):
 
     title: str | None = Field(None, min_length=1, max_length=200)
     description: str | None = Field(None, max_length=1000)
-    post_ids: list[UUID] | None = Field(None, max_length=100)
+    post_ids: list[int] | None = Field(None, max_length=100)  # Changed from UUID to int
     hidden_by_user: bool | None = None
     hidden_by_mod: bool | None = None
 
@@ -277,7 +279,7 @@ class Comment(BaseModel):
     """Comment on a post."""
 
     id: UUID
-    post_id: UUID
+    post_id: int  # Changed from UUID to int (FK to posts.id)
     author_id: UUID | None = None  # None for anonymous comments
     author_ip: str | None = None  # For anonymous users (visible to moderators)
     parent_id: UUID | None = None
@@ -554,7 +556,7 @@ class Report(BaseModel):
 
     id: UUID
     target_type: Literal["user", "post", "comment"]
-    target_id: UUID
+    target_id: str  # String to support both UUID and integer IDs
     reason_code: Literal["spam", "abuse", "copyright", "other"]
     notes: str | None = None
     status: Literal["open", "triaged", "resolved"]
@@ -569,7 +571,7 @@ class ReportCreate(BaseModel):
     """Create report request."""
 
     target_type: Literal["user", "post", "comment"]
-    target_id: UUID
+    target_id: str  # String to support both UUID and integer IDs
     reason_code: Literal["spam", "abuse", "copyright", "other"]
     notes: str | None = Field(None, max_length=2000)
 
@@ -935,7 +937,7 @@ class AuditLogEntry(BaseModel):
     actor_id: UUID
     action: str
     target_type: str | None
-    target_id: UUID | None
+    target_id: str | None  # String to support both UUID and integer IDs
     reason_code: str | None = None
     note: str | None = None
     created_at: datetime
@@ -1123,7 +1125,7 @@ class PostStatsResponse(BaseModel):
     Frontend can toggle between the two without additional API calls.
     """
     
-    post_id: UUID
+    post_id: int  # Changed from UUID to int
     # "All" statistics (including unauthenticated)
     total_views: int
     unique_viewers: int

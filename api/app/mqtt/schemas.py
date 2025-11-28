@@ -11,7 +11,7 @@ from pydantic import BaseModel, HttpUrl
 class PostNotificationPayload(BaseModel):
     """MQTT notification payload for new posts."""
 
-    post_id: UUID
+    post_id: int  # Changed from UUID to int
     owner_id: UUID
     owner_handle: str
     title: str

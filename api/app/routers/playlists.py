@@ -14,7 +14,7 @@ from ..deps import get_db
 router = APIRouter(prefix="/playlists", tags=["Playlists"])
 
 
-def validate_post_visibility(post_ids: list[UUID], db: Session) -> list[UUID]:
+def validate_post_visibility(post_ids: list[int], db: Session) -> list[int]:
     """
     Validate that posts exist and are visible.
     

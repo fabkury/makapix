@@ -5,9 +5,11 @@ from __future__ import annotations
 import hashlib
 import io
 import logging
+import uuid
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi.responses import RedirectResponse
 from PIL import Image
 from sqlalchemy.orm import Session, joinedload
 
@@ -147,7 +149,11 @@ def create_post(
         if normalized_tag and normalized_tag not in normalized_hashtags:
             normalized_hashtags.append(normalized_tag)
     
+    # Generate UUID for storage_key
+    storage_key = uuid.uuid4()
+    
     post = models.Post(
+        storage_key=storage_key,
         owner_id=current_user.id,
         kind=payload.kind,
         title=payload.title,
@@ -158,6 +164,12 @@ def create_post(
         file_kb=payload.file_kb,
     )
     db.add(post)
+    db.flush()  # Get the post ID without committing
+    
+    # Generate public_sqid from the assigned id
+    from ..sqids_config import encode_id
+    
+    post.public_sqid = encode_id(post.id)
     db.commit()
     db.refresh(post)
     
@@ -271,8 +283,12 @@ async def upload_artwork(
     # Determine public visibility based on user's auto_public_approval privilege
     public_visibility = getattr(current_user, 'auto_public_approval', False)
     
+    # Generate UUID for storage_key
+    storage_key = uuid.uuid4()
+    
     # Create the post record first to get the ID
     post = models.Post(
+        storage_key=storage_key,
         owner_id=current_user.id,
         kind="art",
         title=title,
@@ -288,13 +304,18 @@ async def upload_artwork(
     db.add(post)
     db.flush()  # Get the post ID without committing
     
-    # Save to vault using the post ID
+    # Generate public_sqid from the assigned id
+    from ..sqids_config import encode_id
+    
+    post.public_sqid = encode_id(post.id)
+    
+    # Save to vault using the storage_key
     try:
         extension = ALLOWED_MIME_TYPES[mime_type]
-        save_artwork_to_vault(post.id, file_content, mime_type)
+        save_artwork_to_vault(post.storage_key, file_content, mime_type)
         
         # Update the art_url to point to the vault
-        art_url = get_artwork_url(post.id, extension)
+        art_url = get_artwork_url(post.storage_key, extension)
         post.art_url = art_url
         
         db.commit()
@@ -397,57 +418,37 @@ def list_recent_posts(
     return response
 
 
-@router.get("/{id}", response_model=schemas.Post)
-def get_post(
-    id: UUID, 
+@router.get("/{storage_key}")
+def get_post_by_storage_key(
+    storage_key: UUID,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: models.User | None = Depends(get_current_user_optional)
-) -> schemas.Post:
+    current_user: models.User | None = Depends(get_current_user_optional),
+) -> RedirectResponse:
     """
-    Get post by ID.
+    Legacy route: Get post by storage key (UUID) and redirect to canonical URL.
+    
+    This route redirects to the canonical short URL /p/{public_sqid}.
     """
-    post = db.query(models.Post).options(joinedload(models.Post.owner)).filter(models.Post.id == id).first()
+    from ..utils.visibility import can_access_post
+    
+    # Query post
+    post = db.query(models.Post).filter(models.Post.storage_key == storage_key).first()
+    
     if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
     
     # Check visibility
-    if not post.visible:
-        if not current_user or not check_ownership(post.owner_id, current_user):
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    if not can_access_post(post, current_user):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
     
-    if post.hidden_by_mod:
-        if not current_user or not ("moderator" in current_user.roles or "owner" in current_user.roles):
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
-    
-    if post.non_conformant:
-        if not current_user or not ("moderator" in current_user.roles or "owner" in current_user.roles):
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
-    
-    # Record view (intentional - user clicked on specific artwork)
-    try:
-        record_view(
-            db=db,
-            post_id=id,
-            request=request,
-            user=current_user,
-            view_type=ViewType.INTENTIONAL,
-            view_source=ViewSource.WEB,
-            post_owner_id=post.owner_id,
-        )
-    except Exception as e:
-        # Log error but don't fail the request
-        logger.error(f"Failed to record view for post {id}: {e}")
-    
-    # Add reaction and comment counts, and user liked status
-    annotate_posts_with_counts(db, [post], current_user.id if current_user else None)
-    
-    return schemas.Post.model_validate(post)
+    # Redirect to canonical URL
+    return RedirectResponse(url=f"/p/{post.public_sqid}", status_code=301)
 
 
 @router.patch("/{id}", response_model=schemas.Post)
 def update_post(
-    id: UUID,
+    id: int,
     payload: schemas.PostUpdate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
@@ -485,7 +486,7 @@ def update_post(
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_post(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> None:
@@ -517,7 +518,7 @@ def delete_post(
     tags=["Posts", "Admin"],
 )
 def undelete_post_by_moderator(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     moderator: models.User = Depends(require_moderator),
 ) -> None:
@@ -549,7 +550,7 @@ def undelete_post_by_moderator(
     tags=["Posts", "Admin"],
 )
 def delete_post_by_moderator(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     moderator: models.User = Depends(require_moderator),
 ) -> None:
@@ -580,7 +581,7 @@ def delete_post_by_moderator(
     tags=["Posts", "Admin"],
 )
 def permanent_delete_post(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     moderator: models.User = Depends(require_moderator),
 ) -> None:
@@ -608,7 +609,7 @@ def permanent_delete_post(
         try:
             ext = "." + post.art_url.rsplit(".", 1)[-1].lower()
             if ext in vault.ALLOWED_MIME_TYPES.values():
-                vault.delete_artwork_from_vault(id, ext)
+                vault.delete_artwork_from_vault(post.storage_key, ext)
         except Exception as e:
             logger.warning(f"Failed to delete artwork file for post {id}: {e}")
     
@@ -651,7 +652,7 @@ def permanent_delete_post(
 
 @router.post("/{id}/hide", status_code=status.HTTP_201_CREATED)
 def hide_post(
-    id: UUID,
+    id: int,
     payload: schemas.HideRequest | None = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
@@ -700,7 +701,7 @@ def hide_post(
 
 @router.delete("/{id}/hide", status_code=status.HTTP_204_NO_CONTENT)
 def unhide_post(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> None:
@@ -745,7 +746,7 @@ def unhide_post(
     tags=["Admin"],
 )
 def promote_post(
-    id: UUID,
+    id: int,
     payload: schemas.PromotePostRequest,
     db: Session = Depends(get_db),
     _moderator: models.User = Depends(require_moderator),
@@ -797,7 +798,7 @@ def promote_post(
     tags=["Admin"],
 )
 def demote_post(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     _moderator: models.User = Depends(require_moderator),
 ) -> None:
@@ -834,7 +835,7 @@ def demote_post(
     tags=["Admin"],
 )
 def approve_public_visibility(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     moderator: models.User = Depends(require_moderator),
 ) -> schemas.PublicVisibilityResponse:
@@ -873,7 +874,7 @@ def approve_public_visibility(
     tags=["Admin"],
 )
 def revoke_public_visibility(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     moderator: models.User = Depends(require_moderator),
 ) -> schemas.PublicVisibilityResponse:
@@ -913,7 +914,7 @@ def revoke_public_visibility(
     tags=["Admin"],
 )
 def list_post_admin_notes(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     _moderator: models.User = Depends(require_moderator),
 ) -> schemas.AdminNoteList:
@@ -938,7 +939,7 @@ def list_post_admin_notes(
     tags=["Admin"],
 )
 def add_post_admin_note(
-    id: UUID,
+    id: int,
     payload: schemas.AdminNoteCreate,
     db: Session = Depends(get_db),
     moderator: models.User = Depends(require_moderator),

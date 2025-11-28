@@ -85,14 +85,14 @@ class PostStatsService:
     def __init__(self, db: Session):
         self.db = db
     
-    def get_post_stats(self, post_id: UUID) -> PostStats | None:
+    def get_post_stats(self, post_id: int) -> PostStats | None:
         """
         Get statistics for a post.
         
         Checks Redis cache first, then computes if cache miss.
         
         Args:
-            post_id: UUID of the post
+            post_id: Integer ID of the post
             
         Returns:
             PostStats object or None if post doesn't exist
@@ -121,7 +121,7 @@ class PostStatsService:
         
         return stats
     
-    def invalidate_cache(self, post_id: UUID) -> None:
+    def invalidate_cache(self, post_id: int) -> None:
         """
         Invalidate the stats cache for a post.
         
@@ -132,7 +132,7 @@ class PostStatsService:
         cache_key = f"post_stats:{post_id}"
         cache_delete(cache_key)
     
-    def _compute_stats(self, post_id: UUID) -> PostStats:
+    def _compute_stats(self, post_id: int) -> PostStats:
         """
         Compute statistics for a post from the database.
         
@@ -455,13 +455,13 @@ class PostStatsService:
         )
 
 
-def get_post_stats(db: Session, post_id: UUID) -> PostStats | None:
+def get_post_stats(db: Session, post_id: int) -> PostStats | None:
     """
     Convenience function to get post statistics.
     
     Args:
         db: Database session
-        post_id: UUID of the post
+        post_id: Integer ID of the post
         
     Returns:
         PostStats object or None if post doesn't exist
@@ -470,7 +470,7 @@ def get_post_stats(db: Session, post_id: UUID) -> PostStats | None:
     return service.get_post_stats(post_id)
 
 
-def invalidate_post_stats_cache(db: Session, post_id: UUID) -> None:
+def invalidate_post_stats_cache(db: Session, post_id: int) -> None:
     """
     Convenience function to invalidate post stats cache.
     

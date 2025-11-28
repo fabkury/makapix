@@ -811,7 +811,7 @@ def write_view_event(self, event_data: dict) -> None:
     
     Args:
         event_data: Dictionary containing view event fields:
-            - post_id: UUID string
+            - post_id: Integer ID (as string)
             - viewer_user_id: UUID string or None
             - viewer_ip_hash: SHA256 hash string
             - country_code: ISO country code or None
@@ -829,8 +829,8 @@ def write_view_event(self, event_data: dict) -> None:
     
     db = SessionLocal()
     try:
-        # Parse UUIDs
-        post_id = UUID(event_data["post_id"])
+        # Parse post_id as int (no longer UUID)
+        post_id = int(event_data["post_id"])
         viewer_user_id = UUID(event_data["viewer_user_id"]) if event_data.get("viewer_user_id") else None
         
         # Parse datetime
@@ -939,7 +939,7 @@ def write_view_event(self, event_data: dict) -> None:
     
     Args:
         event_data: Dictionary containing view event fields:
-            - post_id: UUID string
+            - post_id: Integer ID (as string)
             - viewer_user_id: UUID string or None
             - viewer_ip_hash: SHA256 hash string
             - country_code: ISO country code or None
@@ -957,8 +957,8 @@ def write_view_event(self, event_data: dict) -> None:
     
     db = SessionLocal()
     try:
-        # Parse UUIDs
-        post_id = UUID(event_data["post_id"])
+        # Parse post_id as int (no longer UUID)
+        post_id = int(event_data["post_id"])
         viewer_user_id = UUID(event_data["viewer_user_id"]) if event_data.get("viewer_user_id") else None
         
         # Parse datetime

@@ -207,7 +207,7 @@ def get_client_ip(request: Request) -> str:
 
 def record_view(
     db: Session,
-    post_id: UUID,
+    post_id: int,  # Changed from UUID to int
     request: Request,
     user: User | None = None,
     view_type: ViewType = ViewType.INTENTIONAL,
@@ -225,7 +225,7 @@ def record_view(
     
     Args:
         db: Database session (used only to query post owner if not provided)
-        post_id: UUID of the post being viewed
+        post_id: Integer ID of the post being viewed
         request: FastAPI Request object
         user: Current user (if authenticated)
         view_type: Type of view (intentional, listing, search, widget)
@@ -295,12 +295,12 @@ def record_view(
 
 def record_views_batch(
     db: Session,
-    post_ids: list[UUID],
+    post_ids: list[int],  # Changed from list[UUID] to list[int]
     request: Request,
     user: User | None = None,
     view_type: ViewType = ViewType.LISTING,
     view_source: ViewSource = ViewSource.WEB,
-    post_owner_ids: dict[UUID, UUID] | None = None,
+    post_owner_ids: dict[int, UUID] | None = None,  # Changed from dict[UUID, UUID] to dict[int, UUID]
 ) -> None:
     """
     Queue view events for multiple artworks for async writing via Celery (batch operation).
@@ -312,7 +312,7 @@ def record_views_batch(
     
     Args:
         db: Database session (used only to query post owners if not provided)
-        post_ids: List of post UUIDs being viewed
+        post_ids: List of post integer IDs being viewed
         request: FastAPI Request object
         user: Current user (if authenticated)
         view_type: Type of view (default: listing)
