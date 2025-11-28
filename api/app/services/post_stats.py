@@ -71,7 +71,7 @@ def annotate_posts_with_counts(
     )
     
     # Get user's likes (👍 reactions) if user is authenticated
-    user_liked_posts: set[UUID] = set()
+    user_liked_posts: set[int] = set()
     if current_user_id:
         user_likes = (
             db.query(models.Reaction.post_id)
@@ -97,7 +97,7 @@ def annotate_posts_with_counts(
     return posts
 
 
-def get_user_liked_post_ids(db: Session, post_ids: list[UUID], user_id: UUID) -> set[UUID]:
+def get_user_liked_post_ids(db: Session, post_ids: list[int], user_id: UUID) -> set[int]:
     """
     Get the set of post IDs that a user has liked (👍 reaction).
     

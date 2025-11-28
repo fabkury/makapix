@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import logging
 from sqlalchemy.orm import Session
-from uuid import UUID
-
 from .. import models
 from .publisher import publish
 from .schemas import PostNotificationPayload
@@ -13,12 +11,12 @@ from .schemas import PostNotificationPayload
 logger = logging.getLogger(__name__)
 
 
-def publish_new_post_notification(post_id: UUID, db: Session) -> None:
+def publish_new_post_notification(post_id: int, db: Session) -> None:
     """
     Publish MQTT notification for a new post to all followers of the post owner.
     
     Args:
-        post_id: UUID of the newly created post
+        post_id: Integer ID of the newly created post
         db: Database session
     """
     # Fetch post with owner details
@@ -70,7 +68,7 @@ def publish_new_post_notification(post_id: UUID, db: Session) -> None:
     logger.info(f"Published new post notification for post {post_id} to {len(followers)} followers")
 
 
-def publish_category_promotion_notification(post_id: UUID, category: str, db: Session) -> None:
+def publish_category_promotion_notification(post_id: int, category: str, db: Session) -> None:
     """
     Publish MQTT notification when a post is promoted to a category.
     
@@ -78,7 +76,7 @@ def publish_category_promotion_notification(post_id: UUID, category: str, db: Se
     Posts are notified when promoted, not when created.
     
     Args:
-        post_id: UUID of the promoted post
+        post_id: Integer ID of the promoted post
         category: Category name (e.g., "daily's-best")
         db: Database session
     """

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func
@@ -18,7 +17,7 @@ router = APIRouter(prefix="/posts", tags=["Reactions"])
 
 @router.get("/{id}/reactions", response_model=schemas.ReactionTotals)
 def get_reactions(
-    id: UUID,
+    id: int,  # Post ID (integer)
     request: Request,
     db: Session = Depends(get_db),
     current_user: models.User | AnonymousUser = Depends(get_current_user_or_anonymous),
@@ -69,7 +68,7 @@ def get_reactions(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def add_reaction(
-    id: UUID,
+    id: int,  # Post ID (integer)
     emoji: str,
     request: Request,
     db: Session = Depends(get_db),
@@ -144,7 +143,7 @@ def add_reaction(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def remove_reaction(
-    id: UUID,
+    id: int,  # Post ID (integer)
     emoji: str,
     request: Request,
     db: Session = Depends(get_db),

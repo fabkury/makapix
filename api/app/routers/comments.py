@@ -18,7 +18,7 @@ router = APIRouter(prefix="/posts", tags=["Comments"])
 
 @router.get("/{id}/comments", response_model=schemas.Page[schemas.Comment])
 def list_comments(
-    id: UUID,
+    id: int,  # Post ID (integer)
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     view: str = Query("flat", regex="^(flat|tree)$"),
@@ -111,7 +111,7 @@ def list_comments(
     status_code=status.HTTP_201_CREATED,
 )
 def create_comment(
-    id: UUID,
+    id: int,  # Post ID (integer)
     payload: schemas.CommentCreate,
     request: Request,
     db: Session = Depends(get_db),

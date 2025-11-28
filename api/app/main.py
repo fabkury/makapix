@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .routers import (
     admin,
+    artwork,
     auth,
     badges,
     blog_posts,
@@ -157,6 +158,7 @@ app.include_router(system.router)
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(profiles.router)
+app.include_router(artwork.router)
 app.include_router(posts.router)
 app.include_router(blog_posts.router)
 app.include_router(playlists.router)

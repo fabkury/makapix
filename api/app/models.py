@@ -173,7 +173,9 @@ class Post(Base):
 
     __tablename__ = "posts"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
+    storage_key = Column(UUID(as_uuid=True), unique=True, nullable=False, index=True)  # UUID used for vault lookup
+    public_sqid = Column(String(16), unique=True, nullable=True, index=True)  # Sqids-encoded public ID (set after insert)
     kind = Column(String(20), nullable=False, default="art")  # Currently only "art"
     owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     
@@ -225,7 +227,7 @@ class Comment(Base):
     __tablename__ = "comments"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id"), nullable=False, index=True)
+    post_id = Column(Integer, ForeignKey("posts.id"), nullable=False, index=True)
     author_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     author_ip = Column(String(45), nullable=True, index=True)  # For anonymous users
     parent_id = Column(UUID(as_uuid=True), ForeignKey("comments.id"), nullable=True, index=True)
@@ -263,7 +265,7 @@ class Playlist(Base):
     
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
-    post_ids = Column(ARRAY(UUID(as_uuid=True)), nullable=False, default=list)
+    post_ids = Column(ARRAY(Integer), nullable=False, default=list)
     
     # Visibility
     visible = Column(Boolean, nullable=False, default=True, index=True)
@@ -291,7 +293,7 @@ class Reaction(Base):
     __tablename__ = "reactions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id"), nullable=False, index=True)
+    post_id = Column(Integer, ForeignKey("posts.id"), nullable=False, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     user_ip = Column(String(45), nullable=True, index=True)  # For anonymous users
     emoji = Column(String(20), nullable=False)
@@ -406,7 +408,7 @@ class Report(Base):
     reporter_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     
     target_type = Column(String(20), nullable=False, index=True)  # user, post, comment
-    target_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    target_id = Column(String(50), nullable=False, index=True)  # String to support both UUID and integer IDs
     
     reason_code = Column(String(50), nullable=False)  # spam, abuse, copyright, other
     notes = Column(Text, nullable=True)
@@ -431,7 +433,7 @@ class AdminNote(Base):
     __tablename__ = "admin_notes"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id"), nullable=False, index=True)
+    post_id = Column(Integer, ForeignKey("posts.id"), nullable=False, index=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     note = Column(Text, nullable=False)
     
@@ -534,7 +536,7 @@ class AuditLog(Base):
     
     action = Column(String(100), nullable=False, index=True)
     target_type = Column(String(20), nullable=True)
-    target_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    target_id = Column(String(50), nullable=True, index=True)  # String to support both UUID and integer IDs
     
     reason_code = Column(String(50), nullable=True)  # e.g., "spam", "abuse", "copyright", "other"
     note = Column(Text, nullable=True)  # Additional context/notes
@@ -559,7 +561,7 @@ class ViewEvent(Base):
     __tablename__ = "view_events"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
     viewer_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     
     # Viewer identification (for unique viewer tracking)
@@ -600,7 +602,7 @@ class PostStatsDaily(Base):
     __tablename__ = "post_stats_daily"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
     date = Column(Date, nullable=False, index=True)
     
     # Aggregated counts
@@ -636,7 +638,7 @@ class PostStatsCache(Base):
     __tablename__ = "post_stats_cache"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
     
     # Full computed statistics as JSON
     stats_json = Column(JSON, nullable=False)

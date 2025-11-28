@@ -21,7 +21,7 @@ router = APIRouter(prefix="/posts", tags=["Statistics"])
 
 @router.get("/{id}/stats", response_model=schemas.PostStatsResponse)
 async def get_post_statistics(
-    id: UUID,
+    id: int,  # Changed from UUID to int
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> schemas.PostStatsResponse:
@@ -69,7 +69,7 @@ async def get_post_statistics(
     
     # Convert to response schema
     return schemas.PostStatsResponse(
-        post_id=UUID(stats.post_id),
+        post_id=stats.post_id,  # post_id is now int, not UUID
         # All statistics
         total_views=stats.total_views,
         unique_viewers=stats.unique_viewers,

@@ -43,7 +43,7 @@ def log_moderation_action(
     actor_id: UUID,
     action: str,
     target_type: str | None = None,
-    target_id: UUID | None = None,
+    target_id: str | int | UUID | None = None,
     reason_code: str | None = None,
     note: str | None = None,
 ) -> models.AuditLog:
@@ -66,11 +66,14 @@ def log_moderation_action(
     if actor_id == SYSTEM_USER_UUID:
         ensure_system_user(db)
     
+    # Convert target_id to string for storage (supports both UUID and integer IDs)
+    target_id_str = str(target_id) if target_id is not None else None
+    
     audit_entry = models.AuditLog(
         actor_id=actor_id,
         action=action,
         target_type=target_type,
-        target_id=target_id,
+        target_id=target_id_str,
         reason_code=reason_code,
         note=note,
     )

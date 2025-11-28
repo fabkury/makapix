@@ -105,7 +105,16 @@ def update_report(
     action_applied = False
     if payload.action_taken and payload.action_taken != "none":
         if report.target_type == "user":
-            target_user = db.query(models.User).filter(models.User.id == report.target_id).first()
+            # target_id is stored as string, convert to UUID for user lookup
+            from uuid import UUID as UUIDType
+            try:
+                target_user_id = UUIDType(report.target_id)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid user ID format: {report.target_id}"
+                )
+            target_user = db.query(models.User).filter(models.User.id == target_user_id).first()
             if not target_user:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -121,7 +130,15 @@ def update_report(
                 action_applied = True
         
         elif report.target_type == "post":
-            target_post = db.query(models.Post).filter(models.Post.id == report.target_id).first()
+            # target_id is stored as string, convert to int for post lookup
+            try:
+                target_post_id = int(report.target_id)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid post ID format: {report.target_id}"
+                )
+            target_post = db.query(models.Post).filter(models.Post.id == target_post_id).first()
             if not target_post:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -136,7 +153,16 @@ def update_report(
                 action_applied = True
         
         elif report.target_type == "comment":
-            target_comment = db.query(models.Comment).filter(models.Comment.id == report.target_id).first()
+            # target_id is stored as string, convert to UUID for comment lookup
+            from uuid import UUID as UUIDType
+            try:
+                target_comment_id = UUIDType(report.target_id)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid comment ID format: {report.target_id}"
+                )
+            target_comment = db.query(models.Comment).filter(models.Comment.id == target_comment_id).first()
             if not target_comment:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
