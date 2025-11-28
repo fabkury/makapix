@@ -526,6 +526,8 @@ def get_sitewide_stats(
         new_posts_30d=stats.new_posts_30d,
         total_api_calls_30d=stats.total_api_calls_30d,
         total_errors_30d=stats.total_errors_30d,
+        total_page_views_30d_authenticated=stats.total_page_views_30d_authenticated,
+        unique_visitors_30d_authenticated=stats.unique_visitors_30d_authenticated,
         daily_views=[
             schemas.DailyCount(date=dv.date, count=dv.count)
             for dv in stats.daily_views
@@ -538,14 +540,26 @@ def get_sitewide_stats(
             schemas.DailyCount(date=dp.date, count=dp.count)
             for dp in stats.daily_posts
         ],
+        daily_views_authenticated=[
+            schemas.DailyCount(date=dv.date, count=dv.count)
+            for dv in stats.daily_views_authenticated
+        ],
         hourly_views=[
             schemas.HourlyCount(hour=hv.hour, count=hv.count)
             for hv in stats.hourly_views
+        ],
+        hourly_views_authenticated=[
+            schemas.HourlyCount(hour=hv.hour, count=hv.count)
+            for hv in stats.hourly_views_authenticated
         ],
         views_by_page=stats.views_by_page,
         views_by_country=stats.views_by_country,
         views_by_device=stats.views_by_device,
         top_referrers=stats.top_referrers,
+        views_by_page_authenticated=stats.views_by_page_authenticated,
+        views_by_country_authenticated=stats.views_by_country_authenticated,
+        views_by_device_authenticated=stats.views_by_device_authenticated,
+        top_referrers_authenticated=stats.top_referrers_authenticated,
         errors_by_type=stats.errors_by_type,
         computed_at=datetime.fromisoformat(stats.computed_at),
     )

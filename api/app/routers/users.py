@@ -12,6 +12,7 @@ from ..auth import check_ownership, get_current_user, get_current_user_optional,
 from ..deps import get_db
 from ..utils.handles import validate_handle, is_handle_taken
 from ..pagination import apply_cursor_filter, create_page_response, decode_cursor, encode_cursor
+from ..services.blog_post_stats import annotate_blog_posts_with_counts
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -395,6 +396,9 @@ def get_user_blog_posts(
     
     # Fetch limit + 1 to check if there are more results
     posts = query.limit(limit + 1).all()
+    
+    # Add reaction and comment counts in batch (avoids N+1 queries on frontend)
+    annotate_blog_posts_with_counts(db, posts)
     
     # Create paginated response
     page_data = create_page_response(posts, limit, cursor)

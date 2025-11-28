@@ -14,6 +14,7 @@ from .. import models, schemas
 from ..auth import get_current_user_optional
 from ..deps import get_db
 from ..utils.visibility import can_access_post
+from ..utils.site_tracking import record_site_event
 from ..vault import get_artwork_file_path, ALLOWED_MIME_TYPES
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,9 @@ def get_post_by_sqid(
     from ..services.post_stats import annotate_posts_with_counts
     
     annotate_posts_with_counts(db, [post], current_user.id if current_user else None)
+    
+    # Record site event for page view
+    record_site_event(request, "page_view", user=current_user)
     
     return schemas.Post.model_validate(post)
 

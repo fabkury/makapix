@@ -1,8 +1,7 @@
 /* Makapix Club - Global Styles */
 /* Dark theme with neon accents inspired by pixel art */
 
-/* Google Fonts - Noto Sans (primary) and Open Sans (fallback) */
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+/* Google Fonts loaded via _document.tsx for better performance */
 
 :root {
   /* Base colors */

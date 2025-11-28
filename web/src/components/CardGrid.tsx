@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import Link from 'next/link';
 
 interface PostOwner {
@@ -103,7 +103,8 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
   };
 
   // Apply crisp scaling to artworks and calculate dynamic spacing
-  useEffect(() => {
+  // Using useLayoutEffect to calculate before browser paint (prevents visible reflow)
+  useLayoutEffect(() => {
     const grid = gridRef.current;
     if (!grid) return;
 
@@ -194,28 +195,24 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
       calculateScales();
     };
 
-    const timeoutId = setTimeout(() => {
-      updateLayout();
-    }, 100);
+    // Run immediately - no setTimeout delay
+    updateLayout();
 
     const resizeObserver = new ResizeObserver(() => {
-      setTimeout(() => {
-        updateLayout();
-      }, 0);
+      updateLayout();
     });
 
     resizeObserver.observe(grid);
 
-    window.addEventListener('resize', () => {
-      setTimeout(() => {
-        updateLayout();
-      }, 0);
-    });
+    const handleResize = () => {
+      updateLayout();
+    };
+
+    window.addEventListener('resize', handleResize);
 
     return () => {
-      clearTimeout(timeoutId);
       resizeObserver.disconnect();
-      window.removeEventListener('resize', updateLayout);
+      window.removeEventListener('resize', handleResize);
     };
   }, [posts]);
 
@@ -288,11 +285,11 @@ export default function CardGrid({ posts, API_BASE_URL }: CardGridProps) {
         .card-grid {
           display: grid;
           grid-template-columns: repeat(1, 180px);
-          gap: var(--grid-spacing, 1px);
-          padding-left: var(--grid-spacing, 1px);
-          padding-right: var(--grid-spacing, 1px);
-          padding-top: var(--grid-spacing, 1px);
-          padding-bottom: var(--grid-spacing, 1px);
+          gap: var(--grid-spacing, 16px);
+          padding-left: var(--grid-spacing, 16px);
+          padding-right: var(--grid-spacing, 16px);
+          padding-top: var(--grid-spacing, 16px);
+          padding-bottom: var(--grid-spacing, 16px);
           max-width: 100%;
           margin: 0 auto;
           justify-content: start;

@@ -401,6 +401,9 @@ class BlogPost(BaseModel):
     updated_at: datetime | None = None
     published_at: datetime | None = None
     owner: UserPublic | None = None
+    # Stats added by annotate_blog_posts_with_counts (optional for backwards compat)
+    reaction_count: int = 0
+    comment_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1167,9 +1170,12 @@ class HourlyCount(BaseModel):
 
 
 class SitewideStatsResponse(BaseModel):
-    """Comprehensive sitewide statistics (moderator only)."""
+    """Comprehensive sitewide statistics (moderator only).
     
-    # Summary metrics (30 days)
+    Includes both "all" (including unauthenticated) and "authenticated-only" statistics.
+    """
+    
+    # Summary metrics (30 days) - all
     total_page_views_30d: int
     unique_visitors_30d: int
     new_signups_30d: int
@@ -1177,19 +1183,35 @@ class SitewideStatsResponse(BaseModel):
     total_api_calls_30d: int
     total_errors_30d: int
     
-    # Trends (30 days)
+    # Summary metrics (30 days) - authenticated only
+    total_page_views_30d_authenticated: int
+    unique_visitors_30d_authenticated: int
+    
+    # Trends (30 days) - all
     daily_views: list[DailyCount]
     daily_signups: list[DailyCount]
     daily_posts: list[DailyCount]
     
-    # Granular data (last 24h from events)
+    # Trends (30 days) - authenticated only
+    daily_views_authenticated: list[DailyCount]
+    
+    # Granular data (last 24h from events) - all
     hourly_views: list[HourlyCount]
     
-    # Breakdowns
+    # Granular data (last 24h from events) - authenticated only
+    hourly_views_authenticated: list[HourlyCount]
+    
+    # Breakdowns - all
     views_by_page: dict[str, int]  # Top 20 pages: {"/recent": 500, "/posts": 300, ...}
     views_by_country: dict[str, int]  # Top 10 countries: {"US": 200, "BR": 150, ...}
     views_by_device: dict[str, int]  # {"desktop": 400, "mobile": 350, ...}
     top_referrers: dict[str, int]  # Top 10 referrers: {"google.com": 100, ...}
+    
+    # Breakdowns - authenticated only
+    views_by_page_authenticated: dict[str, int]  # Top 20 pages
+    views_by_country_authenticated: dict[str, int]  # Top 10 countries
+    views_by_device_authenticated: dict[str, int]
+    top_referrers_authenticated: dict[str, int]  # Top 10 referrers
     
     # Error tracking
     errors_by_type: dict[str, int]  # {"404": 50, "500": 5, ...}

@@ -35,6 +35,7 @@ from ..services.email_verification import (
     mark_email_verified,
 )
 from ..utils.handles import generate_default_handle, validate_handle, is_handle_taken
+from ..utils.site_tracking import record_site_event
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,7 @@ def generate_random_password(length: int = 8) -> str:
 )
 def register(
     payload: schemas.RegisterRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> schemas.RegisterResponse:
     """
@@ -146,6 +148,9 @@ def register(
     email_sent = send_verification_email_for_user(db, user, password=generated_password)
     if not email_sent:
         logger.warning(f"Failed to send verification email to user {user.id}")
+    
+    # Record site event for signup
+    record_site_event(request, "signup", user=user)
     
     # Return registration response (NO tokens - user must verify email first)
     return schemas.RegisterResponse(

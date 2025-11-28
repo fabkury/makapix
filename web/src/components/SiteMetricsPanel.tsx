@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
 interface DailyCount {
   date: string;
@@ -17,14 +17,22 @@ interface SitewideStats {
   new_posts_30d: number;
   total_api_calls_30d: number;
   total_errors_30d: number;
+  total_page_views_30d_authenticated: number;
+  unique_visitors_30d_authenticated: number;
   daily_views: DailyCount[];
   daily_signups: DailyCount[];
   daily_posts: DailyCount[];
+  daily_views_authenticated: DailyCount[];
   hourly_views: HourlyCount[];
+  hourly_views_authenticated: HourlyCount[];
   views_by_page: Record<string, number>;
   views_by_country: Record<string, number>;
   views_by_device: Record<string, number>;
   top_referrers: Record<string, number>;
+  views_by_page_authenticated: Record<string, number>;
+  views_by_country_authenticated: Record<string, number>;
+  views_by_device_authenticated: Record<string, number>;
+  top_referrers_authenticated: Record<string, number>;
   errors_by_type: Record<string, number>;
   computed_at: string;
 }
@@ -64,6 +72,7 @@ export default function SiteMetricsPanel() {
   const [stats, setStats] = useState<SitewideStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [includeUnauthenticated, setIncludeUnauthenticated] = useState(true);
 
   const API_BASE_URL = typeof window !== 'undefined'
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
@@ -111,6 +120,37 @@ export default function SiteMetricsPanel() {
     fetchStats();
   }, [API_BASE_URL]);
 
+  // Compute displayed stats based on toggle
+  const displayedStats = useMemo(() => {
+    if (!stats) return null;
+    
+    if (includeUnauthenticated) {
+      // Show all statistics (including unauthenticated)
+      return {
+        total_page_views_30d: stats.total_page_views_30d,
+        unique_visitors_30d: stats.unique_visitors_30d,
+        daily_views: stats.daily_views,
+        hourly_views: stats.hourly_views,
+        views_by_page: stats.views_by_page,
+        views_by_country: stats.views_by_country,
+        views_by_device: stats.views_by_device,
+        top_referrers: stats.top_referrers,
+      };
+    } else {
+      // Show authenticated-only statistics
+      return {
+        total_page_views_30d: stats.total_page_views_30d_authenticated,
+        unique_visitors_30d: stats.unique_visitors_30d_authenticated,
+        daily_views: stats.daily_views_authenticated,
+        hourly_views: stats.hourly_views_authenticated,
+        views_by_page: stats.views_by_page_authenticated,
+        views_by_country: stats.views_by_country_authenticated,
+        views_by_device: stats.views_by_device_authenticated,
+        top_referrers: stats.top_referrers_authenticated,
+      };
+    }
+  }, [stats, includeUnauthenticated]);
+
   if (loading) {
     return (
       <div className="metrics-loading">
@@ -129,7 +169,7 @@ export default function SiteMetricsPanel() {
     );
   }
 
-  if (!stats) {
+  if (!stats || !displayedStats) {
     return (
       <div className="metrics-error">
         <p>No metrics data available</p>
@@ -138,20 +178,32 @@ export default function SiteMetricsPanel() {
   }
 
   // Calculate max values for charts
-  const maxDailyViews = Math.max(...stats.daily_views.map(d => d.count), 1);
-  const maxHourlyViews = Math.max(...stats.hourly_views.map(h => h.count), 1);
-  const maxCountryViews = Math.max(...Object.values(stats.views_by_country), 1);
+  const maxDailyViews = Math.max(...displayedStats.daily_views.map(d => d.count), 1);
+  const maxHourlyViews = Math.max(...displayedStats.hourly_views.map(h => h.count), 1);
+  const maxCountryViews = Math.max(...Object.values(displayedStats.views_by_country), 1);
 
   return (
     <div className="site-metrics">
+      {/* Toggle */}
+      <div className="metrics-toggle">
+        <label className="toggle-label">
+          <input
+            type="checkbox"
+            checked={includeUnauthenticated}
+            onChange={(e) => setIncludeUnauthenticated(e.target.checked)}
+          />
+          <span>{includeUnauthenticated ? 'Showing all statistics (including unauthenticated)' : 'Showing authenticated-only statistics'}</span>
+        </label>
+      </div>
+
       {/* Summary Cards */}
       <div className="metrics-summary">
         <div className="metric-card">
-          <div className="metric-value">{stats.total_page_views_30d.toLocaleString()}</div>
+          <div className="metric-value">{displayedStats.total_page_views_30d.toLocaleString()}</div>
           <div className="metric-label">Page Views (30d)</div>
         </div>
         <div className="metric-card">
-          <div className="metric-value">{stats.unique_visitors_30d.toLocaleString()}</div>
+          <div className="metric-value">{displayedStats.unique_visitors_30d.toLocaleString()}</div>
           <div className="metric-label">Unique Visitors (30d)</div>
         </div>
         <div className="metric-card">
@@ -176,7 +228,7 @@ export default function SiteMetricsPanel() {
       <div className="metrics-section">
         <h3>📈 Page Views (Last 30 Days)</h3>
         <div className="trend-chart">
-          {stats.daily_views.map((day) => {
+          {displayedStats.daily_views.map((day) => {
             const height = maxDailyViews > 0 ? (day.count / maxDailyViews) * 100 : 0;
             const date = new Date(day.date);
             const isWeekend = date.getDay() === 0 || date.getDay() === 6;
@@ -200,7 +252,7 @@ export default function SiteMetricsPanel() {
       <div className="metrics-section">
         <h3>⏰ Page Views (Last 24 Hours - Hourly)</h3>
         <div className="trend-chart hourly">
-          {stats.hourly_views.map((hour) => {
+          {displayedStats.hourly_views.map((hour) => {
             const height = maxHourlyViews > 0 ? (hour.count / maxHourlyViews) * 100 : 0;
             const hourDate = new Date(hour.hour);
             const hourLabel = hourDate.getHours();
@@ -221,11 +273,11 @@ export default function SiteMetricsPanel() {
       </div>
 
       {/* Top Pages */}
-      {Object.keys(stats.views_by_page).length > 0 && (
+      {Object.keys(displayedStats.views_by_page).length > 0 && (
         <div className="metrics-section">
           <h3>📄 Top Pages</h3>
           <div className="breakdown-list">
-            {Object.entries(stats.views_by_page)
+            {Object.entries(displayedStats.views_by_page)
               .sort(([, a], [, b]) => b - a)
               .slice(0, 10)
               .map(([page, count]) => (
@@ -245,11 +297,11 @@ export default function SiteMetricsPanel() {
       )}
 
       {/* Country Breakdown */}
-      {Object.keys(stats.views_by_country).length > 0 && (
+      {Object.keys(displayedStats.views_by_country).length > 0 && (
         <div className="metrics-section">
           <h3>🌍 Top Countries</h3>
           <div className="breakdown-list">
-            {Object.entries(stats.views_by_country)
+            {Object.entries(displayedStats.views_by_country)
               .sort(([, a], [, b]) => b - a)
               .map(([country, count]) => (
                 <div key={country} className="breakdown-item">
@@ -271,15 +323,15 @@ export default function SiteMetricsPanel() {
       )}
 
       {/* Device Breakdown */}
-      {Object.keys(stats.views_by_device).length > 0 && (
+      {Object.keys(displayedStats.views_by_device).length > 0 && (
         <div className="metrics-section">
           <h3>📱 Devices</h3>
           <div className="device-grid">
-            {Object.entries(stats.views_by_device)
+            {Object.entries(displayedStats.views_by_device)
               .sort(([, a], [, b]) => b - a)
               .map(([device, count]) => {
-                const percentage = stats.total_page_views_30d > 0
-                  ? Math.round((count / stats.total_page_views_30d) * 100)
+                const percentage = displayedStats.total_page_views_30d > 0
+                  ? Math.round((count / displayedStats.total_page_views_30d) * 100)
                   : 0;
                 return (
                   <div key={device} className="device-item">
@@ -294,11 +346,11 @@ export default function SiteMetricsPanel() {
       )}
 
       {/* Top Referrers */}
-      {Object.keys(stats.top_referrers).length > 0 && (
+      {Object.keys(displayedStats.top_referrers).length > 0 && (
         <div className="metrics-section">
           <h3>🔗 Top Referrers</h3>
           <div className="breakdown-list">
-            {Object.entries(stats.top_referrers)
+            {Object.entries(displayedStats.top_referrers)
               .sort(([, a], [, b]) => b - a)
               .slice(0, 10)
               .map(([referrer, count]) => (
@@ -348,6 +400,28 @@ export default function SiteMetricsPanel() {
       <style jsx>{`
         .site-metrics {
           padding: 24px;
+        }
+
+        .metrics-toggle {
+          margin-bottom: 24px;
+          padding: 12px;
+          background: var(--bg-secondary, #1a1a2e);
+          border-radius: 8px;
+        }
+
+        .toggle-label {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          cursor: pointer;
+          font-size: 0.9rem;
+          color: var(--text-secondary, #ccc);
+        }
+
+        .toggle-label input[type="checkbox"] {
+          cursor: pointer;
+          width: 18px;
+          height: 18px;
         }
 
         .metrics-loading,
