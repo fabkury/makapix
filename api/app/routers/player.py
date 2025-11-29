@@ -1,0 +1,482 @@
+"""Player management and control endpoints."""
+
+from __future__ import annotations
+
+import os
+from datetime import datetime, timedelta, timezone
+from typing import Any
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from .. import models, schemas
+from ..auth import get_current_user, require_ownership
+from ..deps import get_db
+from ..mqtt.cert_generator import generate_client_certificate, load_ca_certificate
+from ..mqtt.player_commands import log_command, publish_player_command
+from ..services.rate_limit import check_rate_limit
+from ..utils.registration import generate_registration_code
+
+router = APIRouter(tags=["Players"])
+
+# Constants
+MAX_PLAYERS_PER_USER = 128
+REGISTRATION_CODE_EXPIRY_MINUTES = 15
+CERT_VALIDITY_DAYS = 365
+CERT_RENEWAL_THRESHOLD_DAYS = 30
+
+
+@router.post("/player/provision", response_model=schemas.PlayerProvisionResponse, status_code=status.HTTP_201_CREATED)
+def provision_player(
+    payload: schemas.PlayerProvisionRequest,
+    db: Session = Depends(get_db),
+) -> schemas.PlayerProvisionResponse:
+    """
+    Provision a new player (device calls this).
+    
+    Returns player_key and 6-character registration code that expires in 15 minutes.
+    """
+    from uuid import uuid4
+    
+    player_key = uuid4()
+    registration_code = generate_registration_code()
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=REGISTRATION_CODE_EXPIRY_MINUTES)
+    
+    # Create player record
+    player = models.Player(
+        player_key=player_key,
+        device_model=payload.device_model,
+        firmware_version=payload.firmware_version,
+        registration_status="pending",
+        registration_code=registration_code,
+        registration_code_expires_at=expires_at,
+    )
+    db.add(player)
+    db.commit()
+    db.refresh(player)
+    
+    # Get MQTT broker info
+    broker_host = os.getenv("MQTT_PUBLIC_HOST", "makapix.club")
+    broker_port = int(os.getenv("MQTT_PUBLIC_PORT", "8883"))
+    
+    return schemas.PlayerProvisionResponse(
+        player_key=player_key,
+        registration_code=registration_code,
+        registration_code_expires_at=expires_at,
+        mqtt_broker={"host": broker_host, "port": broker_port},
+    )
+
+
+@router.post("/player/register", response_model=schemas.PlayerPublic, status_code=status.HTTP_201_CREATED)
+def register_player(
+    payload: schemas.PlayerRegisterRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.PlayerPublic:
+    """
+    Register a player to the current user's account.
+    
+    Validates registration code and assigns ownership.
+    Enforces 128 player limit per user.
+    """
+    # Check player limit
+    player_count = db.query(models.Player).filter(models.Player.owner_id == current_user.id).count()
+    if player_count >= MAX_PLAYERS_PER_USER:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Maximum {MAX_PLAYERS_PER_USER} players allowed per user",
+        )
+    
+    # Find player by registration code
+    now = datetime.now(timezone.utc)
+    player = (
+        db.query(models.Player)
+        .filter(
+            models.Player.registration_code == payload.registration_code.upper(),
+            models.Player.registration_status == "pending",
+            models.Player.registration_code_expires_at > now,
+        )
+        .first()
+    )
+    
+    if not player:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid or expired registration code",
+        )
+    
+    # Check if already registered
+    if player.owner_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Player already registered",
+        )
+    
+    # Register player
+    player.owner_id = current_user.id
+    player.name = payload.name
+    player.registration_status = "registered"
+    player.registered_at = now
+    player.registration_code = None  # Clear code after registration
+    player.registration_code_expires_at = None
+    
+    db.commit()
+    db.refresh(player)
+    
+    return schemas.PlayerPublic.model_validate(player)
+
+
+@router.get("/user/{user_id}/player", response_model=dict[str, list[schemas.PlayerPublic]])
+def list_players(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict[str, list[schemas.PlayerPublic]]:
+    """List all players for a user."""
+    require_ownership(user_id, current_user)
+    
+    players = db.query(models.Player).filter(models.Player.owner_id == user_id).all()
+    
+    return {"items": [schemas.PlayerPublic.model_validate(p) for p in players]}
+
+
+@router.get("/user/{user_id}/player/{player_id}", response_model=schemas.PlayerPublic)
+def get_player(
+    user_id: UUID,
+    player_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.PlayerPublic:
+    """Get a single player."""
+    require_ownership(user_id, current_user)
+    
+    player = (
+        db.query(models.Player)
+        .filter(models.Player.id == player_id, models.Player.owner_id == user_id)
+        .first()
+    )
+    
+    if not player:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Player not found",
+        )
+    
+    return schemas.PlayerPublic.model_validate(player)
+
+
+@router.patch("/user/{user_id}/player/{player_id}", response_model=schemas.PlayerPublic)
+def update_player(
+    user_id: UUID,
+    player_id: UUID,
+    payload: schemas.PlayerUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.PlayerPublic:
+    """Update player name."""
+    require_ownership(user_id, current_user)
+    
+    player = (
+        db.query(models.Player)
+        .filter(models.Player.id == player_id, models.Player.owner_id == user_id)
+        .first()
+    )
+    
+    if not player:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Player not found",
+        )
+    
+    if payload.name is not None:
+        player.name = payload.name
+    
+    db.commit()
+    db.refresh(player)
+    
+    return schemas.PlayerPublic.model_validate(player)
+
+
+@router.delete("/user/{user_id}/player/{player_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_player(
+    user_id: UUID,
+    player_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> None:
+    """Remove player registration."""
+    require_ownership(user_id, current_user)
+    
+    player = (
+        db.query(models.Player)
+        .filter(models.Player.id == player_id, models.Player.owner_id == user_id)
+        .first()
+    )
+    
+    if not player:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Player not found",
+        )
+    
+    db.delete(player)
+    db.commit()
+
+
+@router.post("/user/{user_id}/player/{player_id}/command", response_model=schemas.PlayerCommandResponse)
+def send_player_command(
+    user_id: UUID,
+    player_id: UUID,
+    payload: schemas.PlayerCommandRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.PlayerCommandResponse:
+    """Send command to a player."""
+    require_ownership(user_id, current_user)
+    
+    player = (
+        db.query(models.Player)
+        .filter(models.Player.id == player_id, models.Player.owner_id == user_id)
+        .first()
+    )
+    
+    if not player:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Player not found",
+        )
+    
+    # Check rate limits
+    player_key = f"ratelimit:player:{player_id}:cmd"
+    user_key = f"ratelimit:user:{user_id}:cmd"
+    
+    allowed_player, remaining_player = check_rate_limit(player_key, limit=300, window_seconds=60)
+    allowed_user, remaining_user = check_rate_limit(user_key, limit=1000, window_seconds=60)
+    
+    if not allowed_player:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Rate limit exceeded for player (300 commands/minute)",
+        )
+    
+    if not allowed_user:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Rate limit exceeded for user (1000 commands/minute)",
+        )
+    
+    # Prepare command payload
+    command_payload: dict[str, Any] = {}
+    
+    if payload.command_type == "show_artwork":
+        if not payload.post_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="post_id is required for show_artwork command",
+            )
+        
+        # Fetch post details
+        post = db.query(models.Post).filter(models.Post.id == payload.post_id).first()
+        if not post:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Post not found",
+            )
+        
+        # Check visibility
+        if not post.visible or post.hidden_by_mod or post.non_conformant:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Post is not visible",
+            )
+        
+        command_payload = {
+            "post_id": post.id,
+            "storage_key": str(post.storage_key),
+            "art_url": post.art_url,
+            "canvas": post.canvas,
+        }
+    
+    # Publish command via MQTT
+    command_id = publish_player_command(
+        player_key=player.player_key,
+        command_type=payload.command_type,
+        payload=command_payload if command_payload else None,
+    )
+    
+    # Log command
+    log_command(
+        db=db,
+        player_id=player_id,
+        command_type=payload.command_type,
+        payload=command_payload if command_payload else None,
+    )
+    
+    return schemas.PlayerCommandResponse(command_id=command_id, status="sent")
+
+
+@router.post("/user/{user_id}/player/command/all", response_model=schemas.PlayerCommandAllResponse)
+def send_command_to_all_players(
+    user_id: UUID,
+    payload: schemas.PlayerCommandRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.PlayerCommandAllResponse:
+    """Send command to all user's registered players."""
+    require_ownership(user_id, current_user)
+    
+    # Get all registered players
+    players = db.query(models.Player).filter(
+        models.Player.owner_id == user_id,
+        models.Player.registration_status == "registered",
+    ).all()
+    
+    if not players:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No registered players found",
+        )
+    
+    # Check user rate limit
+    user_key = f"ratelimit:user:{user_id}:cmd"
+    allowed_user, remaining_user = check_rate_limit(user_key, limit=1000, window_seconds=60)
+    
+    if not allowed_user:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Rate limit exceeded for user (1000 commands/minute)",
+        )
+    
+    # Prepare command payload
+    command_payload: dict[str, Any] = {}
+    
+    if payload.command_type == "show_artwork":
+        if not payload.post_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="post_id is required for show_artwork command",
+            )
+        
+        post = db.query(models.Post).filter(models.Post.id == payload.post_id).first()
+        if not post:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Post not found",
+            )
+        
+        if not post.visible or post.hidden_by_mod or post.non_conformant:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Post is not visible",
+            )
+        
+        command_payload = {
+            "post_id": post.id,
+            "storage_key": str(post.storage_key),
+            "art_url": post.art_url,
+            "canvas": post.canvas,
+        }
+    
+    # Send to all players
+    commands = []
+    for player in players:
+        # Check per-player rate limit
+        player_key = f"ratelimit:player:{player.id}:cmd"
+        allowed_player, _ = check_rate_limit(player_key, limit=300, window_seconds=60)
+        
+        if allowed_player:
+            command_id = publish_player_command(
+                player_key=player.player_key,
+                command_type=payload.command_type,
+                payload=command_payload if command_payload else None,
+            )
+            
+            log_command(
+                db=db,
+                player_id=player.id,
+                command_type=payload.command_type,
+                payload=command_payload if command_payload else None,
+            )
+            
+            commands.append(schemas.PlayerCommandResponse(command_id=command_id, status="sent"))
+    
+    return schemas.PlayerCommandAllResponse(sent_count=len(commands), commands=commands)
+
+
+@router.post("/user/{user_id}/player/{player_id}/renew-cert", response_model=schemas.PlayerRenewCertResponse)
+def renew_player_certificate(
+    user_id: UUID,
+    player_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.PlayerRenewCertResponse:
+    """
+    Renew player certificate.
+    
+    Only available if certificate is within 30 days of expiry or already expired.
+    """
+    require_ownership(user_id, current_user)
+    
+    player = (
+        db.query(models.Player)
+        .filter(models.Player.id == player_id, models.Player.owner_id == user_id)
+        .first()
+    )
+    
+    if not player:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Player not found",
+        )
+    
+    # Check if renewal is needed
+    now = datetime.now(timezone.utc)
+    if player.cert_expires_at:
+        days_until_expiry = (player.cert_expires_at - now).days
+        if days_until_expiry > CERT_RENEWAL_THRESHOLD_DAYS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Certificate is still valid for {days_until_expiry} days. Renewal only available within {CERT_RENEWAL_THRESHOLD_DAYS} days of expiry.",
+            )
+    
+    # Get CA certificate and key paths
+    ca_cert_path = os.getenv("MQTT_CA_FILE", "/certs/ca.crt")
+    ca_key_path = os.getenv("MQTT_CA_KEY_FILE", "/certs/ca.key")
+    
+    # Generate new certificate
+    try:
+        cert_pem, key_pem, serial_number = generate_client_certificate(
+            user_id=user_id,
+            device_id=player_id,
+            ca_cert_path=ca_cert_path,
+            ca_key_path=ca_key_path,
+            cert_validity_days=CERT_VALIDITY_DAYS,
+        )
+        
+        # Update player certificate info
+        player.cert_serial_number = serial_number
+        player.cert_issued_at = now
+        player.cert_expires_at = now + timedelta(days=CERT_VALIDITY_DAYS)
+        
+        db.commit()
+        db.refresh(player)
+        
+        return schemas.PlayerRenewCertResponse(
+            cert_expires_at=player.cert_expires_at,
+            message="Certificate renewed successfully",
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"CA certificate files not found: {e}",
+        )
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.exception("Failed to generate player certificate")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate certificate: {str(e)}",
+        )
+

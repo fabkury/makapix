@@ -22,9 +22,9 @@ from .routers import (
     blog_posts,
     categories,
     comments,
-    devices,
     legacy,
     mqtt,
+    player,
     playlists,
     posts,
     profiles,
@@ -132,9 +132,15 @@ async def lifespan(app: FastAPI):
     logger.info("Starting application...")
     # Run startup tasks synchronously - server won't start until these complete
     run_startup_tasks()
+    # Start MQTT status subscriber
+    from .mqtt.player_status import start_status_subscriber
+    start_status_subscriber()
     yield
     # Shutdown
     logger.info("Shutting down application...")
+    # Stop MQTT status subscriber
+    from .mqtt.player_status import stop_status_subscriber
+    stop_status_subscriber()
 
 
 app = FastAPI(
@@ -167,7 +173,7 @@ app.include_router(reactions.router)
 app.include_router(reports.router)
 app.include_router(badges.router)
 app.include_router(reputation.router)
-app.include_router(devices.router)
+app.include_router(player.router)
 app.include_router(categories.router)
 app.include_router(admin.router)
 app.include_router(search.router)

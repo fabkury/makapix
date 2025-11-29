@@ -67,7 +67,7 @@ class User(Base):
     blog_posts = relationship("BlogPost", back_populates="owner", foreign_keys="BlogPost.owner_id")
     blog_post_comments = relationship("BlogPostComment", back_populates="author", foreign_keys="BlogPostComment.author_id")
     playlists = relationship("Playlist", back_populates="owner")
-    devices = relationship("Device", back_populates="user", cascade="all, delete-orphan")
+    players = relationship("Player", back_populates="owner", cascade="all, delete-orphan")
     badges = relationship("BadgeGrant", back_populates="user", cascade="all, delete-orphan")
     reputation_history = relationship("ReputationHistory", back_populates="user", cascade="all, delete-orphan")
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
@@ -446,26 +446,68 @@ class AdminNote(Base):
 
 
 # ============================================================================
-# DEVICES & AUTH
+# PLAYERS & AUTH
 # ============================================================================
 
 
-class Device(Base):
-    """IoT device for MQTT access."""
+class Player(Base):
+    """Physical or virtual player that displays artworks."""
 
-    __tablename__ = "devices"
+    __tablename__ = "players"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
-    name = Column(String(100), nullable=False)
-    cert_serial_number = Column(String(100), nullable=True, unique=True, index=True)  # For certificate revocation
+    player_key = Column(UUID(as_uuid=True), unique=True, nullable=False, default=uuid.uuid4, index=True)
+    
+    # Owner (nullable until registered)
+    owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    
+    # Player identification
+    name = Column(String(100), nullable=True)
+    device_model = Column(String(100), nullable=True)
+    firmware_version = Column(String(50), nullable=True)
+    
+    # Registration state
+    registration_status = Column(String(20), nullable=False, default="pending")  # pending, registered
+    registration_code = Column(String(6), unique=True, nullable=True, index=True)
+    registration_code_expires_at = Column(DateTime(timezone=True), nullable=True)
+    registered_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Connection state (updated via MQTT status messages)
+    connection_status = Column(String(20), nullable=False, default="offline")  # offline, online
+    last_seen_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Current state (for UI display - player manages its own queue internally)
+    current_post_id = Column(Integer, ForeignKey("posts.id"), nullable=True)
+    
+    # Certificate tracking
+    cert_serial_number = Column(String(100), nullable=True, unique=True, index=True)
+    cert_issued_at = Column(DateTime(timezone=True), nullable=True)
+    cert_expires_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Timestamps
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+    updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
+
+    # Relationships
+    owner = relationship("User", back_populates="players")
+    current_post = relationship("Post", foreign_keys=[current_post_id])
+
+
+class PlayerCommandLog(Base):
+    """Log of commands sent to players."""
+
+    __tablename__ = "player_command_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    player_id = Column(UUID(as_uuid=True), ForeignKey("players.id", ondelete="CASCADE"), nullable=False, index=True)
+    command_type = Column(String(50), nullable=False)  # swap_next, swap_prev, show_artwork
+    payload = Column(JSON, nullable=True)  # Command-specific data
     
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
     )
-
-    # Relationships
-    user = relationship("User", back_populates="devices")
 
 
 # ============================================================================

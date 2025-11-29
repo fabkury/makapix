@@ -252,3 +252,144 @@ export async function postJson<TResponse>(
 ): Promise<TResponse> {
   return requestJson<TResponse>(path, { body: JSON.stringify(payload) }, "POST");
 }
+
+// ============================================================================
+// Player API functions
+// ============================================================================
+
+export interface Player {
+  id: string;
+  player_key: string;
+  name: string | null;
+  device_model: string | null;
+  firmware_version: string | null;
+  registration_status: string;
+  connection_status: string;
+  last_seen_at: string | null;
+  current_post_id: number | null;
+  cert_expires_at: string | null;
+  registered_at: string | null;
+  created_at: string;
+}
+
+export interface PlayerProvisionResponse {
+  player_key: string;
+  registration_code: string;
+  registration_code_expires_at: string;
+  mqtt_broker: { host: string; port: number };
+}
+
+export interface PlayerRegisterRequest {
+  registration_code: string;
+  name: string;
+}
+
+export interface PlayerCommandRequest {
+  command_type: "swap_next" | "swap_prev" | "show_artwork";
+  post_id?: number;
+}
+
+export interface PlayerCommandResponse {
+  command_id: string;
+  status: "sent";
+}
+
+export interface PlayerCommandAllResponse {
+  sent_count: number;
+  commands: PlayerCommandResponse[];
+}
+
+export interface PlayerRenewCertResponse {
+  cert_expires_at: string;
+  message: string;
+}
+
+/**
+ * List all players for a user
+ */
+export async function listPlayers(userId: string): Promise<{ items: Player[] }> {
+  return authenticatedRequestJson<{ items: Player[] }>(`/api/user/${userId}/player`);
+}
+
+/**
+ * Get a single player
+ */
+export async function getPlayer(userId: string, playerId: string): Promise<Player> {
+  return authenticatedRequestJson<Player>(`/api/user/${userId}/player/${playerId}`);
+}
+
+/**
+ * Register a player using registration code
+ */
+export async function registerPlayer(payload: PlayerRegisterRequest): Promise<Player> {
+  return authenticatedPostJson<Player>("/api/player/register", payload);
+}
+
+/**
+ * Update player name
+ */
+export async function updatePlayer(
+  userId: string,
+  playerId: string,
+  name: string
+): Promise<Player> {
+  return authenticatedRequestJson<Player>(
+    `/api/user/${userId}/player/${playerId}`,
+    { body: JSON.stringify({ name }) },
+    "PATCH"
+  );
+}
+
+/**
+ * Delete a player
+ */
+export async function deletePlayer(userId: string, playerId: string): Promise<void> {
+  const url = `/api/user/${userId}/player/${playerId}`;
+  const response = await authenticatedFetch(`${publicBaseUrl}${url}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Request failed (${response.status}): ${body}`);
+  }
+}
+
+/**
+ * Send command to a player
+ */
+export async function sendPlayerCommand(
+  userId: string,
+  playerId: string,
+  command: PlayerCommandRequest
+): Promise<PlayerCommandResponse> {
+  return authenticatedPostJson<PlayerCommandResponse>(
+    `/api/user/${userId}/player/${playerId}/command`,
+    command
+  );
+}
+
+/**
+ * Send command to all user's players
+ */
+export async function sendCommandToAllPlayers(
+  userId: string,
+  command: PlayerCommandRequest
+): Promise<PlayerCommandAllResponse> {
+  return authenticatedPostJson<PlayerCommandAllResponse>(
+    `/api/user/${userId}/player/command/all`,
+    command
+  );
+}
+
+/**
+ * Renew player certificate
+ */
+export async function renewPlayerCert(
+  userId: string,
+  playerId: string
+): Promise<PlayerRenewCertResponse> {
+  return authenticatedPostJson<PlayerRenewCertResponse>(
+    `/api/user/${userId}/player/${playerId}/renew-cert`,
+    {}
+  );
+}

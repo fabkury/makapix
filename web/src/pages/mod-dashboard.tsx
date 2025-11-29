@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import Layout from '../components/Layout';
@@ -115,25 +115,7 @@ export default function ModDashboardPage() {
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
     : '';
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      checkModeratorStatus();
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isModerator) {
-      loadTabData(activeTab);
-    }
-  }, [isModerator, activeTab]);
-
-  useEffect(() => {
-    if (selectedPostId && activeTab === 'notes') {
-      loadAdminNotes(selectedPostId);
-    }
-  }, [selectedPostId, activeTab]);
-
-  const checkModeratorStatus = async () => {
+  const checkModeratorStatus = useCallback(async () => {
     try {
       const accessToken = localStorage.getItem('access_token');
       if (!accessToken) {
@@ -159,12 +141,33 @@ export default function ModDashboardPage() {
         router.push('/');
       }
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error checking moderator status:', error);
       router.push('/');
     } finally {
       setLoading(false);
     }
-  };
+  }, [API_BASE_URL, router]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      checkModeratorStatus();
+    }
+  }, [checkModeratorStatus]);
+
+  useEffect(() => {
+    if (isModerator) {
+      loadTabData(activeTab);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isModerator, activeTab]);
+
+  useEffect(() => {
+    if (selectedPostId && activeTab === 'notes') {
+      loadAdminNotes(selectedPostId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPostId, activeTab]);
 
   const loadTabData = async (tab: Tab, reset = true) => {
     switch (tab) {

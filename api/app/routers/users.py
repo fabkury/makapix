@@ -141,8 +141,8 @@ def list_users_admin(
     
     if recent:
         # Show users created in the last 7 days
-        from datetime import datetime, timedelta
-        recent_date = datetime.utcnow() - timedelta(days=7)
+        from datetime import datetime, timedelta, timezone
+        recent_date = datetime.now(timezone.utc) - timedelta(days=7)
         query = query.filter(models.User.created_at >= recent_date)
     
     # Apply cursor pagination
