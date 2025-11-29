@@ -1103,6 +1103,7 @@ export default function PostPage() {
             contentId={post.id}
             API_BASE_URL={API_BASE_URL}
             currentUserId={currentUser?.id || null}
+            isModerator={isModerator}
           />
         </div>
       </div>

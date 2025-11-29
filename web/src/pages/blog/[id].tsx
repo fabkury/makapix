@@ -192,67 +192,79 @@ export default function BlogPostPage() {
   return (
     <Layout title={post.title} description={post.body.substring(0, 160)}>
       <div className="blog-post-container">
-        <div className="blog-post-header">
-          <h1 className="blog-post-title">{post.title}</h1>
-          <div className="blog-post-meta">
-            <Link href={`/users/${post.owner.id}`} className="author-link">
-              {post.owner.handle}
-            </Link>
-            <span className="meta-separator">•</span>
-            <span className="post-date">
-              {new Date(post.updated_at || post.created_at).toLocaleDateString()}
-            </span>
-            {post.updated_at && post.updated_at !== post.created_at && (
-              <>
-                <span className="meta-separator">•</span>
-                <span className="updated-badge">Updated</span>
-              </>
-            )}
+        <div className="blog-post-wrapper">
+          <div className="blog-post-header">
+            <h1 className="blog-post-title">{post.title}</h1>
+            <div className="blog-post-meta">
+              <Link href={`/users/${post.owner.id}`} className="author-link">
+                {post.owner.handle}
+              </Link>
+              <span className="meta-separator">•</span>
+              <span className="post-date">
+                {new Date(post.updated_at || post.created_at).toLocaleDateString()}
+              </span>
+              {post.updated_at && post.updated_at !== post.created_at && (
+                <>
+                  <span className="meta-separator">•</span>
+                  <span className="updated-badge">Updated</span>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
         <div className="blog-post-content">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeSanitize]}
-            components={{
-              img: ({ src, alt }) => (
-                <img
-                  src={src?.startsWith('http') ? src : `${API_BASE_URL}${src}`}
-                  alt={alt}
-                  className="blog-post-image"
-                />
-              ),
-            }}
-          >
-            {post.body}
-          </ReactMarkdown>
+          <div className="blog-post-content-inner">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeSanitize]}
+              components={{
+                img: ({ src, alt }) => (
+                  <img
+                    src={src?.startsWith('http') ? src : `${API_BASE_URL}${src}`}
+                    alt={alt}
+                    className="blog-post-image"
+                  />
+                ),
+              }}
+            >
+              {post.body}
+            </ReactMarkdown>
+          </div>
         </div>
 
-        {isOwner && (
-          <div className="owner-actions">
-            <Link href={`/blog/write?edit=${post.id}`} className="action-button edit">
-              ✏️ Edit
-            </Link>
-            <button onClick={handleDelete} className="action-button delete">
-              🗑 Delete
-            </button>
-          </div>
-        )}
+        <div className="blog-post-wrapper">
+          {isOwner && (
+            <div className="owner-actions">
+              <Link href={`/blog/write?edit=${post.id}`} className="action-button edit">
+                ✏️ Edit
+              </Link>
+              <button onClick={handleDelete} className="action-button delete">
+                🗑 Delete
+              </button>
+            </div>
+          )}
 
         <CommentsAndReactions
           contentType="blog"
           contentId={post.id}
           API_BASE_URL={API_BASE_URL}
           currentUserId={currentUser?.id || null}
+          isModerator={isModerator}
         />
+        </div>
       </div>
 
       <style jsx>{`
         .blog-post-container {
+          width: 100%;
+          padding: 24px 0;
+        }
+
+        .blog-post-wrapper {
           max-width: 800px;
           margin: 0 auto;
-          padding: 24px;
+          padding: 0 24px;
         }
 
         .blog-post-header {
@@ -298,49 +310,54 @@ export default function BlogPostPage() {
         }
 
         .blog-post-content {
+          width: 100%;
           background: var(--bg-secondary);
-          border-radius: 12px;
-          padding: 32px;
           margin-bottom: 24px;
+        }
+
+        .blog-post-content-inner {
+          max-width: 800px;
+          margin: 0 auto;
+          padding: 32px 24px;
           line-height: 1.8;
           color: var(--text-secondary);
         }
 
-        .blog-post-content :global(h1),
-        .blog-post-content :global(h2),
-        .blog-post-content :global(h3) {
+        .blog-post-content-inner :global(h1),
+        .blog-post-content-inner :global(h2),
+        .blog-post-content-inner :global(h3) {
           color: var(--text-primary);
           margin-top: 24px;
           margin-bottom: 12px;
         }
 
-        .blog-post-content :global(h1) {
+        .blog-post-content-inner :global(h1) {
           font-size: 1.75rem;
         }
 
-        .blog-post-content :global(h2) {
+        .blog-post-content-inner :global(h2) {
           font-size: 1.5rem;
         }
 
-        .blog-post-content :global(h3) {
+        .blog-post-content-inner :global(h3) {
           font-size: 1.25rem;
         }
 
-        .blog-post-content :global(p) {
+        .blog-post-content-inner :global(p) {
           margin-bottom: 16px;
         }
 
-        .blog-post-content :global(ul),
-        .blog-post-content :global(ol) {
+        .blog-post-content-inner :global(ul),
+        .blog-post-content-inner :global(ol) {
           margin-bottom: 16px;
           padding-left: 24px;
         }
 
-        .blog-post-content :global(li) {
+        .blog-post-content-inner :global(li) {
           margin-bottom: 8px;
         }
 
-        .blog-post-content :global(code) {
+        .blog-post-content-inner :global(code) {
           background: var(--bg-tertiary);
           padding: 2px 6px;
           border-radius: 4px;
@@ -348,7 +365,7 @@ export default function BlogPostPage() {
           font-size: 0.9em;
         }
 
-        .blog-post-content :global(pre) {
+        .blog-post-content-inner :global(pre) {
           background: var(--bg-tertiary);
           padding: 16px;
           border-radius: 8px;
@@ -356,12 +373,12 @@ export default function BlogPostPage() {
           margin-bottom: 16px;
         }
 
-        .blog-post-content :global(pre code) {
+        .blog-post-content-inner :global(pre code) {
           background: none;
           padding: 0;
         }
 
-        .blog-post-content :global(blockquote) {
+        .blog-post-content-inner :global(blockquote) {
           border-left: 4px solid var(--accent-cyan);
           padding-left: 16px;
           margin-left: 0;
@@ -369,12 +386,12 @@ export default function BlogPostPage() {
           color: var(--text-secondary);
         }
 
-        .blog-post-content :global(a) {
+        .blog-post-content-inner :global(a) {
           color: var(--accent-cyan);
           text-decoration: underline;
         }
 
-        .blog-post-content :global(a:hover) {
+        .blog-post-content-inner :global(a:hover) {
           color: var(--accent-pink);
         }
 

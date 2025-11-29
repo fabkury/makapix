@@ -27,6 +27,7 @@ interface CommentsAndReactionsProps {
   contentId: string | number;
   API_BASE_URL: string;
   currentUserId?: string | null;
+  isModerator?: boolean;
 }
 
 const EMOJI_OPTIONS = ['👍', '❤️', '🔥', '😊', '⭐'];
@@ -62,6 +63,7 @@ export default function CommentsAndReactions({
   contentId,
   API_BASE_URL,
   currentUserId,
+  isModerator = false,
 }: CommentsAndReactionsProps) {
   const [reactions, setReactions] = useState<ReactionTotals | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -286,15 +288,24 @@ export default function CommentsAndReactions({
 
   const canDeleteComment = (comment: Comment): boolean => {
     if (comment.deleted_by_owner) return false;
-    if (!currentUserId && !comment.author_id && comment.author_ip) return true; // Anonymous user
-    if (currentUserId && comment.author_id === currentUserId) return true; // Own comment
+    // Moderators can delete any comment
+    if (isModerator) return true;
+    // Anonymous user can delete their own guest comments
+    if (!currentUserId && !comment.author_id && comment.author_ip) return true;
+    // Authenticated user can delete their own comments
+    if (currentUserId && comment.author_id === currentUserId) return true;
     return false;
   };
 
   const renderComment = (comment: Comment): JSX.Element | null => {
-    if (comment.deleted_by_owner && !comment.parent_id) {
-      const hasReplies = comments.some(c => c.parent_id === comment.id && !c.deleted_by_owner);
-      if (!hasReplies) return null;
+    // Find replies first to check if we should render this comment
+    const replies = comments.filter(c => c.parent_id === comment.id);
+    const hasReplies = replies.length > 0;
+    
+    // Filter out deleted comments only if they have no replies
+    // This ensures deleted middle comments still render (showing "[deleted]") so their children remain visible
+    if (comment.deleted_by_owner && !hasReplies) {
+      return null;
     }
 
     const isFolded = foldedComments.has(comment.id);
@@ -302,7 +313,6 @@ export default function CommentsAndReactions({
       ? '[deleted]'
       : (comment.author_display_name || comment.author_handle || 'Unknown');
     const isGuest = !comment.deleted_by_owner && !comment.author_id && comment.author_ip !== null;
-    const replies = comments.filter(c => c.parent_id === comment.id);
 
     return (
       <div key={comment.id} className={`makapix-comment ${isFolded ? 'makapix-folded' : ''}`} data-comment-id={comment.id}>
@@ -366,9 +376,9 @@ export default function CommentsAndReactions({
                 </div>
               </form>
             )}
-            {replies.length > 0 && (
+            {hasReplies && (
               <div className="makapix-comment-replies">
-                {replies.map(reply => renderComment(reply))}
+                {replies.map(reply => renderComment(reply)).filter(Boolean)}
               </div>
             )}
           </div>
@@ -443,7 +453,7 @@ export default function CommentsAndReactions({
         )}
       </div>
 
-      <style jsx>{`
+      <style jsx global>{`
         .makapix-widget {
           font-family: 'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           display: flex;
