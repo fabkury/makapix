@@ -502,7 +502,7 @@ class PlayerCommandLog(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     player_id = Column(UUID(as_uuid=True), ForeignKey("players.id", ondelete="CASCADE"), nullable=False, index=True)
-    command_type = Column(String(50), nullable=False)  # swap_next, swap_prev, show_artwork
+    command_type = Column(String(50), nullable=False)  # swap_next, swap_back, show_artwork
     payload = Column(JSON, nullable=True)  # Command-specific data
     
     created_at = Column(

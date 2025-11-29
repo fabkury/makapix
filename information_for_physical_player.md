@@ -101,8 +101,12 @@ Alternatively, the player can poll its status or simply wait for MQTT messages.
 ### TLS Configuration
 
 - The broker uses TLS on port 8883
-- Players should verify the server certificate against a trusted CA
-- In development, you may need to disable certificate verification
+- Players **must** verify the server certificate using the Makapix CA certificate
+- CA certificate files are in `certs/player/`:
+  - `makapix_ca.crt` - PEM format for general use
+  - `makapix_ca.inc` - C include format for embedding in firmware
+
+**Important:** Use the CA certificate (root certificate), not the server's end-entity certificate. The CA certificate is used to verify the server's identity during TLS handshake.
 
 ### Topics
 
@@ -139,7 +143,7 @@ Commands are JSON messages published by the server:
 | Field | Type | Description |
 |-------|------|-------------|
 | `command_id` | UUID | Unique identifier for this command (for logging/debugging) |
-| `command_type` | String | One of: `swap_next`, `swap_prev`, `show_artwork` |
+| `command_type` | String | One of: `swap_next`, `swap_back`, `show_artwork` |
 | `payload` | Object | Command-specific data (may be empty) |
 | `timestamp` | ISO 8601 | When the command was sent |
 
@@ -160,14 +164,14 @@ Move to the next artwork in the player's internal playlist/queue.
 
 **Action:** Display the next artwork in the player's internal rotation.
 
-#### 2. `swap_prev`
+#### 2. `swap_back`
 
 Move to the previous artwork in the player's internal playlist/queue.
 
 ```json
 {
   "command_id": "...",
-  "command_type": "swap_prev",
+  "command_type": "swap_back",
   "payload": {},
   "timestamp": "..."
 }
@@ -261,7 +265,7 @@ Will Retain: false
 The player maintains its own internal queue/playlist of artworks. This queue is managed locally on the device:
 
 - When receiving `show_artwork`, add the artwork to the queue and display it
-- When receiving `swap_next`/`swap_prev`, cycle through the internal queue
+- When receiving `swap_next`/`swap_back`, cycle through the internal queue
 - The server does **not** manage the player's queue; it only sends commands
 
 ### Downloading Artwork
@@ -415,7 +419,7 @@ while True:
 def handle_command(command):
     if command["command_type"] == "swap_next":
         display_next_artwork()
-    elif command["command_type"] == "swap_prev":
+    elif command["command_type"] == "swap_back":
         display_prev_artwork()
     elif command["command_type"] == "show_artwork":
         artwork = download_artwork(command["payload"]["art_url"])
@@ -465,9 +469,10 @@ def report_status(status):
 
 ## 10. Security Considerations
 
-1. **Use TLS** for all MQTT connections
-2. **Validate server certificates** in production
+1. **Use TLS** for all MQTT connections (port 8883)
+2. **Validate server certificates** using the CA certificate from `certs/player/makapix_ca.crt`
 3. **Don't expose player_key** in logs or debug output visible to users
+4. **Don't disable certificate verification** in production builds
 
 ---
 
@@ -500,6 +505,15 @@ The player firmware should be designed to easily accommodate these future featur
 POST https://dev.makapix.club/api/player/provision
 ```
 
+### MQTT Connection
+```
+Host: dev.makapix.club (or makapix.club for production)
+Port: 8883 (TLS)
+Username: {player_key}
+Password: (empty)
+CA Cert: certs/player/makapix_ca.crt
+```
+
 ### MQTT Topics
 ```
 Subscribe: makapix/player/{player_key}/command
@@ -508,7 +522,7 @@ Publish:   makapix/player/{player_key}/status
 
 ### Command Types
 - `swap_next` - Next artwork in queue
-- `swap_prev` - Previous artwork in queue  
+- `swap_back` - Previous artwork in queue  
 - `show_artwork` - Display specific artwork (includes `art_url`, `post_id`, `storage_key`)
 
 ### Status Fields

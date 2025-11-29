@@ -692,7 +692,7 @@ class PlayerUpdateRequest(BaseModel):
 class PlayerCommandRequest(BaseModel):
     """Player command request."""
 
-    command_type: Literal["swap_next", "swap_prev", "show_artwork"]
+    command_type: Literal["swap_next", "swap_back", "show_artwork"]
     post_id: int | None = None  # Required for show_artwork
 
 

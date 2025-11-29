@@ -1,6 +1,7 @@
 servoom/
 credentials.py
 backups/
+certs/
 
 # Environment files (contain secrets - must be gitignored)
 .env

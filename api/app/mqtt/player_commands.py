@@ -25,7 +25,7 @@ def publish_player_command(
     
     Args:
         player_key: Player's unique key (UUID)
-        command_type: Command type (swap_next, swap_prev, show_artwork)
+        command_type: Command type (swap_next, swap_back, show_artwork)
         payload: Command-specific payload data
     
     Returns:

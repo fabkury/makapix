@@ -12,7 +12,7 @@ export default function PlayerCard({ player, userId, onDelete, onRefresh }: Play
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleCommand = async (commandType: 'swap_next' | 'swap_prev') => {
+  const handleCommand = async (commandType: 'swap_next' | 'swap_back') => {
     setIsLoading(true);
     setError(null);
     try {
@@ -76,7 +76,7 @@ export default function PlayerCard({ player, userId, onDelete, onRefresh }: Play
         <div className="player-actions">
           <button
             className="control-btn prev-btn"
-            onClick={() => handleCommand('swap_prev')}
+            onClick={() => handleCommand('swap_back')}
             disabled={isLoading || !isOnline}
             title="Previous artwork"
           >
