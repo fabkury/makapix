@@ -61,6 +61,7 @@ export default function UserProfilePage() {
   const [isOwnProfile, setIsOwnProfile] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [isModerator, setIsModerator] = useState(false);
+  const [isBlogPostsCollapsed, setIsBlogPostsCollapsed] = useState(false);
   
   const observerTarget = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
@@ -499,54 +500,103 @@ export default function UserProfilePage() {
   return (
     <Layout title={user.handle} description={user.bio || `${user.handle}'s profile on Makapix Club`}>
       <div className="profile-container">
-        <div className="profile-header">
-          <div className="avatar-container">
-            {user.avatar_url ? (
-              <img src={user.avatar_url} alt={user.handle} className="avatar" />
-            ) : (
-              <div className="avatar-placeholder">
-                {user.handle.charAt(0).toUpperCase()}
-              </div>
-            )}
+        <div className="profile-header-wrapper">
+          <div className="profile-header">
+            <div className="profile-header-left">
+            <div className="avatar-container">
+              {user.avatar_url ? (
+                <img src={user.avatar_url} alt={user.handle} className="avatar" />
+              ) : (
+                <div className="avatar-placeholder">
+                  {user.handle.charAt(0).toUpperCase()}
+                </div>
+              )}
+            </div>
+            
+            <div className="profile-info">
+              {isEditing ? (
+                <>
+                  {!isOwner && (
+                    <input
+                      type="text"
+                      className="edit-handle-input"
+                      value={editHandle}
+                      onChange={(e) => setEditHandle(e.target.value)}
+                      placeholder="Handle"
+                      maxLength={50}
+                    />
+                  )}
+                  {isOwner && (
+                    <h1 className="display-name">{user.handle}</h1>
+                  )}
+                  <textarea
+                    className="edit-bio-input"
+                    value={editBio}
+                    onChange={(e) => setEditBio(e.target.value)}
+                    placeholder="Write something about yourself..."
+                    maxLength={1000}
+                    rows={3}
+                  />
+                  {saveError && (
+                    <p className="save-error">{saveError}</p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <h1 className="display-name">{user.handle}</h1>
+                  {user.bio && (
+                    <p className="bio">{user.bio}</p>
+                  )}
+                </>
+              )}
+              
+              {isEditing && (
+                <div className="edit-actions">
+                  <button 
+                    className="save-btn"
+                    onClick={handleSaveProfile}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? 'Saving...' : 'Save changes'}
+                  </button>
+                  <button 
+                    className="cancel-btn"
+                    onClick={handleCancelEdit}
+                    disabled={isSaving}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+              
+              {!isEditing && isOwnProfile && (
+                <div className="profile-actions">
+                  <Link href="/blog/write" className="write-blog-btn">
+                    ✍️ Write Blog
+                  </Link>
+                  <Link href={`/users/${user.id}/players`} className="players-btn">
+                    📺 Players
+                  </Link>
+                  <button 
+                    className="edit-profile-btn"
+                    onClick={handleEditClick}
+                    aria-label="Edit profile"
+                  >
+                    ✏️
+                  </button>
+                  <button 
+                    className="logout-btn"
+                    onClick={handleLogout}
+                    aria-label="Log out"
+                  >
+                    🚪
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           
-          <div className="profile-info">
-            {isEditing ? (
-              <>
-                {!isOwner && (
-                  <input
-                    type="text"
-                    className="edit-handle-input"
-                    value={editHandle}
-                    onChange={(e) => setEditHandle(e.target.value)}
-                    placeholder="Handle"
-                    maxLength={50}
-                  />
-                )}
-                {isOwner && (
-                  <h1 className="display-name">{user.handle}</h1>
-                )}
-                <textarea
-                  className="edit-bio-input"
-                  value={editBio}
-                  onChange={(e) => setEditBio(e.target.value)}
-                  placeholder="Write something about yourself..."
-                  maxLength={1000}
-                  rows={3}
-                />
-                {saveError && (
-                  <p className="save-error">{saveError}</p>
-                )}
-              </>
-            ) : (
-              <>
-                <h1 className="display-name">{user.handle}</h1>
-                {user.bio && (
-                  <p className="bio">{user.bio}</p>
-                )}
-              </>
-            )}
-            
+          <div className="profile-header-right">
             <div className="stats">
               <div className="stat">
                 <span className="stat-value">{posts.length}</span>
@@ -562,117 +612,90 @@ export default function UserProfilePage() {
               </div>
             </div>
             
-            {isEditing ? (
-              <div className="edit-actions">
-                <button 
-                  className="save-btn"
-                  onClick={handleSaveProfile}
-                  disabled={isSaving}
-                >
-                  {isSaving ? 'Saving...' : 'Save changes'}
-                </button>
-                <button 
-                  className="cancel-btn"
-                  onClick={handleCancelEdit}
-                  disabled={isSaving}
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <div className="profile-actions">
-                {isOwnProfile && (
-                  <>
-                    <Link href="/blog/write" className="write-blog-btn">
-                      ✍️ Write Blog
-                    </Link>
-                    <Link href={`/users/${user.id}/players`} className="players-btn">
-                      📺 Players
-                    </Link>
-                    <button 
-                      className="edit-profile-btn"
-                      onClick={handleEditClick}
-                      aria-label="Edit profile"
-                    >
-                      ✏️
-                    </button>
-                    <button 
-                      className="logout-btn"
-                      onClick={handleLogout}
-                      aria-label="Log out"
-                    >
-                      🚪
-                    </button>
-                  </>
+            {isModerator && !isOwnProfile && (
+              <div className="moderation-buttons">
+                {user.auto_public_approval ? (
+                  <button 
+                    className="distrust-btn"
+                    onClick={distrustUser}
+                    aria-label="Distrust user"
+                    title="Distrust"
+                  >
+                    ⚠️
+                  </button>
+                ) : (
+                  <button 
+                    className="trust-btn"
+                    onClick={trustUser}
+                    aria-label="Trust user"
+                    title="Trust"
+                  >
+                    🫱🏽‍🫲🏼
+                  </button>
                 )}
-                {isModerator && !isOwnProfile && (
-                  <>
-                    {user.auto_public_approval ? (
-                      <button 
-                        className="distrust-btn"
-                        onClick={distrustUser}
-                        aria-label="Distrust user"
-                      >
-                        ⚠️ Distrust
-                      </button>
-                    ) : (
-                      <button 
-                        className="trust-btn"
-                        onClick={trustUser}
-                        aria-label="Trust user"
-                      >
-                        🫱🏽‍🫲🏼 Trust
-                      </button>
-                    )}
-                    {user.banned_until ? (
-                      <button 
-                        className="unban-btn"
-                        onClick={unbanUser}
-                        aria-label="Unban user"
-                      >
-                        ✅ Unban
-                      </button>
-                    ) : (
-                      <button 
-                        className="ban-btn"
-                        onClick={banUser}
-                        aria-label="Ban user"
-                      >
-                        🚷 Ban
-                      </button>
-                    )}
-                  </>
+                {user.banned_until ? (
+                  <button 
+                    className="unban-btn"
+                    onClick={unbanUser}
+                    aria-label="Unban user"
+                    title="Unban"
+                  >
+                    ✅
+                  </button>
+                ) : (
+                  <button 
+                    className="ban-btn"
+                    onClick={banUser}
+                    aria-label="Ban user"
+                    title="Ban"
+                  >
+                    🚷
+                  </button>
                 )}
               </div>
             )}
           </div>
+          </div>
         </div>
 
         {blogPosts.length > 0 && (
-          <div className="blog-posts-section">
-            <h2 className="section-title">Recent Blog Posts</h2>
-            <div className="blog-posts-list">
-              {blogPosts.map((blogPost) => {
-                const displayDate = blogPost.updated_at || blogPost.created_at;
-                // Use counts from API response (batch-fetched on backend)
-                const reactionCount = blogPost.reaction_count ?? 0;
-                const commentCount = blogPost.comment_count ?? 0;
-                
-                return (
-                  <Link key={blogPost.id} href={`/blog/${blogPost.id}`} className="blog-post-item">
-                    <h3 className="blog-post-item-title">{blogPost.title}</h3>
-                    <div className="blog-post-item-meta">
-                      <span className="blog-post-item-date">
-                        {new Date(displayDate).toLocaleDateString()}
-                      </span>
-                      <span className="meta-separator">•</span>
-                      <span className="blog-post-item-reactions">⚡ {reactionCount}</span>
-                      <span className="meta-separator">•</span>
-                      <span className="blog-post-item-comments">💬 {commentCount}</span>
-                    </div>
-                  </Link>
-                );
-              })}
+          <div className={`blog-posts-section ${isBlogPostsCollapsed ? 'collapsed' : ''}`}>
+            <div className="blog-posts-content">
+              <div className="blog-posts-header">
+                <h2 className="section-title">Recent Blog Posts</h2>
+                <button 
+                  className="blog-posts-toggle"
+                  onClick={() => setIsBlogPostsCollapsed(!isBlogPostsCollapsed)}
+                  aria-label={isBlogPostsCollapsed ? 'Expand blog posts' : 'Collapse blog posts'}
+                >
+                  {isBlogPostsCollapsed ? '▶' : '▼'}
+                </button>
+              </div>
+              {!isBlogPostsCollapsed && (
+                <div className="blog-posts-list">
+                  {blogPosts.map((blogPost) => {
+                    const displayDate = blogPost.updated_at || blogPost.created_at;
+                    // Use counts from API response (batch-fetched on backend)
+                    const reactionCount = blogPost.reaction_count ?? 0;
+                    const commentCount = blogPost.comment_count ?? 0;
+                    
+                    return (
+                      <Link key={blogPost.id} href={`/blog/${blogPost.id}`} className="blog-post-item">
+                        <h3 className="blog-post-item-title">{blogPost.title}</h3>
+                        <div className="blog-post-item-meta">
+                          <span className="blog-post-item-date">
+                            {new Date(displayDate).toLocaleDateString()}
+                          </span>
+                          <span className="meta-separator">•</span>
+                          <span className="blog-post-item-reactions">⚡ {reactionCount}</span>
+                          <span className="meta-separator">•</span>
+                          <span className="blog-post-item-comments">💬 {commentCount}</span>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -715,24 +738,51 @@ export default function UserProfilePage() {
         .profile-container {
           max-width: 1200px;
           margin: 0 auto;
-          padding: 24px;
+          padding: 0 24px 24px 24px;
+        }
+
+        .profile-header-wrapper {
+          position: relative;
+          left: 50%;
+          right: 50%;
+          width: 100vw;
+          margin-left: -50vw;
+          margin-right: -50vw;
+          margin-top: 0;
+          margin-bottom: 24px;
+          background: var(--bg-secondary);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .profile-header {
+          max-width: 1200px;
+          margin: 0 auto;
           display: flex;
-          gap: 24px;
+          justify-content: space-between;
           align-items: flex-start;
-          background: var(--bg-secondary);
-          border-radius: 16px;
-          padding: 32px;
-          margin-bottom: 24px;
+          gap: 32px;
+          padding: 24px 24px 32px 24px;
         }
 
         @media (max-width: 600px) {
           .profile-header {
             flex-direction: column;
-            align-items: center;
-            text-align: center;
+            align-items: flex-start;
+            gap: 24px;
+          }
+        }
+
+        .profile-header-left {
+          display: flex;
+          gap: 24px;
+          align-items: flex-start;
+          flex: 1;
+          min-width: 0;
+        }
+
+        @media (max-width: 600px) {
+          .profile-header-left {
+            width: 100%;
           }
         }
 
@@ -741,17 +791,17 @@ export default function UserProfilePage() {
         }
 
         .avatar {
-          width: 120px;
-          height: 120px;
-          border-radius: 50%;
+          width: 128px;
+          height: 128px;
+          border-radius: 0;
           object-fit: cover;
           border: 3px solid var(--bg-tertiary);
         }
 
         .avatar-placeholder {
-          width: 120px;
-          height: 120px;
-          border-radius: 50%;
+          width: 128px;
+          height: 128px;
+          border-radius: 0;
           background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
           display: flex;
           align-items: center;
@@ -764,17 +814,42 @@ export default function UserProfilePage() {
 
         .profile-info {
           flex: 1;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          min-height: 128px;
+        }
+
+        .profile-header-right {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          gap: 16px;
+          flex-shrink: 0;
+        }
+
+        @media (max-width: 600px) {
+          .profile-header-right {
+            width: 100%;
+            align-items: flex-start;
+          }
+        }
+
+        .moderation-buttons {
+          display: flex;
+          gap: 8px;
         }
 
         .profile-actions {
           display: flex;
           gap: 16px;
           margin-top: 20px;
+          flex-wrap: wrap;
         }
 
         @media (max-width: 600px) {
           .profile-actions {
-            justify-content: center;
+            justify-content: flex-start;
           }
         }
 
@@ -804,11 +879,7 @@ export default function UserProfilePage() {
         }
 
         .edit-profile-btn,
-        .logout-btn,
-        .trust-btn,
-        .distrust-btn,
-        .ban-btn,
-        .unban-btn {
+        .logout-btn {
           background: var(--bg-tertiary);
           border: none;
           border-radius: 8px;
@@ -834,6 +905,23 @@ export default function UserProfilePage() {
         .logout-btn:hover {
           background: var(--accent-pink);
           transform: scale(1.05);
+        }
+
+        .trust-btn,
+        .distrust-btn,
+        .ban-btn,
+        .unban-btn {
+          background: var(--bg-tertiary);
+          border: none;
+          border-radius: 8px;
+          padding: 8px 12px;
+          font-size: 1.2rem;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--text-secondary);
         }
 
         .trust-btn:hover {
@@ -960,7 +1048,8 @@ export default function UserProfilePage() {
           font-size: 1.75rem;
           font-weight: 700;
           color: var(--text-primary);
-          margin: 0 0 4px 0;
+          margin: 0 0 8px 0;
+          line-height: 1.2;
         }
 
         .handle {
@@ -979,19 +1068,27 @@ export default function UserProfilePage() {
 
         .stats {
           display: flex;
-          gap: 32px;
+          flex-direction: column;
+          gap: 16px;
+          align-items: flex-end;
         }
 
         @media (max-width: 600px) {
           .stats {
-            justify-content: center;
+            align-items: flex-start;
           }
         }
 
         .stat {
           display: flex;
           flex-direction: column;
-          align-items: center;
+          align-items: flex-end;
+        }
+
+        @media (max-width: 600px) {
+          .stat {
+            align-items: flex-start;
+          }
         }
 
         .stat-value {
@@ -1008,23 +1105,76 @@ export default function UserProfilePage() {
         }
 
         .blog-posts-section {
+          position: relative;
+          left: 50%;
+          right: 50%;
+          width: 100vw;
+          margin-left: -50vw;
+          margin-right: -50vw;
           background: var(--bg-secondary);
-          border-radius: 16px;
-          padding: 24px;
           margin-bottom: 24px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+          transition: all var(--transition-normal);
+          overflow: hidden;
+        }
+
+        .blog-posts-content {
+          max-width: 1200px;
+          margin: 0 auto;
+          padding: 24px;
+        }
+
+        .blog-posts-section.collapsed {
+          padding-top: 16px;
+          padding-bottom: 16px;
+        }
+
+        .blog-posts-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 16px;
+        }
+
+        .blog-posts-section.collapsed .blog-posts-header {
+          margin-bottom: 0;
+        }
+
+        .blog-posts-toggle {
+          background: transparent;
+          border: none;
+          color: var(--text-secondary);
+          font-size: 1rem;
+          cursor: pointer;
+          padding: 4px 8px;
+          border-radius: 4px;
+          transition: all var(--transition-fast);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .blog-posts-toggle:hover {
+          background: var(--bg-tertiary);
+          color: var(--text-primary);
         }
 
         .section-title {
           font-size: 1.25rem;
           font-weight: 700;
           color: var(--text-primary);
-          margin-bottom: 16px;
+          margin: 0;
         }
 
         .blog-posts-list {
           display: flex;
           flex-direction: column;
           gap: 16px;
+          transition: opacity var(--transition-normal);
+        }
+
+        .blog-posts-section.collapsed .blog-posts-list {
+          display: none;
         }
 
         .blog-posts-list :global(.blog-post-item) {
@@ -1063,6 +1213,7 @@ export default function UserProfilePage() {
 
         .artworks-section {
           min-height: 400px;
+          margin-top: 24px;
         }
 
         .empty-state {
