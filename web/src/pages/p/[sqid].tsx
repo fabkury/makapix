@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import Script from 'next/script';
 import Layout from '../../components/Layout';
 import StatsPanel from '../../components/StatsPanel';
+import SendToPlayerModal from '../../components/SendToPlayerModal';
 import { 
   getNavigationContext, 
   setNavigationContext, 
@@ -14,6 +15,7 @@ import {
   NavigationContextPost 
 } from '../../lib/navigation-context';
 import { useSwipeNavigation } from '../../hooks/useSwipeNavigation';
+import { listPlayers, Player } from '../../lib/api';
 
 interface Post {
   id: number;
@@ -59,6 +61,10 @@ export default function PostPage() {
   
   // Stats panel state
   const [showStats, setShowStats] = useState(false);
+  
+  // Player state
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [showSendModal, setShowSendModal] = useState(false);
   
   // Image error state
   const [imageError, setImageError] = useState(false);
@@ -115,6 +121,14 @@ export default function PostPage() {
               setIsOwner(userData.user.id === data.owner_id);
               const roles = userData.user.roles || userData.roles || [];
               setIsModerator(roles.includes('moderator') || roles.includes('owner'));
+              
+              // Load players if user is authenticated
+              try {
+                const playersData = await listPlayers(userData.user.id);
+                setPlayers(playersData.items);
+              } catch (err) {
+                // Silently fail - user might not have players
+              }
             }
           } catch (err) {
             setCurrentUser(null);
@@ -949,6 +963,19 @@ export default function PostPage() {
             </div>
           )}
 
+          {/* Send to Player button - visible to authenticated users with players */}
+          {currentUser && players.length > 0 && (
+            <div className="player-action">
+              <button
+                onClick={() => setShowSendModal(true)}
+                className="action-button player"
+                title="Send to Player"
+              >
+                🖼️ Send to Player
+              </button>
+            </div>
+          )}
+
           {isOwner && !isEditing && (
             <div className="owner-actions">
               <button
@@ -1081,6 +1108,17 @@ export default function PostPage() {
         isOpen={showStats}
         onClose={() => setShowStats(false)}
       />
+
+      {/* Send to Player Modal */}
+      {currentUser && post && (
+        <SendToPlayerModal
+          isOpen={showSendModal}
+          onClose={() => setShowSendModal(false)}
+          players={players}
+          userId={currentUser.id}
+          postId={post.id}
+        />
+      )}
 
       <Script
         src={`${API_BASE_URL}/makapix-widget.js`}
@@ -1290,7 +1328,29 @@ export default function PostPage() {
           box-shadow: 0 0 12px rgba(180, 78, 255, 0.3);
         }
 
+        .action-button.player {
+          background: rgba(78, 159, 255, 0.2);
+          color: #4e9fff;
+        }
+
+        .action-button.player:hover:not(:disabled) {
+          background: rgba(78, 159, 255, 0.3);
+          box-shadow: 0 0 12px rgba(78, 159, 255, 0.3);
+        }
+
         .stats-action {
+          margin-top: 16px;
+          padding-top: 16px;
+          border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .player-action {
+          margin-top: 16px;
+          padding-top: 16px;
+          border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .player-action {
           margin-top: 16px;
           padding-top: 16px;
           border-top: 1px solid rgba(255, 255, 255, 0.05);

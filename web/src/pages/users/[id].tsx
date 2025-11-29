@@ -586,6 +586,9 @@ export default function UserProfilePage() {
                     <Link href="/blog/write" className="write-blog-btn">
                       ✍️ Write Blog
                     </Link>
+                    <Link href={`/users/${user.id}/players`} className="players-btn">
+                      📺 Players
+                    </Link>
                     <button 
                       className="edit-profile-btn"
                       onClick={handleEditClick}
@@ -775,7 +778,8 @@ export default function UserProfilePage() {
           }
         }
 
-        .profile-actions :global(.write-blog-btn) {
+        .profile-actions :global(.write-blog-btn),
+        .profile-actions :global(.players-btn) {
           background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
           border: none;
           border-radius: 8px;
@@ -792,7 +796,8 @@ export default function UserProfilePage() {
           gap: 6px;
         }
 
-        .profile-actions :global(.write-blog-btn:hover) {
+        .profile-actions :global(.write-blog-btn:hover),
+        .profile-actions :global(.players-btn:hover) {
           transform: translateY(-2px);
           box-shadow: var(--glow-pink);
           color: white;

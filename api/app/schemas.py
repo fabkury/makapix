@@ -637,28 +637,88 @@ class ReputationAdjustResponse(BaseModel):
 
 
 # ============================================================================
-# DEVICE SCHEMAS
+# PLAYER SCHEMAS
 # ============================================================================
 
 
-class Device(BaseModel):
-    """IoT device."""
+class PlayerPublic(BaseModel):
+    """Public player information."""
 
     id: UUID
-    name: str
+    player_key: UUID
+    name: str | None
+    device_model: str | None
+    firmware_version: str | None
+    registration_status: str
+    connection_status: str
+    last_seen_at: datetime | None
+    current_post_id: int | None
+    cert_expires_at: datetime | None
+    registered_at: datetime | None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
 
-class DeviceCreate(BaseModel):
-    """Create device request."""
+class PlayerProvisionRequest(BaseModel):
+    """Player provisioning request (device calls this)."""
 
+    device_model: str | None = None
+    firmware_version: str | None = None
+
+
+class PlayerProvisionResponse(BaseModel):
+    """Player provisioning response."""
+
+    player_key: UUID
+    registration_code: str
+    registration_code_expires_at: datetime
+    mqtt_broker: dict[str, Any]
+
+
+class PlayerRegisterRequest(BaseModel):
+    """Player registration request."""
+
+    registration_code: str = Field(..., min_length=6, max_length=6)
     name: str = Field(..., min_length=1, max_length=100)
 
 
+class PlayerUpdateRequest(BaseModel):
+    """Update player request."""
+
+    name: str | None = Field(None, min_length=1, max_length=100)
+
+
+class PlayerCommandRequest(BaseModel):
+    """Player command request."""
+
+    command_type: Literal["swap_next", "swap_prev", "show_artwork"]
+    post_id: int | None = None  # Required for show_artwork
+
+
+class PlayerCommandResponse(BaseModel):
+    """Player command response."""
+
+    command_id: UUID
+    status: Literal["sent"]
+
+
+class PlayerCommandAllResponse(BaseModel):
+    """Response for sending command to all players."""
+
+    sent_count: int
+    commands: list[PlayerCommandResponse]
+
+
+class PlayerRenewCertResponse(BaseModel):
+    """Certificate renewal response."""
+
+    cert_expires_at: datetime
+    message: str = "Certificate renewed successfully"
+
+
 class TLSCertBundle(BaseModel):
-    """TLS certificate bundle for device."""
+    """TLS certificate bundle for player."""
 
     ca_pem: str
     cert_pem: str

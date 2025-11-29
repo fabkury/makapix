@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID
 
@@ -78,7 +78,7 @@ def generate_client_certificate(
     issuer = ca_cert.subject
     
     # Certificate validity period
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     valid_from = now
     valid_to = now + timedelta(days=cert_validity_days)
     

@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 
 export default function GitHubAppSetupPage() {
@@ -12,27 +13,7 @@ export default function GitHubAppSetupPage() {
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
     : '';
 
-  useEffect(() => {
-    // Check for installation_id in URL params
-    const { installation_id, setup_action } = router.query;
-    
-    if (installation_id && typeof installation_id === 'string') {
-      setInstallationId(installation_id);
-      
-      if (setup_action === 'install') {
-        // Process the installation
-        handleInstallation(installation_id);
-      } else {
-        setStatus('error');
-        setMessage(`Invalid setup action: ${setup_action}`);
-      }
-    } else {
-      setStatus('error');
-      setMessage('No installation ID found in URL parameters');
-    }
-  }, [router.query]);
-
-  const handleInstallation = async (instId: string) => {
+  const handleInstallation = useCallback(async (instId: string) => {
     setStatus('loading');
     setMessage('Processing GitHub App installation...');
 
@@ -83,7 +64,27 @@ export default function GitHubAppSetupPage() {
       setStatus('error');
       setMessage(`Error: ${error.message}`);
     }
-  };
+  }, [API_BASE_URL, router]);
+
+  useEffect(() => {
+    // Check for installation_id in URL params
+    const { installation_id, setup_action } = router.query;
+    
+    if (installation_id && typeof installation_id === 'string') {
+      setInstallationId(installation_id);
+      
+      if (setup_action === 'install') {
+        // Process the installation
+        handleInstallation(installation_id);
+      } else {
+        setStatus('error');
+        setMessage(`Invalid setup action: ${setup_action}`);
+      }
+    } else {
+      setStatus('error');
+      setMessage('No installation ID found in URL parameters');
+    }
+  }, [router.query, handleInstallation]);
 
   return (
     <>
@@ -120,9 +121,9 @@ export default function GitHubAppSetupPage() {
               <h2>Success!</h2>
               <p>{message}</p>
               <p>Redirecting to submit page...</p>
-              <a href="/submit" className="button primary">
+              <Link href="/submit" className="button primary">
                 Go to Submit Page
-              </a>
+              </Link>
             </>
           )}
           
@@ -135,22 +136,22 @@ export default function GitHubAppSetupPage() {
                 <button onClick={() => window.location.reload()} className="button">
                   Try Again
                 </button>
-                <a href="/submit" className="button secondary">
+                <Link href="/submit" className="button secondary">
                   Back to Submit Page
-                </a>
+                </Link>
               </div>
             </>
           )}
         </div>
         
         <div className="help">
-          <h3>What's happening?</h3>
+          <h3>What&apos;s happening?</h3>
           <p>
             This page handles the completion of your GitHub App installation. 
             The app needs to be linked to your Makapix account to enable certain features.
           </p>
           <p>
-            If you're not already logged in, you'll be redirected to GitHub to authenticate first.
+            If you&apos;re not already logged in, you&apos;ll be redirected to GitHub to authenticate first.
           </p>
         </div>
       </main>
