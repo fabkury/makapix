@@ -2,6 +2,7 @@ servoom/
 credentials.py
 backups/
 certs/
+mqtt/certs/
 
 # Environment files (contain secrets - must be gitignored)
 .env
