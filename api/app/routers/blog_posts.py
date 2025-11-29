@@ -367,7 +367,7 @@ def list_blog_comments(
     if not is_moderator:
         query = query.filter(models.BlogPostComment.hidden_by_mod == False)
     
-    query = query.filter(models.BlogPostComment.depth <= 2)
+    query = query.filter(models.BlogPostComment.depth <= 3)
     query = query.order_by(models.BlogPostComment.created_at.asc()).limit(limit)
     
     comments = query.all()
@@ -449,17 +449,17 @@ def create_blog_comment(
                 detail="Invalid parent comment"
             )
         
-        if parent.depth >= 2:
+        if parent.depth >= 3:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot reply to comment at maximum depth"
             )
         
         depth = parent.depth + 1
-        if depth > 2:
+        if depth > 3:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Maximum comment depth (2) exceeded"
+                detail="Maximum comment depth (3) exceeded"
             )
     
     comment = models.BlogPostComment(

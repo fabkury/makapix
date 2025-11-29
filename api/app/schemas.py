@@ -450,7 +450,7 @@ class BlogPostComment(BaseModel):
     author_id: UUID | None = None  # None for anonymous comments
     author_ip: str | None = None  # For anonymous users (visible to moderators)
     parent_id: UUID | None = None
-    depth: int = Field(..., ge=0, le=2)
+    depth: int = Field(..., ge=0, le=3)
     body: str
     hidden_by_mod: bool
     deleted_by_owner: bool

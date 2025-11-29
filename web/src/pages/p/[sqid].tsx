@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import Script from 'next/script';
 import Layout from '../../components/Layout';
+import CommentsAndReactions from '../../components/CommentsAndReactions';
 import StatsPanel from '../../components/StatsPanel';
 import SendToPlayerModal from '../../components/SendToPlayerModal';
 import { 
@@ -1098,7 +1098,12 @@ export default function PostPage() {
         </div>
 
         <div className="widget-section">
-          <div id={`makapix-widget-${post.public_sqid}`} data-post-id={post.id}></div>
+          <CommentsAndReactions
+            contentType="artwork"
+            contentId={post.id}
+            API_BASE_URL={API_BASE_URL}
+            currentUserId={currentUser?.id || null}
+          />
         </div>
       </div>
 
@@ -1120,27 +1125,6 @@ export default function PostPage() {
         />
       )}
 
-      <Script
-        src={`${API_BASE_URL}/makapix-widget.js`}
-        strategy="afterInteractive"
-        onLoad={() => {
-          if (post && sqid && typeof sqid === 'string') {
-            setTimeout(() => {
-              const container = document.getElementById(`makapix-widget-${post.public_sqid}`);
-              if (container && typeof (window as any).MakapixWidget !== 'undefined') {
-                if (!(container as any).__makapix_initialized) {
-                  try {
-                    new (window as any).MakapixWidget(container);
-                    (container as any).__makapix_initialized = true;
-                  } catch (error) {
-                    console.error('Failed to initialize Makapix widget:', error);
-                  }
-                }
-              }
-            }, 100);
-          }
-        }}
-      />
 
       <style jsx>{`
         .post-container {

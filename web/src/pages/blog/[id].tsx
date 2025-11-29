@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
+import CommentsAndReactions from '../../components/CommentsAndReactions';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
@@ -239,10 +240,12 @@ export default function BlogPostPage() {
           </div>
         )}
 
-        {/* TODO: Add reactions and comments widgets here */}
-        <div className="blog-post-interactions">
-          <p className="interactions-placeholder">Reactions and comments coming soon...</p>
-        </div>
+        <CommentsAndReactions
+          contentType="blog"
+          contentId={post.id}
+          API_BASE_URL={API_BASE_URL}
+          currentUserId={currentUser?.id || null}
+        />
       </div>
 
       <style jsx>{`
@@ -416,18 +419,6 @@ export default function BlogPostPage() {
 
         .owner-actions .action-button.delete:hover {
           background: rgba(239, 68, 68, 0.3);
-        }
-
-        .blog-post-interactions {
-          background: var(--bg-secondary);
-          border-radius: 12px;
-          padding: 24px;
-        }
-
-        .interactions-placeholder {
-          color: var(--text-muted);
-          text-align: center;
-          font-style: italic;
         }
       `}</style>
     </Layout>

@@ -820,7 +820,7 @@ class BlogPost(Base):
 
 
 class BlogPostComment(Base):
-    """Comment on a blog post, supporting two-level nesting."""
+    """Comment on a blog post, supporting three-level nesting."""
 
     __tablename__ = "blog_post_comments"
 
