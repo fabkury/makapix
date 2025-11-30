@@ -304,6 +304,13 @@ export interface PlayerRenewCertResponse {
   message: string;
 }
 
+export interface TLSCertBundle {
+  ca_pem: string;
+  cert_pem: string;
+  key_pem: string;
+  broker: { host: string; port: number };
+}
+
 /**
  * List all players for a user
  */
@@ -391,5 +398,17 @@ export async function renewPlayerCert(
   return authenticatedPostJson<PlayerRenewCertResponse>(
     `/api/user/${userId}/player/${playerId}/renew-cert`,
     {}
+  );
+}
+
+/**
+ * Download player certificates
+ */
+export async function downloadPlayerCerts(
+  userId: string,
+  playerId: string
+): Promise<TLSCertBundle> {
+  return authenticatedRequestJson<TLSCertBundle>(
+    `/api/user/${userId}/player/${playerId}/certs`
   );
 }

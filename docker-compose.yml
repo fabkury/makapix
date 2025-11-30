@@ -74,6 +74,8 @@ services:
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://cache:6379/0}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://cache:6379/0}
       MQTT_CA_FILE: ${MQTT_CA_FILE:-/certs/ca.crt}
+      MQTT_CA_KEY_FILE: ${MQTT_CA_KEY_FILE:-/certs/ca.key}
+      MQTT_PASSWD_FILE: ${MQTT_PASSWD_FILE:-/mqtt-config/passwords}
       VAULT_LOCATION: ${VAULT_LOCATION}
       MAKAPIX_ADMIN_USER: ${MAKAPIX_ADMIN_USER}
       MAKAPIX_ADMIN_PASSWORD: ${MAKAPIX_ADMIN_PASSWORD}
@@ -82,6 +84,7 @@ services:
       - ./api:/workspace/api
       - api_pip_cache:/root/.cache/pip
       - ./mqtt/certs:/certs:ro
+      - ./mqtt/config:/mqtt-config
       - ${VAULT_HOST_PATH}:${VAULT_LOCATION}
     ports:
       - "${API_PORT:-8000}:8000"

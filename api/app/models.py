@@ -483,6 +483,8 @@ class Player(Base):
     cert_serial_number = Column(String(100), nullable=True, unique=True, index=True)
     cert_issued_at = Column(DateTime(timezone=True), nullable=True)
     cert_expires_at = Column(DateTime(timezone=True), nullable=True)
+    cert_pem = Column(Text, nullable=True)  # Client certificate PEM
+    key_pem = Column(Text, nullable=True)   # Private key PEM
     
     # Timestamps
     created_at = Column(

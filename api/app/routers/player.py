@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
@@ -121,10 +122,108 @@ def register_player(
     player.registration_code = None  # Clear code after registration
     player.registration_code_expires_at = None
     
+    # Add player_key to MQTT password file (empty password for username-only auth)
+    passwd_file = os.getenv("MQTT_PASSWD_FILE", "/mqtt-config/passwords")
+    try:
+        subprocess.run(
+            ["mosquitto_passwd", "-b", passwd_file, str(player.player_key), ""],
+            check=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as e:
+        # Log error but don't fail registration - password file might not exist yet
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Failed to add player_key to MQTT password file: {e}")
+    except FileNotFoundError:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning("mosquitto_passwd not found - ensure MQTT broker is configured")
+    
+    # Generate and store TLS certificates
+    ca_cert_path = os.getenv("MQTT_CA_FILE", "/certs/ca.crt")
+    ca_key_path = os.getenv("MQTT_CA_KEY_FILE", "/certs/ca.key")
+    try:
+        cert_pem, key_pem, serial_number = generate_client_certificate(
+            user_id=current_user.id,
+            device_id=player.id,
+            ca_cert_path=ca_cert_path,
+            ca_key_path=ca_key_path,
+            cert_validity_days=CERT_VALIDITY_DAYS,
+        )
+        player.cert_pem = cert_pem
+        player.key_pem = key_pem
+        player.cert_serial_number = serial_number
+        player.cert_issued_at = now
+        player.cert_expires_at = now + timedelta(days=CERT_VALIDITY_DAYS)
+    except FileNotFoundError as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"CA certificate files not found: {e}")
+        # Don't fail registration if certs can't be generated
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.exception("Failed to generate player certificate")
+        # Don't fail registration if certs can't be generated
+    
     db.commit()
     db.refresh(player)
     
     return schemas.PlayerPublic.model_validate(player)
+
+
+@router.get("/player/{player_key}/credentials", response_model=schemas.TLSCertBundle)
+def get_player_credentials(
+    player_key: UUID,
+    db: Session = Depends(get_db),
+) -> schemas.TLSCertBundle:
+    """
+    Device calls this to get credentials after registration completes.
+    
+    No authentication required - player_key serves as authentication.
+    """
+    player = (
+        db.query(models.Player)
+        .filter(
+            models.Player.player_key == player_key,
+            models.Player.registration_status == "registered",
+        )
+        .first()
+    )
+    
+    if not player:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Player not found or not registered",
+        )
+    
+    if not player.cert_pem or not player.key_pem:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Certificates not available for this player",
+        )
+    
+    # Load CA certificate
+    ca_cert_path = os.getenv("MQTT_CA_FILE", "/certs/ca.crt")
+    try:
+        ca_pem = load_ca_certificate(ca_cert_path)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="CA certificate not found",
+        )
+    
+    # Get MQTT broker info
+    broker_host = os.getenv("MQTT_PUBLIC_HOST", "makapix.club")
+    broker_port = int(os.getenv("MQTT_PUBLIC_PORT", "8883"))
+    
+    return schemas.TLSCertBundle(
+        ca_pem=ca_pem,
+        cert_pem=player.cert_pem,
+        key_pem=player.key_pem,
+        broker={"host": broker_host, "port": broker_port},
+    )
 
 
 @router.get("/user/{user_id}/player", response_model=dict[str, list[schemas.PlayerPublic]])
@@ -196,6 +295,56 @@ def update_player(
     db.refresh(player)
     
     return schemas.PlayerPublic.model_validate(player)
+
+
+@router.get("/user/{user_id}/player/{player_id}/certs", response_model=schemas.TLSCertBundle)
+def download_player_certs(
+    user_id: UUID,
+    player_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.TLSCertBundle:
+    """Authenticated user downloads certificates for their player."""
+    require_ownership(user_id, current_user)
+    
+    player = (
+        db.query(models.Player)
+        .filter(models.Player.id == player_id, models.Player.owner_id == user_id)
+        .first()
+    )
+    
+    if not player:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Player not found",
+        )
+    
+    if not player.cert_pem or not player.key_pem:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Certificates not available for this player",
+        )
+    
+    # Load CA certificate
+    ca_cert_path = os.getenv("MQTT_CA_FILE", "/certs/ca.crt")
+    try:
+        ca_pem = load_ca_certificate(ca_cert_path)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="CA certificate not found",
+        )
+    
+    # Get MQTT broker info
+    broker_host = os.getenv("MQTT_PUBLIC_HOST", "makapix.club")
+    broker_port = int(os.getenv("MQTT_PUBLIC_PORT", "8883"))
+    
+    return schemas.TLSCertBundle(
+        ca_pem=ca_pem,
+        cert_pem=player.cert_pem,
+        key_pem=player.key_pem,
+        broker={"host": broker_host, "port": broker_port},
+    )
 
 
 @router.delete("/user/{user_id}/player/{player_id}", status_code=status.HTTP_204_NO_CONTENT)

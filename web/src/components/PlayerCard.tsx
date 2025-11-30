@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Player, sendPlayerCommand, deletePlayer, renewPlayerCert } from '../lib/api';
+import { Player, sendPlayerCommand, deletePlayer, renewPlayerCert, downloadPlayerCerts } from '../lib/api';
 
 interface PlayerCardProps {
   player: Player;
@@ -52,6 +52,39 @@ export default function PlayerCard({ player, userId, onDelete, onRefresh }: Play
     }
   };
 
+  const handleDownloadCerts = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const certBundle = await downloadPlayerCerts(userId, player.id);
+      
+      // Create downloadable files
+      const files = [
+        { name: 'ca.crt', content: certBundle.ca_pem },
+        { name: 'client.crt', content: certBundle.cert_pem },
+        { name: 'client.key', content: certBundle.key_pem },
+        { name: 'certs.json', content: JSON.stringify(certBundle, null, 2) },
+      ];
+      
+      // Download each file
+      files.forEach((file) => {
+        const blob = new Blob([file.content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${player.name || 'player'}-${file.name}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
+    } catch (err: any) {
+      setError(err.message || 'Failed to download certificates');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const isOnline = player.connection_status === 'online';
   const certExpiresAt = player.cert_expires_at ? new Date(player.cert_expires_at) : null;
   const certNeedsRenewal = certExpiresAt && certExpiresAt.getTime() - Date.now() < 30 * 24 * 60 * 60 * 1000;
@@ -89,6 +122,14 @@ export default function PlayerCard({ player, userId, onDelete, onRefresh }: Play
             title="Next artwork"
           >
             Next ▶
+          </button>
+          <button
+            className="download-btn"
+            onClick={handleDownloadCerts}
+            disabled={isLoading || !player.cert_expires_at}
+            title="Download certificates"
+          >
+            📜 Certs
           </button>
           <button
             className="delete-btn"
@@ -211,6 +252,27 @@ export default function PlayerCard({ player, userId, onDelete, onRefresh }: Play
         .delete-btn:hover:not(:disabled) {
           background: var(--accent-pink);
           transform: scale(1.05);
+        }
+
+        .download-btn {
+          background: var(--bg-tertiary);
+          border: none;
+          border-radius: 6px;
+          padding: 8px 12px;
+          font-size: 0.85rem;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+          color: var(--text-primary);
+        }
+
+        .download-btn:hover:not(:disabled) {
+          background: var(--accent-cyan);
+          transform: translateY(-1px);
+        }
+
+        .download-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
 
         .error-message {
