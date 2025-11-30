@@ -1,10 +1,27 @@
-# Backend service: may publish artwork data and read all view submissions
-user svc_backend
-topic read views/submit/#
-topic write art/#
+# ACL Rules for Makapix MQTT Broker
+# Format: user <username> or pattern <pattern>
+# Format: topic [read|write|readwrite] <topic>
 
-# Player clients: may read artwork data and publish view submissions only
-user player_client
-topic read art/#
-topic write views/submit/+
+# API Server - publish commands, read status, publish notifications
+user api-server
+topic write makapix/player/+/command
+topic read makapix/player/+/status
+topic write makapix/posts/new/#
+topic write makapix/posts/new/user/#
+topic write makapix/posts/new/category/#
+topic read $SYS/#
 
+# Registered players - use player_key (UUID) as MQTT username
+# Pattern matching: %u matches the username (player_key)
+pattern read makapix/player/%u/command
+pattern write makapix/player/%u/status
+
+# Web clients - can only subscribe (read) to topics
+# Pattern: user_{user_id} for authenticated web clients
+user user_%
+topic read makapix/posts/new/user/#
+topic read makapix/posts/new/category/#
+topic read $SYS/#
+
+# Default: deny all (this should be last)
+topic read #

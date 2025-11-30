@@ -25,8 +25,7 @@ def _get_logger():
 
 
 def generate_client_certificate(
-    user_id: UUID,
-    device_id: UUID,
+    player_key: UUID,
     ca_cert_path: str,
     ca_key_path: str,
     cert_validity_days: int = 365,
@@ -34,9 +33,12 @@ def generate_client_certificate(
     """
     Generate a client certificate for an MQTT device.
     
+    The player_key UUID is used as the certificate's Common Name (CN).
+    With Mosquitto's `use_identity_as_username true`, this CN becomes
+    the MQTT username, allowing ACL patterns to match correctly.
+    
     Args:
-        user_id: User UUID
-        device_id: Device UUID
+        player_key: Player's unique key UUID (becomes the certificate CN)
         ca_cert_path: Path to CA certificate file
         ca_key_path: Path to CA private key file
         cert_validity_days: Certificate validity in days (default: 1 year)
@@ -68,10 +70,11 @@ def generate_client_certificate(
     )
     
     # Create certificate subject
+    # CN is the player_key UUID - this becomes the MQTT username via use_identity_as_username
     subject = x509.Name([
         x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
         x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Makapix"),
-        x509.NameAttribute(NameOID.COMMON_NAME, f"device-{device_id}"),
+        x509.NameAttribute(NameOID.COMMON_NAME, str(player_key)),
     ])
     
     # Create certificate issuer (same as CA)
@@ -93,7 +96,7 @@ def generate_client_certificate(
         .not_valid_after(valid_to)
         .add_extension(
             x509.SubjectAlternativeName([
-                x509.DNSName(f"device-{device_id}"),
+                x509.DNSName(f"player-{player_key}"),
             ]),
             critical=False,
         )
@@ -112,7 +115,7 @@ def generate_client_certificate(
     
     serial_number = str(cert.serial_number)
     
-    log.info(f"Generated client certificate for device {device_id}, serial: {serial_number}")
+    log.info(f"Generated client certificate for player {player_key}, serial: {serial_number}")
     
     return cert_pem, key_pem, serial_number
 

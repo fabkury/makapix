@@ -41,8 +41,9 @@ def _build_client() -> mqtt_client.Client:
         if username:
             client.username_pw_set(username, password)
         
-        # Configure TLS
-        use_tls = os.getenv("MQTT_TLS_ENABLED", "true").lower() == "true"
+        # Configure TLS only if explicitly enabled
+        # API server uses internal port 1883 (no TLS needed within docker network)
+        use_tls = os.getenv("MQTT_TLS_ENABLED", "false").lower() == "true"
         if use_tls:
             ca_file = os.getenv("MQTT_CA_FILE")
             if ca_file and os.path.exists(ca_file):
@@ -76,7 +77,8 @@ def _ensure_connected() -> mqtt_client.Client:
     
     if not client.is_connected():
         host = os.getenv("MQTT_BROKER_HOST", "mqtt")
-        port = int(os.getenv("MQTT_BROKER_PORT", "8883"))
+        # Use internal non-TLS port for API server communication
+        port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
         
         logger.info(f"Connecting MQTT publisher to {host}:{port}")
         try:

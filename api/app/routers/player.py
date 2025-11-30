@@ -58,7 +58,7 @@ def provision_player(
     db.refresh(player)
     
     # Get MQTT broker info
-    broker_host = os.getenv("MQTT_PUBLIC_HOST", "makapix.club")
+    broker_host = os.getenv("MQTT_PUBLIC_HOST", "dev.makapix.club")
     broker_port = int(os.getenv("MQTT_PUBLIC_PORT", "8883"))
     
     return schemas.PlayerProvisionResponse(
@@ -140,13 +140,12 @@ def register_player(
         logger = logging.getLogger(__name__)
         logger.warning("mosquitto_passwd not found - ensure MQTT broker is configured")
     
-    # Generate and store TLS certificates
+    # Generate and store TLS certificates (CN = player_key for mTLS)
     ca_cert_path = os.getenv("MQTT_CA_FILE", "/certs/ca.crt")
     ca_key_path = os.getenv("MQTT_CA_KEY_FILE", "/certs/ca.key")
     try:
         cert_pem, key_pem, serial_number = generate_client_certificate(
-            user_id=current_user.id,
-            device_id=player.id,
+            player_key=player.player_key,
             ca_cert_path=ca_cert_path,
             ca_key_path=ca_key_path,
             cert_validity_days=CERT_VALIDITY_DAYS,
@@ -169,6 +168,21 @@ def register_player(
     
     db.commit()
     db.refresh(player)
+    
+    # Log the device registration as a special "add_device" command
+    log_command(
+        db=db,
+        player_id=player.id,
+        command_type="add_device",
+        payload={
+            "player_key": str(player.player_key),
+            "owner_id": str(current_user.id),
+            "owner_handle": current_user.handle,
+            "device_name": player.name,
+            "device_model": player.device_model,
+            "firmware_version": player.firmware_version,
+        },
+    )
     
     return schemas.PlayerPublic.model_validate(player)
 
@@ -215,7 +229,7 @@ def get_player_credentials(
         )
     
     # Get MQTT broker info
-    broker_host = os.getenv("MQTT_PUBLIC_HOST", "makapix.club")
+    broker_host = os.getenv("MQTT_PUBLIC_HOST", "dev.makapix.club")
     broker_port = int(os.getenv("MQTT_PUBLIC_PORT", "8883"))
     
     return schemas.TLSCertBundle(
@@ -336,7 +350,7 @@ def download_player_certs(
         )
     
     # Get MQTT broker info
-    broker_host = os.getenv("MQTT_PUBLIC_HOST", "makapix.club")
+    broker_host = os.getenv("MQTT_PUBLIC_HOST", "dev.makapix.club")
     broker_port = int(os.getenv("MQTT_PUBLIC_PORT", "8883"))
     
     return schemas.TLSCertBundle(
@@ -354,7 +368,7 @@ def delete_player(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> None:
-    """Remove player registration."""
+    """Remove player registration. Preserves command logs for audit trail."""
     require_ownership(user_id, current_user)
     
     player = (
@@ -369,8 +383,50 @@ def delete_player(
             detail="Player not found",
         )
     
+    # Store player info before deletion for logging and cleanup
+    player_key_str = str(player.player_key)
+    player_name = player.name
+    device_model = player.device_model
+    firmware_version = player.firmware_version
+    
+    # Log the device removal as a special "remove_device" command BEFORE deletion
+    # This log entry will have player_id set to NULL after the player is deleted
+    log_command(
+        db=db,
+        player_id=player.id,
+        command_type="remove_device",
+        payload={
+            "player_key": player_key_str,
+            "owner_id": str(current_user.id),
+            "owner_handle": current_user.handle,
+            "device_name": player_name,
+            "device_model": device_model,
+            "firmware_version": firmware_version,
+            "removed_by": str(current_user.id),
+        },
+    )
+    
+    # Delete player from database (command logs preserved with player_id = NULL)
     db.delete(player)
     db.commit()
+    
+    # Remove player_key from MQTT password file
+    passwd_file = os.getenv("MQTT_PASSWD_FILE", "/mqtt-config/passwords")
+    try:
+        subprocess.run(
+            ["mosquitto_passwd", "-D", passwd_file, player_key_str],
+            check=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as e:
+        # Log error but don't fail - player is already deleted from DB
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Failed to remove player_key from MQTT password file: {e}")
+    except FileNotFoundError:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning("mosquitto_passwd not found - MQTT password not cleaned up")
 
 
 @router.post("/user/{user_id}/player/{player_id}/command", response_model=schemas.PlayerCommandResponse)
@@ -593,17 +649,18 @@ def renew_player_certificate(
     ca_cert_path = os.getenv("MQTT_CA_FILE", "/certs/ca.crt")
     ca_key_path = os.getenv("MQTT_CA_KEY_FILE", "/certs/ca.key")
     
-    # Generate new certificate
+    # Generate new certificate (CN = player_key for mTLS)
     try:
         cert_pem, key_pem, serial_number = generate_client_certificate(
-            user_id=user_id,
-            device_id=player_id,
+            player_key=player.player_key,
             ca_cert_path=ca_cert_path,
             ca_key_path=ca_key_path,
             cert_validity_days=CERT_VALIDITY_DAYS,
         )
         
         # Update player certificate info
+        player.cert_pem = cert_pem
+        player.key_pem = key_pem
         player.cert_serial_number = serial_number
         player.cert_issued_at = now
         player.cert_expires_at = now + timedelta(days=CERT_VALIDITY_DAYS)

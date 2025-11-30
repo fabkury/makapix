@@ -61,7 +61,7 @@ def _on_status_message(client: mqtt_client.Client, userdata: Any, msg: mqtt_clie
                     player.firmware_version = firmware_version
             
             db.commit()
-            logger.debug(f"Updated status for player {player_key}: {connection_status}")
+            logger.info(f"Updated status for player {player_key}: {connection_status}")
             
         except Exception as e:
             logger.error(f"Error processing status update for player {player_key}: {e}", exc_info=True)
@@ -97,8 +97,8 @@ def start_status_subscriber() -> None:
             if username:
                 client.username_pw_set(username, password)
             
-            # Configure TLS
-            use_tls = os.getenv("MQTT_TLS_ENABLED", "true").lower() == "true"
+            # Internal connection uses port 1883 (no TLS required within Docker network)
+            use_tls = os.getenv("MQTT_TLS_ENABLED", "false").lower() == "true"
             if use_tls:
                 ca_file = os.getenv("MQTT_CA_FILE")
                 if ca_file and os.path.exists(ca_file):
@@ -108,24 +108,25 @@ def start_status_subscriber() -> None:
                     client.tls_insecure_set(True)
                     logger.warning("MQTT TLS insecure mode enabled (development only)")
             
-            def on_connect(client, userdata, flags, rc, properties=None):
-                if rc == 0:
-                    logger.info("Player status subscriber connected")
+            def on_connect(client, userdata, flags, reason_code, properties):
+                if reason_code == 0:
+                    logger.info("Player status subscriber connected to MQTT broker")
                     # Subscribe to all player status topics
                     client.subscribe("makapix/player/+/status", qos=1)
                     logger.info("Subscribed to makapix/player/+/status")
                 else:
-                    logger.error(f"Status subscriber connection failed with code {rc}")
+                    logger.error(f"Status subscriber connection failed: {reason_code}")
             
-            def on_disconnect(client, userdata, rc, properties=None):
-                logger.warning(f"Status subscriber disconnected (rc={rc})")
+            def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
+                logger.warning(f"Status subscriber disconnected: {reason_code}")
             
             client.on_connect = on_connect
             client.on_disconnect = on_disconnect
             client.on_message = _on_status_message
             
+            # Use internal port 1883 (no mTLS required within Docker network)
             host = os.getenv("MQTT_BROKER_HOST", "mqtt")
-            port = int(os.getenv("MQTT_BROKER_PORT", "8883"))
+            port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
             
             logger.info(f"Connecting status subscriber to {host}:{port}")
             client.connect(host, port, keepalive=60)

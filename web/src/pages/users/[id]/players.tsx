@@ -24,9 +24,11 @@ export default function PlayersPage() {
   useEffect(() => {
     if (!userId) return;
 
-    const loadPlayers = async () => {
-      setLoading(true);
-      setError(null);
+    const loadPlayers = async (isInitial = false) => {
+      if (isInitial) {
+        setLoading(true);
+        setError(null);
+      }
       try {
         const currentUserId = localStorage.getItem('user_id');
         if (currentUserId !== userId) {
@@ -38,13 +40,25 @@ export default function PlayersPage() {
         const data = await listPlayers(userId);
         setPlayers(data.items);
       } catch (err: any) {
-        setError(err.message || 'Failed to load players');
+        if (isInitial) {
+          setError(err.message || 'Failed to load players');
+        }
       } finally {
-        setLoading(false);
+        if (isInitial) {
+          setLoading(false);
+        }
       }
     };
 
-    loadPlayers();
+    // Initial load
+    loadPlayers(true);
+
+    // Poll for status updates every 5 seconds
+    const pollInterval = setInterval(() => {
+      loadPlayers(false);
+    }, 5000);
+
+    return () => clearInterval(pollInterval);
   }, [userId]);
 
   const handleRefresh = async () => {

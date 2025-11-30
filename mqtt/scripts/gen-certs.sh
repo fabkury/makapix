@@ -20,16 +20,36 @@ if [[ ! -f "${CA_CRT}" || ! -f "${CA_KEY}" ]]; then
 fi
 
 if [[ ! -f "${SRV_CRT}" || ! -f "${SRV_KEY}" ]]; then
-  openssl req -nodes -days 365 \
-    -subj "/CN=mqtt" \
-    -newkey rsa:4096 \
-    -keyout "${SRV_KEY}" \
-    -out "${SRV_CSR}" \
-    -sha256
+  # Create OpenSSL config with SANs for server certificate
+  cat > "${CERT_DIR}/server_san.cnf" << 'SANEOF'
+[req]
+default_bits = 4096
+prompt = no
+default_md = sha256
+distinguished_name = dn
+req_extensions = req_ext
+
+[dn]
+CN = dev.makapix.club
+
+[req_ext]
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = dev.makapix.club
+DNS.2 = makapix.club
+DNS.3 = mqtt
+DNS.4 = localhost
+IP.1 = 127.0.0.1
+SANEOF
+
+  openssl genrsa -out "${SRV_KEY}" 4096
+  openssl req -new -key "${SRV_KEY}" -out "${SRV_CSR}" -config "${CERT_DIR}/server_san.cnf"
   openssl x509 -req -in "${SRV_CSR}" \
     -CA "${CA_CRT}" -CAkey "${CA_KEY}" -CAcreateserial \
-    -out "${SRV_CRT}" -days 365 -sha256
-  rm -f "${SRV_CSR}"
+    -out "${SRV_CRT}" -days 365 -sha256 \
+    -extfile "${CERT_DIR}/server_san.cnf" -extensions req_ext
+  rm -f "${SRV_CSR}" "${CERT_DIR}/server_san.cnf"
 fi
 
 chmod 644 "${CERT_DIR}/server.key" "${CERT_DIR}/server.crt" "${CERT_DIR}/ca.crt"

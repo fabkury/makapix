@@ -345,6 +345,11 @@ celery_app.conf.update(
             "schedule": 3600.0,  # Every hour (in seconds)
             "options": {"queue": "default"},
         },
+        "cleanup-expired-player-registrations": {
+            "task": "app.tasks.cleanup_expired_player_registrations",
+            "schedule": 3600.0,  # Every hour (in seconds)
+            "options": {"queue": "default"},
+        },
     },
     timezone="UTC",
 )
@@ -1427,6 +1432,49 @@ def cleanup_old_site_events(self) -> dict[str, Any]:
         
     except Exception as e:
         logger.error(f"Error in cleanup_old_site_events task: {e}", exc_info=True)
+        db.rollback()
+        return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.cleanup_expired_player_registrations", bind=True)
+def cleanup_expired_player_registrations(self) -> dict[str, Any]:
+    """
+    Hourly task: Clean up expired pending player registrations.
+    
+    Removes players that:
+    - Have registration_status = 'pending'
+    - Have expired registration codes (registration_code_expires_at < now)
+    - Were never successfully registered
+    
+    This prevents stale entries from accumulating when users provision
+    devices but never complete registration on the website.
+    """
+    from datetime import datetime, timezone
+    from .db import get_session
+    
+    db = next(get_session())
+    try:
+        logger.info("Starting expired player registration cleanup task")
+        
+        now = datetime.now(timezone.utc)
+        
+        # Find and delete expired pending registrations
+        deleted_count = db.query(models.Player).filter(
+            models.Player.registration_status == "pending",
+            models.Player.registration_code_expires_at < now,
+        ).delete(synchronize_session=False)
+        
+        db.commit()
+        
+        if deleted_count > 0:
+            logger.info(f"Cleaned up {deleted_count} expired pending player registrations")
+        
+        return {"status": "success", "deleted": deleted_count}
+        
+    except Exception as e:
+        logger.error(f"Error in cleanup_expired_player_registrations task: {e}", exc_info=True)
         db.rollback()
         return {"status": "error", "message": str(e)}
     finally:

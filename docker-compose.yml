@@ -46,6 +46,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      BACKEND_PASSWORD: ${MQTT_PASSWORD:-}
     volumes:
       - ./mqtt/certs:/mosquitto/certs
       - ./mqtt/config:/mosquitto/config
@@ -54,11 +56,11 @@ services:
       - "8883:8883"
       - "9001:9001"
     healthcheck:
-      test: ["CMD-SHELL", "mosquitto_pub -h localhost -p 8883 --cafile /mosquitto/certs/ca.crt --insecure -t health/check -m ping || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 25s
+      test: ["CMD-SHELL", "netstat -tlnp | grep -q ':1883' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     networks:
       - internal
 
@@ -76,6 +78,11 @@ services:
       MQTT_CA_FILE: ${MQTT_CA_FILE:-/certs/ca.crt}
       MQTT_CA_KEY_FILE: ${MQTT_CA_KEY_FILE:-/certs/ca.key}
       MQTT_PASSWD_FILE: ${MQTT_PASSWD_FILE:-/mqtt-config/passwords}
+      MQTT_BROKER_HOST: ${MQTT_BROKER_HOST:-mqtt}
+      MQTT_BROKER_PORT: ${MQTT_BROKER_PORT:-1883}
+      MQTT_TLS_ENABLED: ${MQTT_TLS_ENABLED:-false}
+      MQTT_PUBLIC_HOST: ${MQTT_PUBLIC_HOST:-dev.makapix.club}
+      MQTT_PUBLIC_PORT: ${MQTT_PUBLIC_PORT:-8883}
       VAULT_LOCATION: ${VAULT_LOCATION}
       MAKAPIX_ADMIN_USER: ${MAKAPIX_ADMIN_USER}
       MAKAPIX_ADMIN_PASSWORD: ${MAKAPIX_ADMIN_PASSWORD}

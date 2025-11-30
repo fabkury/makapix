@@ -498,18 +498,30 @@ class Player(Base):
 
 
 class PlayerCommandLog(Base):
-    """Log of commands sent to players."""
+    """Log of commands sent to players.
+    
+    Command types:
+    - swap_next: Show next artwork
+    - swap_back: Show previous artwork
+    - show_artwork: Show specific artwork
+    - add_device: Device registered to user (logged at registration time)
+    - remove_device: Device removed by user (logged at deletion time)
+    """
 
     __tablename__ = "player_command_logs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    player_id = Column(UUID(as_uuid=True), ForeignKey("players.id", ondelete="CASCADE"), nullable=False, index=True)
-    command_type = Column(String(50), nullable=False)  # swap_next, swap_back, show_artwork
+    # Nullable to preserve logs when player is deleted (SET NULL on delete)
+    player_id = Column(UUID(as_uuid=True), ForeignKey("players.id", ondelete="SET NULL"), nullable=True, index=True)
+    command_type = Column(String(50), nullable=False)
     payload = Column(JSON, nullable=True)  # Command-specific data
     
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
     )
+    
+    # Relationship (optional since player_id can be null)
+    player = relationship("Player", backref="command_logs")
 
 
 # ============================================================================

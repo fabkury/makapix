@@ -6,9 +6,9 @@ This document provides complete instructions for integrating the p3a physical pl
 
 The p3a device must:
 1. Provision itself with the Makapix Club API to obtain a registration code
-2. Display the registration code for the user to enter on makapix.club
-3. Poll for TLS certificates after registration completes
-4. Connect to the MQTT broker using TLS certificates and username authentication
+2. Display the registration code for the user to enter on dev.makapix.club
+3. Poll for TLS certificates generated after registration completes
+4. Connect to the MQTT broker using TLS certificates
 5. Subscribe to command topics and publish status updates
 6. Execute commands to display artwork
 
@@ -18,7 +18,7 @@ The p3a device must:
 
 ### API Endpoint
 ```
-POST https://makapix.club/api/player/provision
+POST https://dev.makapix.club/api/player/provision
 Content-Type: application/json
 ```
 
@@ -26,7 +26,7 @@ Content-Type: application/json
 ```json
 {
   "device_model": "p3a",
-  "firmware_version": "1.0.0"
+  "firmware_version": "0.5.1"
 }
 ```
 
@@ -39,7 +39,7 @@ Both fields are optional but recommended for tracking purposes.
   "registration_code": "A3F8X2",
   "registration_code_expires_at": "2025-01-29T12:15:00Z",
   "mqtt_broker": {
-    "host": "makapix.club",
+    "host": "dev.makapix.club",
     "port": 8883
   }
 }
@@ -54,11 +54,11 @@ Both fields are optional but recommended for tracking purposes.
 
 ## 2. Certificate Retrieval After Registration
 
-After the user enters the registration code on makapix.club, the device must retrieve TLS certificates before connecting to MQTT.
+After the user enters the registration code on dev.makapix.club, the device must retrieve TLS certificates before connecting to MQTT.
 
 ### API Endpoint
 ```
-GET https://makapix.club/api/player/{player_key}/credentials
+GET https://dev.makapix.club/api/player/{player_key}/credentials
 ```
 
 Replace `{player_key}` with the UUID received during provisioning.
@@ -70,21 +70,21 @@ Replace `{player_key}` with the UUID received during provisioning.
   "cert_pem": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----",
   "key_pem": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----",
   "broker": {
-    "host": "makapix.club",
+    "host": "dev.makapix.club",
     "port": 8883
   }
 }
 ```
 
 ### Polling Strategy
-- Poll this endpoint every 5-10 seconds after displaying the registration code
+- Poll this endpoint every 3 seconds while displaying the registration code
 - Continue polling until you receive a 200 response (certificates available)
 - If you receive 404, registration has not completed yet - keep polling
 - Once certificates are received, **store them securely** in non-volatile memory
 
 ### Error Handling
-- **404 Not Found**: Registration not complete yet - continue polling
-- **500 Internal Server Error**: Server issue - retry with exponential backoff
+- **404 Not Found**: Registration not complete yet - continue polling as long as you're displaying the registration code
+- **500 Internal Server Error**: Server issue - retry with exponential backoff, max 5 minutes
 - **Network errors**: Retry with exponential backoff, max 5 minutes
 
 ---
@@ -95,16 +95,16 @@ Replace `{player_key}` with the UUID received during provisioning.
 
 | Parameter | Value |
 |-----------|-------|
-| **Protocol** | MQTT v5 over TLS |
-| **Host** | `makapix.club` (or from broker.host in credentials) |
-| **Port** | `8883` (TLS) |
-| **Username** | `player_key` UUID (e.g., `550e8400-e29b-41d4-a716-446655440000`) |
-| **Password** | Empty string `""` |
+| **Protocol** | MQTT v5 over mTLS (mutual TLS) |
+| **Host** | `dev.makapix.club` (or from broker.host in credentials) |
+| **Port** | `8883` (mTLS) |
 | **Client ID** | Any unique string (e.g., `p3a-{player_key}`) |
 | **Keep Alive** | 60 seconds |
-| **TLS** | Enabled with client certificate authentication |
+| **Authentication** | Client certificate only (no username/password needed) |
 
-### TLS Configuration
+### mTLS Configuration
+
+The broker uses **mutual TLS (mTLS)** authentication. Your client certificate's Common Name (CN) is automatically used as the MQTT username for access control.
 
 1. **CA Certificate**: Use `ca_pem` from credentials response
    - Verify server certificate against this CA
@@ -112,20 +112,22 @@ Replace `{player_key}` with the UUID received during provisioning.
 
 2. **Client Certificate**: Use `cert_pem` from credentials response
    - Present this certificate during TLS handshake
+   - The certificate CN contains your `player_key` UUID
    - Certificate is valid for 1 year
 
 3. **Client Private Key**: Use `key_pem` from credentials response
    - Keep this secret - never expose it
-   - Used to authenticate the client certificate
+   - Used to prove ownership of the client certificate
+
+**Important**: No username or password is required. The broker extracts your identity from the client certificate CN.
 
 ### Connection Flow
 ```
 1. Load stored player_key, cert_pem, key_pem, ca_pem
-2. Configure MQTT client with TLS:
+2. Configure MQTT client with mTLS:
    - Set CA certificate for server verification
    - Set client certificate and private key
-   - Set username to player_key
-   - Set password to empty string
+   - Do NOT set username/password (authentication is via certificate)
 3. Connect to broker (host:port from credentials)
 4. On successful connection, proceed to topic subscription
 ```
@@ -228,7 +230,7 @@ Display a specific artwork immediately.
   "payload": {
     "post_id": 123,
     "storage_key": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    "art_url": "https://makapix.club/api/vault/a1b2c3d4-e5f6-7890-abcd-ef1234567890.png",
+    "art_url": "https://dev.makapix.club/api/vault/a1b2c3d4-e5f6-7890-abcd-ef1234567890.png",
     "canvas": "64x64"
   },
   "timestamp": "..."
@@ -301,30 +303,31 @@ Will QoS: 1
 ```
 1. Boot device
 2. Load stored player_key from non-volatile memory
-3. If player_key exists:
+3. If player_key exists AND certificates exist:
    - Load stored certificates (cert_pem, key_pem, ca_pem)
-   - Go to MQTT connection (step 4)
-4. If player_key does NOT exist:
+   - Go to MQTT connection (step 5)
+4. If player_key does NOT exist OR certificates missing:
    - Call POST /api/player/provision
    - Store player_key
    - Display registration_code
    - Poll GET /api/player/{player_key}/credentials every 5-10s
-   - When certificates received, store them
-   - Go to MQTT connection (step 4)
+   - When certificates received, store them securely
+   - Go to MQTT connection (step 5)
+5. Proceed to MQTT connection
 ```
 
 ### MQTT Connection Sequence
 
 ```
-1. Configure MQTT client:
-   - TLS with CA cert, client cert, client key
-   - Username = player_key
-   - Password = ""
+1. Configure MQTT client with mTLS:
+   - CA certificate for server verification
+   - Client certificate and private key for authentication
    - Client ID = "p3a-{player_key}"
    - Keep alive = 60s
    - Last Will = offline status message
+   - NO username/password (mTLS handles authentication)
 
-2. Connect to broker (makapix.club:8883)
+2. Connect to broker (dev.makapix.club:8883)
 
 3. On successful connection:
    - Subscribe to makapix/player/{player_key}/command (QoS 1)
@@ -380,11 +383,12 @@ While connected:
 ## 9. Security Considerations
 
 1. **Store certificates securely**: Use encrypted storage if available
-2. **Never expose private key**: Keep `key_pem` secret
+2. **Never expose private key**: Keep `key_pem` secret - it proves your device's identity
 3. **Verify server certificate**: Always verify broker certificate against CA
-4. **Use TLS**: Never connect without TLS encryption
+4. **Use mTLS**: Never connect without mutual TLS - it's required by the broker
 5. **Validate commands**: Verify command structure before executing
 6. **Sanitize URLs**: Validate art_url before downloading
+7. **Certificate renewal**: Monitor `cert_expires_at` and prompt user to renew via website before expiry
 
 ---
 
@@ -407,8 +411,8 @@ While connected:
 
 ## API Base URL
 
-Production: `https://makapix.club`
-Development: `https://dev.makapix.club` (if available)
+Production: `https://makapix.club` (not active yet)
+Development: `https://dev.makapix.club` (currently active)
 
 All API endpoints are under `/api/` prefix.
 
