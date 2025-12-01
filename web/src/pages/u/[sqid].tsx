@@ -43,7 +43,7 @@ interface PageResponse<T> {
 
 export default function UserProfilePage() {
   const router = useRouter();
-  const { id } = router.query;
+  const { sqid } = router.query;
   
   const [user, setUser] = useState<User | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -76,7 +76,7 @@ export default function UserProfilePage() {
 
   // Fetch user profile
   useEffect(() => {
-    if (!id || typeof id !== 'string') return;
+    if (!sqid || typeof sqid !== 'string') return;
 
     const fetchUser = async () => {
       setLoading(true);
@@ -87,7 +87,7 @@ export default function UserProfilePage() {
         const currentUserId = localStorage.getItem('user_id');
         const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
         
-        const response = await fetch(`${API_BASE_URL}/api/users/${id}`, { headers });
+        const response = await fetch(`${API_BASE_URL}/api/users/u/${sqid}`, { headers });
         
         if (!response.ok) {
           if (response.status === 404) {
@@ -100,13 +100,6 @@ export default function UserProfilePage() {
         }
         
         const data = await response.json();
-        
-        // Redirect to canonical URL if public_sqid is available
-        if (data.public_sqid) {
-          router.replace(`/u/${data.public_sqid}`);
-          return;
-        }
-        
         setUser(data);
         setEditHandle(data.handle);
         setEditBio(data.bio || '');
@@ -137,11 +130,11 @@ export default function UserProfilePage() {
     };
 
     fetchUser();
-  }, [id, API_BASE_URL]);
+  }, [sqid, API_BASE_URL]);
 
   // Load user's posts
   const loadPosts = useCallback(async (cursor: string | null = null) => {
-    if (!id || typeof id !== 'string') return;
+    if (!user) return;
     if (loadingRef.current || (cursor !== null && !hasMoreRef.current)) return;
     
     loadingRef.current = true;
@@ -151,7 +144,7 @@ export default function UserProfilePage() {
       const token = localStorage.getItem('access_token');
       const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
       
-      const url = `${API_BASE_URL}/api/posts?owner_id=${user?.id || id}&limit=20&sort=created_at&order=desc${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const url = `${API_BASE_URL}/api/posts?owner_id=${user.user_key}&limit=20&sort=created_at&order=desc${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       const response = await fetch(url, { headers });
       
       if (!response.ok) {
@@ -177,7 +170,7 @@ export default function UserProfilePage() {
       loadingRef.current = false;
       setPostsLoading(false);
     }
-  }, [id, API_BASE_URL]);
+  }, [user, API_BASE_URL]);
 
   // Load posts when user is loaded
   useEffect(() => {
@@ -188,20 +181,20 @@ export default function UserProfilePage() {
 
   // Load blog posts when user is loaded
   useEffect(() => {
-    if (user && id && typeof id === 'string') {
+    if (user) {
       loadBlogPosts();
     }
-  }, [user, id, API_BASE_URL]);
+  }, [user, API_BASE_URL]);
 
   // Load user's blog posts (stats are returned by the API)
   const loadBlogPosts = async () => {
-    if (!id || typeof id !== 'string') return;
+    if (!user) return;
     
     try {
       const token = localStorage.getItem('access_token');
       const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
       
-      const response = await fetch(`${API_BASE_URL}/api/users/${id}/blog-posts?limit=2`, { headers });
+      const response = await fetch(`${API_BASE_URL}/api/users/${user.user_key}/blog-posts?limit=2`, { headers });
       
       if (response.ok) {
         const data = await response.json();
@@ -320,7 +313,7 @@ export default function UserProfilePage() {
       const token = localStorage.getItem('access_token');
       if (!token) return;
       
-      await fetch(`${API_BASE_URL}/api/admin/users/${user.id}/auto-approval`, {
+      await fetch(`${API_BASE_URL}/api/admin/users/${user.user_key}/auto-approval`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -344,7 +337,7 @@ export default function UserProfilePage() {
       const token = localStorage.getItem('access_token');
       if (!token) return;
       
-      await fetch(`${API_BASE_URL}/api/admin/users/${user.id}/auto-approval`, {
+      await fetch(`${API_BASE_URL}/api/admin/users/${user.user_key}/auto-approval`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -372,7 +365,7 @@ export default function UserProfilePage() {
       const token = localStorage.getItem('access_token');
       if (!token) return;
       
-      await fetch(`${API_BASE_URL}/api/admin/users/${user.id}/ban`, {
+      await fetch(`${API_BASE_URL}/api/admin/users/${user.user_key}/ban`, {
         method: 'POST',
         headers: { 
           'Authorization': `Bearer ${token}`,
@@ -403,7 +396,7 @@ export default function UserProfilePage() {
       const token = localStorage.getItem('access_token');
       if (!token) return;
       
-      await fetch(`${API_BASE_URL}/api/admin/users/${user.id}/ban`, {
+      await fetch(`${API_BASE_URL}/api/admin/users/${user.user_key}/ban`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -724,7 +717,7 @@ export default function UserProfilePage() {
             <CardGrid 
               posts={posts} 
               API_BASE_URL={API_BASE_URL}
-              source={{ type: 'profile', id: user ? String(user.id) : (typeof id === 'string' ? id : undefined) }}
+              source={{ type: 'profile', id: user ? String(user.id) : undefined }}
               cursor={nextCursor}
             />
           )}

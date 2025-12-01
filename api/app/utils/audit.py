@@ -9,8 +9,11 @@ from sqlalchemy.orm import Session
 from .. import models
 
 
-# System user UUID for automated actions (hash checks, etc.)
-SYSTEM_USER_UUID = UUID("00000000-0000-0000-0000-000000000001")
+# System user key (UUID) for automated actions (hash checks, etc.)
+SYSTEM_USER_KEY = UUID("00000000-0000-0000-0000-000000000001")
+
+# Cached system user ID (integer) - populated on first access
+_system_user_id: int | None = None
 
 
 def ensure_system_user(db: Session) -> models.User:
@@ -21,10 +24,20 @@ def ensure_system_user(db: Session) -> models.User:
     Returns:
         The system user
     """
-    system_user = db.query(models.User).filter(models.User.id == SYSTEM_USER_UUID).first()
+    global _system_user_id
+    
+    # First try by cached integer ID
+    if _system_user_id is not None:
+        system_user = db.query(models.User).filter(models.User.id == _system_user_id).first()
+        if system_user:
+            return system_user
+    
+    # Try by user_key (UUID)
+    system_user = db.query(models.User).filter(models.User.user_key == SYSTEM_USER_KEY).first()
     if not system_user:
+        # Create the system user
         system_user = models.User(
-            id=SYSTEM_USER_UUID,
+            user_key=SYSTEM_USER_KEY,
             handle="system",
             email="system@notification.makapix.club",
             email_verified=True,
@@ -33,14 +46,29 @@ def ensure_system_user(db: Session) -> models.User:
             deactivated=False,
         )
         db.add(system_user)
+        db.flush()  # Get the ID
+        
+        # Generate public_sqid
+        from ..sqids_config import encode_user_id
+        system_user.public_sqid = encode_user_id(system_user.id)
+        
         db.commit()
         db.refresh(system_user)
+    
+    # Cache the ID
+    _system_user_id = system_user.id
     return system_user
+
+
+def get_system_user_id(db: Session) -> int:
+    """Get the system user's integer ID, creating system user if needed."""
+    system_user = ensure_system_user(db)
+    return system_user.id
 
 
 def log_moderation_action(
     db: Session,
-    actor_id: UUID,
+    actor_id: int,
     action: str,
     target_type: str | None = None,
     target_id: str | int | UUID | None = None,
@@ -52,7 +80,7 @@ def log_moderation_action(
     
     Args:
         db: Database session
-        actor_id: ID of the user performing the action
+        actor_id: ID of the user performing the action (integer)
         action: Action name (e.g., "ban_user", "hide_post", "promote_post")
         target_type: Type of target (e.g., "user", "post", "comment")
         target_id: ID of the target entity
@@ -63,7 +91,7 @@ def log_moderation_action(
         The created AuditLog entry
     """
     # Ensure system user exists if this is a system action
-    if actor_id == SYSTEM_USER_UUID:
+    if _system_user_id is not None and actor_id == _system_user_id:
         ensure_system_user(db)
     
     # Convert target_id to string for storage (supports both UUID and integer IDs)

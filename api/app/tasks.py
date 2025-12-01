@@ -459,11 +459,6 @@ def check_post_hash(self, post_id: str) -> dict[str, Any]:
         db.close()
 
 
-# System user UUID for automated actions (hash checks, etc.)
-# This is a special UUID that represents system/automated actions
-SYSTEM_USER_UUID = "00000000-0000-0000-0000-000000000001"
-
-
 @celery_app.task(name="app.tasks.periodic_check_post_hashes", bind=True)
 def periodic_check_post_hashes(self) -> dict[str, Any]:
     """
@@ -474,11 +469,12 @@ def periodic_check_post_hashes(self) -> dict[str, Any]:
     """
     from . import models
     from .db import SessionLocal
-    from .utils.audit import log_moderation_action, SYSTEM_USER_UUID
-    from uuid import UUID
+    from .utils.audit import log_moderation_action, get_system_user_id
     
     db = SessionLocal()
     try:
+        # Get system user ID for audit logging
+        system_user_id = get_system_user_id(db)
         # Query posts with expected_hash set, limit to reasonable batch size
         # Check posts that haven't been checked recently or are already non-conformant
         posts_to_check = db.query(models.Post).filter(
@@ -516,7 +512,7 @@ def periodic_check_post_hashes(self) -> dict[str, Any]:
                     try:
                         log_moderation_action(
                             db=db,
-                            actor_id=UUID(SYSTEM_USER_UUID),
+                            actor_id=system_user_id,
                             action="hash_mismatch_detected",
                             target_type="post",
                             target_id=post.id,

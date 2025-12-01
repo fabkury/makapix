@@ -33,7 +33,9 @@ class User(Base):
 
     __tablename__ = "users"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
+    user_key = Column(UUID(as_uuid=True), unique=True, nullable=False, default=uuid.uuid4, index=True)  # UUID used for legacy URLs
+    public_sqid = Column(String(16), unique=True, nullable=True, index=True)  # Sqids-encoded public ID (set after insert)
     handle = Column(String(50), unique=True, nullable=False, index=True)
     bio = Column(Text, nullable=True)
     website = Column(String(500), nullable=True)
@@ -82,7 +84,7 @@ class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     token_hash = Column(String(255), nullable=False, unique=True, index=True)
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     revoked = Column(Boolean, nullable=False, default=False, index=True)
@@ -101,7 +103,7 @@ class AuthIdentity(Base):
     __tablename__ = "auth_identities"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     
     # Provider identification
     provider = Column(String(50), nullable=False, index=True)  # "password", "github", "reddit", etc.
@@ -135,7 +137,7 @@ class EmailVerificationToken(Base):
     __tablename__ = "email_verification_tokens"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     token_hash = Column(String(255), nullable=False, unique=True, index=True)
     email = Column(String(255), nullable=False)  # Email being verified
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
@@ -155,7 +157,7 @@ class PasswordResetToken(Base):
     __tablename__ = "password_reset_tokens"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     token_hash = Column(String(255), nullable=False, unique=True, index=True)
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     used_at = Column(DateTime(timezone=True), nullable=True)
@@ -177,7 +179,7 @@ class Post(Base):
     storage_key = Column(UUID(as_uuid=True), unique=True, nullable=False, index=True)  # UUID used for vault lookup
     public_sqid = Column(String(16), unique=True, nullable=True, index=True)  # Sqids-encoded public ID (set after insert)
     kind = Column(String(20), nullable=False, default="art")  # Currently only "art"
-    owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     
     # Content
     title = Column(String(200), nullable=False)
@@ -228,7 +230,7 @@ class Comment(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     post_id = Column(Integer, ForeignKey("posts.id"), nullable=False, index=True)
-    author_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     author_ip = Column(String(45), nullable=True, index=True)  # For anonymous users
     parent_id = Column(UUID(as_uuid=True), ForeignKey("comments.id"), nullable=True, index=True)
     
@@ -261,7 +263,7 @@ class Playlist(Base):
     __tablename__ = "playlists"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
@@ -294,7 +296,7 @@ class Reaction(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     post_id = Column(Integer, ForeignKey("posts.id"), nullable=False, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     user_ip = Column(String(45), nullable=True, index=True)  # For anonymous users
     emoji = Column(String(20), nullable=False)
     
@@ -318,8 +320,8 @@ class Follow(Base):
     __tablename__ = "follows"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    follower_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
-    following_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    follower_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    following_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
@@ -337,7 +339,7 @@ class CategoryFollow(Base):
     __tablename__ = "category_follows"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     category = Column(String(50), nullable=False, index=True)  # e.g., "daily's-best"
     
     created_at = Column(
@@ -361,7 +363,7 @@ class BadgeGrant(Base):
     __tablename__ = "badge_grants"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     badge = Column(String(50), nullable=False)  # e.g., "early-adopter", "top-contributor"
     
     granted_at = Column(
@@ -382,7 +384,7 @@ class ReputationHistory(Base):
     __tablename__ = "reputation_history"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     delta = Column(Integer, nullable=False)
     reason = Column(String(200), nullable=True)
     
@@ -405,7 +407,7 @@ class Report(Base):
     __tablename__ = "reports"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    reporter_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    reporter_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     
     target_type = Column(String(20), nullable=False, index=True)  # user, post, comment
     target_id = Column(String(50), nullable=False, index=True)  # String to support both UUID and integer IDs
@@ -434,7 +436,7 @@ class AdminNote(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     post_id = Column(Integer, ForeignKey("posts.id"), nullable=False, index=True)
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     note = Column(Text, nullable=False)
     
     created_at = Column(
@@ -459,7 +461,7 @@ class Player(Base):
     player_key = Column(UUID(as_uuid=True), unique=True, nullable=False, default=uuid.uuid4, index=True)
     
     # Owner (nullable until registered)
-    owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     
     # Player identification
     name = Column(String(100), nullable=True)
@@ -535,7 +537,7 @@ class ConformanceCheck(Base):
     __tablename__ = "conformance_checks"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True)
     
     status = Column(String(50), nullable=False, default="ok")  # ok, missing_manifest, invalid_manifest, hotlinks_broken
     last_checked_at = Column(DateTime(timezone=True), nullable=True)
@@ -548,7 +550,7 @@ class RelayJob(Base):
     __tablename__ = "relay_jobs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     
     status = Column(String(20), nullable=False, default="queued", index=True)  # queued, running, committed, failed
     repo = Column(String(200), nullable=True)
@@ -569,7 +571,7 @@ class GitHubInstallation(Base):
     __tablename__ = "github_installations"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     installation_id = Column(BigInteger, nullable=False, unique=True, index=True)
     account_login = Column(String(100), nullable=False)
     account_type = Column(String(20), nullable=False)
@@ -588,7 +590,7 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    actor_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    actor_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     
     action = Column(String(100), nullable=False, index=True)
     target_type = Column(String(20), nullable=True)
@@ -618,7 +620,7 @@ class ViewEvent(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
-    viewer_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    viewer_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     
     # Viewer identification (for unique viewer tracking)
     viewer_ip_hash = Column(String(64), nullable=False)  # SHA256 hash of IP address
@@ -729,7 +731,7 @@ class SiteEvent(Base):
     
     # Visitor identification
     visitor_ip_hash = Column(String(64), nullable=False)  # SHA256 hash of IP address
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     
     # Device & geographic information
     device_type = Column(String(20), nullable=False, index=True)  # desktop, mobile, tablet
@@ -801,7 +803,7 @@ class BlogPost(Base):
     __tablename__ = "blog_posts"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     
     # Content
     title = Column(String(200), nullable=False)
@@ -840,7 +842,7 @@ class BlogPostComment(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     blog_post_id = Column(UUID(as_uuid=True), ForeignKey("blog_posts.id"), nullable=False, index=True)
-    author_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     author_ip = Column(String(45), nullable=True, index=True)  # For anonymous users
     parent_id = Column(UUID(as_uuid=True), ForeignKey("blog_post_comments.id"), nullable=True, index=True)
     
@@ -874,7 +876,7 @@ class BlogPostReaction(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     blog_post_id = Column(UUID(as_uuid=True), ForeignKey("blog_posts.id"), nullable=False, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     user_ip = Column(String(45), nullable=True, index=True)  # For anonymous users
     emoji = Column(String(20), nullable=False)
     

@@ -58,10 +58,22 @@ def list_posts(
     query = db.query(models.Post).options(joinedload(models.Post.owner))
     
     is_moderator = "moderator" in current_user.roles or "owner" in current_user.roles
-    is_viewing_own_posts = owner_id and owner_id == current_user.id
     
+    # Convert owner_id (UUID user_key) to integer user id if provided
+    owner_user_id = None
     if owner_id:
-        query = query.filter(models.Post.owner_id == owner_id)
+        owner_user = db.query(models.User).filter(models.User.user_key == owner_id).first()
+        if owner_user:
+            owner_user_id = owner_user.id
+            is_viewing_own_posts = owner_user_id == current_user.id
+        else:
+            # User not found, return empty results
+            owner_user_id = -1  # Will result in no matches
+    else:
+        is_viewing_own_posts = False
+    
+    if owner_user_id is not None:
+        query = query.filter(models.Post.owner_id == owner_user_id)
     
     # Apply visibility filters
     if visible_only:

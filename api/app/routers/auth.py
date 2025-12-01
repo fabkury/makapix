@@ -100,6 +100,12 @@ def register(
     )
     db.add(user)
     try:
+        db.flush()  # Get the user ID without committing
+        
+        # Generate public_sqid from the assigned id
+        from ..sqids_config import encode_user_id
+        user.public_sqid = encode_user_id(user.id)
+        
         db.commit()
         db.refresh(user)
     except IntegrityError as e:
@@ -204,8 +210,8 @@ def login(
     check_user_can_authenticate(user)
     
     # Generate tokens
-    access_token = create_access_token(user.id)
-    refresh_token = create_refresh_token(user.id, db)
+    access_token = create_access_token(user.user_key)
+    refresh_token = create_refresh_token(user.user_key, db)
     
     # Calculate token expiration time
     from ..auth import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
@@ -216,6 +222,9 @@ def login(
         token=access_token,
         refresh_token=refresh_token,
         user_id=user.id,
+        user_key=user.user_key,
+        public_sqid=user.public_sqid,
+        user_handle=user.handle,
         expires_at=expires_at,
     )
 
@@ -848,6 +857,12 @@ def github_callback(
             )
             db.add(user)
             try:
+                db.flush()  # Get the user ID without committing
+                
+                # Generate public_sqid from the assigned id
+                from ..sqids_config import encode_user_id
+                user.public_sqid = encode_user_id(user.id)
+                
                 db.commit()
                 db.refresh(user)
                 logger.info(f"Successfully created user: {user.id} ({user.handle})")
@@ -934,8 +949,8 @@ def github_callback(
         # Generate JWT tokens
         logger.info(f"Generating JWT tokens for user: {user.id}")
         try:
-            makapix_access_token = create_access_token(user.id)
-            makapix_refresh_token = create_refresh_token(user.id, db)
+            makapix_access_token = create_access_token(user.user_key)
+            makapix_refresh_token = create_refresh_token(user.user_key, db)
             logger.info(f"Successfully generated tokens for user: {user.id}")
         except Exception as e:
             logger.error(f"Failed to generate tokens: {e}", exc_info=True)
@@ -1144,6 +1159,12 @@ def exchange_github_code(payload: schemas.GithubExchangeRequest, db: Session = D
             roles=["user"],
         )
         db.add(user)
+        db.flush()  # Get the user ID without committing
+        
+        # Generate public_sqid from the assigned id
+        from ..sqids_config import encode_user_id
+        user.public_sqid = encode_user_id(user.id)
+        
         db.commit()
         db.refresh(user)
         
@@ -1181,8 +1202,8 @@ def exchange_github_code(payload: schemas.GithubExchangeRequest, db: Session = D
             db.commit()
     
     # Generate JWT tokens
-    access_token = create_access_token(user.id)
-    refresh_token = create_refresh_token(user.id, db)
+    access_token = create_access_token(user.user_key)
+    refresh_token = create_refresh_token(user.user_key, db)
     
     # Calculate token expiration time
     from ..auth import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
@@ -1193,6 +1214,9 @@ def exchange_github_code(payload: schemas.GithubExchangeRequest, db: Session = D
         token=access_token,
         refresh_token=refresh_token,
         user_id=user.id,
+        user_key=user.user_key,
+        public_sqid=user.public_sqid,
+        user_handle=user.handle,
         expires_at=expires_at,
     )
 
@@ -1216,8 +1240,8 @@ def refresh_token(payload: schemas.RefreshTokenRequest, db: Session = Depends(ge
     revoke_refresh_token(payload.refresh_token, db)
     
     # Generate new tokens
-    access_token = create_access_token(user.id)
-    new_refresh_token = create_refresh_token(user.id, db)
+    access_token = create_access_token(user.user_key)
+    new_refresh_token = create_refresh_token(user.user_key, db)
     
     # Calculate token expiration time
     from ..auth import JWT_ACCESS_TOKEN_EXPIRE_MINUTES

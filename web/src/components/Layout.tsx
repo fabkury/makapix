@@ -92,9 +92,11 @@ export default function Layout({ children, title, description }: LayoutProps) {
       if (event.data && event.data.type === 'OAUTH_SUCCESS') {
         const { tokens } = event.data;
         if (tokens) {
-          localStorage.setItem('access_token', tokens.access_token);
+          localStorage.setItem('access_token', tokens.access_token || tokens.token);
           localStorage.setItem('refresh_token', tokens.refresh_token || '');
-          localStorage.setItem('user_id', tokens.user_id);
+          localStorage.setItem('user_id', String(tokens.user_id));
+          localStorage.setItem('user_key', tokens.user_key || '');
+          localStorage.setItem('public_sqid', tokens.public_sqid || '');
           localStorage.setItem('user_handle', tokens.user_handle || '');
           
           // Reload the page to update authentication state

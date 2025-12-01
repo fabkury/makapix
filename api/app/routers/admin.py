@@ -37,7 +37,8 @@ def ban_user(
     """
     from datetime import datetime, timedelta, timezone
     
-    user = db.query(models.User).filter(models.User.id == id).first()
+    # Look up by user_key (UUID)
+    user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
@@ -54,7 +55,7 @@ def ban_user(
         actor_id=moderator.id,
         action="ban_user",
         target_type="user",
-        target_id=id,
+        target_id=user.id,
         reason_code=payload.reason_code,
         note=payload.note or payload.reason,
     )
@@ -71,7 +72,8 @@ def unban_user(
     """
     Unban user (moderator only).
     """
-    user = db.query(models.User).filter(models.User.id == id).first()
+    # Look up by user_key (UUID)
+    user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
@@ -84,7 +86,7 @@ def unban_user(
         actor_id=moderator.id,
         action="unban_user",
         target_type="user",
-        target_id=id,
+        target_id=user.id,
     )
 
 
@@ -104,7 +106,8 @@ def promote_moderator(
     Only authenticated users (with github_user_id) can be promoted.
     Owner cannot be demoted from moderator role.
     """
-    user = db.query(models.User).filter(models.User.id == id).first()
+    # Look up by user_key (UUID)
+    user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
@@ -118,7 +121,7 @@ def promote_moderator(
     if "owner" in user.roles and "moderator" not in user.roles:
         user.roles = user.roles + ["moderator"]
         db.commit()
-        return schemas.PromoteModeratorResponse(user_id=id, role="moderator")
+        return schemas.PromoteModeratorResponse(user_id=user.id, role="moderator")
     
     if "moderator" not in user.roles:
         user.roles = user.roles + ["moderator"]
@@ -130,10 +133,10 @@ def promote_moderator(
             actor_id=_owner.id,
             action="promote_moderator",
             target_type="user",
-            target_id=id,
+            target_id=user.id,
         )
     
-    return schemas.PromoteModeratorResponse(user_id=id, role="moderator")
+    return schemas.PromoteModeratorResponse(user_id=user.id, role="moderator")
 
 
 @router.delete(
@@ -151,7 +154,8 @@ def demote_moderator(
     Owner cannot be demoted from moderator role.
     Owner role cannot be removed.
     """
-    user = db.query(models.User).filter(models.User.id == id).first()
+    # Look up by user_key (UUID)
+    user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
@@ -175,7 +179,7 @@ def demote_moderator(
             actor_id=_owner.id,
             action="demote_moderator",
             target_type="user",
-            target_id=id,
+            target_id=user.id,
         )
 
 
@@ -188,7 +192,8 @@ def hide_user(
     """
     Hide user profile (moderator only).
     """
-    user = db.query(models.User).filter(models.User.id == id).first()
+    # Look up by user_key (UUID)
+    user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
@@ -201,7 +206,7 @@ def hide_user(
         actor_id=moderator.id,
         action="hide_user",
         target_type="user",
-        target_id=id,
+        target_id=user.id,
     )
 
 
@@ -214,7 +219,8 @@ def unhide_user(
     """
     Unhide user profile (moderator only).
     """
-    user = db.query(models.User).filter(models.User.id == id).first()
+    # Look up by user_key (UUID)
+    user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
@@ -227,7 +233,7 @@ def unhide_user(
         actor_id=moderator.id,
         action="unhide_user",
         target_type="user",
-        target_id=id,
+        target_id=user.id,
     )
 
 
@@ -248,7 +254,8 @@ def grant_auto_approval(
     approved for public visibility, appearing immediately in Recent Artworks
     and search results without requiring moderator review.
     """
-    user = db.query(models.User).filter(models.User.id == id).first()
+    # Look up by user_key (UUID)
+    user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
@@ -261,10 +268,10 @@ def grant_auto_approval(
         actor_id=moderator.id,
         action="grant_auto_approval",
         target_type="user",
-        target_id=id,
+        target_id=user.id,
     )
     
-    return schemas.AutoApprovalResponse(user_id=id, auto_public_approval=True)
+    return schemas.AutoApprovalResponse(user_id=user.id, auto_public_approval=True)
 
 
 @router.delete(
@@ -282,7 +289,8 @@ def revoke_auto_approval(
     After revocation, the user's newly uploaded artworks will require
     moderator approval before appearing in Recent Artworks and search results.
     """
-    user = db.query(models.User).filter(models.User.id == id).first()
+    # Look up by user_key (UUID)
+    user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
@@ -295,10 +303,10 @@ def revoke_auto_approval(
         actor_id=moderator.id,
         action="revoke_auto_approval",
         target_type="user",
-        target_id=id,
+        target_id=user.id,
     )
     
-    return schemas.AutoApprovalResponse(user_id=id, auto_public_approval=False)
+    return schemas.AutoApprovalResponse(user_id=user.id, auto_public_approval=False)
 
 
 @router.get("/recent-profiles", response_model=schemas.Page[schemas.UserFull])

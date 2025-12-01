@@ -197,10 +197,54 @@ def create_user(
         roles=["user"],
     )
     db.add(user)
+    db.flush()  # Get the user ID without committing
+    
+    # Generate public_sqid from the assigned id
+    from ..sqids_config import encode_user_id
+    
+    user.public_sqid = encode_user_id(user.id)
     db.commit()
     db.refresh(user)
     
     return schemas.UserFull.model_validate(user)
+
+
+@router.get("/u/{public_sqid}", response_model=schemas.UserPublic | schemas.UserFull)
+def get_user_by_sqid(
+    public_sqid: str,
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_optional),
+) -> schemas.UserPublic | schemas.UserFull:
+    """
+    Get user by public Sqids ID (canonical URL).
+    
+    This is the canonical URL for user profiles sitewide.
+    """
+    # Decode the Sqids ID
+    from ..sqids_config import decode_user_sqid
+    
+    user_id = decode_user_sqid(public_sqid)
+    if user_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    # Query user
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    # Verify public_sqid matches (safety check)
+    if user.public_sqid != public_sqid:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    # Check if user is hidden and current user doesn't have permission to see it
+    if user.hidden_by_user and (not current_user or not check_ownership(user.id, current_user)):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    # Return UserFull for moderators/owners, UserPublic for others
+    if current_user and ("moderator" in current_user.roles or "owner" in current_user.roles):
+        return schemas.UserFull.model_validate(user)
+    else:
+        return schemas.UserPublic.model_validate(user)
 
 
 @router.get("/{id}", response_model=schemas.UserPublic | schemas.UserFull)
@@ -210,9 +254,13 @@ def get_user(
     current_user: models.User | None = Depends(get_current_user_optional),
 ) -> schemas.UserPublic | schemas.UserFull:
     """
-    Get user by ID.
+    Get user by user_key (UUID).
+    
+    Legacy endpoint - returns user data including public_sqid for redirect purposes.
+    The canonical URL is /u/{public_sqid}.
     """
-    user = db.query(models.User).filter(models.User.id == id).first()
+    # Look up by user_key (UUID)
+    user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
@@ -237,7 +285,8 @@ def update_user(
     """
     Update user fields.
     """
-    user = db.query(models.User).filter(models.User.id == id).first()
+    # Look up by user_key (UUID)
+    user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
@@ -306,7 +355,8 @@ def delete_user_account(
     TODO: Consider anonymizing user data instead of deletion
     TODO: Cascade hide all user's posts and comments
     """
-    user = db.query(models.User).filter(models.User.id == id).first()
+    # Look up by user_key (UUID)
+    user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     
@@ -329,14 +379,19 @@ def get_user_recent_blog_posts(
     
     Used for displaying recent blog posts panel on user profile pages.
     """
+    # Look up user by user_key (UUID)
+    user = db.query(models.User).filter(models.User.user_key == id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
     query = (
         db.query(models.BlogPost)
         .options(joinedload(models.BlogPost.owner))
-        .filter(models.BlogPost.owner_id == id)
+        .filter(models.BlogPost.owner_id == user.id)
     )
     
     # Only show visible posts for non-owners/non-moderators
-    is_viewing_own_posts = isinstance(current_user, models.User) and current_user.id == id
+    is_viewing_own_posts = isinstance(current_user, models.User) and current_user.id == user.id
     is_moderator = (
         isinstance(current_user, models.User)
         and ("moderator" in current_user.roles or "owner" in current_user.roles)
@@ -368,14 +423,19 @@ def get_user_blog_posts(
     
     Used for displaying blog posts on user profile pages.
     """
+    # Look up user by user_key (UUID)
+    user = db.query(models.User).filter(models.User.user_key == id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
     query = (
         db.query(models.BlogPost)
         .options(joinedload(models.BlogPost.owner))
-        .filter(models.BlogPost.owner_id == id)
+        .filter(models.BlogPost.owner_id == user.id)
     )
     
     # Always show user's own posts on their profile, even if not publicly visible
-    is_viewing_own_posts = isinstance(current_user, models.User) and current_user.id == id
+    is_viewing_own_posts = isinstance(current_user, models.User) and current_user.id == user.id
     is_moderator = (
         isinstance(current_user, models.User)
         and ("moderator" in current_user.roles or "owner" in current_user.roles)

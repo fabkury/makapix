@@ -71,12 +71,23 @@ def create_access_token(user_id: uuid.UUID, expires_in_seconds: int | None = Non
     return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
-def create_refresh_token(user_id: uuid.UUID, db: Session, expires_in_days: int | None = None) -> str:
+def create_refresh_token(user_key: uuid.UUID, db: Session, expires_in_days: int | None = None) -> str:
     """
     Create a refresh token for a user and store it in the database.
+    
+    Args:
+        user_key: The user's UUID (user_key field)
+        db: Database session
+        expires_in_days: Token expiration in days
     """
     if expires_in_days is None:
         expires_in_days = JWT_REFRESH_TOKEN_EXPIRE_DAYS
+    
+    # Look up user to get integer ID
+    from . import models
+    user = db.query(models.User).filter(models.User.user_key == user_key).first()
+    if not user:
+        raise ValueError(f"User not found with user_key: {user_key}")
     
     # Generate secure random token
     token = secrets.token_urlsafe(32)
@@ -87,9 +98,8 @@ def create_refresh_token(user_id: uuid.UUID, db: Session, expires_in_days: int |
     expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=expires_in_days)
     
     # Store in database
-    from . import models
     refresh_token = models.RefreshToken(
-        user_id=user_id,
+        user_id=user.id,  # Use integer id
         token_hash=token_hash,
         expires_at=expires_at
     )
@@ -174,10 +184,10 @@ async def get_current_user(
                 detail="Invalid token: missing user_id"
             )
         
-        user_id = uuid.UUID(user_id_str)
+        user_key = uuid.UUID(user_id_str)
         
-        # Query database for user
-        user = db.query(models.User).filter(models.User.id == user_id).first()
+        # Query database for user by user_key (UUID stored in token)
+        user = db.query(models.User).filter(models.User.user_key == user_key).first()
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -297,7 +307,7 @@ def ensure_authenticated_user(user: models.User, db: Session) -> None:
         )
 
 
-def check_ownership(resource_owner_id: uuid.UUID, current_user: models.User) -> bool:
+def check_ownership(resource_owner_id: int, current_user: models.User) -> bool:
     """
     Check if the current user owns a resource.
     
@@ -314,7 +324,7 @@ def check_ownership(resource_owner_id: uuid.UUID, current_user: models.User) -> 
     return False
 
 
-def require_ownership(resource_owner_id: uuid.UUID, current_user: models.User) -> None:
+def require_ownership(resource_owner_id: int, current_user: models.User) -> None:
     """
     Require that the current user owns a resource or is a moderator.
     

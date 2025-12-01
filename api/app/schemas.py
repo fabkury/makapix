@@ -76,7 +76,9 @@ class BadgeGrant(BaseModel):
 class UserPublic(BaseModel):
     """Public user profile."""
 
-    id: UUID
+    id: int
+    user_key: UUID  # UUID for legacy URLs (/users/{user_key})
+    public_sqid: str | None = None  # Sqids-encoded public ID for canonical URLs (/u/{public_sqid})
     handle: str
     bio: str | None = None
     website: str | None = None
@@ -157,7 +159,7 @@ class Post(BaseModel):
     storage_key: UUID  # UUID used for vault lookup
     public_sqid: str  # Sqids-encoded public ID (max 16 chars)
     kind: Literal["art"]
-    owner_id: UUID
+    owner_id: int
     title: str
     description: str | None = None
     hashtags: list[str] = []
@@ -226,7 +228,7 @@ class PublicVisibilityResponse(BaseModel):
 class AutoApprovalResponse(BaseModel):
     """Response for auto-approval privilege toggle."""
 
-    user_id: UUID
+    user_id: int
     auto_public_approval: bool
 
 
@@ -239,7 +241,7 @@ class Playlist(BaseModel):
     """Playlist of posts."""
 
     id: UUID
-    owner_id: UUID
+    owner_id: int
     title: str
     description: str | None = None
     post_ids: list[int] = []  # Changed from UUID to int
@@ -389,7 +391,7 @@ class BlogPost(BaseModel):
     """Blog post with Markdown content."""
 
     id: UUID
-    owner_id: UUID
+    owner_id: int
     title: str
     body: str  # Markdown content
     image_urls: list[str] = []
@@ -736,7 +738,10 @@ class OAuthTokens(BaseModel):
 
     token: str
     refresh_token: str | None = None
-    user_id: UUID
+    user_id: int
+    user_key: UUID  # UUID for legacy URL building
+    public_sqid: str | None = None  # Sqids for canonical URLs
+    user_handle: str | None = None  # Handle for display
     expires_at: datetime
 
 
@@ -784,7 +789,7 @@ class RegisterResponse(BaseModel):
     """User registration response - email verification required."""
 
     message: str = "Please check your email to verify your account"
-    user_id: UUID
+    user_id: int
     email: str
     handle: str  # User's generated handle
 
@@ -943,7 +948,7 @@ class PromotePostResponse(BaseModel):
 class CategoryFollow(BaseModel):
     """Category follow relationship."""
 
-    user_id: UUID
+    user_id: int
     category: str
     created_at: datetime
 
@@ -997,7 +1002,7 @@ class HideRequest(BaseModel):
 class PromoteModeratorResponse(BaseModel):
     """Promote moderator response."""
 
-    user_id: UUID
+    user_id: int
     role: Literal["moderator"]
 
 

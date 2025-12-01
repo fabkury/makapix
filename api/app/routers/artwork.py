@@ -174,3 +174,47 @@ def download_by_storage_key(
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
+
+@router.get("/u/{public_sqid}", response_model=schemas.UserPublic | schemas.UserFull)
+def get_user_by_sqid_canonical(
+    public_sqid: str,
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_optional),
+) -> schemas.UserPublic | schemas.UserFull:
+    """
+    Get user by public Sqids ID (canonical URL).
+    
+    This is the canonical URL for user profiles sitewide.
+    Returns UserFull if viewing own profile, UserPublic otherwise.
+    """
+    from ..sqids_config import decode_user_sqid
+    
+    user_id = decode_user_sqid(public_sqid)
+    if user_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    # Query user with badges
+    user = (
+        db.query(models.User)
+        .options(joinedload(models.User.badges))
+        .filter(models.User.id == user_id)
+        .first()
+    )
+    
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    # Check visibility - use same logic as users router
+    is_moderator = current_user and ("moderator" in current_user.roles or "owner" in current_user.roles)
+    is_own_profile = current_user and current_user.id == user.id
+    
+    if not is_moderator and not is_own_profile:
+        if user.hidden_by_user or user.hidden_by_mod or user.non_conformant or user.deactivated:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        if user.banned_until:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    # Return full profile if viewing own profile, public otherwise
+    if is_own_profile or is_moderator:
+        return schemas.UserFull.model_validate(user)
+    return schemas.UserPublic.model_validate(user)
