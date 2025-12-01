@@ -105,7 +105,7 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
           return;
         }
 
-        const response = await fetch(`${API_BASE_URL}/api/posts/${postId}/stats`, {
+        const response = await fetch(`${API_BASE_URL}/api/post/${postId}/stats`, {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
           },

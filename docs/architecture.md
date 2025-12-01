@@ -67,7 +67,7 @@
 ## Data Flow Examples
 
 1. **Create Post**
-   - Web client POST `/api/posts` (through Caddy).
+   - Web client POST `/api/post` (through Caddy).
    - FastAPI validates payload, stores via SQLAlchemy.
    - Response includes persisted post.
 

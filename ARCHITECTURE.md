@@ -182,16 +182,16 @@ The API is the central nervous system of Makapix, handling all business logic an
 | Router | Endpoints | Purpose |
 |--------|-----------|---------|
 | **auth** | `/auth/*` | Authentication (login, logout, refresh) |
-| **users** | `/users/*` | User management |
-| **profiles** | `/profiles/*` | Public profile views |
-| **posts** | `/posts/*` | Post CRUD, listing, filtering |
-| **playlists** | `/playlists/*` | Playlist management |
-| **comments** | `/comments/*` | Comment CRUD |
-| **reactions** | `/reactions/*` | Emoji reactions |
-| **reports** | `/reports/*` | Abuse reporting |
-| **badges** | `/badges/*` | Badge system |
-| **reputation** | `/reputation/*` | Reputation management |
-| **categories** | `/categories/*` | Content categorization |
+| **user** | `/user/*` | User management |
+| **profile** | `/profile/*` | Public profile views |
+| **post** | `/post/*` | Post CRUD, listing, filtering |
+| **playlist** | `/playlist/*` | Playlist management |
+| **comment** | `/post/*/comments` | Comment CRUD |
+| **reaction** | `/post/*/reactions` | Emoji reactions |
+| **report** | `/report/*` | Abuse reporting |
+| **badge** | `/badge/*` | Badge system |
+| **reputation** | `/user/*/reputation` | Reputation management |
+| **category** | `/category/*` | Content categorization |
 | **search** | `/search/*` | Full-text search |
 | **devices** | `/devices/*` | Physical player management |
 | **mqtt** | `/mqtt/*` | MQTT credential issuance |
@@ -241,7 +241,7 @@ Modern React-based frontend with server-side rendering capabilities.
 | **Home** | `/` | Landing page, promoted content feed |
 | **Recent** | `/recent` | Latest posts feed |
 | **Search** | `/search` | Search interface |
-| **Post Detail** | `/posts/[id]` | Individual post view |
+| **Post Detail** | `/p/[sqid]` | Individual post view (canonical) |
 | **Publish** | `/publish` | Upload artwork |
 | **Mod Dashboard** | `/mod-dashboard` | Moderation tools |
 | **Owner Dashboard** | `/owner-dashboard` | Owner controls |

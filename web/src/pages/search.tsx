@@ -387,7 +387,7 @@ function SearchTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any
             {userResults.map((result) => (
               <Link
                 key={result.user.id}
-                href={`/users/${result.user.id}`}
+                href={`/user/${result.user.user_key}`}
                 className="user-card"
               >
                 <div className="user-avatar">
@@ -1180,7 +1180,7 @@ function UsersTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any 
         throw new Error('Not authenticated');
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/users/browse?${params.toString()}`, {
+      const response = await fetch(`${API_BASE_URL}/api/user/browse?${params.toString()}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -1350,7 +1350,7 @@ function UsersTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any 
                 return (
                   <Link 
                     key={user.id} 
-                    href={`/users/${user.id}`}
+                    href={`/user/${user.user_key}`}
                     className="user-card"
                   >
                     <div className="user-avatar-container">

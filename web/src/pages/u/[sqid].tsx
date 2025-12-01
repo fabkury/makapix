@@ -87,7 +87,7 @@ export default function UserProfilePage() {
         const currentUserId = localStorage.getItem('user_id');
         const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
         
-        const response = await fetch(`${API_BASE_URL}/api/users/u/${sqid}`, { headers });
+        const response = await fetch(`${API_BASE_URL}/api/user/u/${sqid}`, { headers });
         
         if (!response.ok) {
           if (response.status === 404) {
@@ -144,7 +144,7 @@ export default function UserProfilePage() {
       const token = localStorage.getItem('access_token');
       const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
       
-      const url = `${API_BASE_URL}/api/posts?owner_id=${user.user_key}&limit=20&sort=created_at&order=desc${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const url = `${API_BASE_URL}/api/post?owner_id=${user.user_key}&limit=20&sort=created_at&order=desc${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       const response = await fetch(url, { headers });
       
       if (!response.ok) {
@@ -194,7 +194,7 @@ export default function UserProfilePage() {
       const token = localStorage.getItem('access_token');
       const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
       
-      const response = await fetch(`${API_BASE_URL}/api/users/${user.user_key}/blog-posts?limit=2`, { headers });
+      const response = await fetch(`${API_BASE_URL}/api/user/${user.user_key}/blog-post?limit=2`, { headers });
       
       if (response.ok) {
         const data = await response.json();
@@ -259,7 +259,7 @@ export default function UserProfilePage() {
         return;
       }
       
-      const response = await fetch(`${API_BASE_URL}/api/users/${user.user_key}`, {
+      const response = await fetch(`${API_BASE_URL}/api/user/${user.user_key}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -313,13 +313,13 @@ export default function UserProfilePage() {
       const token = localStorage.getItem('access_token');
       if (!token) return;
       
-      await fetch(`${API_BASE_URL}/api/admin/users/${user.user_key}/auto-approval`, {
+      await fetch(`${API_BASE_URL}/api/admin/user/${user.user_key}/auto-approval`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
       // Refresh user data
-      const response = await fetch(`${API_BASE_URL}/api/users/${user.user_key}`, {
+      const response = await fetch(`${API_BASE_URL}/api/user/${user.user_key}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
@@ -337,13 +337,13 @@ export default function UserProfilePage() {
       const token = localStorage.getItem('access_token');
       if (!token) return;
       
-      await fetch(`${API_BASE_URL}/api/admin/users/${user.user_key}/auto-approval`, {
+      await fetch(`${API_BASE_URL}/api/admin/user/${user.user_key}/auto-approval`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
       // Refresh user data
-      const response = await fetch(`${API_BASE_URL}/api/users/${user.user_key}`, {
+      const response = await fetch(`${API_BASE_URL}/api/user/${user.user_key}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
@@ -365,7 +365,7 @@ export default function UserProfilePage() {
       const token = localStorage.getItem('access_token');
       if (!token) return;
       
-      await fetch(`${API_BASE_URL}/api/admin/users/${user.user_key}/ban`, {
+      await fetch(`${API_BASE_URL}/api/admin/user/${user.user_key}/ban`, {
         method: 'POST',
         headers: { 
           'Authorization': `Bearer ${token}`,
@@ -375,7 +375,7 @@ export default function UserProfilePage() {
       });
       
       // Refresh user data
-      const response = await fetch(`${API_BASE_URL}/api/users/${user.user_key}`, {
+      const response = await fetch(`${API_BASE_URL}/api/user/${user.user_key}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
@@ -396,13 +396,13 @@ export default function UserProfilePage() {
       const token = localStorage.getItem('access_token');
       if (!token) return;
       
-      await fetch(`${API_BASE_URL}/api/admin/users/${user.user_key}/ban`, {
+      await fetch(`${API_BASE_URL}/api/admin/user/${user.user_key}/ban`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
       // Refresh user data
-      const response = await fetch(`${API_BASE_URL}/api/users/${user.user_key}`, {
+      const response = await fetch(`${API_BASE_URL}/api/user/${user.user_key}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
@@ -579,7 +579,7 @@ export default function UserProfilePage() {
                   <Link href="/blog/write" className="write-blog-btn">
                     ✍️ Write Blog
                   </Link>
-                  <Link href={`/users/${user.user_key}/players`} className="players-btn">
+                  <Link href={`/user/${user.user_key}/player`} className="players-btn">
                     📺 Players
                   </Link>
                   <button 

@@ -39,17 +39,17 @@ def on_connect(client, userdata, flags, rc, properties=None):
         # Subscribe to user-specific notifications
         user_id = userdata.get("user_id")
         if user_id:
-            user_topic = f"makapix/posts/new/user/{user_id}/+"
+            user_topic = f"makapix/post/new/user/{user_id}/+"
             client.subscribe(user_topic, qos=1)
             logger.info(f"Subscribed to {user_topic}")
         
         # Subscribe to category notifications
-        category_topic = "makapix/posts/new/category/+/+"
+        category_topic = "makapix/post/new/category/+/+"
         client.subscribe(category_topic, qos=1)
         logger.info(f"Subscribed to {category_topic}")
         
         # Subscribe to generic notifications (for debugging)
-        generic_topic = "makapix/posts/new/+"
+        generic_topic = "makapix/post/new/+"
         client.subscribe(generic_topic, qos=1)
         logger.info(f"Subscribed to {generic_topic}")
     else:

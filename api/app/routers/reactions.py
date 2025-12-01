@@ -13,7 +13,7 @@ from .. import models, schemas
 from ..auth import AnonymousUser, get_current_user, get_current_user_or_anonymous
 from ..deps import get_db
 
-router = APIRouter(prefix="/posts", tags=["Reactions"])
+router = APIRouter(prefix="/post", tags=["Reactions"])
 
 
 @router.get("/{id}/reactions", response_model=schemas.ReactionTotals)

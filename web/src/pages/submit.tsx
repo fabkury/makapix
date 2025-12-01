@@ -194,7 +194,7 @@ export default function SubmitPage() {
       formData.append('description', description.trim());
       formData.append('hashtags', hashtags.trim());
       
-      const response = await fetch(`${API_BASE_URL}/api/posts/upload`, {
+      const response = await fetch(`${API_BASE_URL}/api/post/upload`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

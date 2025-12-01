@@ -18,7 +18,7 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
 @router.post(
-    "/users/{id}/ban",
+    "/user/{id}/ban",
     response_model=schemas.BanResponse,
     status_code=status.HTTP_201_CREATED,
 )
@@ -63,7 +63,7 @@ def ban_user(
     return schemas.BanResponse(status="banned", until=until)
 
 
-@router.delete("/users/{id}/ban", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/user/{id}/ban", status_code=status.HTTP_204_NO_CONTENT)
 def unban_user(
     id: UUID,
     db: Session = Depends(get_db),
@@ -91,7 +91,7 @@ def unban_user(
 
 
 @router.post(
-    "/users/{id}/moderator",
+    "/user/{id}/moderator",
     response_model=schemas.PromoteModeratorResponse,
     status_code=status.HTTP_201_CREATED,
 )
@@ -140,7 +140,7 @@ def promote_moderator(
 
 
 @router.delete(
-    "/users/{id}/moderator",
+    "/user/{id}/moderator",
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def demote_moderator(
@@ -183,7 +183,7 @@ def demote_moderator(
         )
 
 
-@router.post("/users/{id}/hide", status_code=status.HTTP_201_CREATED)
+@router.post("/user/{id}/hide", status_code=status.HTTP_201_CREATED)
 def hide_user(
     id: UUID,
     db: Session = Depends(get_db),
@@ -210,7 +210,7 @@ def hide_user(
     )
 
 
-@router.delete("/users/{id}/hide", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/user/{id}/hide", status_code=status.HTTP_204_NO_CONTENT)
 def unhide_user(
     id: UUID,
     db: Session = Depends(get_db),
@@ -238,7 +238,7 @@ def unhide_user(
 
 
 @router.post(
-    "/users/{id}/auto-approval",
+    "/user/{id}/auto-approval",
     response_model=schemas.AutoApprovalResponse,
     status_code=status.HTTP_201_CREATED,
 )
@@ -275,7 +275,7 @@ def grant_auto_approval(
 
 
 @router.delete(
-    "/users/{id}/auto-approval",
+    "/user/{id}/auto-approval",
     response_model=schemas.AutoApprovalResponse,
 )
 def revoke_auto_approval(
@@ -438,7 +438,7 @@ def get_audit_log(
     )
 
 
-@router.get("/owner/users", response_model=schemas.Page[schemas.UserFull])
+@router.get("/owner/user", response_model=schemas.Page[schemas.UserFull])
 def list_authenticated_users(
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
@@ -471,7 +471,7 @@ def list_authenticated_users(
     )
 
 
-@router.get("/owner/users/anonymous", response_model=schemas.Page[schemas.UserPublic])
+@router.get("/owner/user/anonymous", response_model=schemas.Page[schemas.UserPublic])
 def list_anonymous_users(
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),

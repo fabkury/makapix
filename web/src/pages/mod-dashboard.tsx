@@ -206,7 +206,7 @@ export default function ModDashboardPage() {
   const approvePublicVisibility = async (postId: string) => {
     try {
       const accessToken = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/api/posts/${postId}/approve-public`, {
+      const response = await fetch(`${API_BASE_URL}/api/post/${postId}/approve-public`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
@@ -222,7 +222,7 @@ export default function ModDashboardPage() {
   const rejectPublicVisibility = async (postId: string) => {
     try {
       const accessToken = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/api/posts/${postId}/approve-public`, {
+      const response = await fetch(`${API_BASE_URL}/api/post/${postId}/approve-public`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
@@ -241,7 +241,7 @@ export default function ModDashboardPage() {
     try {
       const accessToken = localStorage.getItem('access_token');
       const cursor = reset ? null : reportsCursor;
-      const url = `${API_BASE_URL}/api/reports?status=open&limit=50${cursor ? `&cursor=${cursor}` : ''}`;
+      const url = `${API_BASE_URL}/api/report?status=open&limit=50${cursor ? `&cursor=${cursor}` : ''}`;
       const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
       if (response.ok) {
         const data: PageResponse<Report> = await response.json();
@@ -335,7 +335,7 @@ export default function ModDashboardPage() {
   const loadAdminNotes = async (postId: string) => {
     try {
       const accessToken = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/api/posts/${postId}/admin-notes`, {
+      const response = await fetch(`${API_BASE_URL}/api/post/${postId}/admin-notes`, {
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
       if (response.ok) {
@@ -350,7 +350,7 @@ export default function ModDashboardPage() {
   const resolveReport = async (reportId: string, action: string) => {
     try {
       const accessToken = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/api/reports/${reportId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/report/${reportId}`, {
         method: 'PATCH',
         headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'resolved', action_taken: action, notes: `Action: ${action}` })
@@ -366,7 +366,7 @@ export default function ModDashboardPage() {
   const promotePost = async (postId: string) => {
     try {
       const accessToken = localStorage.getItem('access_token');
-      await fetch(`${API_BASE_URL}/api/posts/${postId}/promote`, {
+      await fetch(`${API_BASE_URL}/api/post/${postId}/promote`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ category: 'frontpage' })
@@ -380,7 +380,7 @@ export default function ModDashboardPage() {
   const hidePost = async (postId: string) => {
     try {
       const accessToken = localStorage.getItem('access_token');
-      await fetch(`${API_BASE_URL}/api/posts/${postId}/hide`, {
+      await fetch(`${API_BASE_URL}/api/post/${postId}/hide`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ by: 'mod' })
@@ -394,7 +394,7 @@ export default function ModDashboardPage() {
   const unhidePost = async (postId: string) => {
     try {
       const accessToken = localStorage.getItem('access_token');
-      await fetch(`${API_BASE_URL}/api/posts/${postId}/unhide`, {
+      await fetch(`${API_BASE_URL}/api/post/${postId}/unhide`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ by: 'mod' })
@@ -408,7 +408,7 @@ export default function ModDashboardPage() {
   const demotePost = async (postId: string) => {
     try {
       const accessToken = localStorage.getItem('access_token');
-      await fetch(`${API_BASE_URL}/api/posts/${postId}/demote`, {
+      await fetch(`${API_BASE_URL}/api/post/${postId}/demote`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
@@ -424,7 +424,7 @@ export default function ModDashboardPage() {
     }
     try {
       const accessToken = localStorage.getItem('access_token');
-      await fetch(`${API_BASE_URL}/api/posts/${postId}`, {
+      await fetch(`${API_BASE_URL}/api/post/${postId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
@@ -437,7 +437,7 @@ export default function ModDashboardPage() {
   const banUser = async (userId: string) => {
     try {
       const accessToken = localStorage.getItem('access_token');
-      await fetch(`${API_BASE_URL}/api/admin/users/${userId}/ban`, {
+      await fetch(`${API_BASE_URL}/api/admin/user/${userId}/ban`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ duration_days: 7 })
@@ -451,7 +451,7 @@ export default function ModDashboardPage() {
   const trustUser = async (userId: string) => {
     try {
       const accessToken = localStorage.getItem('access_token');
-      await fetch(`${API_BASE_URL}/api/admin/users/${userId}/auto-approval`, {
+      await fetch(`${API_BASE_URL}/api/admin/user/${userId}/auto-approval`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
@@ -464,7 +464,7 @@ export default function ModDashboardPage() {
   const distrustUser = async (userId: string) => {
     try {
       const accessToken = localStorage.getItem('access_token');
-      await fetch(`${API_BASE_URL}/api/admin/users/${userId}/auto-approval`, {
+      await fetch(`${API_BASE_URL}/api/admin/user/${userId}/auto-approval`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
@@ -479,7 +479,7 @@ export default function ModDashboardPage() {
     setAddingNote(true);
     try {
       const accessToken = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/api/posts/${selectedPostId}/admin-notes`, {
+      const response = await fetch(`${API_BASE_URL}/api/post/${selectedPostId}/admin-notes`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ note: noteText })
@@ -659,7 +659,7 @@ export default function ModDashboardPage() {
                             {post.owner.avatar_url && (
                               <img src={post.owner.avatar_url} alt={post.owner.handle} className="author-avatar-small" />
                             )}
-                            <Link href={`/users/${post.owner.id}`} className="author-link">
+                            <Link href={`/user/${post.owner.user_key}`} className="author-link">
                               {post.owner.handle}
                             </Link>
                           </div>
@@ -703,7 +703,7 @@ export default function ModDashboardPage() {
                     <div key={profile.id} className="item-card">
                       <div className="item-info">
                         <h3>
-                          <Link href={`/users/${profile.id}`} className="profile-link">
+                          <Link href={`/user/${profile.user_key}`} className="profile-link">
                             {profile.avatar_url && (
                               <img src={profile.avatar_url} alt={profile.handle} className="profile-avatar" />
                             )}

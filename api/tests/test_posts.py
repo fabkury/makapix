@@ -53,7 +53,7 @@ def test_post(test_user: User, db: Session) -> Post:
 def test_create_post_requires_auth():
     """Test that creating a post requires authentication."""
     client = TestClient(app)
-    response = client.post("/posts", json={
+    response = client.post("/post", json={
         "title": "Test Post",
         "art_url": "https://example.com/test.png",
         "canvas": "64x64",
@@ -68,7 +68,7 @@ def test_create_post_with_valid_data(test_user: User):
     client = TestClient(app)
     token = create_access_token(test_user.id)
     
-    response = client.post("/posts", 
+    response = client.post("/post", 
         headers={"Authorization": f"Bearer {token}"},
         json={
             "title": "Test Art",
@@ -92,7 +92,7 @@ def test_create_post_invalid_canvas(test_user: User):
     client = TestClient(app)
     token = create_access_token(test_user.id)
     
-    response = client.post("/posts", 
+    response = client.post("/post", 
         headers={"Authorization": f"Bearer {token}"},
         json={
             "title": "Test Art",
@@ -111,7 +111,7 @@ def test_create_post_file_too_large(test_user: User):
     client = TestClient(app)
     token = create_access_token(test_user.id)
     
-    response = client.post("/posts", 
+    response = client.post("/post", 
         headers={"Authorization": f"Bearer {token}"},
         json={
             "title": "Test Art",
@@ -128,7 +128,7 @@ def test_create_post_file_too_large(test_user: User):
 def test_list_posts_public():
     """Test listing posts without authentication."""
     client = TestClient(app)
-    response = client.get("/posts")
+    response = client.get("/post")
     
     assert response.status_code == 200
     data = response.json()
@@ -139,7 +139,7 @@ def test_list_posts_public():
 def test_list_posts_with_hashtag_filter(test_post: Post):
     """Test listing posts with hashtag filter."""
     client = TestClient(app)
-    response = client.get("/posts?hashtag=test")
+    response = client.get("/post?hashtag=test")
     
     assert response.status_code == 200
     data = response.json()
@@ -152,7 +152,7 @@ def test_list_posts_with_hashtag_filter(test_post: Post):
 def test_get_post_by_storage_key(test_post: Post):
     """Test getting a post by storage key (legacy route, redirects to canonical URL)."""
     client = TestClient(app, follow_redirects=False)
-    response = client.get(f"/posts/{test_post.storage_key}")
+    response = client.get(f"/post/{test_post.storage_key}")
     
     # Legacy route should redirect to canonical URL
     assert response.status_code == 301
@@ -162,7 +162,7 @@ def test_get_post_by_storage_key(test_post: Post):
 def test_get_nonexistent_post():
     """Test getting a nonexistent post."""
     client = TestClient(app)
-    response = client.get("/posts/00000000-0000-0000-0000-000000000000")
+    response = client.get("/post/00000000-0000-0000-0000-000000000000")
     
     assert response.status_code == 404
 
@@ -170,7 +170,7 @@ def test_get_nonexistent_post():
 def test_update_post_requires_auth(test_post: Post):
     """Test that updating a post requires authentication."""
     client = TestClient(app)
-    response = client.patch(f"/posts/{test_post.id}", json={
+    response = client.patch(f"/post/{test_post.id}", json={
         "title": "Updated Title"
     })
     
@@ -214,7 +214,7 @@ def test_update_post_requires_ownership(test_user: User, db: Session):
     client = TestClient(app)
     token = create_access_token(test_user.id)
     
-    response = client.patch(f"/posts/{post.id}", 
+    response = client.patch(f"/post/{post.id}", 
         headers={"Authorization": f"Bearer {token}"},
         json={"title": "Hacked Title"}
     )
@@ -227,7 +227,7 @@ def test_update_post_success(test_user: User, test_post: Post):
     client = TestClient(app)
     token = create_access_token(test_user.id)
     
-    response = client.patch(f"/posts/{test_post.id}", 
+    response = client.patch(f"/post/{test_post.id}", 
         headers={"Authorization": f"Bearer {token}"},
         json={"title": "Updated Title"}
     )
@@ -240,7 +240,7 @@ def test_update_post_success(test_user: User, test_post: Post):
 def test_delete_post_requires_auth(test_post: Post):
     """Test that deleting a post requires authentication."""
     client = TestClient(app)
-    response = client.delete(f"/posts/{test_post.id}")
+    response = client.delete(f"/post/{test_post.id}")
     
     assert response.status_code == 401
 
@@ -282,7 +282,7 @@ def test_delete_post_requires_ownership(test_user: User, db: Session):
     client = TestClient(app)
     token = create_access_token(test_user.id)
     
-    response = client.delete(f"/posts/{post.id}", 
+    response = client.delete(f"/post/{post.id}", 
         headers={"Authorization": f"Bearer {token}"}
     )
     
@@ -294,12 +294,12 @@ def test_delete_post_success(test_user: User, test_post: Post):
     client = TestClient(app)
     token = create_access_token(test_user.id)
     
-    response = client.delete(f"/posts/{test_post.id}", 
+    response = client.delete(f"/post/{test_post.id}", 
         headers={"Authorization": f"Bearer {token}"}
     )
     
     assert response.status_code == 204
     
     # Verify post is soft deleted (use storage_key for the GET route)
-    response = client.get(f"/posts/{test_post.storage_key}")
+    response = client.get(f"/post/{test_post.storage_key}")
     assert response.status_code == 404

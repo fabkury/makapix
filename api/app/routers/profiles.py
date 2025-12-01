@@ -16,7 +16,7 @@ from ..services.auth_identities import get_user_identities
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/profiles", tags=["Profiles"])
+router = APIRouter(prefix="/profile", tags=["Profiles"])
 
 
 @router.post("/connect")

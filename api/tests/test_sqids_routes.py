@@ -165,7 +165,7 @@ def test_get_post_by_sqid_hidden_moderator(test_moderator: User, test_hidden_pos
 def test_legacy_route_redirects(test_post: Post):
     """Test that legacy /posts/{storage_key} redirects to /p/{public_sqid}."""
     client = TestClient(app)
-    response = client.get(f"/posts/{test_post.storage_key}", follow_redirects=False)
+    response = client.get(f"/post/{test_post.storage_key}", follow_redirects=False)
     
     assert response.status_code == 301
     assert response.headers["Location"] == f"/p/{test_post.public_sqid}"
@@ -176,7 +176,7 @@ def test_legacy_route_not_found():
     import uuid
     client = TestClient(app)
     fake_uuid = uuid.uuid4()
-    response = client.get(f"/posts/{fake_uuid}")
+    response = client.get(f"/post/{fake_uuid}")
     
     assert response.status_code == 404
 
@@ -184,7 +184,7 @@ def test_legacy_route_not_found():
 def test_legacy_route_hidden_anonymous(test_hidden_post: Post):
     """Test that legacy route returns 404 for hidden posts (anonymous)."""
     client = TestClient(app)
-    response = client.get(f"/posts/{test_hidden_post.storage_key}")
+    response = client.get(f"/post/{test_hidden_post.storage_key}")
     
     assert response.status_code == 404
 
@@ -195,7 +195,7 @@ def test_create_post_generates_sqid(test_user: User, db: Session):
     token = create_access_token(test_user.id)
     
     response = client.post(
-        "/posts",
+        "/post",
         headers={"Authorization": f"Bearer {token}"},
         json={
             "title": "New Art",

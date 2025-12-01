@@ -48,7 +48,7 @@ export default function BlogPostPage() {
         const token = localStorage.getItem('access_token');
         const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
         
-        const response = await fetch(`${API_BASE_URL}/api/blog-posts/${id}`, { headers });
+        const response = await fetch(`${API_BASE_URL}/api/blog-post/${id}`, { headers });
         
         if (!response.ok) {
           if (response.status === 404) {
@@ -109,7 +109,7 @@ export default function BlogPostPage() {
     }
     
     try {
-      const response = await fetch(`${API_BASE_URL}/api/blog-posts/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/blog-post/${id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
@@ -196,7 +196,7 @@ export default function BlogPostPage() {
           <div className="blog-post-header">
             <h1 className="blog-post-title">{post.title}</h1>
             <div className="blog-post-meta">
-              <Link href={`/users/${post.owner.id}`} className="author-link">
+              <Link href={`/user/${post.owner.user_key}`} className="author-link">
                 {post.owner.handle}
               </Link>
               <span className="meta-separator">•</span>

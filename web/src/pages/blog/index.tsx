@@ -63,7 +63,7 @@ export default function BlogFeedPage() {
     setError(null);
     
     try {
-      const url = `${API_BASE_URL}/api/blog-posts?limit=20&sort=${sortBy}&order=desc${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const url = `${API_BASE_URL}/api/blog-post?limit=20&sort=${sortBy}&order=desc${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       const headers: HeadersInit = {};
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;

@@ -16,7 +16,7 @@ from ..services.stats import get_post_stats
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/posts", tags=["Statistics"])
+router = APIRouter(prefix="/post", tags=["Statistics"])
 
 
 @router.get("/{id}/stats", response_model=schemas.PostStatsResponse)

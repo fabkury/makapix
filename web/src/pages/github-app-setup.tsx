@@ -35,7 +35,7 @@ export default function GitHubAppSetupPage() {
     try {
       setMessage('Binding GitHub App installation to your account...');
       
-      const response = await fetch(`${API_BASE_URL}/api/profiles/bind-github-app`, {
+      const response = await fetch(`${API_BASE_URL}/api/profile/bind-github-app`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

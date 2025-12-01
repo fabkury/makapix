@@ -12,7 +12,7 @@ from ..auth import require_moderator
 from ..deps import get_db
 from ..utils.audit import log_moderation_action
 
-router = APIRouter(prefix="/badges", tags=["Badges"])
+router = APIRouter(prefix="/badge", tags=["Badges"])
 
 
 @router.get("", response_model=dict[str, list[schemas.BadgeDefinition]])
@@ -44,7 +44,7 @@ def list_badges() -> dict[str, list[schemas.BadgeDefinition]]:
     return {"items": badges}
 
 
-@router.get("/users/{id}/badges", response_model=dict[str, list[schemas.BadgeGrant]])
+@router.get("/user/{id}/badge", response_model=dict[str, list[schemas.BadgeGrant]])
 def list_user_badges(id: UUID, db: Session = Depends(get_db)) -> dict[str, list[schemas.BadgeGrant]]:
     """List badges for a user."""
     badges = db.query(models.BadgeGrant).filter(models.BadgeGrant.user_id == id).all()
@@ -53,7 +53,7 @@ def list_user_badges(id: UUID, db: Session = Depends(get_db)) -> dict[str, list[
 
 
 @router.post(
-    "/users/{id}/badges",
+    "/user/{id}/badge",
     status_code=status.HTTP_201_CREATED,
     tags=["Badges", "Admin"],
 )
@@ -94,7 +94,7 @@ def grant_badge(
 
 
 @router.delete(
-    "/users/{id}/badges/{badge}",
+    "/user/{id}/badge/{badge}",
     status_code=status.HTTP_204_NO_CONTENT,
     tags=["Badges", "Admin"],
 )

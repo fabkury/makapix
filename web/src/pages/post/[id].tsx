@@ -5,7 +5,7 @@ import Layout from '../../components/Layout';
 /**
  * Legacy post route - redirects to canonical /p/[sqid] URL.
  * 
- * This page handles old URLs like /posts/{storage_key} (UUID format)
+ * This page handles old URLs like /post/{storage_key} (UUID format)
  * and redirects to the new canonical URL /p/{public_sqid}.
  */
 export default function LegacyPostRedirect() {
@@ -41,7 +41,7 @@ export default function LegacyPostRedirect() {
           headers['Authorization'] = `Bearer ${accessToken}`;
         }
         
-        const apiUrl = getApiUrl(`/posts/${id}`);
+        const apiUrl = getApiUrl(`/post/${id}`);
         console.log('Fetching from:', apiUrl);
         
         // Fetch from the legacy API endpoint - it returns JSON with public_sqid

@@ -13,7 +13,7 @@ from ..auth import AnonymousUser, get_current_user, get_current_user_or_anonymou
 from ..deps import get_db
 from ..utils.audit import log_moderation_action
 
-router = APIRouter(prefix="/posts", tags=["Comments"])
+router = APIRouter(prefix="/post", tags=["Comments"])
 
 
 @router.get("/{id}/comments", response_model=schemas.Page[schemas.Comment])

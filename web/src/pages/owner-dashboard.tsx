@@ -91,8 +91,8 @@ export default function OwnerDashboardPage() {
     try {
       const accessToken = localStorage.getItem('access_token');
       const url = cursor 
-        ? `${API_BASE_URL}/api/admin/owner/users?cursor=${encodeURIComponent(cursor)}&limit=50`
-        : `${API_BASE_URL}/api/admin/owner/users?limit=50`;
+        ? `${API_BASE_URL}/api/admin/owner/user?cursor=${encodeURIComponent(cursor)}&limit=50`
+        : `${API_BASE_URL}/api/admin/owner/user?limit=50`;
 
       const response = await fetch(url, {
         headers: { 'Authorization': `Bearer ${accessToken}` }
@@ -119,8 +119,8 @@ export default function OwnerDashboardPage() {
     try {
       const accessToken = localStorage.getItem('access_token');
       const url = cursor 
-        ? `${API_BASE_URL}/api/admin/owner/users/anonymous?cursor=${encodeURIComponent(cursor)}&limit=50`
-        : `${API_BASE_URL}/api/admin/owner/users/anonymous?limit=50`;
+        ? `${API_BASE_URL}/api/admin/owner/user/anonymous?cursor=${encodeURIComponent(cursor)}&limit=50`
+        : `${API_BASE_URL}/api/admin/owner/user/anonymous?limit=50`;
 
       const response = await fetch(url, {
         headers: { 'Authorization': `Bearer ${accessToken}` }
@@ -155,7 +155,7 @@ export default function OwnerDashboardPage() {
   const promoteModerator = async (userId: string) => {
     try {
       const accessToken = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/api/admin/users/${userId}/moderator`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/user/${userId}/moderator`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' }
       });
@@ -175,7 +175,7 @@ export default function OwnerDashboardPage() {
   const demoteModerator = async (userId: string) => {
     try {
       const accessToken = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/api/admin/users/${userId}/moderator`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/user/${userId}/moderator`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });

@@ -11,7 +11,7 @@ from .. import models, schemas
 from ..auth import get_current_user, require_moderator, require_ownership
 from ..deps import get_db
 
-router = APIRouter(prefix="/playlists", tags=["Playlists"])
+router = APIRouter(prefix="/playlist", tags=["Playlists"])
 
 
 def validate_post_visibility(post_ids: list[int], db: Session) -> list[int]:

@@ -14,7 +14,7 @@ from ..utils.handles import validate_handle, is_handle_taken
 from ..pagination import apply_cursor_filter, create_page_response, decode_cursor, encode_cursor
 from ..services.blog_post_stats import annotate_blog_posts_with_counts
 
-router = APIRouter(prefix="/users", tags=["Users"])
+router = APIRouter(prefix="/user", tags=["Users"])
 
 
 @router.get("/browse", response_model=schemas.Page[schemas.UserPublic])

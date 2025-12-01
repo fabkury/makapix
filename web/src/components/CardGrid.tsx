@@ -83,7 +83,7 @@ export default function CardGrid({ posts, API_BASE_URL, source, cursor = null, p
     }));
 
     try {
-      const url = `${API_BASE_URL}/api/posts/${postId}/reactions/👍`;
+      const url = `${API_BASE_URL}/api/post/${postId}/reactions/👍`;
       const method = currentlyLiked ? 'DELETE' : 'PUT';
       
       const response = await fetch(url, {
@@ -283,7 +283,7 @@ export default function CardGrid({ posts, API_BASE_URL, source, cursor = null, p
             </div>
             <div className="author-bar">
               <div className="author-line">
-                <Link href={`/users/${post.owner_id}`} className="author-handle" style={{ fontSize: '0.7rem', color: 'white', display: 'flex', alignItems: 'center' }}>
+                <Link href={`/user/${post.owner?.user_key}`} className="author-handle" style={{ fontSize: '0.7rem', color: 'white', display: 'flex', alignItems: 'center' }}>
                   {post.owner?.avatar_url && (
                     <img src={post.owner.avatar_url} alt="" className="author-avatar" />
                   )}

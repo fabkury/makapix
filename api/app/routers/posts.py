@@ -35,7 +35,7 @@ from ..vault import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/posts", tags=["Posts"])
+router = APIRouter(prefix="/post", tags=["Posts"])
 
 
 @router.get("", response_model=schemas.Page[schemas.Post])

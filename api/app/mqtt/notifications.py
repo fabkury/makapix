@@ -53,7 +53,7 @@ def publish_new_post_notification(post_id: int, db: Session) -> None:
     # Publish to user-specific topics for each follower
     for follower in followers:
         follower_id = follower.follower_id
-        topic = f"makapix/posts/new/user/{follower_id}/{post_id}"
+        topic = f"makapix/post/new/user/{follower_id}/{post_id}"
         
         success = publish(topic, payload, qos=1, retain=False)
         if success:
@@ -62,7 +62,7 @@ def publish_new_post_notification(post_id: int, db: Session) -> None:
             logger.error(f"Failed to publish notification to follower {follower_id} for post {post_id}")
     
     # Also publish to generic topic (for monitoring/debugging)
-    generic_topic = f"makapix/posts/new/{post_id}"
+    generic_topic = f"makapix/post/new/{post_id}"
     publish(generic_topic, payload, qos=1, retain=False)
     
     logger.info(f"Published new post notification for post {post_id} to {len(followers)} followers")
@@ -114,7 +114,7 @@ def publish_category_promotion_notification(post_id: int, category: str, db: Ses
     # Publish to category-specific topics for each follower
     for follower in category_followers:
         follower_id = follower.user_id
-        topic = f"makapix/posts/new/category/{category}/{post_id}"
+        topic = f"makapix/post/new/category/{category}/{post_id}"
         
         success = publish(topic, payload, qos=1, retain=False)
         if success:
@@ -123,7 +123,7 @@ def publish_category_promotion_notification(post_id: int, category: str, db: Ses
             logger.error(f"Failed to publish category notification to follower {follower_id} for category {category}, post {post_id}")
     
     # Also publish to generic category topic
-    generic_topic = f"makapix/posts/new/category/{category}/{post_id}"
+    generic_topic = f"makapix/post/new/category/{category}/{post_id}"
     publish(generic_topic, payload, qos=1, retain=False)
     
     logger.info(f"Published category promotion notification for category {category}, post {post_id} to {len(category_followers)} followers")

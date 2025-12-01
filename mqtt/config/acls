@@ -6,9 +6,9 @@
 user api-server
 topic write makapix/player/+/command
 topic read makapix/player/+/status
-topic write makapix/posts/new/#
-topic write makapix/posts/new/user/#
-topic write makapix/posts/new/category/#
+topic write makapix/post/new/#
+topic write makapix/post/new/user/#
+topic write makapix/post/new/category/#
 topic read $SYS/#
 
 # Registered players - use player_key (UUID) as MQTT username
@@ -19,8 +19,8 @@ pattern write makapix/player/%u/status
 # Web clients - can only subscribe (read) to topics
 # Pattern: user_{user_id} for authenticated web clients
 user user_%
-topic read makapix/posts/new/user/#
-topic read makapix/posts/new/category/#
+topic read makapix/post/new/user/#
+topic read makapix/post/new/category/#
 topic read $SYS/#
 
 # Default: deny all (this should be last)

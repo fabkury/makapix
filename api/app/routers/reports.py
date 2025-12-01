@@ -13,7 +13,7 @@ from ..deps import get_db
 from ..utils.audit import log_moderation_action
 from ..pagination import apply_cursor_filter, create_page_response
 
-router = APIRouter(prefix="/reports", tags=["Reports"])
+router = APIRouter(prefix="/report", tags=["Reports"])
 
 
 @router.post(

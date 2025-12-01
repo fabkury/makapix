@@ -116,8 +116,8 @@ export default function Layout({ children, title, description }: LayoutProps) {
     if (item.matchPaths) {
       return item.matchPaths.some(path => {
         if (path === '/') return currentPath === '/';
-        // For /users, match exactly (not /users/[id])
-        if (path === '/users') return currentPath === '/users';
+        // For /user, match exactly (not /user/[id])
+        if (path === '/user') return currentPath === '/user';
         // For /hashtags, match exactly (not /hashtags/[tag])
         if (path === '/hashtags') return currentPath === '/hashtags';
         // For search, also match /hashtags and /users when redirected
@@ -155,7 +155,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
             </Link>
             
             {isLoggedIn && userId && (
-              <Link href={`/users/${userId}`} className={`user-profile-link ${router.pathname === '/users/[id]' && router.query.id === userId ? 'active' : ''}`} aria-label="My Profile">
+              <Link href={`/user/${userId}`} className={`user-profile-link ${router.pathname === '/user/[id]' && router.query.id === userId ? 'active' : ''}`} aria-label="My Profile">
                 <div className="user-icon">
                   {avatarUrl ? (
                     <img 

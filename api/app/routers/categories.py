@@ -11,7 +11,7 @@ from .. import models, schemas
 from ..auth import get_current_user
 from ..deps import get_db
 
-router = APIRouter(prefix="/categories", tags=["Categories"])
+router = APIRouter(prefix="/category", tags=["Categories"])
 
 
 @router.post(

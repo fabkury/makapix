@@ -43,7 +43,7 @@ export default function WriteBlogPostPage() {
             return;
           }
           
-          const response = await fetch(`${API_BASE_URL}/api/blog-posts/${edit}`, {
+          const response = await fetch(`${API_BASE_URL}/api/blog-post/${edit}`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           
@@ -107,7 +107,7 @@ export default function WriteBlogPostPage() {
         const formData = new FormData();
         formData.append('image', file);
         
-        const response = await fetch(`${API_BASE_URL}/api/blog-posts/${edit}/images`, {
+        const response = await fetch(`${API_BASE_URL}/api/blog-post/${edit}/images`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${token}` },
           body: formData,
@@ -154,7 +154,7 @@ export default function WriteBlogPostPage() {
         const formData = new FormData();
         formData.append('image', file);
         
-        const response = await fetch(`${API_BASE_URL}/api/blog-posts/${edit}/images`, {
+        const response = await fetch(`${API_BASE_URL}/api/blog-post/${edit}/images`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${token}` },
           body: formData,
@@ -206,8 +206,8 @@ export default function WriteBlogPostPage() {
     
     try {
       const url = isEditMode 
-        ? `${API_BASE_URL}/api/blog-posts/${edit}`
-        : `${API_BASE_URL}/api/blog-posts`;
+        ? `${API_BASE_URL}/api/blog-post/${edit}`
+        : `${API_BASE_URL}/api/blog-post`;
       
       const method = isEditMode ? 'PATCH' : 'POST';
       

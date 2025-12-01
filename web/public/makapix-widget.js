@@ -274,7 +274,7 @@
     async loadWidgetData() {
       // Load both reactions and comments in a single API request
       try {
-        const response = await apiRequest(`/posts/${this.postId}/widget-data`);
+        const response = await apiRequest(`/post/${this.postId}/widget-data`);
         if (response.ok) {
           const data = await response.json();
           
@@ -398,7 +398,7 @@
     
     async loadReactions() {
       try {
-        const response = await apiRequest(`/posts/${this.postId}/reactions`);
+        const response = await apiRequest(`/post/${this.postId}/reactions`);
         if (response.ok) {
           const data = await response.json();
           this.reactions = {
@@ -458,7 +458,7 @@
       try {
         if (isMine) {
           // Remove reaction
-          await apiRequest(`/posts/${this.postId}/reactions/${encodeURIComponent(emoji)}`, {
+          await apiRequest(`/post/${this.postId}/reactions/${encodeURIComponent(emoji)}`, {
             method: 'DELETE'
           });
         } else {
@@ -468,7 +468,7 @@
             return;
           }
           
-          await apiRequest(`/posts/${this.postId}/reactions/${encodeURIComponent(emoji)}`, {
+          await apiRequest(`/post/${this.postId}/reactions/${encodeURIComponent(emoji)}`, {
             method: 'PUT'
           });
         }
@@ -483,7 +483,7 @@
     
     async loadComments() {
       try {
-        const response = await apiRequest(`/posts/${this.postId}/comments`);
+        const response = await apiRequest(`/post/${this.postId}/comments`);
         if (response.ok) {
           const data = await response.json();
           // Filter out invalid comments (depth > 2 or missing required fields)
@@ -756,7 +756,7 @@
     
     async deleteComment(commentId) {
       try {
-        const response = await apiRequest(`/posts/comments/${commentId}`, {
+        const response = await apiRequest(`/post/comments/${commentId}`, {
           method: 'DELETE'
         });
         
@@ -797,7 +797,7 @@
         const payload = { body };
         if (parentId) payload.parent_id = parentId;
         
-        const response = await apiRequest(`/posts/${this.postId}/comments`, {
+        const response = await apiRequest(`/post/${this.postId}/comments`, {
           method: 'POST',
           body: JSON.stringify(payload)
         });

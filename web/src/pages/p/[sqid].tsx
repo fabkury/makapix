@@ -198,7 +198,7 @@ export default function PostPage() {
       const token = localStorage.getItem('access_token');
       const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
       
-      const url = `${API_BASE_URL}/api/posts?owner_id=${ownerId}&limit=100&sort=created_at&order=desc`;
+      const url = `${API_BASE_URL}/api/post?owner_id=${ownerId}&limit=100&sort=created_at&order=desc`;
       const response = await fetch(url, { headers });
       
       if (!response.ok) return;
@@ -340,7 +340,7 @@ export default function PostPage() {
 
   // Build API URL based on source type
   const buildApiUrl = (source: NavigationContext['source'], cursor: string | null): string => {
-    const base = `${API_BASE_URL}/api/posts`;
+    const base = `${API_BASE_URL}/api/post`;
     const params = new URLSearchParams();
     params.append('limit', '20');
     params.append('sort', 'created_at');
@@ -489,7 +489,7 @@ export default function PostPage() {
     
     try {
       // Use the integer ID for API operations
-      const response = await fetch(`${API_BASE_URL}/api/posts/${post.id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/post/${post.id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${accessToken}`
@@ -528,7 +528,7 @@ export default function PostPage() {
     }
     
     try {
-      const url = `${API_BASE_URL}/api/posts/${post.id}/hide`;
+      const url = `${API_BASE_URL}/api/post/${post.id}/hide`;
       const method = isHidden ? 'DELETE' : 'POST';
       
       const response = await fetch(url, {
@@ -594,7 +594,7 @@ export default function PostPage() {
       .filter(tag => tag.length > 0);
     
     try {
-      const response = await fetch(`${API_BASE_URL}/api/posts/${post.id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/post/${post.id}`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -641,7 +641,7 @@ export default function PostPage() {
     if (!accessToken) return;
     
     try {
-      const url = `${API_BASE_URL}/api/posts/${post.id}/hide`;
+      const url = `${API_BASE_URL}/api/post/${post.id}/hide`;
       const method = isHidden ? 'DELETE' : 'POST';
       
       const response = await fetch(url, {
@@ -689,7 +689,7 @@ export default function PostPage() {
     if (!accessToken) return;
     
     try {
-      const url = `${API_BASE_URL}/api/posts/${post.id}/promote`;
+      const url = `${API_BASE_URL}/api/post/${post.id}/promote`;
       const method = isPromoted ? 'DELETE' : 'POST';
       
       const response = await fetch(url, {
@@ -737,7 +737,7 @@ export default function PostPage() {
     if (!accessToken) return;
     
     try {
-      const response = await fetch(`${API_BASE_URL}/api/posts/${post.id}/approve-public`, {
+      const response = await fetch(`${API_BASE_URL}/api/post/${post.id}/approve-public`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`
@@ -792,7 +792,7 @@ export default function PostPage() {
     if (!accessToken) return;
     
     try {
-      const response = await fetch(`${API_BASE_URL}/api/posts/${post.id}/permanent`, {
+      const response = await fetch(`${API_BASE_URL}/api/post/${post.id}/permanent`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${accessToken}`
@@ -918,7 +918,7 @@ export default function PostPage() {
           
           <div className="post-meta">
             {post.owner && (
-              <Link href={`/users/${post.owner.id}`} className="author-link">
+              <Link href={`/user/${post.owner.user_key}`} className="author-link">
                 {post.owner.display_name || post.owner.handle}
               </Link>
             )}

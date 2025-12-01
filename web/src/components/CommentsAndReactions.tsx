@@ -35,26 +35,26 @@ const EMOJI_OPTIONS = ['👍', '❤️', '🔥', '😊', '⭐'];
 // API endpoint helpers
 const getReactionsEndpoint = (contentType: 'artwork' | 'blog', contentId: string | number): string => {
   return contentType === 'artwork'
-    ? `/api/posts/${contentId}/reactions`
-    : `/api/blog-posts/${contentId}/reactions`;
+    ? `/api/post/${contentId}/reactions`
+    : `/api/blog-post/${contentId}/reactions`;
 };
 
 const getCommentsEndpoint = (contentType: 'artwork' | 'blog', contentId: string | number): string => {
   return contentType === 'artwork'
-    ? `/api/posts/${contentId}/comments`
-    : `/api/blog-posts/${contentId}/comments`;
+    ? `/api/post/${contentId}/comments`
+    : `/api/blog-post/${contentId}/comments`;
 };
 
 const getCommentDeleteEndpoint = (contentType: 'artwork' | 'blog', commentId: string): string => {
   return contentType === 'artwork'
-    ? `/api/posts/comments/${commentId}`
-    : `/api/blog-posts/comments/${commentId}`;
+    ? `/api/post/comments/${commentId}`
+    : `/api/blog-post/comments/${commentId}`;
 };
 
 const getWidgetDataEndpoint = (contentType: 'artwork' | 'blog', contentId: string | number): string | null => {
   // Widget data endpoint only exists for artwork posts
   return contentType === 'artwork'
-    ? `/api/posts/${contentId}/widget-data`
+    ? `/api/post/${contentId}/widget-data`
     : null;
 };
 

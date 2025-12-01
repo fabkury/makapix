@@ -68,7 +68,7 @@ export default function HashtagPage() {
     setError(null);
     
     try {
-      const url = `${API_BASE_URL}/api/posts?hashtag=${encodeURIComponent(hashtag)}&limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const url = `${API_BASE_URL}/api/post?hashtag=${encodeURIComponent(hashtag)}&limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`,

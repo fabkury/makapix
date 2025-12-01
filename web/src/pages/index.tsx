@@ -75,7 +75,7 @@ export default function HomePage() {
     setError(null);
     
     try {
-      const url = `${API_BASE_URL}/api/posts?limit=20&sort=created_at&order=desc${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const url = `${API_BASE_URL}/api/post?limit=20&sort=created_at&order=desc${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       const response = await authenticatedFetch(url);
       
       if (response.status === 401) {

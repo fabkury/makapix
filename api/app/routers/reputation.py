@@ -12,7 +12,7 @@ from ..auth import require_moderator
 from ..deps import get_db
 from ..utils.audit import log_moderation_action
 
-router = APIRouter(prefix="/users", tags=["Reputation"])
+router = APIRouter(prefix="/user", tags=["Reputation"])
 
 
 @router.post(

@@ -31,7 +31,7 @@ from ..utils.audit import log_moderation_action
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/blog-posts", tags=["Blog Posts"])
+router = APIRouter(prefix="/blog-post", tags=["Blog Posts"])
 
 
 def extract_image_urls_from_markdown(body: str) -> list[str]:

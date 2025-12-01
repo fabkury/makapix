@@ -296,11 +296,11 @@ Makapix focuses on the social layer: **metadata**, **search**, **promotion**, **
 - **Broker**: Eclipse Mosquitto on the same VPS; TLS mandatory; no anonymous.
 - **Auth**: client TLS certificates minted by the web server; per-device mapping; revocable.
 - **Topics** (examples):
-  - `makapix/posts/new` → minimal payload (post_id, owner, title, urls, hash).
-  - `makapix/posts/new/{owner_handle}` → owner-specific stream.
+  - `makapix/post/new` → minimal payload (post_id, owner, title, urls, hash).
+  - `makapix/post/new/{owner_handle}` → owner-specific stream.
   - `makapix/system/notice` → service messages.
-  - `makapix/posts/views/{post_id}` → throttled ARP pulses emitted only when live viewers change by ≥3 or intent mix flips; payload = `{post_id, live_count, manual_pct, dominant_device_type}`.
-- After receiving a notification, players hit the **Makapix Club API** (`GET /posts/:id` or `GET /posts/recent`) to retrieve the full metadata payload; no static metadata downloads are required.
+  - `makapix/post/views/{post_id}` → throttled ARP pulses emitted only when live viewers change by ≥3 or intent mix flips; payload = `{post_id, live_count, manual_pct, dominant_device_type}`.
+- After receiving a notification, players hit the **Makapix Club API** (`GET /post/:id` or `GET /post/recent`) to retrieve the full metadata payload; no static metadata downloads are required.
 - **QoS**: 1 (at-least-once). **No retained** for high-churn topics.
 - **Limits**: payload ≤ 8 KB; rate-limited server-side publish; per-client inflight caps.
 
@@ -318,7 +318,7 @@ Makapix focuses on the social layer: **metadata**, **search**, **promotion**, **
 - **RBAC** wholly server-enforced; owner immutability in DB (constraint or guarded proc).
 - **Rate limiting** (per-IP and per-user) and flood control on all mutating endpoints.
 - **Audit trails** for all moderator actions; quick takedown flow.
-- **MQTT ACLs**: end-user clients can **subscribe only**; only server publishes to `makapix/posts/*`.
+- **MQTT ACLs**: end-user clients can **subscribe only**; only server publishes to `makapix/post/*`.
 - **ARP integrity**: ingestion endpoints require HMAC-signed payloads tied to device certificates; duplicate-fingerprint suppression + intent sanity checks prevent inflated view counts; raw events store salted hashes instead of IPs to avoid tracking viewers.
 
 ### 10.2 Abuse & Spam Controls
@@ -472,7 +472,7 @@ Total initial monthly: **~$7–$18** (lean to comfortable, mostly driven by obje
 - Events are signed with a per-device HMAC derived from issued credentials; ingestion validates signature + timestamp skew (±60s).
 
 ### 19.3 Data Flow
-1. Client SDK batches events (max 25) and POSTs to `/posts/:id/views` or `/views/batch`.
+1. Client SDK batches events (max 25) and POSTs to `/post/:id/views` or `/views/batch`.
 2. API validates auth, deduplicates obvious repeats (same `view_session_id` + `post_id` within 10 seconds), then drops each event into Redis Streams with metadata about rate limits.
 3. ARP aggregation worker consumes streams:
    - Persists raw events to the correct Postgres partition (`view_events`).
