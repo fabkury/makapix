@@ -918,7 +918,7 @@ export default function PostPage() {
           
           <div className="post-meta">
             {post.owner && (
-              <Link href={`/user/${post.owner.user_key}`} className="author-link">
+              <Link href={`/u/${post.owner.public_sqid}`} className="author-link">
                 {post.owner.display_name || post.owner.handle}
               </Link>
             )}

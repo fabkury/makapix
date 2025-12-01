@@ -48,14 +48,17 @@ export default function Layout({ children, title, description }: LayoutProps) {
   const router = useRouter();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [publicSqid, setPublicSqid] = useState<string | null>(null);
   const [isModerator, setIsModerator] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
     const storedUserId = localStorage.getItem('user_id');
+    const storedPublicSqid = localStorage.getItem('public_sqid');
     setIsLoggedIn(!!token);
     setUserId(storedUserId);
+    setPublicSqid(storedPublicSqid);
 
     // Fetch user roles and avatar if logged in
     if (token) {
@@ -154,8 +157,8 @@ export default function Layout({ children, title, description }: LayoutProps) {
               </div>
             </Link>
             
-            {isLoggedIn && userId && (
-              <Link href={`/user/${userId}`} className={`user-profile-link ${router.pathname === '/user/[id]' && router.query.id === userId ? 'active' : ''}`} aria-label="My Profile">
+            {isLoggedIn && publicSqid && (
+              <Link href={`/u/${publicSqid}`} className={`user-profile-link ${router.pathname === '/u/[sqid]' && router.query.sqid === publicSqid ? 'active' : ''}`} aria-label="My Profile">
                 <div className="user-icon">
                   {avatarUrl ? (
                     <img 

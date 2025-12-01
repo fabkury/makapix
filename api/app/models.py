@@ -802,7 +802,9 @@ class BlogPost(Base):
 
     __tablename__ = "blog_posts"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
+    blog_post_key = Column(UUID(as_uuid=True), unique=True, nullable=False, default=uuid.uuid4, index=True)  # UUID used for legacy URLs
+    public_sqid = Column(String(16), unique=True, nullable=True, index=True)  # Sqids-encoded public ID (set after insert)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     
     # Content
@@ -841,7 +843,7 @@ class BlogPostComment(Base):
     __tablename__ = "blog_post_comments"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    blog_post_id = Column(UUID(as_uuid=True), ForeignKey("blog_posts.id"), nullable=False, index=True)
+    blog_post_id = Column(Integer, ForeignKey("blog_posts.id"), nullable=False, index=True)
     author_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     author_ip = Column(String(45), nullable=True, index=True)  # For anonymous users
     parent_id = Column(UUID(as_uuid=True), ForeignKey("blog_post_comments.id"), nullable=True, index=True)
@@ -875,7 +877,7 @@ class BlogPostReaction(Base):
     __tablename__ = "blog_post_reactions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    blog_post_id = Column(UUID(as_uuid=True), ForeignKey("blog_posts.id"), nullable=False, index=True)
+    blog_post_id = Column(Integer, ForeignKey("blog_posts.id"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     user_ip = Column(String(45), nullable=True, index=True)  # For anonymous users
     emoji = Column(String(20), nullable=False)

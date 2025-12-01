@@ -659,7 +659,7 @@ export default function ModDashboardPage() {
                             {post.owner.avatar_url && (
                               <img src={post.owner.avatar_url} alt={post.owner.handle} className="author-avatar-small" />
                             )}
-                            <Link href={`/user/${post.owner.user_key}`} className="author-link">
+                            <Link href={`/u/${post.owner.public_sqid}`} className="author-link">
                               {post.owner.handle}
                             </Link>
                           </div>
@@ -703,7 +703,7 @@ export default function ModDashboardPage() {
                     <div key={profile.id} className="item-card">
                       <div className="item-info">
                         <h3>
-                          <Link href={`/user/${profile.user_key}`} className="profile-link">
+                          <Link href={`/u/${profile.public_sqid}`} className="profile-link">
                             {profile.avatar_url && (
                               <img src={profile.avatar_url} alt={profile.handle} className="profile-avatar" />
                             )}

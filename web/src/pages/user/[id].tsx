@@ -586,7 +586,7 @@ export default function UserProfilePage() {
                   <Link href="/blog/write" className="write-blog-btn">
                     ✍️ Write Blog
                   </Link>
-                  <Link href={`/user/${user.user_key}/player`} className="players-btn">
+                  <Link href={`/u/${user.public_sqid}/player`} className="players-btn">
                     📺 Players
                   </Link>
                   <button 
@@ -692,7 +692,7 @@ export default function UserProfilePage() {
                     const commentCount = blogPost.comment_count ?? 0;
                     
                     return (
-                      <Link key={blogPost.id} href={`/blog/${blogPost.id}`} className="blog-post-item">
+                      <Link key={blogPost.id} href={`/b/${blogPost.public_sqid}`} className="blog-post-item">
                         <h3 className="blog-post-item-title">{blogPost.title}</h3>
                         <div className="blog-post-item-meta">
                           <span className="blog-post-item-date">

@@ -215,7 +215,7 @@ export default function BlogFeedPage() {
             const firstImage = post.image_urls && post.image_urls.length > 0 ? post.image_urls[0] : null;
             
             return (
-              <Link key={post.id} href={`/blog/${post.id}`} className={`blog-post-card ${firstImage ? 'has-image' : ''}`}>
+              <Link key={post.id} href={`/b/${post.public_sqid}`} className={`blog-post-card ${firstImage ? 'has-image' : ''}`}>
                 {firstImage && (
                   <div className="blog-post-thumbnail">
                     <img src={firstImage} alt="" className="thumbnail-image pixel-art" />

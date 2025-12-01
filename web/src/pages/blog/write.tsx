@@ -225,7 +225,7 @@ export default function WriteBlogPostPage() {
       
       if (response.ok) {
         const data = await response.json();
-        router.push(`/blog/${data.id}`);
+        router.push(`/b/${data.public_sqid}`);
       } else {
         const errorData = await response.json().catch(() => ({ detail: 'Failed to save blog post' }));
         setError(errorData.detail || 'Failed to save blog post');

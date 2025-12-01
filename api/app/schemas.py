@@ -390,7 +390,9 @@ class CommentUpdate(BaseModel):
 class BlogPost(BaseModel):
     """Blog post with Markdown content."""
 
-    id: UUID
+    id: int
+    blog_post_key: UUID
+    public_sqid: str | None = None
     owner_id: int
     title: str
     body: str  # Markdown content
@@ -436,7 +438,8 @@ class BlogPostRead(BlogPost):
 class BlogPostFeedItem(BaseModel):
     """Blog post item for feed display."""
 
-    id: UUID
+    id: int
+    public_sqid: str | None = None
     title: str
     updated_at: datetime | None = None
     reaction_count: int = 0
@@ -448,7 +451,7 @@ class BlogPostComment(BaseModel):
     """Comment on a blog post."""
 
     id: UUID
-    blog_post_id: UUID
+    blog_post_id: int
     author_id: UUID | None = None  # None for anonymous comments
     author_ip: str | None = None  # For anonymous users (visible to moderators)
     parent_id: UUID | None = None

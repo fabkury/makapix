@@ -283,7 +283,7 @@ export default function CardGrid({ posts, API_BASE_URL, source, cursor = null, p
             </div>
             <div className="author-bar">
               <div className="author-line">
-                <Link href={`/user/${post.owner?.user_key}`} className="author-handle" style={{ fontSize: '0.7rem', color: 'white', display: 'flex', alignItems: 'center' }}>
+                <Link href={`/u/${post.owner?.public_sqid}`} className="author-handle" style={{ fontSize: '0.7rem', color: 'white', display: 'flex', alignItems: 'center' }}>
                   {post.owner?.avatar_url && (
                     <img src={post.owner.avatar_url} alt="" className="author-avatar" />
                   )}

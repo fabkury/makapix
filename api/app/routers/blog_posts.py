@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi.responses import RedirectResponse
 from PIL import Image
 from sqlalchemy import func, or_, desc, asc
 from sqlalchemy.orm import Session, joinedload
@@ -43,7 +44,7 @@ def extract_image_urls_from_markdown(body: str) -> list[str]:
 
 @router.get("", response_model=schemas.Page[schemas.BlogPost])
 def list_blog_posts(
-    owner_id: UUID | None = None,
+    owner_id: int | None = None,
     visible_only: bool = True,
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
@@ -177,27 +178,49 @@ def create_blog_post(
         published_at=datetime.now(timezone.utc) if public_visibility else None,
     )
     db.add(blog_post)
+    db.flush()  # Get the blog post ID without committing
+    
+    # Generate public_sqid from the assigned id
+    from ..sqids_config import encode_blog_post_id
+    
+    blog_post.public_sqid = encode_blog_post_id(blog_post.id)
     db.commit()
     db.refresh(blog_post)
     
     return schemas.BlogPost.model_validate(blog_post)
 
 
-@router.get("/{id}", response_model=schemas.BlogPost)
-def get_blog_post(
-    id: UUID,
+@router.get("/b/{public_sqid}", response_model=schemas.BlogPost)
+def get_blog_post_by_sqid(
+    public_sqid: str,
     db: Session = Depends(get_db),
     current_user: models.User | None = Depends(get_current_user_or_anonymous),
 ) -> schemas.BlogPost:
-    """Get blog post by ID."""
+    """
+    Get blog post by public Sqids ID (canonical URL).
+    
+    This is the canonical URL for blog posts sitewide.
+    """
+    # Decode the Sqids ID
+    from ..sqids_config import decode_blog_post_sqid
+    
+    blog_post_id = decode_blog_post_sqid(public_sqid)
+    if blog_post_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
+    
+    # Query blog post with owner relationship
     blog_post = (
         db.query(models.BlogPost)
         .options(joinedload(models.BlogPost.owner))
-        .filter(models.BlogPost.id == id)
+        .filter(models.BlogPost.id == blog_post_id)
         .first()
     )
     
     if not blog_post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
+    
+    # Verify public_sqid matches (safety check)
+    if blog_post.public_sqid != public_sqid:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
     
     # Check visibility
@@ -212,9 +235,65 @@ def get_blog_post(
     return schemas.BlogPost.model_validate(blog_post)
 
 
+@router.get("/{id}", response_model=schemas.BlogPost)
+def get_blog_post(
+    id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_or_anonymous),
+) -> schemas.BlogPost | RedirectResponse:
+    """
+    Get blog post by ID (UUID blog_post_key or integer id).
+    
+    Legacy endpoint - if UUID format is detected, redirects to canonical URL /b/{public_sqid}.
+    """
+    # Try to parse as UUID first (legacy blog_post_key)
+    try:
+        blog_post_key = UUID(id)
+        # Look up by blog_post_key
+        blog_post = (
+            db.query(models.BlogPost)
+            .options(joinedload(models.BlogPost.owner))
+            .filter(models.BlogPost.blog_post_key == blog_post_key)
+            .first()
+        )
+        
+        if blog_post and blog_post.public_sqid:
+            # Redirect to canonical URL
+            return RedirectResponse(url=f"/api/blog-post/b/{blog_post.public_sqid}", status_code=status.HTTP_301_MOVED_PERMANENTLY)
+    except (ValueError, TypeError):
+        # Not a UUID, try as integer ID
+        pass
+    
+    # Try as integer ID
+    try:
+        blog_post_id = int(id)
+        blog_post = (
+            db.query(models.BlogPost)
+            .options(joinedload(models.BlogPost.owner))
+            .filter(models.BlogPost.id == blog_post_id)
+            .first()
+        )
+        
+        if not blog_post:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
+        
+        # Check visibility
+        if not blog_post.visible:
+            if not current_user or not isinstance(current_user, models.User) or not check_ownership(blog_post.owner_id, current_user):
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
+        
+        if blog_post.hidden_by_mod:
+            if not current_user or not isinstance(current_user, models.User) or not ("moderator" in current_user.roles or "owner" in current_user.roles):
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
+        
+        return schemas.BlogPost.model_validate(blog_post)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
+
+
 @router.patch("/{id}", response_model=schemas.BlogPost)
 def update_blog_post(
-    id: UUID,
+    id: int,
     payload: schemas.BlogPostUpdate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
@@ -250,7 +329,7 @@ def update_blog_post(
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_blog_post(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> None:
@@ -272,7 +351,7 @@ def delete_blog_post(
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_blog_image(
-    id: UUID,
+    id: int,
     image: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
@@ -347,7 +426,7 @@ async def upload_blog_image(
 
 @router.get("/{id}/comments", response_model=schemas.Page[schemas.BlogPostComment])
 def list_blog_comments(
-    id: UUID,
+    id: int,
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -421,7 +500,7 @@ def list_blog_comments(
     status_code=status.HTTP_201_CREATED,
 )
 def create_blog_comment(
-    id: UUID,
+    id: int,
     payload: schemas.BlogPostCommentCreate,
     request: Request,
     db: Session = Depends(get_db),
@@ -554,7 +633,7 @@ def delete_blog_comment(
 
 @router.get("/{id}/reactions", response_model=schemas.BlogPostReactionTotals)
 def get_blog_reactions(
-    id: UUID,
+    id: int,
     request: Request,
     db: Session = Depends(get_db),
     current_user: models.User | AnonymousUser = Depends(get_current_user_or_anonymous),
@@ -597,7 +676,7 @@ def get_blog_reactions(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def add_blog_reaction(
-    id: UUID,
+    id: int,
     emoji: str,
     request: Request,
     db: Session = Depends(get_db),
@@ -660,7 +739,7 @@ def add_blog_reaction(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def remove_blog_reaction(
-    id: UUID,
+    id: int,
     emoji: str,
     request: Request,
     db: Session = Depends(get_db),
@@ -690,7 +769,7 @@ def remove_blog_reaction(
     tags=["Blog Posts", "Admin"],
 )
 def approve_blog_public_visibility(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     moderator: models.User = Depends(require_moderator),
 ) -> schemas.PublicVisibilityResponse:
@@ -717,7 +796,7 @@ def approve_blog_public_visibility(
 
 @router.post("/{id}/hide", status_code=status.HTTP_201_CREATED)
 def hide_blog_post(
-    id: UUID,
+    id: int,
     payload: schemas.HideRequest | None = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
@@ -754,7 +833,7 @@ def hide_blog_post(
 
 @router.delete("/{id}/hide", status_code=status.HTTP_204_NO_CONTENT)
 def unhide_blog_post(
-    id: UUID,
+    id: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> None:
