@@ -465,9 +465,10 @@ delete_artwork_from_vault(artwork_id, extension)
 ### Vault Security
 
 1. **Access Control**
-   - Files served only through authenticated API
-   - No directory listing
-   - Path traversal prevention
+   - Files served by Caddy reverse proxy at `/api/vault/` URLs
+   - No directory listing enabled
+   - Path traversal prevention enforced
+   - Files are public once uploaded (authentication on upload, not on serving)
 
 2. **Storage Isolation**
    - Vault mounted as Docker volume

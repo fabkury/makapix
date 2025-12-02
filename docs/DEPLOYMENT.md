@@ -738,7 +738,7 @@ docker compose restart
 - [ ] Monitoring and alerting set up
 - [ ] Database not exposed to internet (only localhost)
 - [ ] Rate limiting enabled in API
-- [ ] Vault directory has correct permissions
+- [ ] Vault directory has correct permissions (owned by container user, not world-readable)
 
 ---
 

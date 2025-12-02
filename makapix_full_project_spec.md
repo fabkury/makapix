@@ -118,7 +118,7 @@ Makapix focuses on the social layer: **metadata**, **search**, **promotion**, **
 ### 5.5 Upload Transport & Storage
 - ZIP uploads are capped (e.g., 50 MB total) and processed in a sandbox directory with max file counts and depth checks to prevent zip-bombs/path traversal.
 - Assets are never fetched from third-party hosts. Only the bytes uploaded directly by the user (or pre-signed chunk uploads) are stored.
-- After validation, binaries are streamed straight to the vault; local temp files are shredded. No public ACLs are granted on the vault—only the CDN origin access identity can read objects.
+- After validation, binaries are streamed straight to the vault; local temp files are shredded. Files are stored with restricted permissions and served only through the API endpoints by the reverse proxy (Caddy), preventing direct filesystem access.
 
 ### 5.6 Non-Conformance Lifecycle
 - When invalid: profile/post is marked **non-conformant** → hidden from feeds and search by default.
