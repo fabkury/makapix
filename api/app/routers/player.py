@@ -14,6 +14,30 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..auth import get_current_user, require_ownership
 from ..deps import get_db
+from ..sqids_config import decode_user_sqid
+
+
+def get_user_by_sqid(sqid: str, db: Session) -> models.User:
+    """
+    Look up a user by their public sqid.
+    
+    Raises 404 if user not found or sqid invalid.
+    """
+    user_id = decode_user_sqid(sqid)
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    
+    return user
 from ..mqtt.cert_generator import generate_client_certificate, load_ca_certificate
 from ..mqtt.player_commands import log_command, publish_player_command
 from ..services.rate_limit import check_rate_limit
@@ -240,33 +264,35 @@ def get_player_credentials(
     )
 
 
-@router.get("/user/{user_id}/player", response_model=dict[str, list[schemas.PlayerPublic]])
+@router.get("/u/{sqid}/player", response_model=dict[str, list[schemas.PlayerPublic]])
 def list_players(
-    user_id: UUID,
+    sqid: str,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> dict[str, list[schemas.PlayerPublic]]:
     """List all players for a user."""
-    require_ownership(user_id, current_user)
+    user = get_user_by_sqid(sqid, db)
+    require_ownership(user.id, current_user)
     
-    players = db.query(models.Player).filter(models.Player.owner_id == user_id).all()
+    players = db.query(models.Player).filter(models.Player.owner_id == user.id).all()
     
     return {"items": [schemas.PlayerPublic.model_validate(p) for p in players]}
 
 
-@router.get("/user/{user_id}/player/{player_id}", response_model=schemas.PlayerPublic)
+@router.get("/u/{sqid}/player/{player_id}", response_model=schemas.PlayerPublic)
 def get_player(
-    user_id: UUID,
+    sqid: str,
     player_id: UUID,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> schemas.PlayerPublic:
     """Get a single player."""
-    require_ownership(user_id, current_user)
+    user = get_user_by_sqid(sqid, db)
+    require_ownership(user.id, current_user)
     
     player = (
         db.query(models.Player)
-        .filter(models.Player.id == player_id, models.Player.owner_id == user_id)
+        .filter(models.Player.id == player_id, models.Player.owner_id == user.id)
         .first()
     )
     
@@ -279,20 +305,21 @@ def get_player(
     return schemas.PlayerPublic.model_validate(player)
 
 
-@router.patch("/user/{user_id}/player/{player_id}", response_model=schemas.PlayerPublic)
+@router.patch("/u/{sqid}/player/{player_id}", response_model=schemas.PlayerPublic)
 def update_player(
-    user_id: UUID,
+    sqid: str,
     player_id: UUID,
     payload: schemas.PlayerUpdateRequest,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> schemas.PlayerPublic:
     """Update player name."""
-    require_ownership(user_id, current_user)
+    user = get_user_by_sqid(sqid, db)
+    require_ownership(user.id, current_user)
     
     player = (
         db.query(models.Player)
-        .filter(models.Player.id == player_id, models.Player.owner_id == user_id)
+        .filter(models.Player.id == player_id, models.Player.owner_id == user.id)
         .first()
     )
     
@@ -311,19 +338,20 @@ def update_player(
     return schemas.PlayerPublic.model_validate(player)
 
 
-@router.get("/user/{user_id}/player/{player_id}/certs", response_model=schemas.TLSCertBundle)
+@router.get("/u/{sqid}/player/{player_id}/certs", response_model=schemas.TLSCertBundle)
 def download_player_certs(
-    user_id: UUID,
+    sqid: str,
     player_id: UUID,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> schemas.TLSCertBundle:
     """Authenticated user downloads certificates for their player."""
-    require_ownership(user_id, current_user)
+    user = get_user_by_sqid(sqid, db)
+    require_ownership(user.id, current_user)
     
     player = (
         db.query(models.Player)
-        .filter(models.Player.id == player_id, models.Player.owner_id == user_id)
+        .filter(models.Player.id == player_id, models.Player.owner_id == user.id)
         .first()
     )
     
@@ -361,19 +389,20 @@ def download_player_certs(
     )
 
 
-@router.delete("/user/{user_id}/player/{player_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/u/{sqid}/player/{player_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_player(
-    user_id: UUID,
+    sqid: str,
     player_id: UUID,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> None:
     """Remove player registration. Preserves command logs for audit trail."""
-    require_ownership(user_id, current_user)
+    user = get_user_by_sqid(sqid, db)
+    require_ownership(user.id, current_user)
     
     player = (
         db.query(models.Player)
-        .filter(models.Player.id == player_id, models.Player.owner_id == user_id)
+        .filter(models.Player.id == player_id, models.Player.owner_id == user.id)
         .first()
     )
     
@@ -429,20 +458,21 @@ def delete_player(
         logger.warning("mosquitto_passwd not found - MQTT password not cleaned up")
 
 
-@router.post("/user/{user_id}/player/{player_id}/command", response_model=schemas.PlayerCommandResponse)
+@router.post("/u/{sqid}/player/{player_id}/command", response_model=schemas.PlayerCommandResponse)
 def send_player_command(
-    user_id: UUID,
+    sqid: str,
     player_id: UUID,
     payload: schemas.PlayerCommandRequest,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> schemas.PlayerCommandResponse:
     """Send command to a player."""
-    require_ownership(user_id, current_user)
+    user = get_user_by_sqid(sqid, db)
+    require_ownership(user.id, current_user)
     
     player = (
         db.query(models.Player)
-        .filter(models.Player.id == player_id, models.Player.owner_id == user_id)
+        .filter(models.Player.id == player_id, models.Player.owner_id == user.id)
         .first()
     )
     
@@ -454,7 +484,7 @@ def send_player_command(
     
     # Check rate limits
     player_key = f"ratelimit:player:{player_id}:cmd"
-    user_key = f"ratelimit:user:{user_id}:cmd"
+    user_key = f"ratelimit:user:{user.id}:cmd"
     
     allowed_player, remaining_player = check_rate_limit(player_key, limit=300, window_seconds=60)
     allowed_user, remaining_user = check_rate_limit(user_key, limit=1000, window_seconds=60)
@@ -521,19 +551,20 @@ def send_player_command(
     return schemas.PlayerCommandResponse(command_id=command_id, status="sent")
 
 
-@router.post("/user/{user_id}/player/command/all", response_model=schemas.PlayerCommandAllResponse)
+@router.post("/u/{sqid}/player/command/all", response_model=schemas.PlayerCommandAllResponse)
 def send_command_to_all_players(
-    user_id: UUID,
+    sqid: str,
     payload: schemas.PlayerCommandRequest,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> schemas.PlayerCommandAllResponse:
     """Send command to all user's registered players."""
-    require_ownership(user_id, current_user)
+    user = get_user_by_sqid(sqid, db)
+    require_ownership(user.id, current_user)
     
     # Get all registered players
     players = db.query(models.Player).filter(
-        models.Player.owner_id == user_id,
+        models.Player.owner_id == user.id,
         models.Player.registration_status == "registered",
     ).all()
     
@@ -544,7 +575,7 @@ def send_command_to_all_players(
         )
     
     # Check user rate limit
-    user_key = f"ratelimit:user:{user_id}:cmd"
+    user_key = f"ratelimit:user:{user.id}:cmd"
     allowed_user, remaining_user = check_rate_limit(user_key, limit=1000, window_seconds=60)
     
     if not allowed_user:
@@ -609,9 +640,9 @@ def send_command_to_all_players(
     return schemas.PlayerCommandAllResponse(sent_count=len(commands), commands=commands)
 
 
-@router.post("/user/{user_id}/player/{player_id}/renew-cert", response_model=schemas.PlayerRenewCertResponse)
+@router.post("/u/{sqid}/player/{player_id}/renew-cert", response_model=schemas.PlayerRenewCertResponse)
 def renew_player_certificate(
-    user_id: UUID,
+    sqid: str,
     player_id: UUID,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
@@ -621,11 +652,12 @@ def renew_player_certificate(
     
     Only available if certificate is within 30 days of expiry or already expired.
     """
-    require_ownership(user_id, current_user)
+    user = get_user_by_sqid(sqid, db)
+    require_ownership(user.id, current_user)
     
     player = (
         db.query(models.Player)
-        .filter(models.Player.id == player_id, models.Player.owner_id == user_id)
+        .filter(models.Player.id == player_id, models.Player.owner_id == user.id)
         .first()
     )
     

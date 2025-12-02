@@ -3,12 +3,12 @@ import { Player, sendPlayerCommand, deletePlayer, renewPlayerCert, downloadPlaye
 
 interface PlayerCardProps {
   player: Player;
-  userId: string;
+  sqid: string;
   onDelete: () => void;
   onRefresh: () => void;
 }
 
-export default function PlayerCard({ player, userId, onDelete, onRefresh }: PlayerCardProps) {
+export default function PlayerCard({ player, sqid, onDelete, onRefresh }: PlayerCardProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -16,7 +16,7 @@ export default function PlayerCard({ player, userId, onDelete, onRefresh }: Play
     setIsLoading(true);
     setError(null);
     try {
-      await sendPlayerCommand(userId, player.id, { command_type: commandType });
+      await sendPlayerCommand(sqid, player.id, { command_type: commandType });
       onRefresh();
     } catch (err: any) {
       setError(err.message || 'Failed to send command');
@@ -32,7 +32,7 @@ export default function PlayerCard({ player, userId, onDelete, onRefresh }: Play
     setIsLoading(true);
     setError(null);
     try {
-      await deletePlayer(userId, player.id);
+      await deletePlayer(sqid, player.id);
       onDelete();
     } catch (err: any) {
       setError(err.message || 'Failed to delete player');
@@ -44,7 +44,7 @@ export default function PlayerCard({ player, userId, onDelete, onRefresh }: Play
     setIsLoading(true);
     setError(null);
     try {
-      await renewPlayerCert(userId, player.id);
+      await renewPlayerCert(sqid, player.id);
       onRefresh();
     } catch (err: any) {
       setError(err.message || 'Failed to renew certificate');
@@ -56,7 +56,7 @@ export default function PlayerCard({ player, userId, onDelete, onRefresh }: Play
     setIsLoading(true);
     setError(null);
     try {
-      const certBundle = await downloadPlayerCerts(userId, player.id);
+      const certBundle = await downloadPlayerCerts(sqid, player.id);
       
       // Create downloadable files
       const files = [

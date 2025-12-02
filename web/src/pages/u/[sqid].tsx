@@ -103,10 +103,9 @@ export default function UserProfilePage() {
         setUser(data);
         setEditHandle(data.handle);
         setEditBio(data.bio || '');
-        setIsOwnProfile(currentUserId === String(data.id));
         setIsOwner(data.roles?.includes('owner') || false);
         
-        // Check if current viewer is a moderator
+        // Check if current viewer is the owner and/or a moderator
         if (token) {
           try {
             const meResponse = await fetch(`${API_BASE_URL}/api/auth/me`, {
@@ -116,10 +115,24 @@ export default function UserProfilePage() {
               const meData = await meResponse.json();
               const roles = meData.roles || [];
               setIsModerator(roles.includes('moderator') || roles.includes('owner'));
+              
+              // Use actual authenticated user ID to determine ownership (not localStorage)
+              const authenticatedUserId = meData.user?.id;
+              setIsOwnProfile(authenticatedUserId === data.id);
+              
+              // Sync localStorage with actual user data
+              if (meData.user?.id) {
+                localStorage.setItem('user_id', String(meData.user.id));
+              }
+              if (meData.user?.public_sqid) {
+                localStorage.setItem('public_sqid', meData.user.public_sqid);
+              }
             }
           } catch (err) {
             console.error('Error checking moderator status:', err);
           }
+        } else {
+          setIsOwnProfile(false);
         }
       } catch (err) {
         setError('Failed to load profile');

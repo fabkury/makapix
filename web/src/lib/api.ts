@@ -314,15 +314,15 @@ export interface TLSCertBundle {
 /**
  * List all players for a user
  */
-export async function listPlayers(userId: string): Promise<{ items: Player[] }> {
-  return authenticatedRequestJson<{ items: Player[] }>(`/api/user/${userId}/player`);
+export async function listPlayers(sqid: string): Promise<{ items: Player[] }> {
+  return authenticatedRequestJson<{ items: Player[] }>(`/api/u/${sqid}/player`);
 }
 
 /**
  * Get a single player
  */
-export async function getPlayer(userId: string, playerId: string): Promise<Player> {
-  return authenticatedRequestJson<Player>(`/api/user/${userId}/player/${playerId}`);
+export async function getPlayer(sqid: string, playerId: string): Promise<Player> {
+  return authenticatedRequestJson<Player>(`/api/u/${sqid}/player/${playerId}`);
 }
 
 /**
@@ -336,12 +336,12 @@ export async function registerPlayer(payload: PlayerRegisterRequest): Promise<Pl
  * Update player name
  */
 export async function updatePlayer(
-  userId: string,
+  sqid: string,
   playerId: string,
   name: string
 ): Promise<Player> {
   return authenticatedRequestJson<Player>(
-    `/api/user/${userId}/player/${playerId}`,
+    `/api/u/${sqid}/player/${playerId}`,
     { body: JSON.stringify({ name }) },
     "PATCH"
   );
@@ -350,8 +350,8 @@ export async function updatePlayer(
 /**
  * Delete a player
  */
-export async function deletePlayer(userId: string, playerId: string): Promise<void> {
-  const url = `/api/user/${userId}/player/${playerId}`;
+export async function deletePlayer(sqid: string, playerId: string): Promise<void> {
+  const url = `/api/u/${sqid}/player/${playerId}`;
   const response = await authenticatedFetch(`${publicBaseUrl}${url}`, {
     method: "DELETE",
   });
@@ -365,12 +365,12 @@ export async function deletePlayer(userId: string, playerId: string): Promise<vo
  * Send command to a player
  */
 export async function sendPlayerCommand(
-  userId: string,
+  sqid: string,
   playerId: string,
   command: PlayerCommandRequest
 ): Promise<PlayerCommandResponse> {
   return authenticatedPostJson<PlayerCommandResponse>(
-    `/api/user/${userId}/player/${playerId}/command`,
+    `/api/u/${sqid}/player/${playerId}/command`,
     command
   );
 }
@@ -379,11 +379,11 @@ export async function sendPlayerCommand(
  * Send command to all user's players
  */
 export async function sendCommandToAllPlayers(
-  userId: string,
+  sqid: string,
   command: PlayerCommandRequest
 ): Promise<PlayerCommandAllResponse> {
   return authenticatedPostJson<PlayerCommandAllResponse>(
-    `/api/user/${userId}/player/command/all`,
+    `/api/u/${sqid}/player/command/all`,
     command
   );
 }
@@ -392,11 +392,11 @@ export async function sendCommandToAllPlayers(
  * Renew player certificate
  */
 export async function renewPlayerCert(
-  userId: string,
+  sqid: string,
   playerId: string
 ): Promise<PlayerRenewCertResponse> {
   return authenticatedPostJson<PlayerRenewCertResponse>(
-    `/api/user/${userId}/player/${playerId}/renew-cert`,
+    `/api/u/${sqid}/player/${playerId}/renew-cert`,
     {}
   );
 }
@@ -405,10 +405,10 @@ export async function renewPlayerCert(
  * Download player certificates
  */
 export async function downloadPlayerCerts(
-  userId: string,
+  sqid: string,
   playerId: string
 ): Promise<TLSCertBundle> {
   return authenticatedRequestJson<TLSCertBundle>(
-    `/api/user/${userId}/player/${playerId}/certs`
+    `/api/u/${sqid}/player/${playerId}/certs`
   );
 }

@@ -5,7 +5,7 @@ interface SendToPlayerModalProps {
   isOpen: boolean;
   onClose: () => void;
   players: Player[];
-  userId: string;
+  sqid: string;
   postId: number;
 }
 
@@ -13,7 +13,7 @@ export default function SendToPlayerModal({
   isOpen,
   onClose,
   players,
-  userId,
+  sqid,
   postId,
 }: SendToPlayerModalProps) {
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set());
@@ -49,14 +49,14 @@ export default function SendToPlayerModal({
 
     try {
       if (sendToAll) {
-        await sendCommandToAllPlayers(userId, {
+        await sendCommandToAllPlayers(sqid, {
           command_type: 'show_artwork',
           post_id: postId,
         });
       } else if (selectedPlayerIds.size > 0) {
         // Send to selected players
         const promises = Array.from(selectedPlayerIds).map((playerId) =>
-          sendPlayerCommand(userId, playerId, {
+          sendPlayerCommand(sqid, playerId, {
             command_type: 'show_artwork',
             post_id: postId,
           })

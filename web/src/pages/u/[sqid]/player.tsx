@@ -56,9 +56,9 @@ export default function PlayersPage() {
     fetchUser();
   }, [sqidStr, API_BASE_URL]);
 
-  // Fetch players once we have the user ID
+  // Fetch players once we have the user
   useEffect(() => {
-    if (!user) return;
+    if (!user || !user.public_sqid) return;
 
     const loadPlayers = async (isInitial = false) => {
       if (isInitial) {
@@ -66,18 +66,17 @@ export default function PlayersPage() {
         setError(null);
       }
       try {
-        const currentUserId = localStorage.getItem('user_id');
-        if (currentUserId !== String(user.id)) {
-          setError('You can only view your own players');
-          setLoading(false);
-          return;
-        }
-
-        const data = await listPlayers(String(user.id));
+        // API endpoint handles authorization - will return 403 if not owner
+        const data = await listPlayers(user.public_sqid!);
         setPlayers(data.items);
       } catch (err: any) {
         if (isInitial) {
-          setError(err.message || 'Failed to load players');
+          // Check if it's an authorization error
+          if (err.message?.includes('403') || err.message?.includes('permission')) {
+            setError('You can only view your own players');
+          } else {
+            setError(err.message || 'Failed to load players');
+          }
         }
       } finally {
         if (isInitial) {
@@ -98,9 +97,9 @@ export default function PlayersPage() {
   }, [user]);
 
   const handleRefresh = async () => {
-    if (!user) return;
+    if (!user || !user.public_sqid) return;
     try {
-      const data = await listPlayers(String(user.id));
+      const data = await listPlayers(user.public_sqid);
       setPlayers(data.items);
     } catch (err: any) {
       console.error('Failed to refresh players:', err);
@@ -224,7 +223,7 @@ export default function PlayersPage() {
               <PlayerCard
                 key={player.id}
                 player={player}
-                userId={String(user!.id)}
+                sqid={user!.public_sqid!}
                 onDelete={handleDelete}
                 onRefresh={handleRefresh}
               />

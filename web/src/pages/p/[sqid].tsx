@@ -47,7 +47,7 @@ export default function PostPage() {
   const [post, setPost] = useState<Post | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentUser, setCurrentUser] = useState<{ id: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; public_sqid: string } | null>(null);
   const [isOwner, setIsOwner] = useState(false);
   const [isModerator, setIsModerator] = useState(false);
   
@@ -117,14 +117,14 @@ export default function PostPage() {
             });
             if (userResponse.ok) {
               const userData = await userResponse.json();
-              setCurrentUser({ id: userData.user.id });
+              setCurrentUser({ id: userData.user.id, public_sqid: userData.user.public_sqid });
               setIsOwner(userData.user.id === data.owner_id);
               const roles = userData.user.roles || userData.roles || [];
               setIsModerator(roles.includes('moderator') || roles.includes('owner'));
               
               // Load players if user is authenticated
               try {
-                const playersData = await listPlayers(userData.user.id);
+                const playersData = await listPlayers(userData.user.public_sqid);
                 setPlayers(playersData.items);
               } catch (err) {
                 // Silently fail - user might not have players
@@ -1121,7 +1121,7 @@ export default function PostPage() {
           isOpen={showSendModal}
           onClose={() => setShowSendModal(false)}
           players={players}
-          userId={currentUser.id}
+          sqid={currentUser.public_sqid}
           postId={post.id}
         />
       )}

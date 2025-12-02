@@ -78,8 +78,19 @@ export default function Layout({ children, title, description }: LayoutProps) {
             const roles = data.roles as string[];
             setIsModerator(roles.includes('moderator') || roles.includes('owner'));
           }
-          if (data?.user?.avatar_url) {
-            setAvatarUrl(data.user.avatar_url);
+          if (data?.user) {
+            // Sync localStorage with actual user data from API
+            if (data.user.id) {
+              localStorage.setItem('user_id', String(data.user.id));
+              setUserId(String(data.user.id));
+            }
+            if (data.user.public_sqid) {
+              localStorage.setItem('public_sqid', data.user.public_sqid);
+              setPublicSqid(data.user.public_sqid);
+            }
+            if (data.user.avatar_url) {
+              setAvatarUrl(data.user.avatar_url);
+            }
           }
         })
         .catch(() => {
