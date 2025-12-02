@@ -8,7 +8,7 @@
 
 ## 1. Vision & Scope
 
-**Makapix** is a lightweight social network centered on pixel art. It minimizes server CPU/memory/storage pressure by pushing heavy binaries into a managed vault storage (e.g., **local vault** or **local vault**) that is fronted by a CDN. Makapix itself owns the storage vault, provides uploads, and serves the canonical vault URLs so the UX stays consistent no matter where users sourced their art files.
+**Makapix** is a lightweight social network centered on pixel art. It minimizes server CPU/memory/storage pressure by storing artwork images in a **local vault** on the VPS. Makapix owns the storage, handles uploads, and serves canonical vault URLs so the UX stays consistent no matter where users sourced their art files.
 
 Makapix focuses on the social layer: **metadata**, **search**, **promotion**, **comments**, **reactions**, **moderation**, and **real-time notifications** (via MQTT) that help web and physical “players” display artworks promptly using assets hosted in Makapix’s bucket. The new **Artist Recognition Platform (ARP)** extends this focus by capturing live viewing telemetry (device type + intent), scoring recognition momentum, and surfacing it everywhere creators care about visibility.
 
@@ -75,15 +75,25 @@ Makapix focuses on the social layer: **metadata**, **search**, **promotion**, **
 
 ---
 
-## 4. Object Storage Hosting Model
+## 4. Vault Storage Model
 
-- **Primary host**: a Makapix-owned bucket in local vault (preferred) or local vault (fallback) located near the VPS. The bucket is private; a Cloudflare CDN route exposes the assets publicly with cache-control headers managed by the API.
-- The **client-side generator** (running in the user’s browser) collects per-asset metadata (title, hashtags, canvas size, etc.), packages it as JSON in the multipart request, and uploads it together with the artwork ZIP to Makapix over HTTPS.
-- The **publish worker** streams the ZIP from disk, validates the metadata/art, and uploads each binary directly into the vault using scoped credentials (write-only to the `posts/` prefix). Partial failures clean up any objects created for that job.
-- Object keys follow `posts/{user_id}/{post_id}/{asset_hash}.{ext}` to keep paths stable and dedupe identical assets.
-- After upload, the API records the vault URL, sha256, byte size, mime, and dimensions for every asset. vault URLs are deterministic (`https://cdn.makapix.com/posts/...`) and require no per-user setup.
+- **Storage System**: Makapix stores images in a **local vault** on the VPS using a hash-based folder structure for efficient organization.
+- The **client-side generator** (running in the user's browser) collects per-asset metadata (title, hashtags, canvas size, etc.), packages it as JSON in the multipart request, and uploads it together with the artwork ZIP to Makapix over HTTPS.
+- The **publish worker** streams the ZIP from disk, validates the metadata/art, and saves each binary directly into the vault filesystem. Partial failures clean up any files created for that job.
+- File paths follow a hash-based structure: `/vault/a1/b2/c3/{artwork_id}.{ext}` where a1/b2/c3 are derived from the first 6 characters of the SHA-256 hash of the artwork ID. This prevents any single folder from having too many files.
+- After upload, the API records the vault URL path, sha256, byte size, mime, and dimensions for every asset. Vault URLs are deterministic (`/api/vault/a1/b2/c3/{artwork_id}.png`) and require no per-user setup.
 - Metadata that previously lived in downloadable files is now stored exclusively in Postgres and exposed through authenticated Makapix Club API queries (some feeds remain public/anonymous).
-- The server maintains **hash pinning** entirely inside Makapix: workers periodically re-fetch (or range-read) the object from the vault to ensure the stored hash/size/mime still match. Any mismatch auto-flags the post as **non-conformant** and hides it from feeds.
+- The server maintains **hash pinning** entirely inside Makapix: workers periodically re-verify files in the vault to ensure the stored hash/size/mime still match. Any mismatch auto-flags the post as **non-conformant** and hides it from feeds.
+- **Serving**: Images are served directly by the Caddy reverse proxy from the vault filesystem, avoiding Python overhead. Cache headers ensure efficient delivery.
+
+
+
+
+
+
+
+
+
 
 ---
 
@@ -360,7 +370,7 @@ Makapix focuses on the social layer: **metadata**, **search**, **promotion**, **
 
 - Target ≤ 100 ms p95 for read endpoints under normal load.
 - Read scaling via HTTP caching (Cloudflare free) for list pages and search results.
-- All artwork bytes are served from the CDN/vault storage, so API nodes only handle metadata and signatures even during spikes.
+- All artwork bytes are served from the vault storage, so API nodes only handle metadata and signatures even during spikes.
 - Writes are low volume by design; ensure idempotent publish jobs.
 - Search: Postgres GIN/trigram + keyset pagination.
 - ARP ingestion is append-only and sharded by day; raw writes can exceed 200 events/sec during showcases, so Redis Streams absorb bursts before workers flush to Postgres partitions.
