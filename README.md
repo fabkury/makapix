@@ -1,73 +1,188 @@
 # Makapix Club - Pixel Art Social Network
 
-A lightweight social network centered on pixel art, designed to run efficiently on a single VPS.
+**A lightweight social network for makers and pixel artists**, designed to run efficiently and affordably on a single VPS.
 
-## Repository Structure
+Makapix Club is a community platform where pixel artists can share their creations, engage with other makers through reactions and comments, and showcase their work both on the web and through physical player devices that display artwork in real spaces.
 
-This is a monorepo containing:
+## ✨ What Makes Makapix Special
 
-- **`apps/cta/`** - Static CTA/marketing website (currently live at https://makapix.club)
-- **`web/`** - Next.js frontend application (development/staging)
-- **`api/`** - FastAPI backend service
-- **`worker/`** - Background worker services
-- **`db/`** - Database schema and migrations
-- **`mqtt/`** - MQTT broker configuration
-- **`deploy/stack/`** - VPS deployment orchestration (Docker Compose)
+- **🎨 Pixel Art First**: Focused exclusively on pixel art with validation for proper formats and dimensions
+- **💰 Cost-Effective**: Runs on a ~$7-$18/month VPS with minimal infrastructure complexity
+- **📱 Web + Physical**: View artwork on the website or display it on physical player devices
+- **⚡ Real-Time**: MQTT-based notifications keep devices and browsers instantly updated
+- **🔒 Self-Hosted**: Images stored in a local vault on the VPS, served directly (no third-party hosting)
+- **👥 Social Features**: Reactions (up to 5 emojis per post), threaded comments, playlists, and user reputation
+- **🛡️ Moderation**: Built-in tools for content moderation, user reputation, and community safety
 
-## Development Workflow
+## 🏗️ Technical Architecture
+
+**Tech Stack:**
+- **Frontend**: Next.js 14 with TypeScript and React 18
+- **Backend**: FastAPI (Python 3.12+) with SQLAlchemy ORM
+- **Database**: PostgreSQL 16 for structured data
+- **Cache/Queue**: Redis for sessions, rate limiting, and background tasks
+- **Messaging**: Eclipse Mosquitto for real-time MQTT notifications
+- **Proxy**: Caddy for TLS termination and reverse proxy
+- **Storage**: Local vault (hash-based folder structure) mounted on VPS
+
+**Deployment**: All services containerized with Docker Compose, designed to run on a single VPS (2 vCPU, 2-4 GB RAM) supporting up to 10,000 monthly active users.
+
+## 📁 Repository Structure
+
+This is a **monorepo** containing all project components:
+
+```
+makapix/
+├── apps/cta/              # Marketing website (live at makapix.club)
+├── web/                   # Next.js frontend application
+├── api/                   # FastAPI backend with Alembic migrations
+├── worker/                # Celery background worker
+├── db/                    # Database initialization scripts
+├── mqtt/                  # MQTT broker configuration
+├── proxy/                 # Caddy reverse proxy configuration
+├── deploy/stack/          # VPS deployment orchestration
+├── docs/                  # Technical documentation
+└── docker-compose.yml     # Local development stack
+```
+
+## 🚀 Quick Start
 
 ### Local Development
 
-Work on `localhost` using the main `docker-compose.yml`:
-
 ```bash
-# Switch to local environment
+# Clone the repository
+git clone https://github.com/fabkury/makapix.git
+cd makapix
+
+# Set up local environment
 make local
 
 # Start all services
 make up
 
+# Access the application
+# - Web UI: http://localhost:3000
+# - API docs: http://localhost:8000/docs
+# - API endpoints: http://localhost:8000/api/
+
 # View logs
 make logs
+
+# Stop services
+make down
 ```
 
-### Staging Deployment
+### For Developers
 
-Deploy to `dev.makapix.club` for testing:
+- **[Development Guide](docs/DEVELOPMENT.md)** - Complete local setup, workflows, and testing
+- **[Architecture Documentation](docs/ARCHITECTURE.md)** - System design, components, and data flows
+- **[API Documentation](http://localhost:8000/docs)** - Interactive API reference (when running locally)
+
+### For Deployers
+
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - VPS setup and production deployment
+- **[Physical Player Integration](docs/PHYSICAL_PLAYER.md)** - Guide for integrating display devices
+
+## 📚 Documentation
+
+- **[Full Project Specification](makapix_full_project_spec.md)** - Comprehensive feature and technical spec
+- **[Architecture Overview](docs/ARCHITECTURE.md)** - System design and component details
+- **[Development Guide](docs/DEVELOPMENT.md)** - Developer workflows and best practices
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment instructions
+- **[Physical Player Guide](docs/PHYSICAL_PLAYER.md)** - Hardware integration documentation
+- **[Roadmap](docs/ROADMAP.md)** - Project milestones and planned features
+
+## 🔑 Key Features
+
+### For Artists
+
+- **Upload and Share**: Post pixel art with titles, descriptions, and hashtags
+- **Organize**: Create playlists to curate collections of artwork
+- **Engage**: Receive reactions and comments from the community
+- **Reputation**: Earn reputation points through community participation
+- **Badges**: Display achievement badges on your profile
+
+### For Viewers
+
+- **Discover**: Browse promoted artworks, recent posts, and search by hashtags
+- **Interact**: React with up to 5 emojis per post, leave threaded comments
+- **Follow**: Create playlists of your favorite artworks
+- **Real-Time**: Get instant updates via MQTT when new artwork is posted
+
+### For Physical Players
+
+- **MQTT Integration**: Devices receive real-time notifications of new artwork
+- **Vault Access**: Direct download of artwork images from the VPS vault
+- **Remote Control**: Owners can control what displays on their devices
+- **Status Reporting**: Devices report online/offline status and current artwork
+
+## 💾 Image Storage
+
+Makapix uses a **local vault** storage system:
+
+- Images are stored directly on the VPS in a hash-based folder structure
+- Files are organized using the first 6 characters of the artwork ID's hash (e.g., `/vault/a1/b2/c3/artwork-id.png`)
+- The vault is mounted as a Docker volume and served directly by the API
+- Maximum file size: 5 MB per image
+- Supported formats: PNG, GIF, WebP
+- Canvas dimensions: Configurable, validated on upload
+
+This approach eliminates third-party hosting costs while keeping the system simple and performant.
+
+## 🛠️ Development Commands
 
 ```bash
-cd deploy/stack
-cp .env.example .env
-# Edit .env with your configuration
-docker compose up -d
+# Environment management
+make local          # Switch to local development config
+make remote         # Switch to remote development config
+make status         # Show current environment
+
+# Service control
+make up             # Start all services
+make down           # Stop all services
+make restart        # Restart services
+make rebuild        # Rebuild containers and restart
+
+# Logs
+make logs           # View all service logs
+make logs-api       # View API logs only
+make logs-web       # View web logs only
+
+# Database
+make db.reset       # Reset database with seed data
+make db.shell       # Open PostgreSQL shell
+
+# Code quality
+make fmt            # Format code (API)
+make api.test       # Run API tests
 ```
 
-### Production
+## 📊 Current Status
 
-The CTA site is currently live at https://makapix.club. When ready to go live with the full application:
+- **CTA Site**: ✅ Live at https://makapix.club (marketing/landing page)
+- **Dev Preview**: 🚧 Testing at https://dev.makapix.club (full application)
+- **Production**: 🔜 Full application launch planned
 
-1. Update `deploy/stack/docker-compose.yml` to serve the main app at `makapix.club`
-2. Keep the CTA site available at a different path or archive it
+## 🤝 Contributing
 
-## Current Deployment Status
+Contributions are welcome! Please ensure your changes:
 
-- **CTA Site**: https://makapix.club (static site from `apps/cta/`)
-- **Dev Preview**: https://dev.makapix.club (Next.js app from `web/`)
-- **VPS Stack**: Managed via `deploy/stack/docker-compose.yml`
+1. Follow existing code style and conventions
+2. Include tests for new functionality
+3. Update documentation as needed
+4. Pass all linting and tests (`make fmt`, `make api.test`)
 
-## Key Features
+## 📄 License
 
-- Pixel art focused social network
-- GitHub Pages integration for artwork hosting
-- MQTT real-time notifications
-- Lightweight, cost-effective VPS deployment
-- See `makapix_full_project_spec.md` for complete specification
+[License information to be added]
 
-## Getting Started
+## 🔗 Links
 
-See `deploy/stack/README.stack.md` for VPS deployment instructions.
+- **Website**: https://makapix.club
+- **Dev Environment**: https://dev.makapix.club
+- **Repository**: https://github.com/fabkury/makapix
 
-For local development, see the `Makefile` and environment templates:
-- `env.local.template` - Local development configuration
-- `env.remote.template` - Remote/staging configuration
+---
+
+Built with ❤️ for pixel artists and makers everywhere.
 
