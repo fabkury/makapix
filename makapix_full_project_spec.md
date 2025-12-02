@@ -63,7 +63,7 @@ Makapix focuses on the social layer: **metadata**, **search**, **promotion**, **
 ## 3. Key Concepts
 
 - **Post**: either an individual **artwork** or a **playlist** of existing artworks.
-- **Artwork Asset**: the binary artwork (PNG/JPEG/GIF) stored in Makapix’s vault storage vault and served from the vault. Metadata (hash, size, mime, width/height) is recorded in Postgres.
+- **Artwork Asset**: the binary artwork (PNG/JPEG/GIF) stored in Makapix’s vault storage and served from the vault. Metadata (hash, size, mime, width/height) is recorded in Postgres.
 - **Upload Metadata Payload**: structured JSON submitted alongside the ZIP upload. It enumerates each asset, its title/description/hashtags/canvas size, and references the file inside the ZIP by relative path within the archive.
 - **Makapix Club API**: the REST interface that exposes all post/profile metadata. Hardware “players” and third-party tools query it (mostly with auth; certain read-only feeds remain public) instead of downloading static metadata bundles.
 - **Asset Pipeline**: the server receives the ZIP, streams it to a worker, validates every asset, and writes the validated binaries into vault storage using a canonical key scheme (e.g., `posts/{user_id}/{post_id}/{asset_hash}.png`).
@@ -447,7 +447,7 @@ Total initial monthly: **~$7–$18** (VPS + domain + optional backup storage).
 
 ## 17. Glossary
 
-- **Asset**: a validated artwork binary stored in Makapix’s vault storage vault and exposed from the vault.
+- **Asset**: a validated artwork binary stored in Makapix’s vault storage and exposed from the vault.
 - **Conformant**: passes schema, type, canvas, and hash checks.
 - **Non-conformant**: failed checks; hidden by default; rechecked on schedule.
 - **Promoted**: featured by staff for the front page.
