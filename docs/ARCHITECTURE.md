@@ -1,7 +1,7 @@
 # Makapix Architecture Documentation
 
-**Version:** 1.0  
-**Last Updated:** November 2025  
+**Version:** 2.0  
+**Last Updated:** December 2025  
 **Repository:** [fabkury/makapix](https://github.com/fabkury/makapix)
 
 ## Table of Contents
@@ -11,24 +11,24 @@
 3. [Repository Structure](#repository-structure)
 4. [Core Components](#core-components)
 5. [Data Architecture](#data-architecture)
-6. [Communication Patterns](#communication-patterns)
-7. [Security Architecture](#security-architecture)
-8. [Deployment Architecture](#deployment-architecture)
-9. [Development Workflow](#development-workflow)
+6. [Storage Architecture](#storage-architecture)
+7. [Communication Patterns](#communication-patterns)
+8. [Security Architecture](#security-architecture)
+9. [Deployment Architecture](#deployment-architecture)
 10. [Technology Stack](#technology-stack)
 
 ---
 
 ## Overview
 
-Makapix is a lightweight pixel-art social network designed to run efficiently on a single VPS with minimal operational costs. The platform supports artwork hosting, social interactions (reactions, comments, playlists), real-time notifications via MQTT, and moderation features.
+Makapix is a lightweight pixel-art social network designed to run efficiently on a single VPS with minimal operational costs. The platform supports artwork hosting via a local vault, social interactions (reactions, comments, playlists), real-time notifications via MQTT, and moderation features.
 
 ### Design Principles
 
-- **Cost-Effective**: Operates on a ~$7-$18/month budget (VPS + object storage)
+- **Cost-Effective**: Operates on a ~$7-$18/month budget (VPS only, no external storage costs)
 - **Scalable to 10K MAU**: Architecture supports up to 10,000 monthly active users
 - **Single VPS Deployment**: All services run on one server using Docker containers
-- **Asset Offloading**: Heavy binaries stored in object storage (Cloudflare R2/AWS S3) served via CDN
+- **Local Storage**: Images stored in a vault directly on the VPS (no third-party object storage)
 - **Real-Time Updates**: MQTT protocol for instant notifications to web and physical players
 - **Monorepo**: All code managed in a single repository for simplified development
 
@@ -69,8 +69,8 @@ Makapix is a lightweight pixel-art social network designed to run efficiently on
          └──────────────────┘
                     │
          ┌──────────▼───────┐
-         │ Object Storage   │
-         │  (R2/S3 + CDN)   │
+         │   Image Vault    │
+         │ (Local Storage)  │
          └──────────────────┘
 ```
 
@@ -78,13 +78,14 @@ Makapix is a lightweight pixel-art social network designed to run efficiently on
 
 | Service | Purpose | Technology | Ports |
 |---------|---------|------------|-------|
-| **Proxy** | TLS termination, reverse proxy, load balancing | Caddy 2 | 80, 443 |
+| **Proxy** | TLS termination, reverse proxy | Caddy 2 | 80, 443 |
 | **Web** | Frontend UI, SSR/SSG | Next.js 14 (TypeScript) | 3000 |
-| **API** | REST API, business logic, auth | FastAPI (Python) | 8000 |
+| **API** | REST API, business logic, auth | FastAPI (Python 3.12+) | 8000 |
 | **Worker** | Background tasks, async processing | Celery (Python) | - |
 | **Database** | Persistent data storage | PostgreSQL 16 | 5432 |
 | **Cache** | Session store, rate limiting, queues | Redis 7.2 | 6379 |
 | **MQTT** | Real-time pub/sub messaging | Eclipse Mosquitto | 1883, 8883, 9001 |
+| **Vault** | Image storage | VPS filesystem (mounted volume) | - |
 
 ---
 
@@ -100,6 +101,7 @@ makapix/
 │   │   ├── routers/         # API endpoints
 │   │   ├── mqtt/            # MQTT integration
 │   │   ├── utils/           # Utilities
+│   │   ├── vault.py         # Vault storage system
 │   │   ├── models.py        # SQLAlchemy models
 │   │   ├── schemas.py       # Pydantic schemas
 │   │   ├── auth.py          # Authentication logic
@@ -138,23 +140,18 @@ makapix/
 │
 ├── proxy/                    # Proxy configuration
 ├── scripts/                  # Utility scripts
-├── infra/                    # Infrastructure code
 ├── docs/                     # Documentation
+│   ├── ARCHITECTURE.md      # This document
+│   ├── DEVELOPMENT.md       # Developer guide
+│   ├── DEPLOYMENT.md        # Deployment guide
+│   ├── PHYSICAL_PLAYER.md   # Hardware integration
+│   └── ROADMAP.md           # Project roadmap
 │
 ├── docker-compose.yml        # Local development stack
 ├── Makefile                  # Development commands
 ├── README.md                 # Project overview
-├── makapix_full_project_spec.md  # Full specification
-└── ARCHITECTURE.md           # This document
+└── makapix_full_project_spec.md  # Full specification
 ```
-
-### Key Files
-
-- **docker-compose.yml**: Orchestrates all services for local development
-- **Makefile**: Provides convenient commands for common tasks
-- **makapix_full_project_spec.md**: Comprehensive feature specification
-- **.env.example**: Environment variable template
-- **alembic/**: Database migration management
 
 ---
 
@@ -176,6 +173,7 @@ The API is the central nervous system of Makapix, handling all business logic an
 - **Background Tasks**: Celery integration for async operations
 - **Real-time**: MQTT integration for push notifications
 - **Migrations**: Alembic for database schema versioning
+- **Image Storage**: Direct vault management for uploaded artwork
 
 #### Router Modules
 
@@ -185,38 +183,15 @@ The API is the central nervous system of Makapix, handling all business logic an
 | **user** | `/user/*` | User management |
 | **profile** | `/profile/*` | Public profile views |
 | **post** | `/post/*` | Post CRUD, listing, filtering |
+| **artwork** | `/vault/*` | Artwork file serving from vault |
 | **playlist** | `/playlist/*` | Playlist management |
 | **comment** | `/post/*/comments` | Comment CRUD |
 | **reaction** | `/post/*/reactions` | Emoji reactions |
 | **report** | `/report/*` | Abuse reporting |
 | **badge** | `/badge/*` | Badge system |
-| **reputation** | `/user/*/reputation` | Reputation management |
-| **category** | `/category/*` | Content categorization |
-| **search** | `/search/*` | Full-text search |
 | **devices** | `/devices/*` | Physical player management |
-| **mqtt** | `/mqtt/*` | MQTT credential issuance |
 | **admin** | `/admin/*` | Administrative actions |
 | **system** | `/health`, `/metrics` | System monitoring |
-
-#### Authentication Flow
-
-```
-1. User initiates GitHub OAuth
-2. GitHub redirects to /auth/github/callback
-3. API creates/updates user record
-4. API issues JWT access token (15 min) + refresh token (7 days)
-5. Client stores tokens (httpOnly cookies or localStorage)
-6. Access token used for authenticated requests
-7. Refresh endpoint used when access token expires
-```
-
-#### Database Layer
-
-- **SQLAlchemy ORM**: Type-safe database operations
-- **Connection Pooling**: Efficient database connection management
-- **Transactions**: ACID guarantees for critical operations
-- **Indexes**: Optimized for common queries
-- **Foreign Keys**: Enforced referential integrity
 
 ### 2. Next.js Frontend (Web)
 
@@ -234,31 +209,6 @@ Modern React-based frontend with server-side rendering capabilities.
 - **Responsive Design**: Mobile-first approach
 - **Component Library**: Reusable UI components
 
-#### Page Structure
-
-| Page | Route | Purpose |
-|------|-------|---------|
-| **Home** | `/` | Landing page, promoted content feed |
-| **Recent** | `/recent` | Latest posts feed |
-| **Search** | `/search` | Search interface |
-| **Post Detail** | `/p/[sqid]` | Individual post view (canonical) |
-| **Publish** | `/publish` | Upload artwork |
-| **Mod Dashboard** | `/mod-dashboard` | Moderation tools |
-| **Owner Dashboard** | `/owner-dashboard` | Owner controls |
-
-#### State Management
-
-- **React Hooks**: useState, useEffect for local state
-- **Custom Hooks**: Reusable logic (useMQTTNotifications, etc.)
-- **API Client**: Centralized API communication layer
-- **Session Management**: JWT token handling
-
-#### Real-time Features
-
-- **MQTT Notifications**: WebSocket connection to broker
-- **Live Updates**: Posts, comments, reactions update in real-time
-- **Notification Center**: Central hub for user notifications
-
 ### 3. Background Worker
 
 **Location:** `/worker`
@@ -271,14 +221,6 @@ Handles asynchronous tasks that shouldn't block API requests.
 - **Notifications**: Send MQTT notifications for new posts
 - **Batch Operations**: Bulk moderation actions
 - **Scheduled Tasks**: Periodic cleanup, analytics
-- **Email Delivery**: (Future) Email notifications
-
-#### Task Queue
-
-- **Broker**: Redis
-- **Backend**: Redis (result storage)
-- **Concurrency**: Configurable worker processes
-- **Retry Logic**: Automatic retry for failed tasks
 
 ### 4. PostgreSQL Database
 
@@ -290,7 +232,7 @@ Primary data store for all persistent data.
 
 **Core Tables:**
 - `users`: User accounts and profiles
-- `posts`: Artwork posts
+- `posts`: Artwork posts (storage_key references vault files)
 - `comments`: Post comments (threaded, depth 0-2)
 - `reactions`: Emoji reactions to posts
 - `playlists`: Ordered lists of posts
@@ -302,20 +244,8 @@ Primary data store for all persistent data.
 - `moderation_log`: Audit trail
 - `reputation_history`: Reputation changes
 
-**Authentication:**
-- `refresh_tokens`: JWT refresh tokens
-
 **Device Management:**
 - `devices`: Physical player devices
-
-#### Data Integrity
-
-- **UUIDs**: All primary keys use UUID v4
-- **Timestamps**: created_at, updated_at on all tables
-- **Soft Deletes**: Moderator actions use soft delete
-- **Hard Deletes**: User-initiated deletes are permanent
-- **Foreign Keys**: Enforced relationships
-- **Constraints**: Check constraints for business rules
 
 ### 5. Redis Cache
 
@@ -352,20 +282,13 @@ makapix/
 ├── posts/
 │   ├── new              # New post notifications
 │   └── promoted         # Promoted post notifications
-├── users/
-│   └── [user_id]/       # User-specific notifications
-│       ├── comments     # New comments on user's posts
-│       ├── reactions    # Reactions to user's posts
-│       └── mentions     # User mentions
+├── player/
+│   └── [player_key]/    # Physical player commands/status
+│       ├── command      # Server → Player commands
+│       └── status       # Player → Server status reports
 └── system/
     └── announcements    # System-wide announcements
 ```
-
-#### Client Types
-
-1. **Web Clients**: Connect via WebSocket (port 9001)
-2. **Physical Players**: Connect via TLS (port 8883) with client certificates
-3. **Server**: Publishes notifications to topics
 
 ---
 
@@ -391,34 +314,78 @@ makapix/
 ### Data Flow: Publishing Artwork
 
 ```
-1. User uploads artwork ZIP via /publish endpoint
-2. API validates metadata and queues processing task
-3. Worker processes ZIP:
-   - Extracts and validates images
-   - Uploads to object storage (R2/S3)
-   - Generates CDN URLs
-4. Worker creates post record in database
-5. Worker publishes MQTT notification
-6. Web clients receive notification and update UI
-7. CDN serves artwork to viewers
+1. User uploads artwork file via /post/upload endpoint
+2. API validates metadata and image (format, size, dimensions)
+3. API generates UUID storage_key for the artwork
+4. API saves image to vault using hash-based folder structure
+5. API creates post record in database with vault reference
+6. API publishes MQTT notification
+7. Web clients and physical players receive notification
+8. Devices fetch artwork directly from vault via /api/vault/ endpoint
 ```
 
-### Data Flow: Social Interaction
+---
+
+## Storage Architecture
+
+### Image Vault System
+
+Makapix uses a **local vault** for image storage instead of third-party object storage services:
+
+#### Vault Structure
 
 ```
-1. User adds reaction/comment via API
-2. API validates and saves to database
-3. API publishes MQTT notification to post owner
-4. Post owner's client receives notification
-5. UI updates in real-time
+/vault/
+├── a1/
+│   ├── b2/
+│   │   ├── c3/
+│   │   │   ├── a1b2c3d4-e5f6-7890-abcd-ef1234567890.png
+│   │   │   ├── a1b2c3d4-e5f6-7890-abcd-ef1234567891.webp
+│   │   │   └── ...
+│   │   └── c4/
+│   │       └── ...
+│   └── b3/
+│       └── ...
+└── a2/
+    └── ...
 ```
 
-### Caching Strategy
+#### Key Features
 
-- **Static Content**: CDN caching for artwork (1 year)
-- **API Responses**: Redis caching for expensive queries (5-60 min)
-- **User Sessions**: Redis (7 days)
-- **Feed Data**: Short-lived cache (5 min)
+1. **Hash-Based Organization**: First 6 characters of SHA-256 hash of the artwork ID determine folder structure (a1/b2/c3/)
+2. **No Single-Folder Overcrowding**: Hash-based distribution ensures no folder has too many files
+3. **Direct Serving**: Caddy proxy serves files directly from vault via `/api/vault/` route
+4. **Deterministic URLs**: URL path is derived from artwork ID: `/api/vault/a1/b2/c3/{id}.png`
+
+#### Storage Limits
+
+- **Maximum file size**: 5 MB per image
+- **Allowed formats**: PNG, GIF, WebP
+- **Canvas validation**: Images must be perfect squares within allowed dimensions
+- **Per-user quotas**: Tracked in database (`storage_used_bytes` field)
+
+#### Vault Operations
+
+```python
+# Save artwork to vault
+save_artwork_to_vault(artwork_id, file_content, mime_type)
+# Generates: /vault/a1/b2/c3/artwork-id.png
+
+# Get artwork URL
+get_artwork_url(artwork_id, extension)
+# Returns: /api/vault/a1/b2/c3/artwork-id.png
+
+# Delete artwork from vault
+delete_artwork_from_vault(artwork_id, extension)
+```
+
+#### Advantages Over External Storage
+
+- **Zero External Costs**: No S3/R2 fees
+- **Simplified Architecture**: No API keys or SDK dependencies
+- **Fast Local Access**: Direct filesystem reads
+- **Full Control**: Complete ownership of data
+- **Easy Backups**: Standard filesystem backup tools work
 
 ---
 
@@ -451,14 +418,6 @@ makapix/
 - Result tracking
 - Retry logic
 
-### 4. Server-to-Server (Internal)
-
-**Web (SSR) → API**
-
-- Internal API calls during SSR
-- No external network latency
-- Same auth mechanisms
-
 ---
 
 ## Security Architecture
@@ -490,31 +449,31 @@ makapix/
    - Pydantic schemas for API validation
    - SQL injection prevention (ORM)
    - XSS prevention (React escaping)
+   - File type validation (magic bytes)
 
 3. **Content Security**
-   - Hash pinning for artwork
+   - Hash verification for uploaded images
    - File type validation (magic bytes)
    - Size limits enforced
+   - Canvas dimension validation
 
 4. **Rate Limiting**
    - Per-IP limits
    - Per-user limits
    - Redis-backed counters
 
-### Asset Storage Security
+### Vault Security
 
-1. **Private Bucket**
-   - No public ACLs
-   - CDN origin access only
+1. **Access Control**
+   - Files served by Caddy reverse proxy at `/api/vault/` URLs
+   - No directory listing enabled
+   - Path traversal prevention enforced
+   - Files are public once uploaded (authentication on upload, not on serving)
 
-2. **Hash Verification**
-   - SHA-256 hash stored in DB
-   - Periodic re-verification
-   - Auto-hide on mismatch
-
-3. **Access Control**
-   - Signed URLs for sensitive content
-   - Scoped IAM credentials
+2. **Storage Isolation**
+   - Vault mounted as Docker volume
+   - Separate from application code
+   - Configurable location via `VAULT_LOCATION` env var
 
 ---
 
@@ -532,22 +491,8 @@ make logs      # View logs
 
 - All services run locally
 - Hot reload enabled
-- Local TLS certificates
 - Test data seeded
-
-### Staging Environment
-
-**Remote Development (dev.makapix.club)**
-
-```bash
-make remote    # Switch to remote config
-make up        # Start with remote settings
-```
-
-- Same stack as production
-- Uses remote database
-- Real TLS certificates
-- Subset of production data
+- Vault stored in `./vault` directory
 
 ### Production Environment
 
@@ -555,18 +500,13 @@ make up        # Start with remote settings
 
 **Location:** `/deploy/stack`
 
-```bash
-cd deploy/stack
-docker compose up -d
-```
-
 #### VPS Configuration
 
 - **Provider**: Any VPS provider (DigitalOcean, Linode, Vultr, etc.)
 - **Size**: 2 vCPU, 2-4 GB RAM minimum
 - **OS**: Ubuntu 22.04 LTS
 - **Docker**: Latest stable
-- **Network**: Public IP with DNS configured
+- **Storage**: SSD with sufficient space for vault
 
 #### Service Layout
 
@@ -583,45 +523,11 @@ VPS (makapix.club)
 │   ├── cache (Redis)
 │   └── mqtt (Mosquitto)
 └── Volumes
+    ├── vault (image storage)
     ├── pg_data (database)
     ├── caddy_data (certificates)
     └── caddy_config (proxy config)
 ```
-
-#### External Services
-
-1. **Object Storage**
-   - Cloudflare R2 (preferred) or AWS S3
-   - Private bucket
-   - CDN in front
-
-2. **DNS**
-   - Cloudflare or similar
-   - A records for makapix.club and subdomains
-
-3. **Monitoring** (Optional)
-   - Uptime monitoring
-   - Error alerting
-   - Log aggregation
-
-### Deployment Workflow
-
-1. **Code Changes**
-   ```bash
-   git push origin main
-   ```
-
-2. **VPS Update**
-   ```bash
-   ssh user@makapix.club
-   cd /opt/makapix
-   make deploy-vps
-   ```
-
-3. **Verification**
-   - Check health endpoints
-   - View logs
-   - Test key functionality
 
 ### Backup Strategy
 
@@ -630,134 +536,14 @@ VPS (makapix.club)
    - Encrypted off-site storage
    - 30-day retention
 
-2. **Object Storage**
-   - Versioning enabled
-   - Weekly full backup to secondary region
+2. **Vault Backups**
+   - Daily rsync to backup location
+   - Incremental backups
    - 90-day retention
 
 3. **Configuration**
    - Environment files in secure storage
    - Infrastructure as code in git
-
-### Disaster Recovery
-
-1. **Database Restore**
-   - Restore from latest backup
-   - Replay transaction logs if available
-
-2. **Service Recovery**
-   - Pull latest code
-   - Restore environment configuration
-   - Run migrations
-   - Start services
-
-3. **RTO/RPO Targets**
-   - RTO (Recovery Time Objective): 4 hours
-   - RPO (Recovery Point Objective): 24 hours
-
----
-
-## Development Workflow
-
-### Local Development Setup
-
-1. **Prerequisites**
-   ```bash
-   # Install required tools
-   - Docker & Docker Compose
-   - Node.js 18+
-   - Python 3.11+
-   - Git
-   ```
-
-2. **Clone Repository**
-   ```bash
-   git clone https://github.com/fabkury/makapix.git
-   cd makapix
-   ```
-
-3. **Configure Environment**
-   ```bash
-   make local
-   # Edit .env if needed
-   ```
-
-4. **Start Services**
-   ```bash
-   make up
-   ```
-
-5. **Access Services**
-   - Web: http://localhost:3000
-   - API: http://localhost:8000
-   - API Docs: http://localhost:8000/docs
-   - Database: localhost:5432
-
-### Common Commands
-
-```bash
-# Environment management
-make local          # Switch to local development
-make remote         # Switch to remote development
-make status         # Show current environment
-
-# Service control
-make up             # Start all services
-make down           # Stop all services
-make restart        # Restart services
-make rebuild        # Rebuild and restart
-
-# Logs
-make logs           # All service logs
-make logs-api       # API logs only
-make logs-web       # Web logs only
-
-# Development
-make test           # Run API tests
-make shell-api      # Shell in API container
-make shell-db       # PostgreSQL shell
-
-# Cleanup
-make clean          # Remove containers and volumes
-```
-
-### Database Migrations
-
-```bash
-# Create new migration
-docker compose exec api alembic revision --autogenerate -m "description"
-
-# Apply migrations
-docker compose exec api alembic upgrade head
-
-# View migration history
-docker compose exec api alembic history
-```
-
-### Testing
-
-```bash
-# Run all tests
-make test
-
-# Run specific test file
-docker compose exec api pytest tests/test_posts.py
-
-# Run with coverage
-docker compose exec api pytest --cov=app tests/
-```
-
-### Code Quality
-
-```bash
-# Format code
-docker compose exec api black app/
-docker compose exec api isort app/
-
-# Lint
-docker compose exec api flake8 app/
-docker compose exec api mypy app/
-```
 
 ---
 
@@ -769,13 +555,11 @@ docker compose exec api mypy app/
 |------------|---------|---------|
 | **Python** | 3.12+ | Primary language |
 | **FastAPI** | 0.110+ | Web framework |
-| **SQLAlchemy** | 2.0.29+ | ORM |
+| **SQLAlchemy** | 2.0+ | ORM |
 | **Alembic** | 1.13+ | Migrations |
 | **Pydantic** | 2.7+ | Validation |
 | **Celery** | 5.3+ | Task queue |
 | **PyJWT** | 2.8+ | JWT handling |
-| **httpx** | 0.27+ | HTTP client |
-| **psycopg** | 3.1+ | PostgreSQL adapter |
 
 ### Frontend
 
@@ -786,26 +570,17 @@ docker compose exec api mypy app/
 | **React** | 18.2+ | UI library |
 | **TypeScript** | 5.5+ | Type safety |
 | **mqtt** | 5.3+ | MQTT client |
-| **JSZip** | 3.10+ | ZIP file handling |
 
 ### Infrastructure
 
 | Technology | Version | Purpose |
 |------------|---------|---------|
-| **PostgreSQL** | 16 (Alpine) | Database |
-| **Redis** | 7.2 (Alpine) | Cache/Queue |
+| **PostgreSQL** | 16 | Database |
+| **Redis** | 7.2 | Cache/Queue |
 | **Mosquitto** | 2.0+ | MQTT broker |
 | **Caddy** | 2+ | Reverse proxy |
 | **Docker** | 24+ | Containerization |
 | **Docker Compose** | 2.20+ | Orchestration |
-
-### External Services
-
-| Service | Purpose |
-|---------|---------|
-| **Cloudflare R2** | Object storage |
-| **Cloudflare CDN** | Content delivery |
-| **GitHub OAuth** | Authentication |
 
 ---
 
@@ -821,14 +596,14 @@ docker compose exec api mypy app/
 ### Caching Strategy
 
 - **API Response Caching**: Redis cache for expensive queries
-- **CDN Caching**: Long-lived cache for static assets
+- **Static Asset Caching**: Long-lived cache headers for vault files
 - **Session Caching**: Redis-backed sessions
 
-### Asset Delivery
+### Vault Performance
 
-- **CDN**: All artwork served via CDN
-- **Image Optimization**: Size and format validation
-- **Lazy Loading**: Images loaded on-demand
+- **Hash-Based Distribution**: Ensures even file distribution across folders
+- **Direct Serving**: Caddy serves files directly without hitting Python
+- **OS-Level Caching**: Filesystem cache for frequently accessed files
 
 ### Scaling Considerations
 
@@ -841,109 +616,19 @@ docker compose exec api mypy app/
 1. Add API replicas behind load balancer
 2. Separate database to dedicated server
 3. Add read replicas for database
-4. Add worker replicas for background tasks
-5. Use managed services (RDS, ElastiCache)
-
----
-
-## Monitoring & Observability
-
-### Health Checks
-
-- `/health`: Basic health endpoint
-- `/metrics`: Prometheus metrics
-- Docker health checks on all services
-
-### Logging
-
-- **Structured Logging**: JSON format
-- **Log Levels**: DEBUG, INFO, WARNING, ERROR
-- **Log Aggregation**: Centralized logging (future)
-
-### Metrics
-
-- Request latency
-- Error rates
-- Database query performance
-- Background task completion
-- MQTT connection count
-
-### Alerting
-
-- Service downtime
-- High error rates
-- Database connection issues
-- Disk space warnings
-
----
-
-## Future Enhancements
-
-### Planned Features
-
-1. **Artist Recognition Platform (ARP)**
-   - View tracking and analytics
-   - Recognition badges
-   - Trending metrics
-
-2. **Advanced Search**
-   - Full-text search with PostgreSQL FTS
-   - Filters and facets
-   - Search suggestions
-
-3. **Social Features**
-   - User following
-   - Activity feeds
-   - Notifications
-
-4. **Mobile App**
-   - Native iOS/Android apps
-   - Push notifications
-   - Offline support
-
-### Technical Improvements
-
-1. **Performance**
-   - Read replicas for database
-   - CDN optimization
-   - Query optimization
-
-2. **Observability**
-   - Distributed tracing
-   - APM integration
-   - Log aggregation
-
-3. **Reliability**
-   - Multi-region backup
-   - Automated failover
-   - Chaos engineering
+4. Use NFS or distributed filesystem for vault
+5. Add worker replicas for background tasks
 
 ---
 
 ## References
 
-- **Full Specification**: See `makapix_full_project_spec.md`
-- **README**: See `README.md` for quick start
-- **API Documentation**: http://localhost:8000/docs (when running)
-- **Deployment Guide**: See `deploy/stack/README.stack.md`
+- **[Full Specification](../makapix_full_project_spec.md)** - Comprehensive feature spec
+- **[README](../README.md)** - Quick start guide
+- **[Deployment Guide](DEPLOYMENT.md)** - Production deployment
+- **[Development Guide](DEVELOPMENT.md)** - Developer workflows
+- **[Roadmap](ROADMAP.md)** - Project milestones
 
 ---
 
-## Appendix
-
-### Glossary
-
-- **MAU**: Monthly Active Users
-- **VPS**: Virtual Private Server
-- **CDN**: Content Delivery Network
-- **MQTT**: Message Queuing Telemetry Transport
-- **ORM**: Object-Relational Mapping
-- **SSR**: Server-Side Rendering
-- **SSG**: Static Site Generation
-- **JWT**: JSON Web Token
-- **RTO**: Recovery Time Objective
-- **RPO**: Recovery Point Objective
-
-### Contact
-
-For questions or contributions, please open an issue on GitHub.
+Built for efficiency, simplicity, and cost-effectiveness.

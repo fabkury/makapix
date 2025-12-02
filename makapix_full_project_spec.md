@@ -2,18 +2,20 @@
 
 > **Purpose of this document**: a single, thorough specification for future AI models and contributors that explains exactly what to build, how it behaves, how it is secured, and how it runs cheaply on a single VPS. This project prioritizes simplicity, low cost, and predictable performance for ≤10k MAU.
 
+> **⚠️ IMPORTANT NOTE ON IMAGE STORAGE**: This specification document was originally written with external object storage (Cloudflare R2/AWS S3) in mind. **The actual implementation uses a local vault** on the VPS for simplicity and cost savings. Images are stored in a hash-based folder structure at `/vault/` and served directly via `/api/vault/` URLs. For accurate current architecture, refer to [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the implementation in `api/app/vault.py`. Where this document mentions "object storage", "CDN", "R2", or "S3", understand that the current system uses the local vault instead.
+
 ---
 
 ## 1. Vision & Scope
 
-**Makapix** is a lightweight social network centered on pixel art. It minimizes server CPU/memory/storage pressure by pushing heavy binaries into a managed object store (e.g., **Cloudflare R2** or **AWS S3**) that is fronted by a CDN. Makapix itself owns the storage bucket, provides uploads, and serves the canonical CDN URLs so the UX stays consistent no matter where users sourced their art files.
+**Makapix** is a lightweight social network centered on pixel art. It minimizes server CPU/memory/storage pressure by storing artwork images in a **local vault** on the VPS. Makapix owns the storage, handles uploads, and serves canonical vault URLs so the UX stays consistent no matter where users sourced their art files.
 
 Makapix focuses on the social layer: **metadata**, **search**, **promotion**, **comments**, **reactions**, **moderation**, and **real-time notifications** (via MQTT) that help web and physical “players” display artworks promptly using assets hosted in Makapix’s bucket. The new **Artist Recognition Platform (ARP)** extends this focus by capturing live viewing telemetry (device type + intent), scoring recognition momentum, and surfacing it everywhere creators care about visibility.
 
 ### 1.1 Core Goals
 - Operate on an inexpensive VPS with predictable costs.
 - Support ≤10k MAU with a simple, robust design.
-- Keep the server CPU/memory footprint small by streaming uploads directly into object storage and serving them via CDN.
+- Keep the server CPU/memory footprint small by streaming uploads directly into vault storage and serving them from the vault.
 - Deliver quick updates, infinite scrolling feeds, a clean moderation toolset, and first-class recognition analytics that celebrate artists in real time.
 
 ### 1.2 Non-Goals
@@ -61,27 +63,37 @@ Makapix focuses on the social layer: **metadata**, **search**, **promotion**, **
 ## 3. Key Concepts
 
 - **Post**: either an individual **artwork** or a **playlist** of existing artworks.
-- **Artwork Asset**: the binary artwork (PNG/JPEG/GIF) stored in Makapix’s object storage bucket and served via CDN. Metadata (hash, size, mime, width/height) is recorded in Postgres.
+- **Artwork Asset**: the binary artwork (PNG/JPEG/GIF) stored in Makapix’s vault storage and served from the vault. Metadata (hash, size, mime, width/height) is recorded in Postgres.
 - **Upload Metadata Payload**: structured JSON submitted alongside the ZIP upload. It enumerates each asset, its title/description/hashtags/canvas size, and references the file inside the ZIP by relative path within the archive.
 - **Makapix Club API**: the REST interface that exposes all post/profile metadata. Hardware “players” and third-party tools query it (mostly with auth; certain read-only feeds remain public) instead of downloading static metadata bundles.
-- **Asset Pipeline**: the server receives the ZIP, streams it to a worker, validates every asset, and writes the validated binaries into object storage using a canonical key scheme (e.g., `posts/{user_id}/{post_id}/{asset_hash}.png`).
+- **Asset Pipeline**: the server receives the ZIP, streams it to a worker, validates every asset, and writes the validated binaries into vault storage using a canonical key scheme (e.g., `posts/{user_id}/{post_id}/{asset_hash}.png`).
 - **Conformance**: the server validates the metadata payloads and the stored assets (type/size/canvas whitelist). Posts that fail validation become **non-conformant** and are hidden by default until re-verified.
-- **MQTT Notifications**: tiny messages announcing new/updated posts so “players” can fetch the CDN URL and display the artwork immediately.
+- **MQTT Notifications**: tiny messages announcing new/updated posts so “players” can fetch the vault URL and display the artwork immediately.
 - **Artist Recognition Platform (ARP)**: a telemetry, aggregation, and surfacing layer that records every artwork view with device + intent metadata, runs rolling counters, and broadcasts recognition milestones to clients.
 - **View Event**: an ingestion record produced whenever a post renders on a Makapix-owned or trusted surface. It captures `post_id`, optional `viewer_user_id`, `source_device_type` (`smartphone`, `laptop`, `website`, `physical_player`), `view_intent` (`manual`, `automated_flow`), and timing stats for deduplication and scoring.
 - **Recognition Surfaces**: UI widgets (profile medals, live counters, MQTT bursts) that consume ARP aggregates to signal momentum without exposing personally identifiable viewing data.
 
 ---
 
-## 4. Object Storage Hosting Model
+## 4. Vault Storage Model
 
-- **Primary host**: a Makapix-owned bucket in Cloudflare R2 (preferred) or AWS S3 (fallback) located near the VPS. The bucket is private; a Cloudflare CDN route exposes the assets publicly with cache-control headers managed by the API.
-- The **client-side generator** (running in the user’s browser) collects per-asset metadata (title, hashtags, canvas size, etc.), packages it as JSON in the multipart request, and uploads it together with the artwork ZIP to Makapix over HTTPS.
-- The **publish worker** streams the ZIP from disk, validates the metadata/art, and uploads each binary directly into the bucket using scoped credentials (write-only to the `posts/` prefix). Partial failures clean up any objects created for that job.
-- Object keys follow `posts/{user_id}/{post_id}/{asset_hash}.{ext}` to keep paths stable and dedupe identical assets.
-- After upload, the API records the CDN URL, sha256, byte size, mime, and dimensions for every asset. CDN URLs are deterministic (`https://cdn.makapix.com/posts/...`) and require no per-user setup.
+- **Storage System**: Makapix stores images in a **local vault** on the VPS using a hash-based folder structure for efficient organization.
+- The **client-side generator** (running in the user's browser) collects per-asset metadata (title, hashtags, canvas size, etc.), packages it as JSON in the multipart request, and uploads it together with the artwork ZIP to Makapix over HTTPS.
+- The **publish worker** streams the ZIP from disk, validates the metadata/art, and saves each binary directly into the vault filesystem. Partial failures clean up any files created for that job.
+- File paths follow a hash-based structure: `/vault/a1/b2/c3/{artwork_id}.{ext}` where a1/b2/c3 are derived from the first 6 characters of the SHA-256 hash of the artwork ID. This prevents any single folder from having too many files.
+- After upload, the API records the vault URL path, sha256, byte size, mime, and dimensions for every asset. Vault URLs are deterministic (`/api/vault/a1/b2/c3/{artwork_id}.png`) and require no per-user setup.
 - Metadata that previously lived in downloadable files is now stored exclusively in Postgres and exposed through authenticated Makapix Club API queries (some feeds remain public/anonymous).
-- The server maintains **hash pinning** entirely inside Makapix: workers periodically re-fetch (or range-read) the object from the bucket to ensure the stored hash/size/mime still match. Any mismatch auto-flags the post as **non-conformant** and hides it from feeds.
+- The server maintains **hash pinning** entirely inside Makapix: workers periodically re-verify files in the vault to ensure the stored hash/size/mime still match. Any mismatch auto-flags the post as **non-conformant** and hides it from feeds.
+- **Serving**: Images are served directly by the Caddy reverse proxy from the vault filesystem, avoiding Python overhead. Cache headers ensure efficient delivery.
+
+
+
+
+
+
+
+
+
 
 ---
 
@@ -106,7 +118,7 @@ Makapix focuses on the social layer: **metadata**, **search**, **promotion**, **
 ### 5.5 Upload Transport & Storage
 - ZIP uploads are capped (e.g., 50 MB total) and processed in a sandbox directory with max file counts and depth checks to prevent zip-bombs/path traversal.
 - Assets are never fetched from third-party hosts. Only the bytes uploaded directly by the user (or pre-signed chunk uploads) are stored.
-- After validation, binaries are streamed straight to the bucket; local temp files are shredded. No public ACLs are granted on the bucket—only the CDN origin access identity can read objects.
+- After validation, binaries are streamed straight to the vault; local temp files are shredded. Files are stored with restricted permissions and served only through the API endpoints by the reverse proxy (Caddy), preventing direct filesystem access.
 
 ### 5.6 Non-Conformance Lifecycle
 - When invalid: profile/post is marked **non-conformant** → hidden from feeds and search by default.
@@ -134,7 +146,7 @@ Makapix focuses on the social layer: **metadata**, **search**, **promotion**, **
 - Indexes: composite GIN over `(title, description, hashtags)` for search, partial indexes on `(visible = true AND hidden_by_mod = false AND non_conformant = false)` for feeds, btree on `(owner_user_id, created_at DESC)` for profiles.
 
 **art_assets**
-- Purpose: metadata for each binary stored in object storage.
+- Purpose: metadata for each binary stored in vault storage.
 - Columns: `post_id`, `cdn_path`, `object_key`, `sha256`, `byte_len`, `mime`, `canvas_w`, `canvas_h`, `variant_label` (future-friendly for thumbnails).
 - Constraints: unique `(post_id, sha256)` to dedupe duplicates within a post; `mime` limited to whitelist; `canvas` pair validated against config table.
 
@@ -225,10 +237,10 @@ Makapix focuses on the social layer: **metadata**, **search**, **promotion**, **
   - `GET /users/:id` (public view filters applied).
   - `POST /users/me/hide|unhide|delete`.
   - `GET /users/recent` (mods only).
-  - `GET /users/me/storage` (quota + usage from object storage; used to alert power users).
+  - `GET /users/me/storage` (quota + usage from vault storage; used to alert power users).
 
 - **Publishing**
-  - `POST /publish/upload` → accepts client ZIP; validates (schema/mime/canvas/hash) → streams validated assets into object storage → enqueue **publish** job that creates/updates posts.
+  - `POST /publish/upload` → accepts client ZIP; validates (schema/mime/canvas/hash) → streams validated assets into vault storage → enqueue **publish** job that creates/updates posts.
   - `GET /publish/jobs/:id` (status: queued/running/success/fail with reason + object counts).
 
 - **Posts**
@@ -280,12 +292,12 @@ Makapix focuses on the social layer: **metadata**, **search**, **promotion**, **
 
 ## 8. Web Frontend (UX Overview)
 
-- **Home**: infinite-scroll feed of **promoted** artworks (CDN-served images).
+- **Home**: infinite-scroll feed of **promoted** artworks (vault-served images).
 - **Explore**: recent posts, trending tags, profiles; search.
 - **Profile**: user info + timeline; non-conformant badge if applicable; toggle to view if opted-in.
 - **Post**: artwork with reactions and comments (tree up to depth 2).
 - **Playlists**: list of artworks; non-visible children are omitted with a note.
-- **Publish Flow**: client-side generator (drag/drop or picker) → validate preview → submit ZIP → Makapix shows job progress as assets upload to object storage.
+- **Publish Flow**: client-side generator (drag/drop or picker) → validate preview → submit ZIP → Makapix shows job progress as assets upload to vault storage.
 - **Moderation Console**: recent users/posts, bulk actions, reports queue, notes, audit view.
 - **Recognition HUD**: sticky widget (on posts + profiles) that shows live viewers, device mix (smartphone/laptop/website/physical player), and whether momentum is driven by manual interactions vs automated playlists; updates every ~5 seconds via SSE/websocket backed by ARP aggregates.
 
@@ -331,14 +343,14 @@ Makapix focuses on the social layer: **metadata**, **search**, **promotion**, **
 ## 11. Operational Model
 
 ### 11.1 Single VPS Layout (Dockerized)
-- **Reverse proxy**: Caddy/Nginx (TLS termination, gzip/brotli, HTTP/2/3).
-- **API**: Go or Node/TS server.
-- **DB**: Postgres 14+ (on the same VPS initially).
-- **Cache/Queue**: Redis (rate limits, queues, sessions if used).
+- **Reverse proxy**: Caddy (TLS termination, gzip/brotli, HTTP/2, serves vault files).
+- **API**: FastAPI (Python 3.12+) with Uvicorn.
+- **DB**: PostgreSQL 16 (on the same VPS).
+- **Cache/Queue**: Redis (rate limits, Celery queues, sessions).
 - **MQTT**: Mosquitto with TLS.
-- **Background workers**: validator, re-verifier, index refresh, **ARP aggregator** (consumes view events from Redis Streams/Kafka-lite queue, writes `view_counters_*` tables, emits MQTT pulses).
-- **Static frontend**: built assets served by the proxy (or behind the API server).
-- **Object storage**: Cloudflare R2 (preferred) or AWS S3 bucket + Cloudflare CDN; accessed via IAM credentials scoped to `posts/` with rotation automation.
+- **Background workers**: Celery worker for validation, re-verification, index refresh, **ARP aggregator** (consumes view events from Redis, writes `view_counters_*` tables, emits MQTT pulses).
+- **Static frontend**: Next.js built assets served by Caddy.
+- **Image Vault**: Local filesystem storage at `/vault/` with hash-based folder structure (a1/b2/c3/artwork-id.png); mounted as Docker volume; served directly by Caddy at `/api/vault/` URLs.
 
 ### 11.2 Observability
 - **Metrics**: Prometheus endpoint; basic dashboards.
@@ -358,7 +370,7 @@ Makapix focuses on the social layer: **metadata**, **search**, **promotion**, **
 
 - Target ≤ 100 ms p95 for read endpoints under normal load.
 - Read scaling via HTTP caching (Cloudflare free) for list pages and search results.
-- All artwork bytes are served from the CDN/object store, so API nodes only handle metadata and signatures even during spikes.
+- All artwork bytes are served from the vault storage, so API nodes only handle metadata and signatures even during spikes.
 - Writes are low volume by design; ensure idempotent publish jobs.
 - Search: Postgres GIN/trigram + keyset pagination.
 - ARP ingestion is append-only and sharded by day; raw writes can exceed 200 events/sec during showcases, so Redis Streams absorb bursts before workers flush to Postgres partitions.
@@ -368,13 +380,15 @@ Makapix focuses on the social layer: **metadata**, **search**, **promotion**, **
 
 ## 13. Cost Envelope
 
-- **Compute**: one small VPS (e.g., 2 vCPU, 2–4 GB). ~ $6–$15/mo depending on provider.
+- **Compute**: one small VPS (e.g., 2 vCPU, 2–4 GB, 50+ GB SSD). ~ $7–$15/mo depending on provider.
 - **Domain**: ~$10–$15/year.
-- **Backups**: snapshots or DIY object-store; a few dollars/month or included.
-- **Object storage + CDN**: Cloudflare R2 free tier handles tens of GB with $0 egress via Cloudflare CDN; budget $1–$5/mo once outside free tier.
-- **MQTT**: Mosquitto (free).
+- **Backups**: VPS snapshots or rsync to backup location; typically included or $2–3/mo.
+- **Storage**: Local vault on VPS included in base price; allocate ~20-50 GB for images.
+- **MQTT**: Mosquitto (free, runs on VPS).
 
-Total initial monthly: **~$7–$18** (lean to comfortable, mostly driven by object storage growth).
+Total initial monthly: **~$7–$18** (VPS + domain + optional backup storage).
+
+**Note**: No external object storage or CDN costs since images are stored locally on the VPS. CDN can be added in the future if needed for scaling.
 
 ---
 
@@ -382,10 +396,10 @@ Total initial monthly: **~$7–$18** (lean to comfortable, mostly driven by obje
 
 - **Contract tests** for schema validation and all visibility rules.
 - **Security tests**: ZIP parsing/path traversal rejection, SVG rejection, XSS escaping, per-user rate-limits, and enforcement of storage quotas.
-- **Object storage tests**: ensure uploads stream without buffering whole files, verify CDN URLs map to object keys, detect orphaned/duplicate objects.
+- **Object storage tests**: ensure uploads stream without buffering whole files, verify vault URLs map to object keys, detect orphaned/duplicate objects.
 - **Metadata API tests**: verify public endpoints expose only intended fields, authenticated endpoints require valid sessions/tokens, and responses replace the legacy static-file format.
 - **Load tests**: read-heavy (feed scroll) + bursty writes (reactions/comments/uploads).
-- **E2E**: publish flow → assets land in object storage → CDN fetch returns expected hash → post visible → MQTT notification consumed by a test client.
+- **E2E**: publish flow → assets land in vault storage → CDN fetch returns expected hash → post visible → MQTT notification consumed by a test client.
 - **ARP tests**: simulate mixed device types + manual/automated intents, verify dedupe logic, ensure recognition badges only unlock when counters exceed thresholds, and confirm that spoofed/batched events without valid signatures are rejected.
 
 ---
@@ -394,7 +408,7 @@ Total initial monthly: **~$7–$18** (lean to comfortable, mostly driven by obje
 
 **MVP (ship fast)**
 - GitHub OAuth (or email/password fallback) for authentication.
-- Client-side generator → ZIP upload → object storage ingest pipeline.
+- Client-side generator → ZIP upload → vault storage ingest pipeline.
 - Posts (art), reactions (≤5), comments (depth 2, cap 1,000), hashtags.
 - Simple search, promoted feed, profile pages.
 - Basic moderation: hide/unhide, ban/unban, reports queue.
@@ -433,7 +447,7 @@ Total initial monthly: **~$7–$18** (lean to comfortable, mostly driven by obje
 
 ## 17. Glossary
 
-- **Asset**: a validated artwork binary stored in Makapix’s object storage bucket and exposed via CDN.
+- **Asset**: a validated artwork binary stored in Makapix’s vault storage and exposed from the vault.
 - **Conformant**: passes schema, type, canvas, and hash checks.
 - **Non-conformant**: failed checks; hidden by default; rechecked on schedule.
 - **Promoted**: featured by staff for the front page.
@@ -445,7 +459,7 @@ Total initial monthly: **~$7–$18** (lean to comfortable, mostly driven by obje
 ## 18. Implementation Notes (Language-Agnostic)
 
 - Use strict typing, small modules, and clear boundaries: **API**, **Relay**, **Validator**, **Workers**.
-- Centralize object storage access in a thin library that handles key generation, retries, and metrics; all uploads stream to the bucket without writing full files to disk.
+- Centralize vault storage access in a thin library that handles key generation, retries, and metrics; all uploads stream to the vault without writing full files to disk.
 - Prefer idempotent handlers (publish jobs, moderation actions).
 - Keyset pagination for infinite scroll; no OFFSET.
 - DB constraints encode invariants (comment depth, reaction uniqueness, owner immutability bypassed only by DBA).
