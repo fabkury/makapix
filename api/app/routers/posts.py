@@ -312,9 +312,8 @@ async def upload_artwork(
     # 1. Frame count - use img.n_frames for animated images
     frame_count = 1
     try:
-        if hasattr(img, "n_frames"):
-            frame_count = img.n_frames
-    except Exception as e:
+        frame_count = img.n_frames
+    except (AttributeError, Exception) as e:
         logger.warning(f"Failed to get frame count: {e}")
 
     # 2. Minimum non-zero frame duration (for animated images)
@@ -340,11 +339,8 @@ async def upload_artwork(
         # Check if image mode has alpha channel
         if img.mode in ("RGBA", "LA", "PA"):
             has_transparency = True
-        # For palette images, check for transparency info
+        # For palette images (including GIFs), check for transparency info
         elif img.mode == "P" and "transparency" in img.info:
-            has_transparency = True
-        # For GIF, check transparency
-        elif mime_type == "image/gif" and "transparency" in img.info:
             has_transparency = True
     except Exception as e:
         logger.warning(f"Failed to detect transparency: {e}")
