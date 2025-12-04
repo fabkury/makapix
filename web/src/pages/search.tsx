@@ -632,13 +632,14 @@ function HashtagsTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: a
         params.set('cursor', cursor);
       }
 
-      const headers: HeadersInit = {};
-      const token = localStorage.getItem('access_token');
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/hashtags?${params.toString()}`);
 
-      const response = await fetch(`${API_BASE_URL}/api/hashtags?${params.toString()}`, { headers });
+      if (response.status === 401) {
+        // Token refresh failed - redirect to login
+        clearTokens();
+        window.location.href = '/auth';
+        return;
+      }
 
       if (!response.ok) {
         if (response.status === 404) {
@@ -1175,24 +1176,16 @@ function UsersTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any 
         params.set('cursor', cursor);
       }
 
-      const token = localStorage.getItem('access_token');
-      if (!token) {
-        throw new Error('Not authenticated');
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/browse?${params.toString()}`);
+
+      if (response.status === 401) {
+        // Token refresh failed - redirect to login
+        clearTokens();
+        router.push('/auth');
+        return;
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/user/browse?${params.toString()}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
       if (!response.ok) {
-        if (response.status === 401) {
-          localStorage.removeItem('access_token');
-          localStorage.removeItem('user_id');
-          router.push('/auth');
-          return;
-        }
         if (response.status === 404) {
           setUsers([]);
           setNextCursor(null);
