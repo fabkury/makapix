@@ -28,29 +28,31 @@ def upgrade() -> None:
         "posts",
         sa.Column("file_bytes", sa.Integer(), nullable=True),
     )
-    
+
     # Backfill file_bytes from existing file_kb (approximate)
     op.execute("UPDATE posts SET file_bytes = file_kb * 1024")
-    
+
     # Make file_bytes NOT NULL after backfill
     op.alter_column("posts", "file_bytes", nullable=False)
-    
+
     # Add frame_count column with default value of 1 (static images)
     op.add_column(
         "posts",
         sa.Column("frame_count", sa.Integer(), nullable=False, server_default="1"),
     )
-    
+
     # Add min_frame_duration_ms column (nullable for static images)
     op.add_column(
         "posts",
         sa.Column("min_frame_duration_ms", sa.Integer(), nullable=True),
     )
-    
+
     # Add has_transparency column with default value of False
     op.add_column(
         "posts",
-        sa.Column("has_transparency", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column(
+            "has_transparency", sa.Boolean(), nullable=False, server_default="false"
+        ),
     )
 
 
