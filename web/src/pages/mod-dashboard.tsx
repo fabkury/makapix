@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Layout from '../components/Layout';
 import StatsPanel from '../components/StatsPanel';
 import SiteMetricsPanel from '../components/SiteMetricsPanel';
+import { authenticatedFetch, clearTokens } from '../lib/api';
 
 interface PostOwner {
   id: string;
@@ -117,15 +118,13 @@ export default function ModDashboardPage() {
 
   const checkModeratorStatus = useCallback(async () => {
     try {
-      const accessToken = localStorage.getItem('access_token');
-      if (!accessToken) {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/auth/me`);
+
+      if (response.status === 401) {
+        clearTokens();
         router.push('/');
         return;
       }
-
-      const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
 
       if (!response.ok) {
         router.push('/');
@@ -183,10 +182,9 @@ export default function ModDashboardPage() {
     if (pendingLoading) return;
     setPendingLoading(true);
     try {
-      const accessToken = localStorage.getItem('access_token');
       const cursor = reset ? null : pendingCursor;
       const url = `${API_BASE_URL}/api/admin/pending-approval?limit=50${cursor ? `&cursor=${cursor}` : ''}`;
-      const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+      const response = await authenticatedFetch(url);
       if (response.ok) {
         const data: PageResponse<Post> = await response.json();
         if (reset) {
@@ -205,10 +203,8 @@ export default function ModDashboardPage() {
 
   const approvePublicVisibility = async (postId: string) => {
     try {
-      const accessToken = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/api/post/${postId}/approve-public`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/approve-public`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${accessToken}` }
       });
       if (response.ok) {
         // Remove from pending list
@@ -221,10 +217,8 @@ export default function ModDashboardPage() {
 
   const rejectPublicVisibility = async (postId: string) => {
     try {
-      const accessToken = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/api/post/${postId}/approve-public`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/approve-public`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${accessToken}` }
       });
       if (response.ok) {
         // Remove from pending list (it's already not public)
@@ -239,10 +233,9 @@ export default function ModDashboardPage() {
     if (reportsLoading) return;
     setReportsLoading(true);
     try {
-      const accessToken = localStorage.getItem('access_token');
       const cursor = reset ? null : reportsCursor;
       const url = `${API_BASE_URL}/api/report?status=open&limit=50${cursor ? `&cursor=${cursor}` : ''}`;
-      const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+      const response = await authenticatedFetch(url);
       if (response.ok) {
         const data: PageResponse<Report> = await response.json();
         if (reset) {
@@ -263,10 +256,9 @@ export default function ModDashboardPage() {
     if (postsLoading) return;
     setPostsLoading(true);
     try {
-      const accessToken = localStorage.getItem('access_token');
       const cursor = reset ? null : postsCursor;
       const url = `${API_BASE_URL}/api/admin/recent-posts?limit=50${cursor ? `&cursor=${cursor}` : ''}`;
-      const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+      const response = await authenticatedFetch(url);
       if (response.ok) {
         const data: PageResponse<Post> = await response.json();
         if (reset) {
@@ -288,10 +280,9 @@ export default function ModDashboardPage() {
     if (profilesLoading) return;
     setProfilesLoading(true);
     try {
-      const accessToken = localStorage.getItem('access_token');
       const cursor = reset ? null : profilesCursor;
       const url = `${API_BASE_URL}/api/admin/recent-profiles?limit=50${cursor ? `&cursor=${cursor}` : ''}`;
-      const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+      const response = await authenticatedFetch(url);
       if (response.ok) {
         const data: PageResponse<User> = await response.json();
         if (reset) {
@@ -312,10 +303,9 @@ export default function ModDashboardPage() {
     if (auditLoading) return;
     setAuditLoading(true);
     try {
-      const accessToken = localStorage.getItem('access_token');
       const cursor = reset ? null : auditCursor;
       const url = `${API_BASE_URL}/api/admin/audit-log?limit=50${cursor ? `&cursor=${cursor}` : ''}`;
-      const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+      const response = await authenticatedFetch(url);
       if (response.ok) {
         const data: PageResponse<AuditLogEntry> = await response.json();
         if (reset) {
@@ -334,10 +324,7 @@ export default function ModDashboardPage() {
 
   const loadAdminNotes = async (postId: string) => {
     try {
-      const accessToken = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/api/post/${postId}/admin-notes`, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/admin-notes`);
       if (response.ok) {
         const data = await response.json();
         setAdminNotes(data.items || []);
@@ -349,10 +336,9 @@ export default function ModDashboardPage() {
 
   const resolveReport = async (reportId: string, action: string) => {
     try {
-      const accessToken = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/api/report/${reportId}`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/report/${reportId}`, {
         method: 'PATCH',
-        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'resolved', action_taken: action, notes: `Action: ${action}` })
       });
       if (response.ok) {
@@ -365,10 +351,9 @@ export default function ModDashboardPage() {
 
   const promotePost = async (postId: string) => {
     try {
-      const accessToken = localStorage.getItem('access_token');
-      await fetch(`${API_BASE_URL}/api/post/${postId}/promote`, {
+      await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/promote`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category: 'frontpage' })
       });
       await loadRecentPosts(true);
@@ -379,10 +364,9 @@ export default function ModDashboardPage() {
 
   const hidePost = async (postId: string) => {
     try {
-      const accessToken = localStorage.getItem('access_token');
-      await fetch(`${API_BASE_URL}/api/post/${postId}/hide`, {
+      await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/hide`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ by: 'mod' })
       });
       await loadRecentPosts(true);
@@ -393,10 +377,9 @@ export default function ModDashboardPage() {
 
   const unhidePost = async (postId: string) => {
     try {
-      const accessToken = localStorage.getItem('access_token');
-      await fetch(`${API_BASE_URL}/api/post/${postId}/unhide`, {
+      await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/unhide`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ by: 'mod' })
       });
       await loadRecentPosts(true);
@@ -407,10 +390,8 @@ export default function ModDashboardPage() {
 
   const demotePost = async (postId: string) => {
     try {
-      const accessToken = localStorage.getItem('access_token');
-      await fetch(`${API_BASE_URL}/api/post/${postId}/demote`, {
+      await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/demote`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${accessToken}` }
       });
       await loadRecentPosts(true);
     } catch (error) {
@@ -423,10 +404,8 @@ export default function ModDashboardPage() {
       return;
     }
     try {
-      const accessToken = localStorage.getItem('access_token');
-      await fetch(`${API_BASE_URL}/api/post/${postId}`, {
+      await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${accessToken}` }
       });
       await loadRecentPosts(true);
     } catch (error) {
@@ -436,10 +415,9 @@ export default function ModDashboardPage() {
 
   const banUser = async (userId: string) => {
     try {
-      const accessToken = localStorage.getItem('access_token');
-      await fetch(`${API_BASE_URL}/api/admin/user/${userId}/ban`, {
+      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${userId}/ban`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ duration_days: 7 })
       });
       await loadRecentProfiles(true);
@@ -450,10 +428,8 @@ export default function ModDashboardPage() {
 
   const trustUser = async (userId: string) => {
     try {
-      const accessToken = localStorage.getItem('access_token');
-      await fetch(`${API_BASE_URL}/api/admin/user/${userId}/auto-approval`, {
+      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${userId}/auto-approval`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${accessToken}` }
       });
       await loadRecentProfiles(true);
     } catch (error) {
@@ -463,10 +439,8 @@ export default function ModDashboardPage() {
 
   const distrustUser = async (userId: string) => {
     try {
-      const accessToken = localStorage.getItem('access_token');
-      await fetch(`${API_BASE_URL}/api/admin/user/${userId}/auto-approval`, {
+      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${userId}/auto-approval`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${accessToken}` }
       });
       await loadRecentProfiles(true);
     } catch (error) {
@@ -478,10 +452,9 @@ export default function ModDashboardPage() {
     if (!selectedPostId || !noteText.trim()) return;
     setAddingNote(true);
     try {
-      const accessToken = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/api/post/${selectedPostId}/admin-notes`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/post/${selectedPostId}/admin-notes`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note: noteText })
       });
       if (response.ok) {
