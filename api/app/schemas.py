@@ -55,6 +55,7 @@ class Config(BaseModel):
     max_comment_depth: int = 2
     max_comments_per_post: int = 1000
     max_emojis_per_user_per_post: int = 5
+    max_hashtags_per_post: int = 64
     allowed_canvases: list[str] = ["16x16", "32x32", "64x64", "128x128", "256x256"]
     max_art_file_kb_default: int = 15 * 1024  # 15 MB
 
