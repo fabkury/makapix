@@ -14,7 +14,7 @@
 3. [Database Schema](#database-schema)
 4. [Backend Implementation](#backend-implementation)
 5. [Frontend Implementation](#frontend-implementation)
-6. [MQTT Real-Time Updates](#mqtt-real-time-updates)
+6. [WebSocket Real-Time Updates](#websocket-real-time-updates)
 7. [Performance Expectations](#performance-expectations)
 8. [Implementation Phases](#implementation-phases)
 9. [Testing Strategy](#testing-strategy)
@@ -24,7 +24,7 @@
 
 ## Executive Summary
 
-This plan details the implementation of a social notifications system for Makapix Club that will notify users when their artwork or blog posts receive reactions or comments. The system leverages existing infrastructure (PostgreSQL, MQTT, Redis) to deliver real-time notifications efficiently while maintaining low operational costs.
+This plan details the implementation of a social notifications system for Makapix Club that will notify users when their artwork or blog posts receive reactions or comments. The system leverages existing infrastructure (PostgreSQL, Redis) and uses WebSockets over HTTPS for real-time delivery, maintaining low operational costs.
 
 ### Key Features
 
@@ -32,7 +32,7 @@ This plan details the implementation of a social notifications system for Makapi
 - **Unread counter badge** displayed on user profile button in header (bottom-right overlay)
 - **Notifications button** on user profile page with same counter
 - **Dedicated notifications page** showing all notifications with highlights for unread items
-- **Real-time updates** via MQTT push notifications while user is logged in
+- **Real-time updates** via WebSocket push notifications while user is logged in
 - **Mark as read** functionality that automatically marks notifications as read when user views notifications page
 - **Performance-optimized** for 10k MAU with sub-100ms response times
 
@@ -62,20 +62,20 @@ This plan details the implementation of a social notifications system for Makapi
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
-│          Publish MQTT Notification Message                   │
-│       (makapix/notifications/user/{user_id})                │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
 │         Update Redis Counter (unread count)                  │
 │            (user:{user_id}:unread_count)                     │
 └────────────────────────┬────────────────────────────────────┘
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
-│           User's Browser Receives MQTT Message               │
-│        (Updates badge counter in real-time via WS)           │
+│    Broadcast to WebSocket Connections (via Redis Pub/Sub)   │
+│         Send notification to user's active WebSockets        │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│           User's Browser Receives WebSocket Message          │
+│        (Updates badge counter in real-time)                  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -84,9 +84,9 @@ This plan details the implementation of a social notifications system for Makapi
 | Component | Responsibility |
 |-----------|---------------|
 | **PostgreSQL** | Store notification records, user preferences, read status |
-| **Redis** | Cache unread notification counts for fast access |
-| **MQTT** | Real-time push notifications to connected clients |
-| **FastAPI** | API endpoints for CRUD operations on notifications |
+| **Redis** | Cache unread notification counts; Pub/Sub for WebSocket broadcasting |
+| **WebSocket** | Real-time push notifications to connected browser clients |
+| **FastAPI** | API endpoints for CRUD operations; WebSocket connection manager |
 | **Next.js** | UI components for notification display and interaction |
 
 ---
@@ -328,6 +328,7 @@ class UnreadCountResponse(BaseModel):
 
 from __future__ import annotations
 import logging
+import json
 from typing import TYPE_CHECKING
 from uuid import UUID
 from datetime import datetime, timedelta
@@ -336,7 +337,6 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..cache import get_redis
-from ..mqtt.publisher import publish
 
 if TYPE_CHECKING:
     from ..auth import AnonymousUser
@@ -361,7 +361,7 @@ class NotificationService:
         content_title: str | None = None,
         content_url: str | None = None,
     ) -> models.Notification:
-        """Create a notification and publish via MQTT."""
+        """Create a notification and broadcast via WebSocket."""
         
         # Don't notify users about their own actions
         if actor and isinstance(actor, models.User) and actor.id == user_id:
@@ -406,8 +406,8 @@ class NotificationService:
         # Update Redis counter
         NotificationService._increment_unread_count(user_id)
         
-        # Publish MQTT notification
-        NotificationService._publish_mqtt_notification(notification)
+        # Broadcast WebSocket notification
+        NotificationService._broadcast_notification(notification)
         
         logger.info(f"Created notification {notification.id} for user {user_id}")
         return notification
@@ -425,10 +425,11 @@ class NotificationService:
             logger.error(f"Failed to increment unread count in Redis: {e}")
     
     @staticmethod
-    def _publish_mqtt_notification(notification: models.Notification) -> None:
-        """Publish notification via MQTT."""
+    def _broadcast_notification(notification: models.Notification) -> None:
+        """Broadcast notification via Redis Pub/Sub to WebSocket connections."""
         try:
-            topic = f"makapix/notifications/user/{notification.user_id}"
+            redis = get_redis()
+            channel = f"notifications:user:{notification.user_id}"
             payload = {
                 "id": str(notification.id),
                 "notification_type": notification.notification_type,
@@ -441,10 +442,10 @@ class NotificationService:
                 "content_url": notification.content_url,
                 "created_at": notification.created_at.isoformat(),
             }
-            publish(topic, payload, qos=1, retain=False)
-            logger.info(f"Published MQTT notification for user {notification.user_id}")
+            redis.publish(channel, json.dumps(payload))
+            logger.info(f"Broadcast notification for user {notification.user_id} via Redis Pub/Sub")
         except Exception as e:
-            logger.error(f"Failed to publish MQTT notification: {e}")
+            logger.error(f"Failed to broadcast notification via Redis: {e}")
     
     @staticmethod
     def get_unread_count(db: Session, user_id: int) -> int:
@@ -664,7 +665,199 @@ def delete_notification(
     db.commit()
 ```
 
-### 5. Integration with Existing Endpoints
+### 5. WebSocket Connection Manager
+
+**File:** `api/app/websocket_manager.py` (new file)
+
+```python
+"""WebSocket connection manager for real-time notifications."""
+
+from __future__ import annotations
+import asyncio
+import json
+import logging
+from typing import Dict, Set
+from fastapi import WebSocket, WebSocketDisconnect
+from ..cache import get_redis
+
+logger = logging.getLogger(__name__)
+
+
+class ConnectionManager:
+    """Manages WebSocket connections and broadcasts notifications."""
+    
+    def __init__(self):
+        # Map of user_id -> set of WebSocket connections
+        self.active_connections: Dict[int, Set[WebSocket]] = {}
+        self._lock = asyncio.Lock()
+        self._pubsub_task = None
+        self._running = False
+    
+    async def connect(self, websocket: WebSocket, user_id: int):
+        """Accept and register a new WebSocket connection."""
+        await websocket.accept()
+        async with self._lock:
+            if user_id not in self.active_connections:
+                self.active_connections[user_id] = set()
+            self.active_connections[user_id].add(websocket)
+        logger.info(f"User {user_id} connected. Total connections: {self.get_connection_count()}")
+    
+    async def disconnect(self, websocket: WebSocket, user_id: int):
+        """Remove a WebSocket connection."""
+        async with self._lock:
+            if user_id in self.active_connections:
+                self.active_connections[user_id].discard(websocket)
+                if not self.active_connections[user_id]:
+                    del self.active_connections[user_id]
+        logger.info(f"User {user_id} disconnected. Total connections: {self.get_connection_count()}")
+    
+    async def send_personal_message(self, message: dict, user_id: int):
+        """Send a message to all connections for a specific user."""
+        if user_id not in self.active_connections:
+            return
+        
+        # Get copy of connections to avoid modification during iteration
+        connections = list(self.active_connections[user_id])
+        disconnected = []
+        
+        for websocket in connections:
+            try:
+                await websocket.send_json(message)
+            except Exception as e:
+                logger.error(f"Error sending message to user {user_id}: {e}")
+                disconnected.append(websocket)
+        
+        # Clean up disconnected sockets
+        if disconnected:
+            async with self._lock:
+                for ws in disconnected:
+                    if user_id in self.active_connections:
+                        self.active_connections[user_id].discard(ws)
+                if user_id in self.active_connections and not self.active_connections[user_id]:
+                    del self.active_connections[user_id]
+    
+    def get_connection_count(self) -> int:
+        """Get total number of active connections."""
+        return sum(len(conns) for conns in self.active_connections.values())
+    
+    async def start_redis_listener(self):
+        """Start Redis Pub/Sub listener for notification broadcasts."""
+        if self._running:
+            return
+        
+        self._running = True
+        self._pubsub_task = asyncio.create_task(self._redis_listener())
+        logger.info("Redis Pub/Sub listener started")
+    
+    async def stop_redis_listener(self):
+        """Stop Redis Pub/Sub listener."""
+        self._running = False
+        if self._pubsub_task:
+            self._pubsub_task.cancel()
+            try:
+                await self._pubsub_task
+            except asyncio.CancelledError:
+                pass
+        logger.info("Redis Pub/Sub listener stopped")
+    
+    async def _redis_listener(self):
+        """Listen for Redis Pub/Sub messages and broadcast to WebSocket clients."""
+        redis = get_redis()
+        pubsub = redis.pubsub()
+        
+        # Subscribe to all notification channels (pattern matching)
+        pubsub.psubscribe("notifications:user:*")
+        
+        try:
+            while self._running:
+                message = pubsub.get_message(timeout=1.0)
+                if message and message['type'] == 'pmessage':
+                    try:
+                        # Extract user_id from channel name
+                        channel = message['channel'].decode('utf-8')
+                        user_id = int(channel.split(':')[-1])
+                        
+                        # Parse notification payload
+                        payload = json.loads(message['data'].decode('utf-8'))
+                        
+                        # Broadcast to all user's connections
+                        await self.send_personal_message(payload, user_id)
+                    except Exception as e:
+                        logger.error(f"Error processing Redis message: {e}")
+                
+                # Small sleep to prevent busy-waiting
+                await asyncio.sleep(0.01)
+        except Exception as e:
+            logger.error(f"Redis listener error: {e}")
+        finally:
+            pubsub.punsubscribe("notifications:user:*")
+            pubsub.close()
+
+
+# Global connection manager instance
+connection_manager = ConnectionManager()
+```
+
+### 6. WebSocket Endpoint
+
+**File:** `api/app/routers/notifications.py` (add to existing file)
+
+Add WebSocket endpoint to the notifications router:
+
+```python
+from fastapi import WebSocket, WebSocketDisconnect
+from ..websocket_manager import connection_manager
+
+# ... existing HTTP routes ...
+
+@router.websocket("/ws")
+async def websocket_endpoint(
+    websocket: WebSocket,
+    token: str,  # JWT token passed as query parameter
+    db: Session = Depends(get_db),
+):
+    """
+    WebSocket endpoint for real-time notifications.
+    
+    Clients connect via: ws://api.example.com/api/notifications/ws?token=<jwt_token>
+    """
+    # Verify token and get user
+    try:
+        from ..auth import verify_token
+        payload = verify_token(token)
+        user_id = payload.get("user_id")
+        if not user_id:
+            await websocket.close(code=1008, reason="Invalid token")
+            return
+    except Exception as e:
+        logger.error(f"WebSocket authentication error: {e}")
+        await websocket.close(code=1008, reason="Authentication failed")
+        return
+    
+    # Connect user
+    await connection_manager.connect(websocket, user_id)
+    
+    try:
+        # Keep connection alive and handle incoming messages
+        while True:
+            # Receive messages (ping/pong for keepalive)
+            data = await websocket.receive_text()
+            
+            # Handle ping/pong
+            if data == "ping":
+                await websocket.send_text("pong")
+            
+            # Could add more message types here (e.g., mark as read)
+            
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected for user {user_id}")
+    except Exception as e:
+        logger.error(f"WebSocket error for user {user_id}: {e}")
+    finally:
+        await connection_manager.disconnect(websocket, user_id)
+```
+
+### 7. Integration with Existing Endpoints
 
 #### A. Reactions Endpoint
 
@@ -775,30 +968,38 @@ NotificationService.create_notification(
 )
 ```
 
-### 6. Register Router in Main App
+### 8. Register Router and Start WebSocket Listener
 
 **File:** `api/app/main.py`
 
 ```python
 from .routers import notifications
+from .websocket_manager import connection_manager
 
 app.include_router(notifications.router, prefix="/api")
+
+# Start WebSocket manager on application startup
+@app.on_event("startup")
+async def startup_event():
+    await connection_manager.start_redis_listener()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await connection_manager.stop_redis_listener()
 ```
 
 ---
 
 ## Frontend Implementation
 
-### 1. MQTT Client Utility
+### 1. WebSocket Client Utility
 
-**File:** `web/src/lib/mqtt-client.ts` (new file)
+**File:** `web/src/lib/websocket-client.ts` (new file)
 
 ```typescript
 /**
- * MQTT client for real-time notifications.
+ * WebSocket client for real-time notifications.
  */
-
-import mqtt, { MqttClient } from 'mqtt';
 
 export interface NotificationPayload {
   id: string;
@@ -815,58 +1016,102 @@ export interface NotificationPayload {
 
 export type NotificationCallback = (notification: NotificationPayload) => void;
 
-export class NotificationMQTTClient {
-  private client: MqttClient | null = null;
+export class NotificationWebSocketClient {
+  private ws: WebSocket | null = null;
   private callbacks: NotificationCallback[] = [];
   private connected: boolean = false;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private reconnectAttempts: number = 0;
+  private maxReconnectAttempts: number = 10;
+  private reconnectDelay: number = 3000;
 
-  constructor(private brokerUrl: string) {}
+  constructor(
+    private apiBaseUrl: string,
+    private token: string
+  ) {}
 
-  async connect(userId: string): Promise<void> {
+  connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.client = mqtt.connect(this.brokerUrl, {
-        clientId: `web-${userId}-${Date.now()}`,
-        clean: true,
-        reconnectPeriod: 5000,
-      });
-
-      this.client.on('connect', () => {
-        console.log('MQTT connected for notifications');
-        this.connected = true;
+      try {
+        // Convert HTTP(S) URL to WS(S) URL
+        const wsUrl = this.apiBaseUrl.replace(/^http/, 'ws');
+        const url = `${wsUrl}/api/notifications/ws?token=${encodeURIComponent(this.token)}`;
         
-        // Subscribe to user-specific notification topic
-        const topic = `makapix/notifications/user/${userId}`;
-        this.client?.subscribe(topic, { qos: 1 }, (err) => {
-          if (err) {
-            console.error('Failed to subscribe to notification topic:', err);
-            reject(err);
-          } else {
-            console.log(`Subscribed to ${topic}`);
-            resolve();
+        this.ws = new WebSocket(url);
+
+        this.ws.onopen = () => {
+          console.log('WebSocket connected for notifications');
+          this.connected = true;
+          this.reconnectAttempts = 0;
+          resolve();
+          
+          // Send periodic ping to keep connection alive
+          this.startPing();
+        };
+
+        this.ws.onmessage = (event) => {
+          try {
+            // Handle pong response
+            if (event.data === 'pong') {
+              return;
+            }
+            
+            const notification = JSON.parse(event.data) as NotificationPayload;
+            this.callbacks.forEach(cb => cb(notification));
+          } catch (error) {
+            console.error('Failed to parse notification:', error);
           }
-        });
-      });
+        };
 
-      this.client.on('message', (topic, payload) => {
-        try {
-          const notification = JSON.parse(payload.toString()) as NotificationPayload;
-          this.callbacks.forEach(cb => cb(notification));
-        } catch (error) {
-          console.error('Failed to parse notification:', error);
-        }
-      });
+        this.ws.onerror = (error) => {
+          console.error('WebSocket error:', error);
+          this.connected = false;
+          reject(error);
+        };
 
-      this.client.on('error', (error) => {
-        console.error('MQTT error:', error);
-        this.connected = false;
+        this.ws.onclose = () => {
+          console.log('WebSocket connection closed');
+          this.connected = false;
+          this.stopPing();
+          this.attemptReconnect();
+        };
+      } catch (error) {
         reject(error);
-      });
-
-      this.client.on('close', () => {
-        console.log('MQTT connection closed');
-        this.connected = false;
-      });
+      }
     });
+  }
+
+  private startPing(): void {
+    this.reconnectTimer = setInterval(() => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send('ping');
+      }
+    }, 30000); // Ping every 30 seconds
+  }
+
+  private stopPing(): void {
+    if (this.reconnectTimer) {
+      clearInterval(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  private attemptReconnect(): void {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error('Max reconnection attempts reached');
+      return;
+    }
+
+    this.reconnectAttempts++;
+    const delay = this.reconnectDelay * Math.min(this.reconnectAttempts, 5);
+    
+    console.log(`Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+    
+    setTimeout(() => {
+      this.connect().catch(err => {
+        console.error('Reconnection failed:', err);
+      });
+    }, delay);
   }
 
   onNotification(callback: NotificationCallback): () => void {
@@ -877,9 +1122,10 @@ export class NotificationMQTTClient {
   }
 
   disconnect(): void {
-    if (this.client) {
-      this.client.end();
-      this.client = null;
+    this.stopPing();
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
       this.connected = false;
     }
   }
@@ -900,10 +1146,8 @@ export class NotificationMQTTClient {
  */
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { NotificationMQTTClient, NotificationPayload } from '../lib/mqtt-client';
+import { NotificationWebSocketClient, NotificationPayload } from '../lib/websocket-client';
 import { authenticatedFetch } from '../lib/api';
-
-const MQTT_URL = process.env.NEXT_PUBLIC_MQTT_WS_URL || 'ws://localhost:9001';
 
 interface Notification {
   id: string;
@@ -925,7 +1169,7 @@ export function useNotifications(userId: string | null) {
   const [loading, setLoading] = useState<boolean>(false);
   const [connected, setConnected] = useState<boolean>(false);
   
-  const clientRef = useRef<NotificationMQTTClient | null>(null);
+  const clientRef = useRef<NotificationWebSocketClient | null>(null);
   const API_BASE_URL = typeof window !== 'undefined' 
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
     : '';
@@ -1007,20 +1251,23 @@ export function useNotifications(userId: string | null) {
     }
   }, [userId, API_BASE_URL]);
 
-  // Setup MQTT connection
+  // Setup WebSocket connection
   useEffect(() => {
     if (!userId) return;
 
-    const client = new NotificationMQTTClient(MQTT_URL);
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+
+    const client = new NotificationWebSocketClient(API_BASE_URL, token);
     clientRef.current = client;
 
-    client.connect(userId)
+    client.connect()
       .then(() => {
         setConnected(true);
-        console.log('Notifications MQTT connected');
+        console.log('Notifications WebSocket connected');
       })
       .catch((error) => {
-        console.error('Failed to connect notifications MQTT:', error);
+        console.error('Failed to connect notifications WebSocket:', error);
         setConnected(false);
       });
 
@@ -1056,7 +1303,7 @@ export function useNotifications(userId: string | null) {
       client.disconnect();
       setConnected(false);
     };
-  }, [userId]);
+  }, [userId, API_BASE_URL]);
 
   // Fetch initial unread count
   useEffect(() => {
@@ -1461,12 +1708,17 @@ export default function NotificationsPage() {
 
 ---
 
-## MQTT Real-Time Updates
+## WebSocket Real-Time Updates
 
-### Topic Structure
+### Connection Flow
 
 ```
-makapix/notifications/user/{user_id}
+1. User logs in → Frontend establishes WebSocket connection
+2. WebSocket connects to /api/notifications/ws?token=<jwt_token>
+3. Backend verifies JWT token and registers connection
+4. User receives real-time notification messages
+5. Periodic ping/pong keeps connection alive
+6. User logs out → WebSocket disconnects
 ```
 
 ### Message Payload
@@ -1486,20 +1738,41 @@ makapix/notifications/user/{user_id}
 }
 ```
 
-### MQTT Configuration
+### WebSocket Configuration
 
-- **QoS Level**: 1 (at least once delivery)
-- **Retain**: False (ephemeral messages)
-- **Clean Session**: True (no persistent sessions)
-- **Reconnect Period**: 5 seconds
+- **Protocol**: WSS (WebSocket Secure) over HTTPS
+- **Authentication**: JWT token passed as query parameter
+- **Keepalive**: Ping/pong every 30 seconds
+- **Reconnection**: Automatic with exponential backoff (up to 10 attempts)
+- **Broadcasting**: Redis Pub/Sub for multi-instance support
 
 ### Connection Lifecycle
 
-1. User logs in → Frontend connects to MQTT broker
-2. Subscribe to `makapix/notifications/user/{user_id}`
-3. Receive real-time notifications
-4. Update badge counter in UI
-5. User logs out → Disconnect from MQTT
+1. **Connect**: Client establishes WebSocket connection with JWT token
+2. **Authenticate**: Server verifies token and registers connection
+3. **Subscribe**: Backend subscribes to Redis channel `notifications:user:{user_id}`
+4. **Receive**: Client receives real-time notification messages via WebSocket
+5. **Keepalive**: Client sends ping every 30s, server responds with pong
+6. **Reconnect**: On disconnect, client attempts reconnection with exponential backoff
+7. **Disconnect**: On logout or tab close, client closes WebSocket connection
+
+### Broadcasting Architecture
+
+```
+Action Occurs → NotificationService.create_notification()
+                ↓
+            Save to DB
+                ↓
+            Update Redis counter
+                ↓
+            Publish to Redis Pub/Sub channel: notifications:user:{user_id}
+                ↓
+            ConnectionManager Redis listener receives message
+                ↓
+            Broadcast to all WebSocket connections for user_id
+                ↓
+            Client receives notification and updates UI
+```
 
 ---
 
@@ -1548,24 +1821,32 @@ For **10,000 MAU** with 90-day retention:
    - **Update**: Incremented on new notification, decremented on mark-as-read
    - **Fallback**: Query database if cache miss
 
-2. **Memory usage**:
-   - 10,000 active users × 50 bytes per key = ~500 KB
+2. **Pub/Sub for WebSocket broadcasting**
+   - **Channels**: `notifications:user:{user_id}` (one per user with active connections)
+   - **Messages**: JSON-encoded notification payloads
+   - **Persistence**: No persistence needed (ephemeral messages)
 
-### MQTT Performance
+3. **Memory usage**:
+   - 10,000 active users × 50 bytes per key = ~500 KB (counters)
+   - Pub/Sub channels: Minimal overhead (messages not stored)
+
+### WebSocket Performance
 
 #### Connection Load
 
 - **Concurrent connections**: 10,000 users (peak)
 - **Message rate**: ~50 messages/second (estimated 5% of users active simultaneously)
 - **Bandwidth**: Minimal (messages ~500 bytes each)
+- **Keepalive overhead**: Ping/pong every 30s = ~333 messages/second total
 
-#### Mosquitto Configuration
+#### FastAPI WebSocket Configuration
 
-```conf
-max_connections 15000
-max_inflight_messages 20
-max_queued_messages 1000
-message_size_limit 10240
+```python
+# In uvicorn/gunicorn settings
+workers = 4  # Multi-worker for handling concurrent connections
+worker_class = "uvicorn.workers.UvicornWorker"
+timeout = 120  # WebSocket keepalive timeout
+keepalive = 75  # TCP keepalive
 ```
 
 ### API Endpoint Performance
@@ -1578,6 +1859,7 @@ message_size_limit 10240
 | GET /notifications/unread-count | 2ms (cached) | 15ms (uncached) |
 | POST /notifications/mark-read | 10ms | 30ms |
 | POST /notifications/mark-all-read | 15ms | 40ms |
+| WebSocket connection | 50ms | 100ms |
 
 ### End-User Experience
 
@@ -1586,13 +1868,15 @@ message_size_limit 10240
 1. **Notification delivery latency**: <500ms from action to recipient's browser
    - Database write: 5-10ms
    - Redis update: 1-2ms
-   - MQTT publish: 10-20ms
+   - Redis Pub/Sub: 1-5ms
+   - WebSocket broadcast: 5-10ms
    - Network + browser rendering: 100-400ms
 
-2. **Badge counter update**: Instant (<100ms) via MQTT push
+2. **Badge counter update**: Instant (<100ms) via WebSocket push
 
 3. **Page load performance**:
    - Initial page load: 200-300ms (including API calls)
+   - WebSocket connection: 50-100ms
    - Notifications list load: 50-100ms
    - Marking all as read: 50-150ms
 
@@ -1601,9 +1885,8 @@ message_size_limit 10240
 On a **2 vCPU, 4GB RAM VPS**:
 
 - **Database**: 20-30% CPU, 1GB RAM
-- **Redis**: 5-10% CPU, 200MB RAM
-- **MQTT Broker**: 10-15% CPU, 300MB RAM
-- **API**: 30-40% CPU, 1GB RAM
+- **Redis**: 10-15% CPU, 250MB RAM (includes Pub/Sub)
+- **API (with WebSockets)**: 35-45% CPU, 1.2GB RAM
 - **Total**: Comfortable headroom for 10k MAU
 
 ### Scalability Limits
@@ -1615,9 +1898,10 @@ On a **2 vCPU, 4GB RAM VPS**:
 ### Bottlenecks to Monitor
 
 1. **Database connections**: Pool size must accommodate concurrent requests
-2. **MQTT connections**: Each user = 1 WebSocket connection
-3. **Redis memory**: Monitor cache size growth
+2. **WebSocket connections**: Each user = 1 persistent connection
+3. **Redis memory**: Monitor cache size and Pub/Sub message queue
 4. **Network bandwidth**: Minimal but should be monitored
+5. **File descriptors**: Ensure OS limits support 10k+ concurrent connections
 
 ---
 
@@ -1653,18 +1937,21 @@ On a **2 vCPU, 4GB RAM VPS**:
 - Redis cache working
 - Integration tests passing
 
-### Phase 3: MQTT Real-Time System (Week 2)
+### Phase 3: WebSocket Real-Time System (Week 2)
 
 **Tasks**:
-1. Extend MQTT publisher to handle notification messages
-2. Create MQTT client utility in frontend
-3. Test MQTT message delivery and reconnection
-4. Implement fallback for MQTT connection failures
+1. Implement WebSocket connection manager with Redis Pub/Sub
+2. Create WebSocket endpoint in notifications router
+3. Create WebSocket client utility in frontend
+4. Test WebSocket message delivery and reconnection
+5. Implement automatic reconnection with exponential backoff
+6. Add WebSocket startup/shutdown handlers
 
 **Deliverables**:
-- MQTT notifications working
+- WebSocket notifications working
 - Real-time updates in browser
-- Graceful degradation if MQTT fails
+- Automatic reconnection on disconnect
+- Redis Pub/Sub broadcasting functional
 
 ### Phase 4: Frontend UI Components (Week 2)
 
@@ -1728,11 +2015,11 @@ On a **2 vCPU, 4GB RAM VPS**:
 **Frontend**:
 - Test `useNotifications` hook
 - Test `NotificationBadge` component rendering
-- Test MQTT client connection and message handling
+- Test WebSocket client connection and message handling
 
 ### Integration Tests
 
-- Test end-to-end flow: reaction → notification created → MQTT published → Redis updated
+- Test end-to-end flow: reaction → notification created → Redis Pub/Sub → WebSocket broadcast
 - Test notification list API with pagination
 - Test mark-as-read API
 - Test unread count accuracy
@@ -1740,9 +2027,9 @@ On a **2 vCPU, 4GB RAM VPS**:
 ### Performance Tests
 
 - Load test API endpoints with 1000 concurrent requests
-- Test MQTT broker with 10,000 concurrent connections
+- Test WebSocket server with 10,000 concurrent connections
 - Measure database query performance under load
-- Monitor Redis memory usage
+- Monitor Redis memory usage and Pub/Sub performance
 
 ### Manual Testing
 
@@ -1802,16 +2089,19 @@ def downgrade():
    - Deploy backend code
    - Deploy frontend code
    - Restart services
+   - Start ConnectionManager Redis listener
 
 3. **Post-deployment**:
    - Monitor error logs
-   - Check MQTT connection count
+   - Check WebSocket connection count
    - Monitor database performance
    - Verify real-time updates working
+   - Monitor Redis Pub/Sub metrics
 
 4. **Rollback Plan**:
    - If critical issues: rollback database migration
    - Remove notification-related code from endpoints
+   - Stop ConnectionManager
    - Restart services
 
 ### Feature Flag (Optional)
@@ -1836,7 +2126,7 @@ if not NOTIFICATIONS_ENABLED:
 1. **Notification Preferences**:
    - Allow users to disable specific notification types
    - Email digest of unread notifications
-   - Mobile push notifications (via web push API)
+   - Browser push notifications (via Web Push API)
 
 2. **Aggregation**:
    - Group similar notifications (e.g., "5 people reacted to your post")
@@ -1859,15 +2149,15 @@ if not NOTIFICATIONS_ENABLED:
 This implementation plan provides a comprehensive roadmap for adding social notifications to Makapix Club. The system is designed to:
 
 - **Scale efficiently** to 10,000 MAU on a single VPS
-- **Deliver notifications in real-time** via MQTT with <500ms latency
+- **Deliver notifications in real-time** via WebSocket with <500ms latency
 - **Provide excellent UX** with unread badges and highlighted notifications
-- **Maintain low costs** by using existing infrastructure (PostgreSQL, Redis, MQTT)
+- **Maintain low costs** by using existing infrastructure (PostgreSQL, Redis) with WebSockets
 - **Handle both artwork and blog post** reactions/comments uniformly
 
 The phased approach allows for iterative development and testing, ensuring each component works correctly before moving to the next phase. Performance expectations are realistic and achievable with the planned architecture.
 
 **Estimated Total Implementation Time**: 3-4 weeks (1 senior full-stack engineer)
 
-**Infrastructure Cost**: $0 additional (uses existing VPS resources)
+**Infrastructure Cost**: $0 additional (uses existing VPS resources, no MQTT broker needed)
 
 **End Result**: A professional, real-time social notifications system that enhances user engagement and provides immediate feedback for content creators on the Makapix Club platform.
