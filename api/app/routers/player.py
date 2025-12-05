@@ -150,12 +150,33 @@ def register_player(
     passwd_file = os.getenv("MQTT_PASSWD_FILE", "/mqtt-config/passwords")
     
     # Validate password file path to prevent path traversal
-    passwd_file = os.path.abspath(passwd_file)
-    allowed_passwd_dirs = ["/mqtt-config", "/mosquitto/config"]
-    if not any(passwd_file.startswith(allowed_dir) for allowed_dir in allowed_passwd_dirs):
+    # Use pathlib to resolve the path and ensure it's within allowed directories
+    from pathlib import Path
+    try:
+        passwd_file_path = Path(passwd_file).resolve()
+        allowed_passwd_dirs = [Path("/mqtt-config").resolve(), Path("/mosquitto/config").resolve()]
+        
+        # Check if resolved path is within any allowed directory
+        is_valid = any(
+            passwd_file_path.is_relative_to(allowed_dir) 
+            for allowed_dir in allowed_passwd_dirs
+        )
+        
+        if not is_valid:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Invalid MQTT password file path: {passwd_file_path}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Invalid MQTT configuration",
+            )
+        
+        # Use the validated resolved path
+        passwd_file = str(passwd_file_path)
+    except (ValueError, OSError) as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Invalid MQTT password file path: {passwd_file}")
+        logger.error(f"Path validation error for MQTT password file: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Invalid MQTT configuration",

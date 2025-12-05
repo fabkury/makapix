@@ -47,6 +47,10 @@ GITHUB_CLIENT_SECRET = os.getenv("GITHUB_OAUTH_CLIENT_SECRET")
 GITHUB_REDIRECT_URI = os.getenv("GITHUB_REDIRECT_URI", "http://localhost/auth/github/callback")
 
 
+# Special characters allowed in passwords
+PASSWORD_SPECIAL_CHARS = "!@#$%^&*()-_=+[]{}|;:,.<>?"
+
+
 def generate_random_password(length: int = 12) -> str:
     """
     Generate a random password with letters, digits, and special characters.
@@ -58,14 +62,14 @@ def generate_random_password(length: int = 12) -> str:
         length = 12
     
     # Use multiple character sets for stronger passwords
-    alphabet = string.ascii_letters + string.digits + "!@#$%^&*()-_=+[]{}|;:,.<>?"
+    alphabet = string.ascii_letters + string.digits + PASSWORD_SPECIAL_CHARS
     
     # Ensure at least one character from each category
     password_chars = [
         secrets.choice(string.ascii_uppercase),
         secrets.choice(string.ascii_lowercase),
         secrets.choice(string.digits),
-        secrets.choice("!@#$%^&*()-_=+"),
+        secrets.choice(PASSWORD_SPECIAL_CHARS),
     ]
     
     # Fill the rest randomly

@@ -47,12 +47,17 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             )
         
         # Content Security Policy
-        # Note: This is a basic CSP. Adjust based on your actual needs.
-        # For API endpoints, we're mostly concerned with preventing XSS in error pages
+        # This is a restrictive CSP suitable for API endpoints
+        # The API primarily serves JSON, but also some HTML (OAuth callbacks, error pages)
+        # Adjust if serving more complex HTML content
         csp_directives = [
-            "default-src 'none'",  # Block everything by default
+            "default-src 'self'",  # Allow same-origin by default
+            "script-src 'self' 'unsafe-inline'",  # Allow inline scripts for OAuth callback
+            "style-src 'self' 'unsafe-inline'",  # Allow inline styles for OAuth callback
+            "img-src 'self' data:",  # Allow images from same origin and data URIs
             "frame-ancestors 'none'",  # Prevent embedding in iframes
             "base-uri 'self'",  # Restrict base tag to same origin
+            "form-action 'self'",  # Only allow form submissions to same origin
         ]
         response.headers["Content-Security-Policy"] = "; ".join(csp_directives)
         

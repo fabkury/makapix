@@ -63,8 +63,10 @@ def validate_zip_structure(zip_path: Path) -> Tuple[bool, List[str]]:
                 
                 # Check for symbolic links (security risk)
                 info = zf.getinfo(name)
-                # Check if it's a symbolic link (external_attr indicates file type on Unix)
-                if info.external_attr >> 16 == 0o120000:
+                # Check if it's a symbolic link using Unix file type
+                # 0o120000 = S_IFLNK (symbolic link file type on Unix systems)
+                UNIX_SYMLINK_TYPE = 0o120000
+                if info.external_attr >> 16 == UNIX_SYMLINK_TYPE:
                     errors.append(f"Symbolic links not allowed: {name}")
             
             # Check total size
