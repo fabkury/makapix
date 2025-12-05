@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
 import CardGrid from '../../components/CardGrid';
+import { authenticatedFetch, clearTokens } from '../../lib/api';
 
 interface PostOwner {
   id: string;
@@ -57,27 +58,16 @@ export default function HashtagPage() {
   const loadPosts = useCallback(async (hashtag: string, cursor: string | null = null) => {
     if (loadingRef.current || (!hasMoreRef.current && cursor !== null) || !hashtag) return;
     
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      router.push('/auth');
-      return;
-    }
-    
     loadingRef.current = true;
     setLoading(true);
     setError(null);
     
     try {
       const url = `${API_BASE_URL}/api/post?hashtag=${encodeURIComponent(hashtag)}&limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await authenticatedFetch(url);
       
       if (response.status === 401) {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('user_id');
+        clearTokens();
         router.push('/auth');
         return;
       }

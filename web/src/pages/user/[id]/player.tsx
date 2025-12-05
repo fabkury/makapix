@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../../../components/Layout';
+import { authenticatedFetch } from '../../../lib/api';
 
 /**
  * Legacy player route - redirects to canonical /u/[sqid]/player URL.
@@ -21,16 +22,12 @@ export default function LegacyPlayerRedirect() {
 
     const redirectToCanonical = async () => {
       try {
-        const accessToken = localStorage.getItem('access_token');
-        const headers: HeadersInit = {
-          'Accept': 'application/json',
-        };
-        if (accessToken) {
-          headers['Authorization'] = `Bearer ${accessToken}`;
-        }
-        
         // Fetch user by user_key (UUID) to get public_sqid
-        const response = await fetch(`${API_BASE_URL}/api/user/${id}`, { headers });
+        const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${id}`, {
+          headers: {
+            'Accept': 'application/json',
+          }
+        });
         
         if (response.ok) {
           const data = await response.json();

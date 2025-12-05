@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { authenticatedFetch } from '../../lib/api';
 
 interface BlogPost {
   id: string;
@@ -56,42 +57,17 @@ export default function BlogFeedPage() {
       return;
     }
     
-    const token = localStorage.getItem('access_token');
-    
     loadingRef.current = true;
     setLoading(true);
     setError(null);
     
     try {
       const url = `${API_BASE_URL}/api/blog-post?limit=20&sort=${sortBy}&order=desc${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
+      const response = await authenticatedFetch(url);
       
-      const response = await fetch(url, { headers });
-      
-      if (response.status === 401 && token) {
-        // Only clear tokens if we were authenticated
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('user_id');
-        // Retry without token
-        const retryResponse = await fetch(url);
-        if (!retryResponse.ok) {
-          throw new Error(`Failed to load posts: ${retryResponse.status}`);
-        }
-        const retryData: PageResponse<BlogPost> = await retryResponse.json();
-        if (cursor) {
-          setPosts(prev => [...prev, ...retryData.items]);
-        } else {
-          setPosts(retryData.items);
-        }
-        setNextCursor(retryData.next_cursor);
-        nextCursorRef.current = retryData.next_cursor;
-        const hasMoreValue = retryData.next_cursor !== null;
-        hasMoreRef.current = hasMoreValue;
-        setHasMore(hasMoreValue);
-        return;
+      if (response.status === 401) {
+        // Token refresh failed - treat as unauthenticated, continue loading public content
+        // Don't redirect since blog posts can be viewed without auth
       }
       
       if (!response.ok) {

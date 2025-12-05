@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import Layout from '../../../components/Layout';
 import PlayerCard from '../../../components/PlayerCard';
 import RegisterPlayerModal from '../../../components/RegisterPlayerModal';
-import { listPlayers, Player } from '../../../lib/api';
+import { listPlayers, Player, authenticatedFetch } from '../../../lib/api';
 
 interface User {
   id: number;
@@ -34,10 +34,7 @@ export default function PlayersPage() {
 
     const fetchUser = async () => {
       try {
-        const token = localStorage.getItem('access_token');
-        const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
-        
-        const response = await fetch(`${API_BASE_URL}/api/user/u/${sqidStr}`, { headers });
+        const response = await authenticatedFetch(`${API_BASE_URL}/api/user/u/${sqidStr}`);
         
         if (!response.ok) {
           setError('User not found');

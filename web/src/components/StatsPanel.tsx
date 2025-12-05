@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/router';
+import { authenticatedFetch, clearTokens } from '../lib/api';
 
 interface DailyViewCount {
   date: string;
@@ -81,6 +83,7 @@ const VIEW_TYPE_LABELS: Record<string, string> = {
 };
 
 export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps) {
+  const router = useRouter();
   const [stats, setStats] = useState<PostStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -98,18 +101,13 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
       setError(null);
 
       try {
-        const accessToken = localStorage.getItem('access_token');
-        if (!accessToken) {
-          setError('Authentication required');
-          setLoading(false);
+        const response = await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/stats`);
+
+        if (response.status === 401) {
+          clearTokens();
+          router.push('/auth');
           return;
         }
-
-        const response = await fetch(`${API_BASE_URL}/api/post/${postId}/stats`, {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-          },
-        });
 
         if (!response.ok) {
           if (response.status === 403) {

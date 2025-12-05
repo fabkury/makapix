@@ -6,6 +6,7 @@ import CommentsAndReactions from '../../components/CommentsAndReactions';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
+import { authenticatedFetch, clearTokens } from '../../lib/api';
 
 interface BlogPost {
   id: number;
@@ -50,11 +51,15 @@ export default function BlogPostPage() {
       setError(null);
       
       try {
-        const token = localStorage.getItem('access_token');
-        const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
-        
         // Fetch blog post by public_sqid using the canonical endpoint
-        const response = await fetch(`${API_BASE_URL}/api/blog-post/b/${sqidStr}`, { headers });
+        const response = await authenticatedFetch(`${API_BASE_URL}/api/blog-post/b/${sqidStr}`);
+        
+        if (response.status === 401) {
+          // Token refresh failed - treat as unauthenticated
+          setCurrentUser(null);
+          setIsOwner(false);
+          setIsModerator(false);
+        }
         
         if (!response.ok) {
           if (response.status === 404) {
@@ -69,23 +74,25 @@ export default function BlogPostPage() {
         const data = await response.json();
         setPost(data);
         
-        if (token) {
-          try {
-            const userResponse = await fetch(`${API_BASE_URL}/api/auth/me`, {
-              headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (userResponse.ok) {
-              const userData = await userResponse.json();
-              setCurrentUser({ id: userData.user.id });
-              setIsOwner(userData.user.id === data.owner_id);
-              const roles = userData.user.roles || userData.roles || [];
-              setIsModerator(roles.includes('moderator') || roles.includes('owner'));
-            }
-          } catch (err) {
+        // Try to get current user info if authenticated
+        try {
+          const userResponse = await authenticatedFetch(`${API_BASE_URL}/api/auth/me`);
+          if (userResponse.status === 401) {
+            // Not authenticated or token refresh failed
             setCurrentUser(null);
             setIsOwner(false);
             setIsModerator(false);
+          } else if (userResponse.ok) {
+            const userData = await userResponse.json();
+            setCurrentUser({ id: userData.user.id });
+            setIsOwner(userData.user.id === data.owner_id);
+            const roles = userData.user.roles || userData.roles || [];
+            setIsModerator(roles.includes('moderator') || roles.includes('owner'));
           }
+        } catch (err) {
+          setCurrentUser(null);
+          setIsOwner(false);
+          setIsModerator(false);
         }
       } catch (err) {
         setError('Failed to load post');
@@ -108,17 +115,16 @@ export default function BlogPostPage() {
     
     if (!confirmed) return;
     
-    const accessToken = localStorage.getItem('access_token');
-    if (!accessToken) {
-      alert('You must be logged in to delete posts.');
-      return;
-    }
-    
     try {
-      const response = await fetch(`${API_BASE_URL}/api/blog-post/${post.id}`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/blog-post/${post.id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${accessToken}` }
       });
+      
+      if (response.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
       
       if (response.ok || response.status === 204) {
         router.push('/blog');

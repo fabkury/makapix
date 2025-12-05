@@ -1,6 +1,8 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import { setNavigationContext, NavigationSource } from '../lib/navigation-context';
+import { authenticatedFetch, clearTokens } from '../lib/api';
 
 interface PostOwner {
   id: string;
@@ -40,6 +42,7 @@ interface LikeState {
 }
 
 export default function CardGrid({ posts, API_BASE_URL, source, cursor = null, prevCursor }: CardGridProps) {
+  const router = useRouter();
   const gridRef = useRef<HTMLDivElement>(null);
   // Track local like state for optimistic updates (keyed by post id)
   const [likeOverrides, setLikeOverrides] = useState<Record<number, LikeState>>({});
@@ -65,12 +68,6 @@ export default function CardGrid({ posts, API_BASE_URL, source, cursor = null, p
 
   // Handle like/unlike with optimistic update
   const handleLike = async (postId: number, currentlyLiked: boolean, currentReactionCount: number) => {
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      // Could redirect to login or show a message
-      return;
-    }
-
     setLoadingLikes(prev => ({ ...prev, [postId]: true }));
 
     // Optimistic update
@@ -86,13 +83,26 @@ export default function CardGrid({ posts, API_BASE_URL, source, cursor = null, p
       const url = `${API_BASE_URL}/api/post/${postId}/reactions/👍`;
       const method = currentlyLiked ? 'DELETE' : 'PUT';
       
-      const response = await fetch(url, {
+      const response = await authenticatedFetch(url, {
         method,
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
+
+      if (response.status === 401) {
+        // Token refresh failed - revert optimistic update, clear tokens and redirect
+        setLikeOverrides(prev => ({
+          ...prev,
+          [postId]: {
+            liked: currentlyLiked,
+            reactionCount: currentReactionCount
+          }
+        }));
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
 
       if (!response.ok && response.status !== 204) {
         // Revert optimistic update on failure

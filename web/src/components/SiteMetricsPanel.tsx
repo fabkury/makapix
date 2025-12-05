@@ -84,18 +84,13 @@ export default function SiteMetricsPanel() {
       setError(null);
 
       try {
-        const accessToken = localStorage.getItem('access_token');
-        if (!accessToken) {
+        const response = await authenticatedFetch(`${API_BASE_URL}/api/admin/sitewide-stats`);
+
+        if (response.status === 401) {
           setError('Authentication required');
           setLoading(false);
           return;
         }
-
-        const response = await fetch(`${API_BASE_URL}/api/admin/sitewide-stats`, {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-          },
-        });
 
         if (!response.ok) {
           if (response.status === 403) {

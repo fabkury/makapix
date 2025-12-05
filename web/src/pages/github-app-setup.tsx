@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { authenticatedFetch, clearTokens } from '../lib/api';
 
 export default function GitHubAppSetupPage() {
   const router = useRouter();
@@ -35,16 +36,22 @@ export default function GitHubAppSetupPage() {
     try {
       setMessage('Binding GitHub App installation to your account...');
       
-      const response = await fetch(`${API_BASE_URL}/api/profile/bind-github-app`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/profile/bind-github-app`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
         },
         body: JSON.stringify({
           installation_id: parseInt(instId)
         })
       });
+
+      if (response.status === 401) {
+        // Token refresh failed - clear tokens and redirect to auth
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
 
       if (!response.ok) {
         const error = await response.json();
