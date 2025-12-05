@@ -38,6 +38,7 @@ from .routers import (
     users,
 )
 from .seed import ensure_seed_data
+from .middleware import SecurityHeadersMiddleware
 
 load_dotenv()
 
@@ -150,13 +151,27 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS Configuration - restrict to specific origins
+# In production, set CORS_ORIGINS environment variable to comma-separated list of allowed origins
+cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost")
+if cors_origins_str == "*":
+    logger.warning(
+        "CORS is configured to allow all origins. "
+        "This is insecure for production. Set CORS_ORIGINS to specific domains."
+    )
+cors_origins = [origin.strip() for origin in cors_origins_str.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
+    max_age=600,  # Cache preflight requests for 10 minutes
 )
+
+# Add security headers middleware
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 # Include all routers

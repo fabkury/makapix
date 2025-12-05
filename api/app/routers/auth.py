@@ -47,10 +47,35 @@ GITHUB_CLIENT_SECRET = os.getenv("GITHUB_OAUTH_CLIENT_SECRET")
 GITHUB_REDIRECT_URI = os.getenv("GITHUB_REDIRECT_URI", "http://localhost/auth/github/callback")
 
 
-def generate_random_password(length: int = 8) -> str:
-    """Generate a random password with letters and digits."""
-    alphabet = string.ascii_letters + string.digits
-    return ''.join(secrets.choice(alphabet) for _ in range(length))
+def generate_random_password(length: int = 12) -> str:
+    """
+    Generate a random password with letters, digits, and special characters.
+    
+    Minimum length of 12 characters for better security.
+    Includes uppercase, lowercase, digits, and special characters.
+    """
+    if length < 12:
+        length = 12
+    
+    # Use multiple character sets for stronger passwords
+    alphabet = string.ascii_letters + string.digits + "!@#$%^&*()-_=+[]{}|;:,.<>?"
+    
+    # Ensure at least one character from each category
+    password_chars = [
+        secrets.choice(string.ascii_uppercase),
+        secrets.choice(string.ascii_lowercase),
+        secrets.choice(string.digits),
+        secrets.choice("!@#$%^&*()-_=+"),
+    ]
+    
+    # Fill the rest randomly
+    for _ in range(length - 4):
+        password_chars.append(secrets.choice(alphabet))
+    
+    # Shuffle to avoid predictable pattern
+    secrets.SystemRandom().shuffle(password_chars)
+    
+    return ''.join(password_chars)
 
 
 @router.post(
@@ -968,12 +993,19 @@ def github_callback(
 
         # Create a simple HTML page that shows success and stores tokens
         from fastapi.responses import HTMLResponse
+        import html
+        
+        # Escape user-provided data to prevent XSS
+        safe_handle = html.escape(user.handle)
+        safe_user_id = html.escape(str(user.id))
+        safe_base_url = html.escape(base_url)
 
         html_content = f"""
         <!DOCTYPE html>
         <html>
         <head>
             <title>Makapix - Authentication Success</title>
+            <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline';">
             <style>
                 body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
                 .success {{ color: #22c55e; font-size: 24px; margin-bottom: 20px; }}
@@ -995,50 +1027,51 @@ def github_callback(
         </head>
         <body>
             <div class="success">✅ Authentication Successful!</div>
-            <div class="info">Welcome to Makapix, {user.handle}!</div>
+            <div class="info">Welcome to Makapix, {safe_handle}!</div>
             <div class="info">You can now close this window and return to the main application.</div>
-            <a href="{base_url}" class="button">Go to Makapix</a>
-            <a href="{base_url}/publish" class="button">Publish Artwork</a>
+            <a href="{safe_base_url}" class="button">Go to Makapix</a>
+            <a href="{safe_base_url}/publish" class="button">Publish Artwork</a>
             
             <div class="debug">
                 <p>Debug Info:</p>
-                <p>User ID: {user.id}</p>
-                <p>Handle: {user.handle}</p>
-                <p>Access Token: {makapix_access_token[:20]}...</p>
+                <p>User ID: {safe_user_id}</p>
+                <p>Handle: {safe_handle}</p>
+                <p>Token: [hidden for security]</p>
             </div>
             
             <script>
+                // Use secure data passing via JSON to prevent XSS
+                const authData = {{
+                    access_token: {json.dumps(makapix_access_token)},
+                    refresh_token: {json.dumps(makapix_refresh_token)},
+                    user_id: {json.dumps(str(user.id))},
+                    user_handle: {json.dumps(user.handle)}
+                }};
+                
                 console.log('OAuth Callback - Storing tokens...');
-                console.log('Access Token:', '{makapix_access_token[:20]}...');
-                console.log('User ID:', '{user.id}');
-                console.log('Handle:', '{user.handle}');
+                console.log('User ID:', authData.user_id);
+                console.log('Handle:', authData.user_handle);
                 
                 // Store tokens in localStorage for the main app
                 try {{
-                    localStorage.setItem('access_token', '{makapix_access_token}');
-                    localStorage.setItem('refresh_token', '{makapix_refresh_token}');
-                    localStorage.setItem('user_id', '{user.id}');
-                    localStorage.setItem('user_handle', '{user.handle}');
+                    localStorage.setItem('access_token', authData.access_token);
+                    localStorage.setItem('refresh_token', authData.refresh_token);
+                    localStorage.setItem('user_id', authData.user_id);
+                    localStorage.setItem('user_handle', authData.user_handle);
                     
                     // Close popup and notify parent window
                     if (window.opener) {{
                         window.opener.postMessage({{
                             type: 'OAUTH_SUCCESS',
-                            tokens: {{
-                                access_token: '{makapix_access_token}',
-                                refresh_token: '{makapix_refresh_token}',
-                                user_id: '{user.id}',
-                                user_handle: '{user.handle}'
-                            }}
-                        }}, '*');
+                            tokens: authData
+                        }}, {json.dumps(base_url)});
                         window.close();
                     }} else {{
                         // If not in popup, redirect to home
-                        window.location.href = '{base_url}';
+                        window.location.href = {json.dumps(base_url)};
                     }}
                     
                     console.log('Tokens stored successfully!');
-                    console.log('localStorage contents:', Object.keys(localStorage));
                 }} catch (error) {{
                     console.error('Error storing tokens:', error);
                 }}

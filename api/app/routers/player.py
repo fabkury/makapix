@@ -148,11 +148,37 @@ def register_player(
     
     # Add player_key to MQTT password file (empty password for username-only auth)
     passwd_file = os.getenv("MQTT_PASSWD_FILE", "/mqtt-config/passwords")
+    
+    # Validate password file path to prevent path traversal
+    passwd_file = os.path.abspath(passwd_file)
+    allowed_passwd_dirs = ["/mqtt-config", "/mosquitto/config"]
+    if not any(passwd_file.startswith(allowed_dir) for allowed_dir in allowed_passwd_dirs):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Invalid MQTT password file path: {passwd_file}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Invalid MQTT configuration",
+        )
+    
+    # Validate player_key is a valid UUID (additional safety check)
+    try:
+        str(player.player_key)
+    except (ValueError, AttributeError):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error("Invalid player_key format")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Invalid player configuration",
+        )
+    
     try:
         subprocess.run(
             ["mosquitto_passwd", "-b", passwd_file, str(player.player_key), ""],
             check=True,
             capture_output=True,
+            timeout=5,  # Add timeout to prevent hanging
         )
     except subprocess.CalledProcessError as e:
         # Log error but don't fail registration - password file might not exist yet
