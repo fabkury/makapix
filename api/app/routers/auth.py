@@ -150,7 +150,7 @@ def register(
     - User must verify email before logging in
     - After verification, user can optionally change password/handle
     
-    Rate limited to 3 registrations per hour per IP address.
+    Rate limited to 5 registrations per hour per IP address.
     
     Args:
         payload: Registration request with email
@@ -159,10 +159,10 @@ def register(
     """
     email = payload.email.lower().strip()
     
-    # Rate limiting: 3 registrations per hour per IP
+    # Rate limiting: 5 registrations per hour per IP
     client_ip = get_client_ip(request)
     rate_limit_key = f"ratelimit:register:{client_ip}"
-    allowed, remaining = check_rate_limit(rate_limit_key, limit=3, window_seconds=3600)
+    allowed, remaining = check_rate_limit(rate_limit_key, limit=5, window_seconds=3600)
     
     if not allowed:
         raise HTTPException(
@@ -276,7 +276,7 @@ def login(
     Login with email and password.
     
     Requires email verification for password-based login.
-    Rate limited to 5 login attempts per 5 minutes per IP address.
+    Rate limited to 10 login attempts per 5 minutes per IP address.
     
     Args:
         payload: Login credentials (email and password)
@@ -285,10 +285,10 @@ def login(
     """
     email = payload.email.lower().strip()
     
-    # Rate limiting: 5 login attempts per 5 minutes per IP
+    # Rate limiting: 10 login attempts per 5 minutes per IP
     client_ip = get_client_ip(request)
     rate_limit_key = f"ratelimit:login:{client_ip}"
-    allowed, remaining = check_rate_limit(rate_limit_key, limit=5, window_seconds=300)
+    allowed, remaining = check_rate_limit(rate_limit_key, limit=10, window_seconds=300)
     
     if not allowed:
         raise HTTPException(
