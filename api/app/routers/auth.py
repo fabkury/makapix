@@ -55,6 +55,16 @@ PASSWORD_SPECIAL_CHARS = "!@#$%^&*()-_=+[]{}|;:,.<>?"
 PASSWORD_MIN_LENGTH = 8
 
 
+def get_client_ip(request: Request) -> str:
+    """
+    Extract client IP address from request.
+    
+    Used for rate limiting to track requests per IP.
+    Falls back to "unknown" if client information is not available.
+    """
+    return request.client.host if request.client else "unknown"
+
+
 def validate_password(password: str) -> tuple[bool, str | None]:
     """
     Validate password meets minimum requirements.
@@ -94,8 +104,10 @@ def generate_random_password(length: int = 12) -> str:
     Generate a random password with letters and digits.
     
     Minimum length of 8 characters.
-    Includes uppercase, lowercase, and digits.
+    Includes letters (may be uppercase, lowercase, or both) and digits.
     May include special characters for additional security.
+    
+    Guarantees at least one letter and one digit to meet minimum requirements.
     """
     if length < PASSWORD_MIN_LENGTH:
         length = PASSWORD_MIN_LENGTH
@@ -138,12 +150,17 @@ def register(
     - User must verify email before logging in
     - After verification, user can optionally change password/handle
     
-    Rate limited to 3 registrations per hour per IP.
+    Rate limited to 3 registrations per hour per IP address.
+    
+    Args:
+        payload: Registration request with email
+        request: HTTP request (used for rate limiting IP extraction)
+        db: Database session
     """
     email = payload.email.lower().strip()
     
     # Rate limiting: 3 registrations per hour per IP
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
     rate_limit_key = f"ratelimit:register:{client_ip}"
     allowed, remaining = check_rate_limit(rate_limit_key, limit=3, window_seconds=3600)
     
@@ -259,12 +276,17 @@ def login(
     Login with email and password.
     
     Requires email verification for password-based login.
-    Rate limited to 5 login attempts per 5 minutes per IP.
+    Rate limited to 5 login attempts per 5 minutes per IP address.
+    
+    Args:
+        payload: Login credentials (email and password)
+        request: HTTP request (used for rate limiting IP extraction)
+        db: Database session
     """
     email = payload.email.lower().strip()
     
     # Rate limiting: 5 login attempts per 5 minutes per IP
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
     rate_limit_key = f"ratelimit:login:{client_ip}"
     allowed, remaining = check_rate_limit(rate_limit_key, limit=5, window_seconds=300)
     

@@ -8,6 +8,8 @@
  * - Special characters are allowed but not required
  */
 
+const PASSWORD_MIN_LENGTH = 8;
+
 export interface PasswordValidationResult {
   isValid: boolean;
   errors: string[];
@@ -21,8 +23,8 @@ export function validatePassword(password: string): PasswordValidationResult {
     return { isValid: false, errors };
   }
 
-  if (password.length < 8) {
-    errors.push('Password must be at least 8 characters long');
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    errors.push(`Password must be at least ${PASSWORD_MIN_LENGTH} characters long`);
   }
 
   const hasLetter = /[a-zA-Z]/.test(password);
@@ -45,7 +47,7 @@ export function validatePassword(password: string): PasswordValidationResult {
  * Get password strength indication
  */
 export function getPasswordStrength(password: string): 'weak' | 'medium' | 'strong' {
-  if (password.length < 8) return 'weak';
+  if (password.length < PASSWORD_MIN_LENGTH) return 'weak';
   
   let strength = 0;
   

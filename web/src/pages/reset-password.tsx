@@ -31,7 +31,7 @@ const API_BASE_URL = typeof window !== 'undefined'
     // Validate password
     const validation = validatePassword(newPassword);
     if (!validation.isValid) {
-      setError(validation.errors.join('. '));
+      setError(validation.errors.join(' '));
       return;
     }
 
