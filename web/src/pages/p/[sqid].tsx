@@ -5,6 +5,7 @@ import Layout from '../../components/Layout';
 import CommentsAndReactions from '../../components/CommentsAndReactions';
 import StatsPanel from '../../components/StatsPanel';
 import SendToPlayerModal from '../../components/SendToPlayerModal';
+import { authenticatedFetch, clearTokens } from '../../lib/api';
 import { 
   getNavigationContext, 
   setNavigationContext, 
