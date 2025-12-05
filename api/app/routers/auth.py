@@ -34,6 +34,7 @@ from ..services.email_verification import (
     send_verification_email_for_user,
     mark_email_verified,
 )
+from ..services.rate_limit import check_rate_limit
 from ..utils.handles import generate_default_handle, validate_handle, is_handle_taken
 from ..utils.site_tracking import record_site_event
 
@@ -47,33 +48,69 @@ GITHUB_CLIENT_SECRET = os.getenv("GITHUB_OAUTH_CLIENT_SECRET")
 GITHUB_REDIRECT_URI = os.getenv("GITHUB_REDIRECT_URI", "http://localhost/auth/github/callback")
 
 
-# Special characters allowed in passwords
+# Special characters allowed in passwords (optional)
 PASSWORD_SPECIAL_CHARS = "!@#$%^&*()-_=+[]{}|;:,.<>?"
+
+# Password validation rules
+PASSWORD_MIN_LENGTH = 8
+
+
+def validate_password(password: str) -> tuple[bool, str | None]:
+    """
+    Validate password meets minimum requirements.
+    
+    Requirements:
+    - At least 8 characters long
+    - At least one letter (uppercase or lowercase)
+    - At least one number
+    - Special characters are allowed but not required
+    
+    Returns:
+        Tuple of (is_valid, error_message)
+        - is_valid: True if password meets requirements
+        - error_message: None if valid, error description if invalid
+    """
+    if not password:
+        return False, "Password is required"
+    
+    if len(password) < PASSWORD_MIN_LENGTH:
+        return False, f"Password must be at least {PASSWORD_MIN_LENGTH} characters long"
+    
+    # Check for at least one letter
+    has_letter = any(c.isalpha() for c in password)
+    if not has_letter:
+        return False, "Password must contain at least one letter"
+    
+    # Check for at least one number
+    has_number = any(c.isdigit() for c in password)
+    if not has_number:
+        return False, "Password must contain at least one number"
+    
+    return True, None
 
 
 def generate_random_password(length: int = 12) -> str:
     """
-    Generate a random password with letters, digits, and special characters.
+    Generate a random password with letters and digits.
     
-    Minimum length of 12 characters for better security.
-    Includes uppercase, lowercase, digits, and special characters.
+    Minimum length of 8 characters.
+    Includes uppercase, lowercase, and digits.
+    May include special characters for additional security.
     """
-    if length < 12:
-        length = 12
+    if length < PASSWORD_MIN_LENGTH:
+        length = PASSWORD_MIN_LENGTH
     
     # Use multiple character sets for stronger passwords
     alphabet = string.ascii_letters + string.digits + PASSWORD_SPECIAL_CHARS
     
-    # Ensure at least one character from each category
+    # Ensure at least one letter and one digit (minimum requirements)
     password_chars = [
-        secrets.choice(string.ascii_uppercase),
-        secrets.choice(string.ascii_lowercase),
-        secrets.choice(string.digits),
-        secrets.choice(PASSWORD_SPECIAL_CHARS),
+        secrets.choice(string.ascii_letters),  # At least one letter
+        secrets.choice(string.digits),  # At least one digit
     ]
     
-    # Fill the rest randomly
-    for _ in range(length - 4):
+    # Fill the rest randomly from the full alphabet
+    for _ in range(length - 2):
         password_chars.append(secrets.choice(alphabet))
     
     # Shuffle to avoid predictable pattern
@@ -100,8 +137,21 @@ def register(
     - Sends a verification email with the password
     - User must verify email before logging in
     - After verification, user can optionally change password/handle
+    
+    Rate limited to 3 registrations per hour per IP.
     """
     email = payload.email.lower().strip()
+    
+    # Rate limiting: 3 registrations per hour per IP
+    client_ip = request.client.host if request.client else "unknown"
+    rate_limit_key = f"ratelimit:register:{client_ip}"
+    allowed, remaining = check_rate_limit(rate_limit_key, limit=3, window_seconds=3600)
+    
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many registration attempts. Please try again later.",
+        )
     
     # Check if email is already registered
     existing_user = db.query(models.User).filter(
@@ -202,14 +252,27 @@ def register(
 )
 def login(
     payload: schemas.LoginRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> schemas.OAuthTokens:
     """
     Login with email and password.
     
     Requires email verification for password-based login.
+    Rate limited to 5 login attempts per 5 minutes per IP.
     """
     email = payload.email.lower().strip()
+    
+    # Rate limiting: 5 login attempts per 5 minutes per IP
+    client_ip = request.client.host if request.client else "unknown"
+    rate_limit_key = f"ratelimit:login:{client_ip}"
+    allowed, remaining = check_rate_limit(rate_limit_key, limit=5, window_seconds=300)
+    
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Please try again later.",
+        )
     
     # Find identity and verify password
     identity = find_identity_by_password(db, email, payload.password)
@@ -301,6 +364,7 @@ def change_password(
     Change the current user's password.
     
     Requires authentication and current password verification.
+    New password must meet minimum requirements.
     """
     # Verify current password
     identity = find_identity_by_password(db, current_user.email, payload.current_password)
@@ -308,6 +372,14 @@ def change_password(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Current password is incorrect",
+        )
+    
+    # Validate new password
+    is_valid, error_message = validate_password(payload.new_password)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_message,
         )
     
     # Update password
@@ -565,6 +637,7 @@ def reset_password(
     Reset password using a token from email.
     
     The password is only changed if the token is valid.
+    New password must meet minimum requirements.
     """
     from ..services.password_reset import verify_reset_token, mark_token_used
     
@@ -590,6 +663,14 @@ def reset_password(
     
     # Check if user is allowed to authenticate
     check_user_can_authenticate(user)
+    
+    # Validate new password
+    is_valid, error_message = validate_password(payload.new_password)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_message,
+        )
     
     # Update password
     success = update_password(db, user.id, payload.new_password)
