@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
 import CardGrid from '../../components/CardGrid';
+import { authenticatedFetch, authenticatedRequestJson, authenticatedPostJson, clearTokens } from '../../lib/api';
 
 interface User {
   id: number;
@@ -83,11 +84,13 @@ export default function UserProfilePage() {
       setError(null);
       
       try {
-        const token = localStorage.getItem('access_token');
-        const currentUserId = localStorage.getItem('user_id');
-        const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
+        const response = await authenticatedFetch(`${API_BASE_URL}/api/user/u/${sqid}`);
         
-        const response = await fetch(`${API_BASE_URL}/api/user/u/${sqid}`, { headers });
+        if (response.status === 401) {
+          // Token refresh failed - treat as unauthenticated
+          setIsOwnProfile(false);
+          setIsModerator(false);
+        }
         
         if (!response.ok) {
           if (response.status === 404) {
@@ -106,33 +109,33 @@ export default function UserProfilePage() {
         setIsOwner(data.roles?.includes('owner') || false);
         
         // Check if current viewer is the owner and/or a moderator
-        if (token) {
-          try {
-            const meResponse = await fetch(`${API_BASE_URL}/api/auth/me`, {
-              headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (meResponse.ok) {
-              const meData = await meResponse.json();
-              const roles = meData.roles || [];
-              setIsModerator(roles.includes('moderator') || roles.includes('owner'));
-              
-              // Use actual authenticated user ID to determine ownership (not localStorage)
-              const authenticatedUserId = meData.user?.id;
-              setIsOwnProfile(authenticatedUserId === data.id);
-              
-              // Sync localStorage with actual user data
-              if (meData.user?.id) {
-                localStorage.setItem('user_id', String(meData.user.id));
-              }
-              if (meData.user?.public_sqid) {
-                localStorage.setItem('public_sqid', meData.user.public_sqid);
-              }
+        try {
+          const meResponse = await authenticatedFetch(`${API_BASE_URL}/api/auth/me`);
+          
+          if (meResponse.ok) {
+            const meData = await meResponse.json();
+            const roles = meData.roles || [];
+            setIsModerator(roles.includes('moderator') || roles.includes('owner'));
+            
+            // Use actual authenticated user ID to determine ownership (not localStorage)
+            const authenticatedUserId = meData.user?.id;
+            setIsOwnProfile(authenticatedUserId === data.id);
+            
+            // Sync localStorage with actual user data
+            if (meData.user?.id) {
+              localStorage.setItem('user_id', String(meData.user.id));
             }
-          } catch (err) {
-            console.error('Error checking moderator status:', err);
+            if (meData.user?.public_sqid) {
+              localStorage.setItem('public_sqid', meData.user.public_sqid);
+            }
+          } else {
+            setIsOwnProfile(false);
+            setIsModerator(false);
           }
-        } else {
+        } catch (err) {
+          console.error('Error checking moderator status:', err);
           setIsOwnProfile(false);
+          setIsModerator(false);
         }
       } catch (err) {
         setError('Failed to load profile');
@@ -154,11 +157,8 @@ export default function UserProfilePage() {
     setPostsLoading(true);
     
     try {
-      const token = localStorage.getItem('access_token');
-      const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
-      
       const url = `${API_BASE_URL}/api/post?owner_id=${user.user_key}&limit=20&sort=created_at&order=desc${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
-      const response = await fetch(url, { headers });
+      const response = await authenticatedFetch(url);
       
       if (!response.ok) {
         throw new Error('Failed to load posts');
@@ -204,10 +204,7 @@ export default function UserProfilePage() {
     if (!user) return;
     
     try {
-      const token = localStorage.getItem('access_token');
-      const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
-      
-      const response = await fetch(`${API_BASE_URL}/api/user/${user.user_key}/blog-post?limit=2`, { headers });
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}/blog-post?limit=2`);
       
       if (response.ok) {
         const data = await response.json();
@@ -246,13 +243,6 @@ export default function UserProfilePage() {
     setSaveError(null);
     
     try {
-      const token = localStorage.getItem('access_token');
-      if (!token) {
-        setSaveError('You must be logged in to edit your profile');
-        setIsSaving(false);
-        return;
-      }
-      
       const payload: { handle?: string; bio?: string } = {};
       
       // Only include handle if it changed
@@ -272,14 +262,19 @@ export default function UserProfilePage() {
         return;
       }
       
-      const response = await fetch(`${API_BASE_URL}/api/user/${user.user_key}`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       });
+      
+      if (response.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -323,18 +318,12 @@ export default function UserProfilePage() {
   const trustUser = async () => {
     if (!user) return;
     try {
-      const token = localStorage.getItem('access_token');
-      if (!token) return;
-      
-      await fetch(`${API_BASE_URL}/api/admin/user/${user.user_key}/auto-approval`, {
+      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${user.user_key}/auto-approval`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
       });
       
       // Refresh user data
-      const response = await fetch(`${API_BASE_URL}/api/user/${user.user_key}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}`);
       if (response.ok) {
         const updatedUser = await response.json();
         setUser(updatedUser);
@@ -347,18 +336,12 @@ export default function UserProfilePage() {
   const distrustUser = async () => {
     if (!user) return;
     try {
-      const token = localStorage.getItem('access_token');
-      if (!token) return;
-      
-      await fetch(`${API_BASE_URL}/api/admin/user/${user.user_key}/auto-approval`, {
+      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${user.user_key}/auto-approval`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
       });
       
       // Refresh user data
-      const response = await fetch(`${API_BASE_URL}/api/user/${user.user_key}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}`);
       if (response.ok) {
         const updatedUser = await response.json();
         setUser(updatedUser);
@@ -375,22 +358,16 @@ export default function UserProfilePage() {
       return;
     }
     try {
-      const token = localStorage.getItem('access_token');
-      if (!token) return;
-      
-      await fetch(`${API_BASE_URL}/api/admin/user/${user.user_key}/ban`, {
+      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${user.user_key}/ban`, {
         method: 'POST',
         headers: { 
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ duration_days: null })
       });
       
       // Refresh user data
-      const response = await fetch(`${API_BASE_URL}/api/user/${user.user_key}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}`);
       if (response.ok) {
         const updatedUser = await response.json();
         setUser(updatedUser);
@@ -406,18 +383,12 @@ export default function UserProfilePage() {
       return;
     }
     try {
-      const token = localStorage.getItem('access_token');
-      if (!token) return;
-      
-      await fetch(`${API_BASE_URL}/api/admin/user/${user.user_key}/ban`, {
+      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${user.user_key}/ban`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
       });
       
       // Refresh user data
-      const response = await fetch(`${API_BASE_URL}/api/user/${user.user_key}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}`);
       if (response.ok) {
         const updatedUser = await response.json();
         setUser(updatedUser);

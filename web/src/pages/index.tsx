@@ -65,6 +65,7 @@ export default function HomePage() {
       return;
     }
     
+    // Check if user is still authenticated
     const token = localStorage.getItem('access_token');
     if (!token) {
       return;
