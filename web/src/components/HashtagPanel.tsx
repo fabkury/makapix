@@ -16,6 +16,9 @@ interface HashtagPanelProps {
   sortBy?: 'popularity' | 'alphabetical';
 }
 
+// Configuration constants
+const HASHTAGS_PER_PAGE = 15; // Number of hashtags to load at once
+
 export default function HashtagPanel({ API_BASE_URL, searchQuery = '', sortBy = 'popularity' }: HashtagPanelProps) {
   const router = useRouter();
   const [hashtags, setHashtags] = useState<HashtagStats[]>([]);
@@ -43,7 +46,7 @@ export default function HashtagPanel({ API_BASE_URL, searchQuery = '', sortBy = 
 
     try {
       const params = new URLSearchParams();
-      params.set('limit', '15'); // Paginate 15 hashtags at a time
+      params.set('limit', HASHTAGS_PER_PAGE.toString()); // Paginate hashtags
       params.set('sort', sortBy);
       
       if (searchQuery.trim()) {

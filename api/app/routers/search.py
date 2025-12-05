@@ -17,6 +17,12 @@ from ..services.post_stats import annotate_posts_with_counts, get_user_liked_pos
 
 logger = logging.getLogger(__name__)
 
+# Cache configuration constants
+HASHTAG_LIST_CACHE_TTL = 600  # 10 minutes - hashtag counts change slowly
+HASHTAG_POSTS_CACHE_TTL = 300  # 5 minutes - post lists update more frequently
+HASHTAG_STATS_CACHE_TTL = 600  # 10 minutes - aggregated stats change slowly
+PROMOTED_FEED_CACHE_TTL = 300  # 5 minutes
+
 router = APIRouter(prefix="", tags=["Search", "Feed", "Hashtags"])
 
 
@@ -295,8 +301,8 @@ async def list_hashtags(
     
     response = schemas.HashtagList(items=response_items, next_cursor=next_cursor)
     
-    # Cache for 10 minutes (600 seconds) - popularity changes slowly
-    cache_set(cache_key, response.model_dump(), ttl=600)
+    # Cache for 10 minutes - hashtag counts change slowly
+    cache_set(cache_key, response.model_dump(), ttl=HASHTAG_LIST_CACHE_TTL)
     
     return response
 
@@ -370,8 +376,8 @@ async def list_hashtag_posts(
         next_cursor=page_data["next_cursor"],
     )
     
-    # Cache for 5 minutes (300 seconds)
-    cache_set(cache_key, response.model_dump(), ttl=300)
+    # Cache for 5 minutes
+    cache_set(cache_key, response.model_dump(), ttl=HASHTAG_POSTS_CACHE_TTL)
     
     return response
 
@@ -420,6 +426,12 @@ async def list_hashtags_with_stats(
         )
     
     # Get all posts that match filters
+    # NOTE: This loads all matching posts into memory for aggregation.
+    # For sites with very large numbers of posts (10k+ per hashtag), consider:
+    # - Using a materialized view with pre-aggregated statistics
+    # - Implementing a background job to update a hashtag_stats table
+    # - Using SQL window functions for server-side aggregation
+    # The current approach is simple and works well for moderate datasets.
     matching_posts = base_query.all()
     
     # Get post IDs for statistics queries
@@ -523,8 +535,8 @@ async def list_hashtags_with_stats(
     
     response = schemas.HashtagStatsList(items=response_items, next_cursor=next_cursor)
     
-    # Cache for 10 minutes (600 seconds) - statistics change slowly
-    cache_set(cache_key, response.model_dump(), ttl=600)
+    # Cache for 10 minutes - aggregated statistics change slowly
+    cache_set(cache_key, response.model_dump(), ttl=HASHTAG_STATS_CACHE_TTL)
     
     return response
 
@@ -593,8 +605,8 @@ def feed_promoted(
         next_cursor=page_data["next_cursor"],
     )
     
-    # Cache for 5 minutes (300 seconds)
-    cache_set(cache_key, response.model_dump(), ttl=300)
+    # Cache for 5 minutes
+    cache_set(cache_key, response.model_dump(), ttl=PROMOTED_FEED_CACHE_TTL)
     
     return response
 

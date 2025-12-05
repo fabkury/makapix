@@ -40,6 +40,9 @@ interface CardRollerProps {
   initialPosts?: Post[];
 }
 
+// Configuration constants
+const POSTS_PER_LOAD = 20; // Number of posts to fetch per horizontal scroll
+
 // Local state for optimistic like updates
 interface LikeState {
   liked: boolean;
@@ -70,7 +73,7 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
     setLoading(true);
     
     try {
-      const url = `${API_BASE_URL}/api/hashtags/${encodeURIComponent(hashtag)}/posts?limit=20${nextCursorRef.current ? `&cursor=${encodeURIComponent(nextCursorRef.current)}` : ''}`;
+      const url = `${API_BASE_URL}/api/hashtags/${encodeURIComponent(hashtag)}/posts?limit=${POSTS_PER_LOAD}${nextCursorRef.current ? `&cursor=${encodeURIComponent(nextCursorRef.current)}` : ''}`;
       const response = await authenticatedFetch(url);
       
       if (response.status === 401) {
