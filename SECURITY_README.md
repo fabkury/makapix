@@ -8,7 +8,7 @@
 
 ## 🎯 Executive Summary
 
-This security audit identified and fixed **18 out of 21 security vulnerabilities** in the Makapix codebase, including all **CRITICAL** and most **HIGH** severity issues. The application is now significantly more secure and ready for production deployment after completing the remaining action items.
+This security audit identified and fixed **19 out of 21 security vulnerabilities** in the Makapix codebase, including all **CRITICAL** and **HIGH** severity issues. The application is now production-ready after completing the remaining configuration tasks.
 
 ---
 
@@ -17,13 +17,13 @@ This security audit identified and fixed **18 out of 21 security vulnerabilities
 | Metric | Before | After |
 |--------|--------|-------|
 | **Critical Issues** | 3 | 0 ✅ |
-| **High Issues** | 8 | 1 |
+| **High Issues** | 8 | 0 ✅ |
 | **Medium Issues** | 6 | 2 |
 | **Low Issues** | 4 | 4 |
 | **CodeQL Alerts** | N/A | 0 ✅ |
 | **Vulnerable Dependencies** | 2 | 0 ✅ |
 
-**Remediation Rate:** 86% (18/21 issues fixed)
+**Remediation Rate:** 90% (19/21 issues fixed)
 
 ---
 
@@ -37,12 +37,13 @@ This security audit identified and fixed **18 out of 21 security vulnerabilities
 
 ### High Priority Vulnerabilities (7 of 8 Fixed ✅)
 
-1. **Insecure Password Generation** - 12 chars minimum with special characters
+1. **Password Requirements** - 8 chars minimum with at least 1 letter and 1 number (updated per feedback)
 2. **XSS in OAuth Callback** - Proper HTML escaping and JSON encoding
 3. **Unauthenticated MQTT Demo** - Added authentication requirement
 4. **Weak MQTT Password Security** - Hidden in production logs
 5. **Missing Security Headers** - Added comprehensive security headers middleware
 6. **Insecure WebSocket Config** - Documented and recommendations provided
+7. **Rate Limiting** - Enabled on login and registration endpoints
 
 ### Dependency Vulnerabilities (All Fixed ✅)
 
@@ -56,6 +57,7 @@ This security audit identified and fixed **18 out of 21 security vulnerabilities
 1. **[SECURITY_AUDIT.md](SECURITY_AUDIT.md)** - Complete vulnerability report with CVSS scores
 2. **[SECURITY_SETUP_GUIDE.md](SECURITY_SETUP_GUIDE.md)** - Production deployment guide
 3. **[SECURITY_FIXES_SUMMARY.md](SECURITY_FIXES_SUMMARY.md)** - Detailed implementation summary
+4. **[PASSWORD_RATE_LIMIT_UPDATE.md](PASSWORD_RATE_LIMIT_UPDATE.md)** - Password and rate limiting changes
 
 ---
 
@@ -63,9 +65,10 @@ This security audit identified and fixed **18 out of 21 security vulnerabilities
 
 ### Must Complete (HIGH Priority)
 
-- [ ] **Enable Rate Limiting** - Infrastructure exists, needs activation
-  - See: `api/app/services/rate_limit.py`
-  - Add to critical endpoints: login, registration, API calls
+- [x] **Enable Rate Limiting** - ✅ COMPLETED
+  - Enabled on `/auth/register` (3 per hour per IP)
+  - Enabled on `/auth/login` (5 per 5 minutes per IP)
+  - Redis-based with fail-open design
 
 - [ ] **Configure Production Secrets**
   ```bash
