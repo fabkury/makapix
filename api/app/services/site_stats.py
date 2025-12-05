@@ -24,6 +24,58 @@ logger = logging.getLogger(__name__)
 STATS_CACHE_TTL = 300
 
 
+def normalize_page_path(path: str) -> str:
+    """
+    Normalize API routes to their canonical frontend equivalents for statistics.
+    
+    This groups semantically equivalent routes together (e.g., /post/... and /p/...).
+    
+    Args:
+        path: Raw page path from request
+        
+    Returns:
+        Normalized path string
+    """
+    if not path:
+        return path
+    
+    # Strip /api prefix first if present (API gateway may add this)
+    if path.startswith("/api/"):
+        path = path[4:]  # Remove "/api" prefix
+    
+    # Normalize post routes
+    if path.startswith("/post/recent"):
+        return "/recent"
+    elif path == "/post" or path.startswith("/post?"):
+        return "/posts"
+    elif path.startswith("/post/"):
+        # Individual post view via legacy route - group all together
+        return "/p/[post]"
+    elif path.startswith("/p/"):
+        # Individual post view via canonical route - group all together
+        return "/p/[post]"
+    
+    # Normalize user profile routes
+    elif path.startswith("/user/"):
+        return "/u/[user]"
+    elif path.startswith("/u/"):
+        return "/u/[user]"
+    
+    # Normalize blog post routes
+    elif path.startswith("/blog-post/b/"):
+        return "/b/[blog]"
+    elif path.startswith("/blog-post/"):
+        return "/b/[blog]"
+    elif path.startswith("/b/"):
+        return "/b/[blog]"
+    
+    # Normalize auth routes
+    elif path.startswith("/auth/"):
+        return path  # Keep auth routes as-is for granular tracking
+    
+    return path
+
+
 @dataclass
 class DailyCount:
     """Daily count data."""
@@ -354,10 +406,12 @@ class SiteStatsService:
         views_by_page: dict[str, int] = {}
         for event in recent_events:
             if event.event_type == "page_view" and event.page_path:
-                views_by_page[event.page_path] = views_by_page.get(event.page_path, 0) + 1
+                normalized_path = normalize_page_path(event.page_path)
+                views_by_page[normalized_path] = views_by_page.get(normalized_path, 0) + 1
         for ds in daily_stats:
             for page, count in (ds.views_by_page or {}).items():
-                views_by_page[page] = views_by_page.get(page, 0) + count
+                normalized_path = normalize_page_path(page)
+                views_by_page[normalized_path] = views_by_page.get(normalized_path, 0) + count
         
         # Sort and keep top 20
         views_by_page = dict(sorted(views_by_page.items(), key=lambda x: -x[1])[:20])
@@ -411,7 +465,8 @@ class SiteStatsService:
         views_by_page_authenticated: dict[str, int] = {}
         for event in authenticated_events:
             if event.event_type == "page_view" and event.page_path:
-                views_by_page_authenticated[event.page_path] = views_by_page_authenticated.get(event.page_path, 0) + 1
+                normalized_path = normalize_page_path(event.page_path)
+                views_by_page_authenticated[normalized_path] = views_by_page_authenticated.get(normalized_path, 0) + 1
         
         # Sort and keep top 20
         views_by_page_authenticated = dict(sorted(views_by_page_authenticated.items(), key=lambda x: -x[1])[:20])

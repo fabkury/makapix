@@ -813,7 +813,7 @@ def write_view_event(self, event_data: dict) -> None:
     Args:
         event_data: Dictionary containing view event fields:
             - post_id: Integer ID (as string)
-            - viewer_user_id: UUID string or None
+            - viewer_user_id: Integer ID (as string) or None
             - viewer_ip_hash: SHA256 hash string
             - country_code: ISO country code or None
             - device_type: device type string
@@ -824,7 +824,6 @@ def write_view_event(self, event_data: dict) -> None:
             - created_at: ISO datetime string
     """
     from datetime import datetime
-    from uuid import UUID
     from . import models
     from .db import SessionLocal
     
@@ -832,7 +831,7 @@ def write_view_event(self, event_data: dict) -> None:
     try:
         # Parse post_id as int (no longer UUID)
         post_id = int(event_data["post_id"])
-        viewer_user_id = UUID(event_data["viewer_user_id"]) if event_data.get("viewer_user_id") else None
+        viewer_user_id = int(event_data["viewer_user_id"]) if event_data.get("viewer_user_id") else None
         
         # Parse datetime
         created_at = datetime.fromisoformat(event_data["created_at"])
@@ -878,22 +877,21 @@ def write_site_event(self, event_data: dict) -> None:
             - event_type: event type string (page_view, signup, upload, etc.)
             - page_path: URL path string or None
             - visitor_ip_hash: SHA256 hash string
-            - user_id: UUID string or None
+            - user_id: Integer ID (as string) or None
             - device_type: device type string
             - country_code: ISO country code or None
             - referrer_domain: domain string or None
-            - metadata: dict with event-specific data or None
+            - event_data: dict with event-specific data or None
             - created_at: ISO datetime string
     """
     from datetime import datetime
-    from uuid import UUID
     from . import models
     from .db import SessionLocal
     
     db = SessionLocal()
     try:
-        # Parse UUID if present
-        user_id = UUID(event_data["user_id"]) if event_data.get("user_id") else None
+        # Parse user_id as int (User.id is Integer, not UUID)
+        user_id = int(event_data["user_id"]) if event_data.get("user_id") else None
         
         # Parse datetime
         created_at = datetime.fromisoformat(event_data["created_at"])
@@ -909,134 +907,6 @@ def write_site_event(self, event_data: dict) -> None:
             country_code=event_data.get("country_code"),
             referrer_domain=event_data.get("referrer_domain"),
             event_data=event_data.get("event_data"),
-            created_at=created_at,
-        )
-        
-        db.add(site_event)
-        db.commit()
-        
-        logger.debug(f"Wrote deferred site event: {event_data['event_type']}")
-        
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Failed to write deferred site event: {e}", exc_info=True)
-        raise  # Re-raise to trigger Celery retry
-    finally:
-        db.close()
-
-
-# ============================================================================
-# DEFERRED EVENT WRITING TASKS
-# ============================================================================
-
-
-@celery_app.task(name="app.tasks.write_view_event", bind=True, ignore_result=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
-def write_view_event(self, event_data: dict) -> None:
-    """
-    Async Celery task to write a view event to the database.
-    
-    This task receives serialized event data and creates a ViewEvent record.
-    Called asynchronously from record_view() to avoid blocking request handlers.
-    
-    Args:
-        event_data: Dictionary containing view event fields:
-            - post_id: Integer ID (as string)
-            - viewer_user_id: UUID string or None
-            - viewer_ip_hash: SHA256 hash string
-            - country_code: ISO country code or None
-            - device_type: device type string
-            - view_source: view source string
-            - view_type: view type string
-            - user_agent_hash: SHA256 hash or None
-            - referrer_domain: domain string or None
-            - created_at: ISO datetime string
-    """
-    from datetime import datetime
-    from uuid import UUID
-    from . import models
-    from .db import SessionLocal
-    
-    db = SessionLocal()
-    try:
-        # Parse post_id as int (no longer UUID)
-        post_id = int(event_data["post_id"])
-        viewer_user_id = UUID(event_data["viewer_user_id"]) if event_data.get("viewer_user_id") else None
-        
-        # Parse datetime
-        created_at = datetime.fromisoformat(event_data["created_at"])
-        
-        # Create view event
-        view_event = models.ViewEvent(
-            id=uuid.uuid4(),
-            post_id=post_id,
-            viewer_user_id=viewer_user_id,
-            viewer_ip_hash=event_data["viewer_ip_hash"],
-            country_code=event_data.get("country_code"),
-            device_type=event_data["device_type"],
-            view_source=event_data["view_source"],
-            view_type=event_data["view_type"],
-            user_agent_hash=event_data.get("user_agent_hash"),
-            referrer_domain=event_data.get("referrer_domain"),
-            created_at=created_at,
-        )
-        
-        db.add(view_event)
-        db.commit()
-        
-        logger.debug(f"Wrote deferred view event for post {post_id}")
-        
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Failed to write deferred view event: {e}", exc_info=True)
-        raise  # Re-raise to trigger Celery retry
-    finally:
-        db.close()
-
-
-@celery_app.task(name="app.tasks.write_site_event", bind=True, ignore_result=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
-def write_site_event(self, event_data: dict) -> None:
-    """
-    Async Celery task to write a site event to the database.
-    
-    This task receives serialized event data and creates a SiteEvent record.
-    Called asynchronously from record_site_event() to avoid blocking request handlers.
-    
-    Args:
-        event_data: Dictionary containing site event fields:
-            - event_type: event type string (page_view, signup, upload, etc.)
-            - page_path: URL path string or None
-            - visitor_ip_hash: SHA256 hash string
-            - user_id: UUID string or None
-            - device_type: device type string
-            - country_code: ISO country code or None
-            - referrer_domain: domain string or None
-            - metadata: dict with event-specific data or None
-            - created_at: ISO datetime string
-    """
-    from datetime import datetime
-    from uuid import UUID
-    from . import models
-    from .db import SessionLocal
-    
-    db = SessionLocal()
-    try:
-        # Parse UUID if present
-        user_id = UUID(event_data["user_id"]) if event_data.get("user_id") else None
-        
-        # Parse datetime
-        created_at = datetime.fromisoformat(event_data["created_at"])
-        
-        # Create site event
-        site_event = models.SiteEvent(
-            id=uuid.uuid4(),
-            event_type=event_data["event_type"],
-            page_path=event_data.get("page_path"),
-            visitor_ip_hash=event_data["visitor_ip_hash"],
-            user_id=user_id,
-            device_type=event_data["device_type"],
-            country_code=event_data.get("country_code"),
-            referrer_domain=event_data.get("referrer_domain"),
-            metadata=event_data.get("metadata"),
             created_at=created_at,
         )
         
