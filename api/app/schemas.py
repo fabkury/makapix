@@ -1046,6 +1046,22 @@ class HashtagList(BaseModel):
     next_cursor: str | None = None
 
 
+class HashtagStats(BaseModel):
+    """Hashtag with detailed statistics."""
+
+    tag: str
+    reaction_count: int
+    comment_count: int
+    artwork_count: int
+
+
+class HashtagStatsList(BaseModel):
+    """Hashtag statistics list."""
+
+    items: list[HashtagStats]
+    next_cursor: str | None = None
+
+
 class SearchResultUser(BaseModel):
     """Search result: user."""
 
