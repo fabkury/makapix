@@ -373,17 +373,23 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
 
         .card-roller-header {
           display: flex;
+          flex-direction: row;
+          flex-wrap: nowrap;
           align-items: center;
           justify-content: space-between;
           padding: 16px 24px;
           background: var(--bg-secondary);
           border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+          gap: 12px;
         }
 
         .hashtag-info {
           display: flex;
           align-items: center;
           gap: 8px;
+          min-width: 0;
+          flex: 1 1 auto;
+          overflow: hidden;
         }
 
         .hashtag-link {
@@ -392,6 +398,8 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
           gap: 8px;
           text-decoration: none;
           transition: all var(--transition-fast);
+          min-width: 0;
+          overflow: hidden;
         }
 
         .hashtag-link:hover {
@@ -406,18 +414,23 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
+          flex-shrink: 0;
         }
 
         .hashtag-name {
           font-size: 1.2rem;
           font-weight: 600;
           color: var(--text-primary);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .hashtag-stats {
           display: flex;
           gap: 16px;
           align-items: center;
+          flex-shrink: 0;
         }
 
         .hashtag-stats .stat-item {
@@ -685,14 +698,19 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
 
         @media (max-width: 768px) {
           .card-roller-header {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 12px;
+            padding: 12px 16px;
           }
 
           .hashtag-stats {
-            width: 100%;
-            justify-content: space-around;
+            gap: 10px;
+          }
+
+          .hashtag-stats .stat-emoji {
+            font-size: 1rem;
+          }
+
+          .hashtag-stats .stat-count {
+            font-size: 0.8rem;
           }
         }
       `}</style>
