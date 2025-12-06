@@ -17,6 +17,12 @@ from ..services.post_stats import annotate_posts_with_counts, get_user_liked_pos
 
 logger = logging.getLogger(__name__)
 
+# Cache configuration constants
+HASHTAG_LIST_CACHE_TTL = 600  # 10 minutes - hashtag counts change slowly
+HASHTAG_POSTS_CACHE_TTL = 300  # 5 minutes - post lists update more frequently
+HASHTAG_STATS_CACHE_TTL = 600  # 10 minutes - aggregated stats change slowly
+PROMOTED_FEED_CACHE_TTL = 300  # 5 minutes
+
 router = APIRouter(prefix="", tags=["Search", "Feed", "Hashtags"])
 
 
@@ -295,8 +301,8 @@ async def list_hashtags(
     
     response = schemas.HashtagList(items=response_items, next_cursor=next_cursor)
     
-    # Cache for 10 minutes (600 seconds) - popularity changes slowly
-    cache_set(cache_key, response.model_dump(), ttl=600)
+    # Cache for 10 minutes - hashtag counts change slowly
+    cache_set(cache_key, response.model_dump(), ttl=HASHTAG_LIST_CACHE_TTL)
     
     return response
 
@@ -370,8 +376,167 @@ async def list_hashtag_posts(
         next_cursor=page_data["next_cursor"],
     )
     
-    # Cache for 5 minutes (300 seconds)
-    cache_set(cache_key, response.model_dump(), ttl=300)
+    # Cache for 5 minutes
+    cache_set(cache_key, response.model_dump(), ttl=HASHTAG_POSTS_CACHE_TTL)
+    
+    return response
+
+
+@router.get("/hashtags/stats", response_model=schemas.HashtagStatsList, tags=["Hashtags"])
+async def list_hashtags_with_stats(
+    q: str | None = None,
+    sort: str = Query("popularity", regex="^(alphabetical|popularity|recent)$"),
+    cursor: str | None = None,
+    limit: int = Query(15, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_optional),
+) -> schemas.HashtagStatsList:
+    """
+    List hashtags with detailed statistics (reactions, comments, artwork count).
+    
+    Aggregates hashtags from all visible posts and counts occurrences along with
+    total reactions and comments across all posts with that hashtag.
+    Supports search filtering and sorting by popularity or recent activity.
+    Cached for 10 minutes since statistics change slowly.
+    
+    Used for the hashtag search results page with card-roller layout.
+    """
+    # Create cache key based on query parameters
+    cache_key = f"hashtags:stats:{q or 'all'}:{sort}:{cursor or 'first'}:{limit}"
+    
+    # Try to get from cache
+    cached_result = cache_get(cache_key)
+    if cached_result:
+        return schemas.HashtagStatsList(**cached_result)
+    
+    # Build base query for visible posts
+    base_query = db.query(models.Post).filter(
+        models.Post.visible == True,
+        models.Post.hidden_by_mod == False,
+        models.Post.non_conformant == False,
+        models.Post.public_visibility == True,  # Only show publicly visible posts
+    )
+    
+    # Apply search filter if provided
+    if q:
+        q_normalized = q.strip().lower()
+        # Use PostgreSQL array search - check if any hashtag matches
+        base_query = base_query.filter(
+            func.array_to_string(models.Post.hashtags, '|').ilike(f"%{q_normalized}%")
+        )
+    
+    # Get all posts that match filters
+    # NOTE: This loads all matching posts into memory for aggregation.
+    # For sites with very large numbers of posts (10k+ per hashtag), consider:
+    # - Using a materialized view with pre-aggregated statistics
+    # - Implementing a background job to update a hashtag_stats table
+    # - Using SQL window functions for server-side aggregation
+    # The current approach is simple and works well for moderate datasets.
+    matching_posts = base_query.all()
+    
+    # Get post IDs for statistics queries
+    post_ids = [post.id for post in matching_posts]
+    
+    # Get reaction counts per post
+    reaction_counts_per_post = {}
+    if post_ids:
+        reaction_data = (
+            db.query(
+                models.Reaction.post_id,
+                func.count(models.Reaction.id).label("count")
+            )
+            .filter(models.Reaction.post_id.in_(post_ids))
+            .group_by(models.Reaction.post_id)
+            .all()
+        )
+        reaction_counts_per_post = {post_id: count for post_id, count in reaction_data}
+    
+    # Get comment counts per post
+    comment_counts_per_post = {}
+    if post_ids:
+        comment_data = (
+            db.query(
+                models.Comment.post_id,
+                func.count(models.Comment.id).label("count")
+            )
+            .filter(
+                models.Comment.post_id.in_(post_ids),
+                models.Comment.hidden_by_mod == False,
+                models.Comment.deleted_by_owner == False
+            )
+            .group_by(models.Comment.post_id)
+            .all()
+        )
+        comment_counts_per_post = {post_id: count for post_id, count in comment_data}
+    
+    # Aggregate hashtags with counts and statistics
+    hashtag_stats: dict[str, dict[str, any]] = {}
+    
+    for post in matching_posts:
+        post_reactions = reaction_counts_per_post.get(post.id, 0)
+        post_comments = comment_counts_per_post.get(post.id, 0)
+        
+        for hashtag in post.hashtags:
+            if hashtag not in hashtag_stats:
+                hashtag_stats[hashtag] = {
+                    "tag": hashtag,
+                    "artwork_count": 0,
+                    "reaction_count": 0,
+                    "comment_count": 0,
+                    "most_recent": post.created_at,
+                }
+            hashtag_stats[hashtag]["artwork_count"] += 1
+            hashtag_stats[hashtag]["reaction_count"] += post_reactions
+            hashtag_stats[hashtag]["comment_count"] += post_comments
+            # Update most recent timestamp
+            if post.created_at > hashtag_stats[hashtag]["most_recent"]:
+                hashtag_stats[hashtag]["most_recent"] = post.created_at
+    
+    # Convert to list and sort
+    hashtag_items = list(hashtag_stats.values())
+    
+    if sort == "alphabetical":
+        hashtag_items.sort(key=lambda x: x["tag"].lower())
+    elif sort == "popularity":
+        hashtag_items.sort(key=lambda x: (-x["artwork_count"], x["tag"]))
+    else:  # recent
+        hashtag_items.sort(key=lambda x: (-x["most_recent"].timestamp(), x["tag"]))
+    
+    # Apply cursor pagination (simple offset-based for now, since we're working with aggregated data)
+    start_idx = 0
+    if cursor:
+        cursor_data = decode_cursor(cursor)
+        if cursor_data:
+            last_id, _ = cursor_data
+            # Find the index of the hashtag with matching tag
+            for idx, item in enumerate(hashtag_items):
+                if item["tag"] == last_id:
+                    start_idx = idx + 1
+                    break
+    
+    # Slice results
+    paginated_items = hashtag_items[start_idx:start_idx + limit + 1]
+    
+    # Create response items
+    response_items = [
+        schemas.HashtagStats(
+            tag=item["tag"],
+            reaction_count=item["reaction_count"],
+            comment_count=item["comment_count"],
+            artwork_count=item["artwork_count"]
+        )
+        for item in paginated_items[:limit]
+    ]
+    
+    # Generate next cursor
+    next_cursor = None
+    if len(paginated_items) > limit:
+        next_cursor = encode_cursor(paginated_items[limit]["tag"])
+    
+    response = schemas.HashtagStatsList(items=response_items, next_cursor=next_cursor)
+    
+    # Cache for 10 minutes - aggregated statistics change slowly
+    cache_set(cache_key, response.model_dump(), ttl=HASHTAG_STATS_CACHE_TTL)
     
     return response
 
@@ -440,8 +605,8 @@ def feed_promoted(
         next_cursor=page_data["next_cursor"],
     )
     
-    # Cache for 5 minutes (300 seconds)
-    cache_set(cache_key, response.model_dump(), ttl=300)
+    # Cache for 5 minutes
+    cache_set(cache_key, response.model_dump(), ttl=PROMOTED_FEED_CACHE_TTL)
     
     return response
 

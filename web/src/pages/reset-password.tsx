@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import Layout from '../components/Layout';
+import { validatePassword } from '../utils/passwordValidation';
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -27,13 +28,15 @@ const API_BASE_URL = typeof window !== 'undefined'
     e.preventDefault();
     setError(null);
 
-    if (newPassword !== confirmPassword) {
-      setError('Passwords do not match');
+    // Validate password
+    const validation = validatePassword(newPassword);
+    if (!validation.isValid) {
+      setError(validation.errors.join(' '));
       return;
     }
 
-    if (newPassword.length < 8) {
-      setError('Password must be at least 8 characters');
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match');
       return;
     }
 
@@ -95,7 +98,7 @@ const API_BASE_URL = typeof window !== 'undefined'
           <div className="card">
             <h2>Set New Password</h2>
             <p className="description">
-              Enter your new password below. Make sure it&apos;s at least 8 characters long.
+              Password must be at least 8 characters with at least one letter and one number.
             </p>
 
             <form onSubmit={handleSubmit} className="form">

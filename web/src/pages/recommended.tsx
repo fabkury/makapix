@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import CardGrid from '../components/CardGrid';
+import { authenticatedFetch, clearTokens } from '../lib/api';
 
 interface PostOwner {
   id: string;
@@ -17,6 +18,8 @@ interface Post {
   hashtags?: string[];
   art_url: string;
   canvas: string;
+  width: number;
+  height: number;
   owner_id: string;
   created_at: string;
   promoted?: boolean;
@@ -57,18 +60,11 @@ export default function RecommendedPage() {
     setError(null);
     
     try {
-      const token = localStorage.getItem('access_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      
       const url = `${API_BASE_URL}/api/feed/promoted?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
-      const response = await fetch(url, { headers });
+      const response = await authenticatedFetch(url);
       
-      if (response.status === 401 && token) {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('user_id');
+      if (response.status === 401) {
+        clearTokens();
       }
       
       if (!response.ok) {

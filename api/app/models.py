@@ -230,7 +230,9 @@ class Post(Base):
 
     # Art metadata
     art_url = Column(String(1000), nullable=False)
-    canvas = Column(String(50), nullable=False)  # e.g., "64x64", "128x128"
+    canvas = Column(String(50), nullable=False)  # e.g., "64x64", "128x128" - kept for backward compatibility
+    width = Column(Integer, nullable=False, index=True)  # Canvas width in pixels
+    height = Column(Integer, nullable=False, index=True)  # Canvas height in pixels
     file_kb = Column(Integer, nullable=False)
     file_bytes = Column(Integer, nullable=False)  # Exact file size in bytes
     frame_count = Column(

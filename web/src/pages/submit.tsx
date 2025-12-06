@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
+import { authenticatedFetch, clearTokens } from '../lib/api';
 
 interface UploadedArtwork {
   id: number;
@@ -8,6 +9,8 @@ interface UploadedArtwork {
   title: string;
   art_url: string;
   canvas: string;
+  width: number;
+  height: number;
   public_visibility: boolean;
 }
 
@@ -178,12 +181,6 @@ export default function SubmitPage() {
   const handleSubmit = async () => {
     if (!selectedFile || validationErrors.length > 0) return;
     
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      router.push('/auth');
-      return;
-    }
-    
     setUploading(true);
     setUploadError(null);
     
@@ -194,17 +191,13 @@ export default function SubmitPage() {
       formData.append('description', description.trim());
       formData.append('hashtags', hashtags.trim());
       
-      const response = await fetch(`${API_BASE_URL}/api/post/upload`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/post/upload`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
         body: formData,
       });
       
       if (response.status === 401) {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('user_id');
+        clearTokens();
         router.push('/auth');
         return;
       }

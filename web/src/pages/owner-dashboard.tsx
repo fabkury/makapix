@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
+import { authenticatedFetch, clearTokens } from '../lib/api';
 
 interface User {
   id: string;
@@ -50,16 +51,14 @@ export default function OwnerDashboardPage() {
 
   const checkOwnerStatus = async () => {
     try {
-      const accessToken = localStorage.getItem('access_token');
-      
-      if (!accessToken) {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/auth/me`);
+
+      if (response.status === 401) {
+        clearTokens();
+        setLoading(false);
         router.push('/');
         return;
       }
-
-      const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
 
       if (!response.ok) {
         setLoading(false);
@@ -89,14 +88,17 @@ export default function OwnerDashboardPage() {
   const loadAuthenticatedUsers = async (cursor: string | null = null) => {
     setLoadingUsers(true);
     try {
-      const accessToken = localStorage.getItem('access_token');
       const url = cursor 
         ? `${API_BASE_URL}/api/admin/owner/user?cursor=${encodeURIComponent(cursor)}&limit=50`
         : `${API_BASE_URL}/api/admin/owner/user?limit=50`;
 
-      const response = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
+      const response = await authenticatedFetch(url);
+
+      if (response.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
 
       if (!response.ok) throw new Error('Failed to load users');
 
@@ -117,14 +119,17 @@ export default function OwnerDashboardPage() {
   const loadAnonymousUsers = async (cursor: string | null = null) => {
     setLoadingUsers(true);
     try {
-      const accessToken = localStorage.getItem('access_token');
       const url = cursor 
         ? `${API_BASE_URL}/api/admin/owner/user/anonymous?cursor=${encodeURIComponent(cursor)}&limit=50`
         : `${API_BASE_URL}/api/admin/owner/user/anonymous?limit=50`;
 
-      const response = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
+      const response = await authenticatedFetch(url);
+
+      if (response.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
 
       if (!response.ok) {
         if (!cursor) {
@@ -154,11 +159,16 @@ export default function OwnerDashboardPage() {
 
   const promoteModerator = async (userId: string) => {
     try {
-      const accessToken = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/api/admin/user/${userId}/moderator`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${userId}/moderator`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' }
       });
+
+      if (response.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
 
       if (!response.ok) {
         const error = await response.json();
@@ -174,11 +184,15 @@ export default function OwnerDashboardPage() {
 
   const demoteModerator = async (userId: string) => {
     try {
-      const accessToken = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/api/admin/user/${userId}/moderator`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${userId}/moderator`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${accessToken}` }
       });
+
+      if (response.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
 
       if (!response.ok) {
         const error = await response.json();

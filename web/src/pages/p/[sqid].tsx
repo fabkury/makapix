@@ -5,6 +5,7 @@ import Layout from '../../components/Layout';
 import CommentsAndReactions from '../../components/CommentsAndReactions';
 import StatsPanel from '../../components/StatsPanel';
 import SendToPlayerModal from '../../components/SendToPlayerModal';
+import { authenticatedFetch, authenticatedRequestJson, authenticatedPostJson, clearTokens } from '../../lib/api';
 import { 
   getNavigationContext, 
   setNavigationContext, 
@@ -26,6 +27,8 @@ interface Post {
   hashtags?: string[];
   art_url: string;
   canvas: string;
+  width: number;
+  height: number;
   owner_id: string;
   created_at: string;
   kind?: string;
@@ -86,14 +89,15 @@ export default function PostPage() {
       setError(null);
       
       try {
-        const accessToken = localStorage.getItem('access_token');
-        const headers: HeadersInit = {};
-        if (accessToken) {
-          headers['Authorization'] = `Bearer ${accessToken}`;
-        }
-        
         // Fetch post by public_sqid using the new canonical endpoint
-        const response = await fetch(`${API_BASE_URL}/api/p/${sqid}`, { headers });
+        const response = await authenticatedFetch(`${API_BASE_URL}/api/p/${sqid}`);
+        
+        if (response.status === 401) {
+          // Token refresh failed - treat as unauthenticated
+          setCurrentUser(null);
+          setIsOwner(false);
+          setIsModerator(false);
+        }
         
         if (!response.ok) {
           if (response.status === 404) {
@@ -108,33 +112,33 @@ export default function PostPage() {
         const data = await response.json();
         setPost(data);
         
-        if (accessToken) {
-          try {
-            const userResponse = await fetch(`${API_BASE_URL}/api/auth/me`, {
-              headers: {
-                'Authorization': `Bearer ${accessToken}`
-              }
-            });
-            if (userResponse.ok) {
-              const userData = await userResponse.json();
-              setCurrentUser({ id: userData.user.id, public_sqid: userData.user.public_sqid });
-              setIsOwner(userData.user.id === data.owner_id);
-              const roles = userData.user.roles || userData.roles || [];
-              setIsModerator(roles.includes('moderator') || roles.includes('owner'));
-              
-              // Load players if user is authenticated
-              try {
-                const playersData = await listPlayers(userData.user.public_sqid);
-                setPlayers(playersData.items);
-              } catch (err) {
-                // Silently fail - user might not have players
-              }
-            }
-          } catch (err) {
+        // Try to get current user info if authenticated
+        try {
+          const userResponse = await authenticatedFetch(`${API_BASE_URL}/api/auth/me`);
+          if (userResponse.status === 401) {
+            // Not authenticated or token refresh failed
             setCurrentUser(null);
             setIsOwner(false);
             setIsModerator(false);
+          } else if (userResponse.ok) {
+            const userData = await userResponse.json();
+            setCurrentUser({ id: userData.user.id, public_sqid: userData.user.public_sqid });
+            setIsOwner(userData.user.id === data.owner_id);
+            const roles = userData.user.roles || userData.roles || [];
+            setIsModerator(roles.includes('moderator') || roles.includes('owner'));
+            
+            // Load players if user is authenticated
+            try {
+              const playersData = await listPlayers(userData.user.public_sqid);
+              setPlayers(playersData.items);
+            } catch (err) {
+              // Silently fail - user might not have players
+            }
           }
+        } catch (err) {
+          setCurrentUser(null);
+          setIsOwner(false);
+          setIsModerator(false);
         }
       } catch (err) {
         setError('Failed to load post');
@@ -195,11 +199,8 @@ export default function PostPage() {
   // Fetch default context from author's profile
   const fetchDefaultContext = async (ownerId: string, currentSqid: string) => {
     try {
-      const token = localStorage.getItem('access_token');
-      const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
-      
       const url = `${API_BASE_URL}/api/post?owner_id=${ownerId}&limit=100&sort=created_at&order=desc`;
-      const response = await fetch(url, { headers });
+      const response = await authenticatedFetch(url);
       
       if (!response.ok) return;
       
@@ -293,9 +294,6 @@ export default function PostPage() {
     extendingRef.current = true;
     
     try {
-      const token = localStorage.getItem('access_token');
-      const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
-      
       let url = '';
       if (direction === 'forward') {
         if (!navContext.cursor) return null;
@@ -305,7 +303,7 @@ export default function PostPage() {
         return null;
       }
       
-      const response = await fetch(url, { headers });
+      const response = await authenticatedFetch(url);
       if (!response.ok) return null;
       
       const data = await response.json();
@@ -481,20 +479,17 @@ export default function PostPage() {
     
     if (!confirmed) return;
     
-    const accessToken = localStorage.getItem('access_token');
-    if (!accessToken) {
-      alert('You must be logged in to delete posts.');
-      return;
-    }
-    
     try {
       // Use the integer ID for API operations
-      const response = await fetch(`${API_BASE_URL}/api/post/${post.id}`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/post/${post.id}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
       });
+      
+      if (response.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
       
       if (response.ok || response.status === 204) {
         router.push('/');
@@ -521,30 +516,25 @@ export default function PostPage() {
     
     if (!confirmed) return;
     
-    const accessToken = localStorage.getItem('access_token');
-    if (!accessToken) {
-      alert('You must be logged in.');
-      return;
-    }
-    
     try {
       const url = `${API_BASE_URL}/api/post/${post.id}/hide`;
       const method = isHidden ? 'DELETE' : 'POST';
       
-      const response = await fetch(url, {
+      const response = await authenticatedFetch(url, {
         method: method,
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json'
         }
       });
       
+      if (response.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
+      
       if (response.ok || response.status === 201 || response.status === 204) {
-        const refreshResponse = await fetch(`${API_BASE_URL}/api/p/${post.public_sqid}`, {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
-        });
+        const refreshResponse = await authenticatedFetch(`${API_BASE_URL}/api/p/${post.public_sqid}`);
         if (refreshResponse.ok) {
           const updatedPost = await refreshResponse.json();
           setPost(updatedPost);
@@ -580,13 +570,6 @@ export default function PostPage() {
     setIsSaving(true);
     setSaveError(null);
     
-    const accessToken = localStorage.getItem('access_token');
-    if (!accessToken) {
-      setSaveError('You must be logged in.');
-      setIsSaving(false);
-      return;
-    }
-    
     // Parse hashtags from comma-separated string
     const hashtagsArray = editHashtags
       .split(',')
@@ -594,29 +577,27 @@ export default function PostPage() {
       .filter(tag => tag.length > 0);
     
     try {
-      const response = await fetch(`${API_BASE_URL}/api/post/${post.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
+      const updatedPost = await authenticatedRequestJson<Post>(
+        `/api/post/${post.id}`,
+        {
+          body: JSON.stringify({
+            title: editTitle.trim(),
+            description: editDescription,
+            hashtags: hashtagsArray
+          })
         },
-        body: JSON.stringify({
-          title: editTitle.trim(),
-          description: editDescription,
-          hashtags: hashtagsArray
-        })
-      });
+        'PATCH'
+      );
       
-      if (response.ok) {
-        const updatedPost = await response.json();
-        setPost(updatedPost);
-        setIsEditing(false);
-      } else {
-        const errorData = await response.json().catch(() => ({ detail: 'Failed to save changes' }));
-        setSaveError(errorData.detail || 'Failed to save changes.');
-      }
+      setPost(updatedPost);
+      setIsEditing(false);
     } catch (err) {
       console.error('Error saving post:', err);
+      if (err instanceof Error && err.message.includes('401')) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
       setSaveError('Failed to save changes.');
     } finally {
       setIsSaving(false);
@@ -637,28 +618,26 @@ export default function PostPage() {
     
     if (!confirmed) return;
     
-    const accessToken = localStorage.getItem('access_token');
-    if (!accessToken) return;
-    
     try {
       const url = `${API_BASE_URL}/api/post/${post.id}/hide`;
       const method = isHidden ? 'DELETE' : 'POST';
       
-      const response = await fetch(url, {
+      const response = await authenticatedFetch(url, {
         method: method,
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ by: 'mod' })
       });
       
+      if (response.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
+      
       if (response.ok || response.status === 201 || response.status === 204) {
-        const refreshResponse = await fetch(`${API_BASE_URL}/api/p/${post.public_sqid}`, {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
-        });
+        const refreshResponse = await authenticatedFetch(`${API_BASE_URL}/api/p/${post.public_sqid}`);
         if (refreshResponse.ok) {
           setPost(await refreshResponse.json());
         }
@@ -685,28 +664,26 @@ export default function PostPage() {
     
     if (!confirmed) return;
     
-    const accessToken = localStorage.getItem('access_token');
-    if (!accessToken) return;
-    
     try {
       const url = `${API_BASE_URL}/api/post/${post.id}/promote`;
       const method = isPromoted ? 'DELETE' : 'POST';
       
-      const response = await fetch(url, {
+      const response = await authenticatedFetch(url, {
         method: method,
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json'
         },
         body: isPromoted ? undefined : JSON.stringify({ category: 'frontpage' })
       });
       
+      if (response.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
+      
       if (response.ok || response.status === 201 || response.status === 204) {
-        const refreshResponse = await fetch(`${API_BASE_URL}/api/p/${post.public_sqid}`, {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
-        });
+        const refreshResponse = await authenticatedFetch(`${API_BASE_URL}/api/p/${post.public_sqid}`);
         if (refreshResponse.ok) {
           setPost(await refreshResponse.json());
         }
@@ -733,23 +710,19 @@ export default function PostPage() {
     
     if (!confirmed) return;
     
-    const accessToken = localStorage.getItem('access_token');
-    if (!accessToken) return;
-    
     try {
-      const response = await fetch(`${API_BASE_URL}/api/post/${post.id}/approve-public`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/post/${post.id}/approve-public`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
       });
       
+      if (response.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
+      
       if (response.ok || response.status === 201) {
-        const refreshResponse = await fetch(`${API_BASE_URL}/api/p/${post.public_sqid}`, {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
-        });
+        const refreshResponse = await authenticatedFetch(`${API_BASE_URL}/api/p/${post.public_sqid}`);
         if (refreshResponse.ok) {
           setPost(await refreshResponse.json());
         }
@@ -788,16 +761,16 @@ export default function PostPage() {
     
     if (!doubleConfirmed) return;
     
-    const accessToken = localStorage.getItem('access_token');
-    if (!accessToken) return;
-    
     try {
-      const response = await fetch(`${API_BASE_URL}/api/post/${post.id}/permanent`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/post/${post.id}/permanent`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
       });
+      
+      if (response.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
       
       if (response.ok || response.status === 204) {
         alert('Artwork has been permanently deleted.');

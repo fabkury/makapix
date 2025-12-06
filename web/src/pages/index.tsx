@@ -18,6 +18,8 @@ interface Post {
   hashtags?: string[];
   art_url: string;
   canvas: string;
+  width: number;
+  height: number;
   owner_id: string;
   created_at: string;
   promoted?: boolean;
@@ -65,6 +67,7 @@ export default function HomePage() {
       return;
     }
     
+    // Check if user is still authenticated
     const token = localStorage.getItem('access_token');
     if (!token) {
       return;

@@ -166,6 +166,17 @@ def create_post(
     """
     Create a new post.
     """
+    # Parse canvas dimensions from "WxH" format
+    try:
+        width_str, height_str = payload.canvas.split('x')
+        width = int(width_str)
+        height = int(height_str)
+    except (ValueError, AttributeError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid canvas format '{payload.canvas}'. Expected format: WIDTHxHEIGHT (e.g., '64x64')"
+        )
+    
     # Validate canvas dimensions against allowed list
     allowed_canvases = [
         "16x16",
@@ -199,7 +210,10 @@ def create_post(
         normalized_tag = tag.strip().lower()
         if normalized_tag and normalized_tag not in normalized_hashtags:
             normalized_hashtags.append(normalized_tag)
-
+    
+    # Limit hashtags to 64
+    normalized_hashtags = normalized_hashtags[:64]
+    
     # Generate UUID for storage_key
     storage_key = uuid.uuid4()
 
@@ -212,6 +226,8 @@ def create_post(
         hashtags=normalized_hashtags,
         art_url=str(payload.art_url),
         canvas=payload.canvas,
+        width=width,
+        height=height,
         file_kb=payload.file_kb,
     )
     db.add(post)
@@ -366,10 +382,10 @@ async def upload_artwork(
                 normalized_tag = normalized_tag[1:]
             if normalized_tag and normalized_tag not in parsed_hashtags:
                 parsed_hashtags.append(normalized_tag)
-
-    # Limit hashtags to 10
-    parsed_hashtags = parsed_hashtags[:10]
-
+    
+    # Limit hashtags to 64
+    parsed_hashtags = parsed_hashtags[:64]
+    
     # Determine public visibility based on user's auto_public_approval privilege
     public_visibility = getattr(current_user, "auto_public_approval", False)
 
@@ -386,6 +402,8 @@ async def upload_artwork(
         hashtags=parsed_hashtags,
         art_url="",  # Will be updated after saving to vault
         canvas=f"{width}x{height}",
+        width=width,
+        height=height,
         file_kb=file_size // 1024,
         file_bytes=file_size,
         frame_count=frame_count,

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
+import { authenticatedFetch } from '../../lib/api';
 
 /**
  * Legacy blog post route - redirects to canonical /b/[sqid] URL.
@@ -29,20 +30,14 @@ export default function LegacyBlogPostRedirect() {
 
     const redirectToCanonical = async () => {
       try {
-        const accessToken = localStorage.getItem('access_token');
-        const headers: HeadersInit = {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        };
-        if (accessToken) {
-          headers['Authorization'] = `Bearer ${accessToken}`;
-        }
-        
         const apiUrl = getApiUrl(`/blog-post/${id}`);
         
         // Fetch from the legacy API endpoint - it returns JSON with public_sqid
-        const response = await fetch(apiUrl, { 
-          headers,
+        const response = await authenticatedFetch(apiUrl, {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
           redirect: 'follow',
           method: 'GET'
         });

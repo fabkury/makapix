@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
+import { authenticatedFetch, authenticatedPostJson, clearTokens } from '../lib/api';
 
 interface ReactionTotals {
   totals: Record<string, number>;
@@ -65,6 +67,7 @@ export default function CommentsAndReactions({
   currentUserId,
   isModerator = false,
 }: CommentsAndReactionsProps) {
+  const router = useRouter();
   const [reactions, setReactions] = useState<ReactionTotals | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [loadingReactions, setLoadingReactions] = useState(true);
@@ -79,19 +82,12 @@ export default function CommentsAndReactions({
     loadWidgetData();
   }, [contentType, contentId]);
 
-  const getAuthHeaders = (): HeadersInit => {
-    const token = localStorage.getItem('access_token');
-    return token ? { 'Authorization': `Bearer ${token}` } : {};
-  };
-
   const loadWidgetData = async () => {
     // Try combined endpoint for artwork posts
     const widgetEndpoint = getWidgetDataEndpoint(contentType, contentId);
     if (widgetEndpoint) {
       try {
-        const response = await fetch(`${API_BASE_URL}${widgetEndpoint}`, {
-          headers: getAuthHeaders(),
-        });
+        const response = await authenticatedFetch(`${API_BASE_URL}${widgetEndpoint}`);
         if (response.ok) {
           const data = await response.json();
           setReactions({
@@ -122,9 +118,7 @@ export default function CommentsAndReactions({
   const loadReactions = async () => {
     try {
       setLoadingReactions(true);
-      const response = await fetch(`${API_BASE_URL}${getReactionsEndpoint(contentType, contentId)}`, {
-        headers: getAuthHeaders(),
-      });
+      const response = await authenticatedFetch(`${API_BASE_URL}${getReactionsEndpoint(contentType, contentId)}`);
       if (response.ok) {
         const data = await response.json();
         setReactions({
@@ -144,9 +138,7 @@ export default function CommentsAndReactions({
   const loadComments = async () => {
     try {
       setLoadingComments(true);
-      const response = await fetch(`${API_BASE_URL}${getCommentsEndpoint(contentType, contentId)}`, {
-        headers: getAuthHeaders(),
-      });
+      const response = await authenticatedFetch(`${API_BASE_URL}${getCommentsEndpoint(contentType, contentId)}`);
       if (response.ok) {
         const data = await response.json();
         setComments((data.items || []).filter((comment: Comment) => {
@@ -175,13 +167,19 @@ export default function CommentsAndReactions({
     }
 
     try {
-      const response = await fetch(
+      const response = await authenticatedFetch(
         `${API_BASE_URL}${getReactionsEndpoint(contentType, contentId)}/${encodeURIComponent(emoji)}`,
         {
           method,
-          headers: getAuthHeaders(),
         }
       );
+
+      if (response.status === 401) {
+        // Token refresh failed - clear tokens and redirect
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
 
       if (response.ok || response.status === 204) {
         await loadReactions();
@@ -205,31 +203,25 @@ export default function CommentsAndReactions({
       const payload: { body: string; parent_id?: string } = { body: body.trim() };
       if (parentId) payload.parent_id = parentId;
 
-      const response = await fetch(
-        `${API_BASE_URL}${getCommentsEndpoint(contentType, contentId)}`,
-        {
-          method: 'POST',
-          headers: {
-            ...getAuthHeaders(),
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        }
+      await authenticatedPostJson<{ id: string }>(
+        `${getCommentsEndpoint(contentType, contentId)}`,
+        payload
       );
 
-      if (response.ok) {
-        if (parentId) {
-          setReplyBody('');
-          setReplyingTo(null);
-        } else {
-          setCommentBody('');
-        }
-        await loadComments();
+      if (parentId) {
+        setReplyBody('');
+        setReplyingTo(null);
       } else {
-        const errorData = await response.json().catch(() => ({ detail: 'Failed to post comment' }));
-        alert(errorData.detail || 'Failed to post comment');
+        setCommentBody('');
       }
+      await loadComments();
     } catch (error) {
+      if (error instanceof Error && error.message.includes('401')) {
+        // Token refresh failed - clear tokens and redirect
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
       console.error('Failed to submit comment:', error);
       alert('Failed to post comment. Please try again.');
     } finally {
@@ -241,13 +233,19 @@ export default function CommentsAndReactions({
     if (!confirm('Are you sure you want to delete this comment? This action cannot be undone.')) return;
 
     try {
-      const response = await fetch(
+      const response = await authenticatedFetch(
         `${API_BASE_URL}${getCommentDeleteEndpoint(contentType, commentId)}`,
         {
           method: 'DELETE',
-          headers: getAuthHeaders(),
         }
       );
+
+      if (response.status === 401) {
+        // Token refresh failed - clear tokens and redirect
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
 
       if (response.ok || response.status === 204) {
         await loadComments();

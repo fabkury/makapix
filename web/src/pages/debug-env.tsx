@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Head from 'next/head';
+import { authenticatedFetch } from '../lib/api';
 
 export default function DebugEnv() {
   const [apiBaseUrl, setApiBaseUrl] = useState<string>('');
@@ -28,18 +29,8 @@ export default function DebugEnv() {
 
     // Test API endpoint
     const testApi = async () => {
-      const accessToken = localStorage.getItem('access_token');
-      if (!accessToken) {
-        setApiError('No access token found in localStorage');
-        return;
-      }
-
       try {
-        const response = await fetch(`${API_BASE_URL}/api/auth/github-app/status`, {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
-        });
+        const response = await authenticatedFetch(`${API_BASE_URL}/api/auth/github-app/status`);
 
         if (response.ok) {
           const data = await response.json();

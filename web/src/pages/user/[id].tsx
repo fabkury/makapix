@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
 import CardGrid from '../../components/CardGrid';
+import { authenticatedFetch, authenticatedRequestJson, authenticatedPostJson, clearTokens } from '../../lib/api';
 
 interface User {
   id: number;
@@ -31,6 +32,8 @@ interface Post {
   hashtags?: string[];
   art_url: string;
   canvas: string;
+  width: number;
+  height: number;
   owner_id: string;
   created_at: string;
   owner?: PostOwner;
@@ -83,11 +86,13 @@ export default function UserProfilePage() {
       setError(null);
       
       try {
-        const token = localStorage.getItem('access_token');
         const currentUserId = localStorage.getItem('user_id');
-        const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
+        const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${id}`);
         
-        const response = await fetch(`${API_BASE_URL}/api/user/${id}`, { headers });
+        if (response.status === 401) {
+          // Token refresh failed - treat as unauthenticated
+          setIsModerator(false);
+        }
         
         if (!response.ok) {
           if (response.status === 404) {
@@ -114,19 +119,18 @@ export default function UserProfilePage() {
         setIsOwner(data.roles?.includes('owner') || false);
         
         // Check if current viewer is a moderator
-        if (token) {
-          try {
-            const meResponse = await fetch(`${API_BASE_URL}/api/auth/me`, {
-              headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (meResponse.ok) {
-              const meData = await meResponse.json();
-              const roles = meData.roles || [];
-              setIsModerator(roles.includes('moderator') || roles.includes('owner'));
-            }
-          } catch (err) {
-            console.error('Error checking moderator status:', err);
+        try {
+          const meResponse = await authenticatedFetch(`${API_BASE_URL}/api/auth/me`);
+          if (meResponse.status === 401) {
+            setIsModerator(false);
+          } else if (meResponse.ok) {
+            const meData = await meResponse.json();
+            const roles = meData.roles || [];
+            setIsModerator(roles.includes('moderator') || roles.includes('owner'));
           }
+        } catch (err) {
+          console.error('Error checking moderator status:', err);
+          setIsModerator(false);
         }
       } catch (err) {
         setError('Failed to load profile');
@@ -148,11 +152,8 @@ export default function UserProfilePage() {
     setPostsLoading(true);
     
     try {
-      const token = localStorage.getItem('access_token');
-      const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
-      
       const url = `${API_BASE_URL}/api/post?owner_id=${user?.id || id}&limit=20&sort=created_at&order=desc${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
-      const response = await fetch(url, { headers });
+      const response = await authenticatedFetch(url);
       
       if (!response.ok) {
         throw new Error('Failed to load posts');
@@ -177,7 +178,7 @@ export default function UserProfilePage() {
       loadingRef.current = false;
       setPostsLoading(false);
     }
-  }, [id, API_BASE_URL]);
+  }, [id, user?.id, API_BASE_URL]);
 
   // Load posts when user is loaded
   useEffect(() => {
@@ -198,10 +199,7 @@ export default function UserProfilePage() {
     if (!id || typeof id !== 'string') return;
     
     try {
-      const token = localStorage.getItem('access_token');
-      const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
-      
-      const response = await fetch(`${API_BASE_URL}/api/user/${id}/blog-post?limit=2`, { headers });
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${id}/blog-post?limit=2`);
       
       if (response.ok) {
         const data = await response.json();
@@ -240,13 +238,6 @@ export default function UserProfilePage() {
     setSaveError(null);
     
     try {
-      const token = localStorage.getItem('access_token');
-      if (!token) {
-        setSaveError('You must be logged in to edit your profile');
-        setIsSaving(false);
-        return;
-      }
-      
       const payload: { handle?: string; bio?: string } = {};
       
       // Only include handle if it changed
@@ -266,31 +257,32 @@ export default function UserProfilePage() {
         return;
       }
       
-      const response = await fetch(`${API_BASE_URL}/api/user/${user.user_key}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        if (response.status === 409) {
-          setSaveError('This handle is already taken');
-        } else if (response.status === 400) {
-          setSaveError(errorData.detail || 'Invalid handle format');
+      try {
+        const updatedUser = await authenticatedRequestJson<User>(
+          `/api/user/${user.user_key}`,
+          { body: JSON.stringify(payload) },
+          'PATCH'
+        );
+        
+        setUser(updatedUser);
+        setIsEditing(false);
+      } catch (err) {
+        if (err instanceof Error) {
+          if (err.message.includes('409')) {
+            setSaveError('This handle is already taken');
+          } else if (err.message.includes('400')) {
+            setSaveError('Invalid handle format');
+          } else if (err.message.includes('401')) {
+            clearTokens();
+            router.push('/auth');
+            return;
+          } else {
+            setSaveError('Failed to save changes');
+          }
         } else {
-          setSaveError(errorData.detail || 'Failed to save changes');
+          setSaveError('Failed to save changes');
         }
-        setIsSaving(false);
-        return;
       }
-      
-      const updatedUser = await response.json();
-      setUser(updatedUser);
-      setIsEditing(false);
     } catch (err) {
       console.error('Error saving profile:', err);
       setSaveError('Failed to save changes');
@@ -317,20 +309,20 @@ export default function UserProfilePage() {
   const trustUser = async () => {
     if (!user) return;
     try {
-      const token = localStorage.getItem('access_token');
-      if (!token) return;
-      
-      await fetch(`${API_BASE_URL}/api/admin/user/${user.id}/auto-approval`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${user.id}/auto-approval`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
       });
+      
+      if (response.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
       
       // Refresh user data
-      const response = await fetch(`${API_BASE_URL}/api/user/${user.user_key}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (response.ok) {
-        const updatedUser = await response.json();
+      const refreshResponse = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}`);
+      if (refreshResponse.ok) {
+        const updatedUser = await refreshResponse.json();
         setUser(updatedUser);
       }
     } catch (error) {
@@ -341,20 +333,20 @@ export default function UserProfilePage() {
   const distrustUser = async () => {
     if (!user) return;
     try {
-      const token = localStorage.getItem('access_token');
-      if (!token) return;
-      
-      await fetch(`${API_BASE_URL}/api/admin/user/${user.id}/auto-approval`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${user.id}/auto-approval`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
       });
+      
+      if (response.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
       
       // Refresh user data
-      const response = await fetch(`${API_BASE_URL}/api/user/${user.user_key}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (response.ok) {
-        const updatedUser = await response.json();
+      const refreshResponse = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}`);
+      if (refreshResponse.ok) {
+        const updatedUser = await refreshResponse.json();
         setUser(updatedUser);
       }
     } catch (error) {
@@ -369,24 +361,24 @@ export default function UserProfilePage() {
       return;
     }
     try {
-      const token = localStorage.getItem('access_token');
-      if (!token) return;
-      
-      await fetch(`${API_BASE_URL}/api/admin/user/${user.id}/ban`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${user.id}/ban`, {
         method: 'POST',
         headers: { 
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ duration_days: null })
       });
       
+      if (response.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
+      
       // Refresh user data
-      const response = await fetch(`${API_BASE_URL}/api/user/${user.user_key}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (response.ok) {
-        const updatedUser = await response.json();
+      const refreshResponse = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}`);
+      if (refreshResponse.ok) {
+        const updatedUser = await refreshResponse.json();
         setUser(updatedUser);
       }
     } catch (error) {
@@ -400,20 +392,20 @@ export default function UserProfilePage() {
       return;
     }
     try {
-      const token = localStorage.getItem('access_token');
-      if (!token) return;
-      
-      await fetch(`${API_BASE_URL}/api/admin/user/${user.id}/ban`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${user.id}/ban`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
       });
+      
+      if (response.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
       
       // Refresh user data
-      const response = await fetch(`${API_BASE_URL}/api/user/${user.user_key}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (response.ok) {
-        const updatedUser = await response.json();
+      const refreshResponse = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}`);
+      if (refreshResponse.ok) {
+        const updatedUser = await refreshResponse.json();
         setUser(updatedUser);
       }
     } catch (error) {

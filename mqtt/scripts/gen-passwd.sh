@@ -34,9 +34,15 @@ fi
 chmod 600 "${PASSWD_FILE}"
 chown mosquitto:mosquitto "${PASSWD_FILE}" 2>/dev/null || true
 
-# Output passwords for reference (these will be needed for the Python scripts)
-echo "Backend password: ${BACKEND_PASSWORD}"
-echo "Player password: ${PLAYER_PASSWORD}"
+# SECURITY: Only output passwords in development mode
+# In production, passwords should be injected via secure secrets management
+if [[ "${ENVIRONMENT:-development}" == "development" ]]; then
+    echo "NOTE: Passwords are shown only in development mode"
+    echo "Backend password: ${BACKEND_PASSWORD}"
+    echo "Player password: ${PLAYER_PASSWORD}"
+else
+    echo "MQTT passwords configured (hidden for security)"
+fi
 
 
 

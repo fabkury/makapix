@@ -5,6 +5,7 @@ import Layout from '../../components/Layout';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
+import { authenticatedFetch, authenticatedRequestJson, clearTokens } from '../../lib/api';
 
 interface BlogPost {
   id: string;
@@ -37,15 +38,13 @@ export default function WriteBlogPostPage() {
       const fetchPost = async () => {
         setLoading(true);
         try {
-          const token = localStorage.getItem('access_token');
-          if (!token) {
+          const response = await authenticatedFetch(`${API_BASE_URL}/api/blog-post/${edit}`);
+          
+          if (response.status === 401) {
+            clearTokens();
             router.push('/auth');
             return;
           }
-          
-          const response = await fetch(`${API_BASE_URL}/api/blog-post/${edit}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
           
           if (response.ok) {
             const data: BlogPost = await response.json();
@@ -91,12 +90,6 @@ export default function WriteBlogPostPage() {
       return;
     }
     
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      router.push('/auth');
-      return;
-    }
-    
     for (const file of imageFiles.slice(0, 10 - imageUrls.length)) {
       if (imageUrls.length >= 10) {
         alert('Maximum 10 images per blog post');
@@ -107,11 +100,16 @@ export default function WriteBlogPostPage() {
         const formData = new FormData();
         formData.append('image', file);
         
-        const response = await fetch(`${API_BASE_URL}/api/blog-post/${edit}/images`, {
+        const response = await authenticatedFetch(`${API_BASE_URL}/api/blog-post/${edit}/images`, {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` },
           body: formData,
         });
+        
+        if (response.status === 401) {
+          clearTokens();
+          router.push('/auth');
+          return;
+        }
         
         if (response.ok) {
           const data = await response.json();
@@ -138,12 +136,6 @@ export default function WriteBlogPostPage() {
       return;
     }
     
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      router.push('/auth');
-      return;
-    }
-    
     for (const file of Array.from(files).slice(0, 10 - imageUrls.length)) {
       if (imageUrls.length >= 10) {
         alert('Maximum 10 images per blog post');
@@ -154,11 +146,16 @@ export default function WriteBlogPostPage() {
         const formData = new FormData();
         formData.append('image', file);
         
-        const response = await fetch(`${API_BASE_URL}/api/blog-post/${edit}/images`, {
+        const response = await authenticatedFetch(`${API_BASE_URL}/api/blog-post/${edit}/images`, {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` },
           body: formData,
         });
+        
+        if (response.status === 401) {
+          clearTokens();
+          router.push('/auth');
+          return;
+        }
         
         if (response.ok) {
           const data = await response.json();
@@ -198,39 +195,31 @@ export default function WriteBlogPostPage() {
     setSaving(true);
     setError(null);
     
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      router.push('/auth');
-      return;
-    }
-    
     try {
       const url = isEditMode 
-        ? `${API_BASE_URL}/api/blog-post/${edit}`
-        : `${API_BASE_URL}/api/blog-post`;
+        ? `/api/blog-post/${edit}`
+        : `/api/blog-post`;
       
       const method = isEditMode ? 'PATCH' : 'POST';
       
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+      const data = await authenticatedRequestJson<{ public_sqid: string }>(
+        url,
+        {
+          body: JSON.stringify({
+            title: title.trim(),
+            body: body.trim(),
+          })
         },
-        body: JSON.stringify({
-          title: title.trim(),
-          body: body.trim(),
-        }),
-      });
+        method as 'POST' | 'PATCH'
+      );
       
-      if (response.ok) {
-        const data = await response.json();
-        router.push(`/b/${data.public_sqid}`);
-      } else {
-        const errorData = await response.json().catch(() => ({ detail: 'Failed to save blog post' }));
-        setError(errorData.detail || 'Failed to save blog post');
-      }
+      router.push(`/b/${data.public_sqid}`);
     } catch (err) {
+      if (err instanceof Error && err.message.includes('401')) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
       setError('Failed to save blog post');
       console.error('Error saving blog post:', err);
     } finally {

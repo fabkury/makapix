@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
+import { authenticatedFetch } from '../../lib/api';
 
 /**
  * Legacy post route - redirects to canonical /p/[sqid] URL.
@@ -32,22 +33,16 @@ export default function LegacyPostRedirect() {
 
     const redirectToCanonical = async () => {
       try {
-        const accessToken = localStorage.getItem('access_token');
-        const headers: HeadersInit = {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        };
-        if (accessToken) {
-          headers['Authorization'] = `Bearer ${accessToken}`;
-        }
-        
         const apiUrl = getApiUrl(`/post/${id}`);
         console.log('Fetching from:', apiUrl);
         
         // Fetch from the legacy API endpoint - it returns JSON with public_sqid
         // Use cache: 'no-store' to bypass Next.js fetch interception
-        const response = await fetch(apiUrl, { 
-          headers,
+        const response = await authenticatedFetch(apiUrl, { 
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
           redirect: 'follow',
           method: 'GET'
         });
