@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { authenticatedFetch } from '../lib/api';
 
 interface DailyCount {
   date: string;
