@@ -29,14 +29,22 @@ def mqtt_bootstrap() -> schemas.MQTTBootstrap:
 
 
 @router.post("/mqtt/demo", response_model=schemas.MQTTPublishResponse, tags=["MQTT"])
-def mqtt_demo() -> schemas.MQTTPublishResponse:
+def mqtt_demo(current_user: models.User = Depends(get_current_user)) -> schemas.MQTTPublishResponse:
     """
     Publish demo MQTT message.
     
-    TODO: Remove in production or restrict to development environment
+    Requires authentication. Should only be used in development/testing.
     """
     import logging
     logger = logging.getLogger(__name__)
+    
+    # Check if in production environment
+    environment = os.getenv("ENVIRONMENT", "development")
+    if environment == "production":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Demo endpoint is disabled in production",
+        )
     
     try:
         topic = publish_demo_message()

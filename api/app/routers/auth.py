@@ -34,6 +34,7 @@ from ..services.email_verification import (
     send_verification_email_for_user,
     mark_email_verified,
 )
+from ..services.rate_limit import check_rate_limit
 from ..utils.handles import generate_default_handle, validate_handle, is_handle_taken
 from ..utils.site_tracking import record_site_event
 
@@ -47,10 +48,87 @@ GITHUB_CLIENT_SECRET = os.getenv("GITHUB_OAUTH_CLIENT_SECRET")
 GITHUB_REDIRECT_URI = os.getenv("GITHUB_REDIRECT_URI", "http://localhost/auth/github/callback")
 
 
-def generate_random_password(length: int = 8) -> str:
-    """Generate a random password with letters and digits."""
-    alphabet = string.ascii_letters + string.digits
-    return ''.join(secrets.choice(alphabet) for _ in range(length))
+# Special characters allowed in passwords (optional)
+PASSWORD_SPECIAL_CHARS = "!@#$%^&*()-_=+[]{}|;:,.<>?"
+
+# Password validation rules
+PASSWORD_MIN_LENGTH = 8
+
+
+def get_client_ip(request: Request) -> str:
+    """
+    Extract client IP address from request.
+    
+    Used for rate limiting to track requests per IP.
+    Falls back to "unknown" if client information is not available.
+    """
+    return request.client.host if request.client else "unknown"
+
+
+def validate_password(password: str) -> tuple[bool, str | None]:
+    """
+    Validate password meets minimum requirements.
+    
+    Requirements:
+    - At least 8 characters long
+    - At least one letter (uppercase or lowercase)
+    - At least one number
+    - Special characters are allowed but not required
+    
+    Returns:
+        Tuple of (is_valid, error_message)
+        - is_valid: True if password meets requirements
+        - error_message: None if valid, error description if invalid
+    """
+    if not password:
+        return False, "Password is required"
+    
+    if len(password) < PASSWORD_MIN_LENGTH:
+        return False, f"Password must be at least {PASSWORD_MIN_LENGTH} characters long"
+    
+    # Check for at least one letter
+    has_letter = any(c.isalpha() for c in password)
+    if not has_letter:
+        return False, "Password must contain at least one letter"
+    
+    # Check for at least one number
+    has_number = any(c.isdigit() for c in password)
+    if not has_number:
+        return False, "Password must contain at least one number"
+    
+    return True, None
+
+
+def generate_random_password(length: int = 12) -> str:
+    """
+    Generate a random password with letters and digits.
+    
+    Minimum length of 8 characters.
+    Includes letters (may be uppercase, lowercase, or both) and digits.
+    May include special characters for additional security.
+    
+    Guarantees at least one letter and one digit to meet minimum requirements.
+    """
+    if length < PASSWORD_MIN_LENGTH:
+        length = PASSWORD_MIN_LENGTH
+    
+    # Use multiple character sets for stronger passwords
+    alphabet = string.ascii_letters + string.digits + PASSWORD_SPECIAL_CHARS
+    
+    # Ensure at least one letter and one digit (minimum requirements)
+    password_chars = [
+        secrets.choice(string.ascii_letters),  # At least one letter
+        secrets.choice(string.digits),  # At least one digit
+    ]
+    
+    # Fill the rest randomly from the full alphabet
+    for _ in range(length - 2):
+        password_chars.append(secrets.choice(alphabet))
+    
+    # Shuffle to avoid predictable pattern
+    secrets.SystemRandom().shuffle(password_chars)
+    
+    return ''.join(password_chars)
 
 
 @router.post(
@@ -71,8 +149,26 @@ def register(
     - Sends a verification email with the password
     - User must verify email before logging in
     - After verification, user can optionally change password/handle
+    
+    Rate limited to 5 registrations per hour per IP address.
+    
+    Args:
+        payload: Registration request with email
+        request: HTTP request (used for rate limiting IP extraction)
+        db: Database session
     """
     email = payload.email.lower().strip()
+    
+    # Rate limiting: 5 registrations per hour per IP
+    client_ip = get_client_ip(request)
+    rate_limit_key = f"ratelimit:register:{client_ip}"
+    allowed, remaining = check_rate_limit(rate_limit_key, limit=5, window_seconds=3600)
+    
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many registration attempts. Please try again later.",
+        )
     
     # Check if email is already registered
     existing_user = db.query(models.User).filter(
@@ -173,14 +269,32 @@ def register(
 )
 def login(
     payload: schemas.LoginRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> schemas.OAuthTokens:
     """
     Login with email and password.
     
     Requires email verification for password-based login.
+    Rate limited to 10 login attempts per 5 minutes per IP address.
+    
+    Args:
+        payload: Login credentials (email and password)
+        request: HTTP request (used for rate limiting IP extraction)
+        db: Database session
     """
     email = payload.email.lower().strip()
+    
+    # Rate limiting: 10 login attempts per 5 minutes per IP
+    client_ip = get_client_ip(request)
+    rate_limit_key = f"ratelimit:login:{client_ip}"
+    allowed, remaining = check_rate_limit(rate_limit_key, limit=10, window_seconds=300)
+    
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Please try again later.",
+        )
     
     # Find identity and verify password
     identity = find_identity_by_password(db, email, payload.password)
@@ -272,6 +386,7 @@ def change_password(
     Change the current user's password.
     
     Requires authentication and current password verification.
+    New password must meet minimum requirements.
     """
     # Verify current password
     identity = find_identity_by_password(db, current_user.email, payload.current_password)
@@ -279,6 +394,14 @@ def change_password(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Current password is incorrect",
+        )
+    
+    # Validate new password
+    is_valid, error_message = validate_password(payload.new_password)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_message,
         )
     
     # Update password
@@ -536,6 +659,7 @@ def reset_password(
     Reset password using a token from email.
     
     The password is only changed if the token is valid.
+    New password must meet minimum requirements.
     """
     from ..services.password_reset import verify_reset_token, mark_token_used
     
@@ -561,6 +685,14 @@ def reset_password(
     
     # Check if user is allowed to authenticate
     check_user_can_authenticate(user)
+    
+    # Validate new password
+    is_valid, error_message = validate_password(payload.new_password)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_message,
+        )
     
     # Update password
     success = update_password(db, user.id, payload.new_password)
@@ -968,12 +1100,19 @@ def github_callback(
 
         # Create a simple HTML page that shows success and stores tokens
         from fastapi.responses import HTMLResponse
+        import html
+        
+        # Escape user-provided data to prevent XSS
+        safe_handle = html.escape(user.handle)
+        safe_user_id = html.escape(str(user.id))
+        safe_base_url = html.escape(base_url)
 
         html_content = f"""
         <!DOCTYPE html>
         <html>
         <head>
             <title>Makapix - Authentication Success</title>
+            <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline';">
             <style>
                 body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
                 .success {{ color: #22c55e; font-size: 24px; margin-bottom: 20px; }}
@@ -995,50 +1134,51 @@ def github_callback(
         </head>
         <body>
             <div class="success">✅ Authentication Successful!</div>
-            <div class="info">Welcome to Makapix, {user.handle}!</div>
+            <div class="info">Welcome to Makapix, {safe_handle}!</div>
             <div class="info">You can now close this window and return to the main application.</div>
-            <a href="{base_url}" class="button">Go to Makapix</a>
-            <a href="{base_url}/publish" class="button">Publish Artwork</a>
+            <a href="{safe_base_url}" class="button">Go to Makapix</a>
+            <a href="{safe_base_url}/publish" class="button">Publish Artwork</a>
             
             <div class="debug">
                 <p>Debug Info:</p>
-                <p>User ID: {user.id}</p>
-                <p>Handle: {user.handle}</p>
-                <p>Access Token: {makapix_access_token[:20]}...</p>
+                <p>User ID: {safe_user_id}</p>
+                <p>Handle: {safe_handle}</p>
+                <p>Token: [hidden for security]</p>
             </div>
             
             <script>
+                // Use secure data passing via JSON to prevent XSS
+                const authData = {{
+                    access_token: {json.dumps(makapix_access_token)},
+                    refresh_token: {json.dumps(makapix_refresh_token)},
+                    user_id: {json.dumps(str(user.id))},
+                    user_handle: {json.dumps(user.handle)}
+                }};
+                
                 console.log('OAuth Callback - Storing tokens...');
-                console.log('Access Token:', '{makapix_access_token[:20]}...');
-                console.log('User ID:', '{user.id}');
-                console.log('Handle:', '{user.handle}');
+                console.log('User ID:', authData.user_id);
+                console.log('Handle:', authData.user_handle);
                 
                 // Store tokens in localStorage for the main app
                 try {{
-                    localStorage.setItem('access_token', '{makapix_access_token}');
-                    localStorage.setItem('refresh_token', '{makapix_refresh_token}');
-                    localStorage.setItem('user_id', '{user.id}');
-                    localStorage.setItem('user_handle', '{user.handle}');
+                    localStorage.setItem('access_token', authData.access_token);
+                    localStorage.setItem('refresh_token', authData.refresh_token);
+                    localStorage.setItem('user_id', authData.user_id);
+                    localStorage.setItem('user_handle', authData.user_handle);
                     
                     // Close popup and notify parent window
                     if (window.opener) {{
                         window.opener.postMessage({{
                             type: 'OAUTH_SUCCESS',
-                            tokens: {{
-                                access_token: '{makapix_access_token}',
-                                refresh_token: '{makapix_refresh_token}',
-                                user_id: '{user.id}',
-                                user_handle: '{user.handle}'
-                            }}
-                        }}, '*');
+                            tokens: authData
+                        }}, {json.dumps(base_url)});
                         window.close();
                     }} else {{
                         // If not in popup, redirect to home
-                        window.location.href = '{base_url}';
+                        window.location.href = {json.dumps(base_url)};
                     }}
                     
                     console.log('Tokens stored successfully!');
-                    console.log('localStorage contents:', Object.keys(localStorage));
                 }} catch (error) {{
                     console.error('Error storing tokens:', error);
                 }}

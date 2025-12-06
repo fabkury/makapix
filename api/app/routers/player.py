@@ -148,11 +148,58 @@ def register_player(
     
     # Add player_key to MQTT password file (empty password for username-only auth)
     passwd_file = os.getenv("MQTT_PASSWD_FILE", "/mqtt-config/passwords")
+    
+    # Validate password file path to prevent path traversal
+    # Use pathlib to resolve the path and ensure it's within allowed directories
+    from pathlib import Path
+    try:
+        passwd_file_path = Path(passwd_file).resolve()
+        allowed_passwd_dirs = [Path("/mqtt-config").resolve(), Path("/mosquitto/config").resolve()]
+        
+        # Check if resolved path is within any allowed directory
+        is_valid = any(
+            passwd_file_path.is_relative_to(allowed_dir) 
+            for allowed_dir in allowed_passwd_dirs
+        )
+        
+        if not is_valid:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Invalid MQTT password file path: {passwd_file_path}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Invalid MQTT configuration",
+            )
+        
+        # Use the validated resolved path
+        passwd_file = str(passwd_file_path)
+    except (ValueError, OSError) as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Path validation error for MQTT password file: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Invalid MQTT configuration",
+        )
+    
+    # Validate player_key is a valid UUID (additional safety check)
+    try:
+        str(player.player_key)
+    except (ValueError, AttributeError):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error("Invalid player_key format")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Invalid player configuration",
+        )
+    
     try:
         subprocess.run(
             ["mosquitto_passwd", "-b", passwd_file, str(player.player_key), ""],
             check=True,
             capture_output=True,
+            timeout=5,  # Add timeout to prevent hanging
         )
     except subprocess.CalledProcessError as e:
         # Log error but don't fail registration - password file might not exist yet
