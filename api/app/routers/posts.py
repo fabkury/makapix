@@ -580,8 +580,19 @@ def get_post_by_storage_key(
     # Add reaction and comment counts
     annotate_posts_with_counts(db, [post], current_user.id if current_user else None)
 
-    # Record site event for page view
+    # Record site event for page view (sitewide stats)
     record_site_event(request, "page_view", user=current_user)
+
+    # Record view event for post stats (excludes author views)
+    record_view(
+        db=db,
+        post_id=post.id,
+        request=request,
+        user=current_user,
+        view_type=ViewType.INTENTIONAL,
+        view_source=ViewSource.WEB,
+        post_owner_id=post.owner_id,
+    )
 
     return schemas.Post.model_validate(post)
 
