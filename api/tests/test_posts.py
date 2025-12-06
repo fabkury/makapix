@@ -39,6 +39,8 @@ def test_post(test_user: User, db: Session) -> Post:
         hashtags=["test", "art"],
         art_url="https://example.com/test.png",
         canvas="64x64",
+        width=64,
+        height=64,
         file_kb=32,
         promoted=True,  # Make it visible without auth
     )
@@ -85,6 +87,8 @@ def test_create_post_with_valid_data(test_user: User):
     assert data["title"] == "Test Art"
     assert data["owner_id"] == str(test_user.id)
     assert data["canvas"] == "64x64"
+    assert data["width"] == 64
+    assert data["height"] == 64
 
 
 def test_create_post_invalid_canvas(test_user: User):
@@ -201,6 +205,8 @@ def test_update_post_requires_ownership(test_user: User, db: Session):
         title="Other's Post",
         art_url="https://example.com/other.png",
         canvas="64x64",
+        width=64,
+        height=64,
         file_kb=32,
         promoted=True,
     )
@@ -269,6 +275,8 @@ def test_delete_post_requires_ownership(test_user: User, db: Session):
         title="Other's Post",
         art_url="https://example.com/other.png",
         canvas="64x64",
+        width=64,
+        height=64,
         file_kb=32,
         promoted=True,
     )
@@ -303,3 +311,57 @@ def test_delete_post_success(test_user: User, test_post: Post):
     # Verify post is soft deleted (use storage_key for the GET route)
     response = client.get(f"/post/{test_post.storage_key}")
     assert response.status_code == 404
+
+
+def test_create_post_with_64_hashtags(test_user: User):
+    """Test creating a post with 64 hashtags (new limit)."""
+    client = TestClient(app)
+    token = create_access_token(test_user.id)
+    
+    # Create 64 hashtags
+    hashtags = [f"tag{i}" for i in range(64)]
+    
+    response = client.post("/post", 
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "title": "Test Art with Many Hashtags",
+            "description": "Testing hashtag limit",
+            "hashtags": hashtags,
+            "art_url": "https://example.com/test.png",
+            "canvas": "64x64",
+            "file_kb": 32
+        }
+    )
+    
+    assert response.status_code == 201
+    data = response.json()
+    assert len(data["hashtags"]) == 64
+
+
+def test_create_post_trims_excess_hashtags(test_user: User):
+    """Test that posts with more than 64 hashtags are trimmed."""
+    client = TestClient(app)
+    token = create_access_token(test_user.id)
+    
+    # Create 100 hashtags (should be trimmed to 64)
+    hashtags = [f"tag{i}" for i in range(100)]
+    
+    response = client.post("/post", 
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "title": "Test Art with Too Many Hashtags",
+            "description": "Testing hashtag trimming",
+            "hashtags": hashtags,
+            "art_url": "https://example.com/test.png",
+            "canvas": "64x64",
+            "file_kb": 32
+        }
+    )
+    
+    assert response.status_code == 201
+    data = response.json()
+    # Should be trimmed to 64
+    assert len(data["hashtags"]) == 64
+    # Should have the first 64 tags
+    assert data["hashtags"][0] == "tag0"
+    assert data["hashtags"][63] == "tag63"

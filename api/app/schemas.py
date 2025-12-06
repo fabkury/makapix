@@ -55,6 +55,7 @@ class Config(BaseModel):
     max_comment_depth: int = 2
     max_comments_per_post: int = 1000
     max_emojis_per_user_per_post: int = 5
+    max_hashtags_per_post: int = 64
     allowed_canvases: list[str] = ["16x16", "32x32", "64x64", "128x128", "256x256"]
     max_art_file_kb_default: int = 15 * 1024  # 15 MB
 
@@ -164,7 +165,9 @@ class Post(BaseModel):
     description: str | None = None
     hashtags: list[str] = []
     art_url: str  # Can be relative URL for vault-hosted images or full URL for external
-    canvas: str
+    canvas: str  # Kept for backward compatibility, computed from width x height
+    width: int  # Canvas width in pixels
+    height: int  # Canvas height in pixels
     file_kb: int
     visible: bool
     hidden_by_user: bool
@@ -189,7 +192,7 @@ class PostCreate(BaseModel):
     kind: Literal["art"] = "art"
     title: str = Field(..., min_length=1, max_length=200)
     description: str | None = Field(None, max_length=5000)
-    hashtags: list[str] = Field(default_factory=list, max_length=10)
+    hashtags: list[str] = Field(default_factory=list, max_length=64)
     art_url: str  # Can be relative URL for vault-hosted images or full URL for external
     canvas: str = Field(..., pattern=r"^\d+x\d+$")
     file_kb: int = Field(..., gt=0, le=15 * 1024)  # 15 MB max
@@ -200,7 +203,7 @@ class PostUpdate(BaseModel):
 
     title: str | None = Field(None, min_length=1, max_length=200)
     description: str | None = Field(None, max_length=5000)
-    hashtags: list[str] | None = Field(None, max_length=10)
+    hashtags: list[str] | None = Field(None, max_length=64)
     hidden_by_user: bool | None = None
     hidden_by_mod: bool | None = None
 

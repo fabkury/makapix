@@ -9,6 +9,8 @@ interface UploadedArtwork {
   title: string;
   art_url: string;
   canvas: string;
+  width: number;
+  height: number;
   public_visibility: boolean;
 }
 
