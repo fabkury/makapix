@@ -34,7 +34,19 @@ export default function RegisterPlayerModal({
       setName('');
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Failed to register player');
+      // Parse API error to show friendly message
+      const rawMessage = err.message || '';
+      let friendlyError = 'Unable to register player. Please try again.';
+      
+      if (rawMessage.includes('Invalid or expired registration code') || rawMessage.includes('404')) {
+        friendlyError = 'This code is invalid or has expired.';
+      } else if (rawMessage.includes('already registered') || rawMessage.includes('400')) {
+        friendlyError = 'This player is already registered.';
+      } else if (rawMessage.includes('Maximum') && rawMessage.includes('players')) {
+        friendlyError = 'You\'ve reached the maximum number of players.';
+      }
+      
+      setError(friendlyError);
     } finally {
       setIsLoading(false);
     }
@@ -90,7 +102,12 @@ export default function RegisterPlayerModal({
             />
           </div>
 
-          {error && <div className="error-message">{error}</div>}
+          {error && (
+            <div className="error-message">
+              <span className="error-icon">⚠</span>
+              <span>{error}</span>
+            </div>
+          )}
 
           <div className="modal-actions">
             <button type="button" className="cancel-btn" onClick={handleClose} disabled={isLoading}>
@@ -215,12 +232,21 @@ export default function RegisterPlayerModal({
         }
 
         .error-message {
-          background: rgba(239, 68, 68, 0.1);
-          color: var(--accent-pink);
-          padding: 12px;
-          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          background: rgba(255, 180, 120, 0.12);
+          border: 1px solid rgba(255, 180, 120, 0.25);
+          color: var(--text-secondary);
+          padding: 12px 14px;
+          border-radius: 8px;
           font-size: 0.9rem;
           margin-bottom: 20px;
+        }
+
+        .error-icon {
+          font-size: 1rem;
+          opacity: 0.8;
         }
 
         .modal-actions {
