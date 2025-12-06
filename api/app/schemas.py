@@ -4,8 +4,15 @@ from datetime import datetime
 from typing import Any, Generic, Literal, TypeVar
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, RootModel, computed_field, model_validator
-
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    HttpUrl,
+    RootModel,
+    computed_field,
+    model_validator,
+)
 
 # ============================================================================
 # BASE SCHEMAS
@@ -34,6 +41,7 @@ class Page(BaseModel, Generic[T]):
 
 class Roles(RootModel[list[Literal["user", "moderator", "owner"]]]):
     """User roles list."""
+
     pass
 
 
@@ -79,7 +87,9 @@ class UserPublic(BaseModel):
 
     id: int
     user_key: UUID  # UUID for legacy URLs (/users/{user_key})
-    public_sqid: str | None = None  # Sqids-encoded public ID for canonical URLs (/u/{public_sqid})
+    public_sqid: str | None = (
+        None  # Sqids-encoded public ID for canonical URLs (/u/{public_sqid})
+    )
     handle: str
     bio: str | None = None
     website: str | None = None
@@ -102,7 +112,9 @@ class UserFull(UserPublic):
     email_verified: bool = False
     banned_until: datetime | None = None
     roles: list[Literal["user", "moderator", "owner"]] = Field(default_factory=list)
-    auto_public_approval: bool = False  # Privilege to auto-approve public visibility for uploads
+    auto_public_approval: bool = (
+        False  # Privilege to auto-approve public visibility for uploads
+    )
 
 
 class UserCreate(BaseModel):
@@ -126,7 +138,9 @@ class UserUpdate(BaseModel):
 class ConformanceStatus(BaseModel):
     """GitHub Pages conformance check status."""
 
-    conformance: Literal["ok", "missing_manifest", "invalid_manifest", "hotlinks_broken"]
+    conformance: Literal[
+        "ok", "missing_manifest", "invalid_manifest", "hotlinks_broken"
+    ]
     last_checked_at: datetime | None = None
     next_check_at: datetime | None = None
 
@@ -169,11 +183,19 @@ class Post(BaseModel):
     width: int  # Canvas width in pixels
     height: int  # Canvas height in pixels
     file_kb: int
+    file_bytes: int  # Exact file size in bytes
+    frame_count: int = 1  # Number of animation frames
+    min_frame_duration_ms: int | None = (
+        None  # Minimum non-zero frame duration (ms), NULL for static
+    )
+    has_transparency: bool = False  # Whether image has alpha channel
     visible: bool
     hidden_by_user: bool
     hidden_by_mod: bool
     non_conformant: bool
-    public_visibility: bool = False  # Controls visibility in Recent Artworks, search, etc.
+    public_visibility: bool = (
+        False  # Controls visibility in Recent Artworks, search, etc.
+    )
     promoted: bool
     promoted_category: str | None = None
     created_at: datetime
@@ -262,7 +284,9 @@ class PlaylistCreate(BaseModel):
 
     title: str = Field(..., min_length=1, max_length=200)
     description: str | None = Field(None, max_length=1000)
-    post_ids: list[int] = Field(default_factory=list, max_length=100)  # Changed from UUID to int
+    post_ids: list[int] = Field(
+        default_factory=list, max_length=100
+    )  # Changed from UUID to int
 
 
 class PlaylistUpdate(BaseModel):
@@ -296,68 +320,72 @@ class Comment(BaseModel):
     updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
-    
+
     _author_handle_cache: str | None = None
     _author_display_name_cache: str | None = None
-    
-    @model_validator(mode='wrap')
+
+    @model_validator(mode="wrap")
     @classmethod
     def extract_author_info(cls, data, handler):
         """Extract author info from the ORM model during validation."""
         # Call the default validation
         instance = handler(data)
-        
+
         # If data is an ORM model with author relationship loaded, extract info
-        if hasattr(data, 'author') and data.author:
+        if hasattr(data, "author") and data.author:
             instance._author_handle_cache = data.author.handle
-            instance._author_display_name_cache = data.author.handle  # Use handle as display name
-        
+            instance._author_display_name_cache = (
+                data.author.handle
+            )  # Use handle as display name
+
         return instance
-    
+
     @computed_field
     @property
     def author_handle(self) -> str:
         """
         Handle for the comment author.
-        
+
         Returns guest name for anonymous users, or the cached handle
         from the author relationship for authenticated users.
         """
         if self.author_id is None and self.author_ip:
             # Generate guest name from IP
             import hashlib
+
             hash_digest = hashlib.sha256(self.author_ip.encode()).hexdigest()
             return f"Guest_{hash_digest[:6]}"
-        
+
         # Return cached handle if available
         if self._author_handle_cache:
             return self._author_handle_cache
-        
+
         return "unknown"  # Fallback if user not found or not loaded
-    
+
     @computed_field
     @property
     def author_display_name(self) -> str:
         """
         Display name for the comment author.
-        
+
         Returns guest name for anonymous users, or the cached display name
         from the author relationship for authenticated users.
         """
         if self.author_id is None and self.author_ip:
             # Generate guest name from IP
             import hashlib
+
             hash_digest = hashlib.sha256(self.author_ip.encode()).hexdigest()
             return f"Guest_{hash_digest[:6]}"
-        
+
         # Return cached display name if available
         if self._author_display_name_cache:
             return self._author_display_name_cache
-        
+
         # Fall back to handle
         if self._author_handle_cache:
             return self._author_handle_cache
-        
+
         return "Unknown"  # Fallback if user not found or not loaded
 
     @computed_field
@@ -365,7 +393,7 @@ class Comment(BaseModel):
     def author_display_name(self) -> str:
         """
         Display name for the comment author (used by widget).
-        
+
         Currently returns the handle, but could return a display name
         if we add that field to users in the future.
         """
@@ -466,51 +494,53 @@ class BlogPostComment(BaseModel):
     updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
-    
+
     _author_handle_cache: str | None = None
     _author_display_name_cache: str | None = None
-    
-    @model_validator(mode='wrap')
+
+    @model_validator(mode="wrap")
     @classmethod
     def extract_author_info(cls, data, handler):
         """Extract author info from the ORM model during validation."""
         instance = handler(data)
-        
-        if hasattr(data, 'author') and data.author:
+
+        if hasattr(data, "author") and data.author:
             instance._author_handle_cache = data.author.handle
             instance._author_display_name_cache = data.author.handle
-        
+
         return instance
-    
+
     @computed_field
     @property
     def author_handle(self) -> str:
         """Handle for the comment author."""
         if self.author_id is None and self.author_ip:
             import hashlib
+
             hash_digest = hashlib.sha256(self.author_ip.encode()).hexdigest()
             return f"Guest_{hash_digest[:6]}"
-        
+
         if self._author_handle_cache:
             return self._author_handle_cache
-        
+
         return "unknown"
-    
+
     @computed_field
     @property
     def author_display_name(self) -> str:
         """Display name for the comment author."""
         if self.author_id is None and self.author_ip:
             import hashlib
+
             hash_digest = hashlib.sha256(self.author_ip.encode()).hexdigest()
             return f"Guest_{hash_digest[:6]}"
-        
+
         if self._author_display_name_cache:
             return self._author_display_name_cache
-        
+
         if self._author_handle_cache:
             return self._author_handle_cache
-        
+
         return "Unknown"
 
 
@@ -899,7 +929,9 @@ class ForgotPasswordRequest(BaseModel):
 class ForgotPasswordResponse(BaseModel):
     """Forgot password response."""
 
-    message: str = "If an account exists with this email, a password reset link has been sent."
+    message: str = (
+        "If an account exists with this email, a password reset link has been sent."
+    )
 
 
 class ResetPasswordRequest(BaseModel):
@@ -912,7 +944,9 @@ class ResetPasswordRequest(BaseModel):
 class ResetPasswordResponse(BaseModel):
     """Reset password response."""
 
-    message: str = "Password reset successfully. You can now log in with your new password."
+    message: str = (
+        "Password reset successfully. You can now log in with your new password."
+    )
 
 
 # ============================================================================
@@ -1210,7 +1244,7 @@ class RateLimitStatus(BaseModel):
 
 class DailyViewCount(BaseModel):
     """Daily view count for trends."""
-    
+
     date: str  # ISO format date (YYYY-MM-DD)
     views: int
     unique_viewers: int
@@ -1218,19 +1252,21 @@ class DailyViewCount(BaseModel):
 
 class PostStatsResponse(BaseModel):
     """Statistics for a single post.
-    
+
     Includes both "all" (including unauthenticated) and "authenticated-only" statistics.
     Frontend can toggle between the two without additional API calls.
     """
-    
+
     post_id: int  # Changed from UUID to int
     # "All" statistics (including unauthenticated)
     total_views: int
     unique_viewers: int
     views_by_country: dict[str, int]  # Top 10 countries: {"US": 50, "BR": 30, ...}
-    views_by_device: dict[str, int]   # {"desktop": 40, "mobile": 35, "tablet": 10, "player": 5}
-    views_by_type: dict[str, int]     # {"intentional": 60, "listing": 30, "search": 10}
-    daily_views: list[DailyViewCount] # Last 30 days
+    views_by_device: dict[
+        str, int
+    ]  # {"desktop": 40, "mobile": 35, "tablet": 10, "player": 5}
+    views_by_type: dict[str, int]  # {"intentional": 60, "listing": 30, "search": 10}
+    daily_views: list[DailyViewCount]  # Last 30 days
     total_reactions: int
     reactions_by_emoji: dict[str, int]  # {"❤️": 10, "🔥": 5, ...}
     total_comments: int
@@ -1238,9 +1274,11 @@ class PostStatsResponse(BaseModel):
     total_views_authenticated: int
     unique_viewers_authenticated: int
     views_by_country_authenticated: dict[str, int]  # Top 10 countries
-    views_by_device_authenticated: dict[str, int]   # {"desktop": 40, "mobile": 35, ...}
-    views_by_type_authenticated: dict[str, int]     # {"intentional": 60, "listing": 30, ...}
-    daily_views_authenticated: list[DailyViewCount] # Last 30 days
+    views_by_device_authenticated: dict[str, int]  # {"desktop": 40, "mobile": 35, ...}
+    views_by_type_authenticated: dict[
+        str, int
+    ]  # {"intentional": 60, "listing": 30, ...}
+    daily_views_authenticated: list[DailyViewCount]  # Last 30 days
     total_reactions_authenticated: int
     reactions_by_emoji_authenticated: dict[str, int]  # {"❤️": 10, "🔥": 5, ...}
     total_comments_authenticated: int
@@ -1252,24 +1290,24 @@ class PostStatsResponse(BaseModel):
 
 class DailyCount(BaseModel):
     """Daily count for trends."""
-    
+
     date: str  # ISO format date (YYYY-MM-DD)
     count: int
 
 
 class HourlyCount(BaseModel):
     """Hourly count for granular trends."""
-    
+
     hour: str  # ISO format datetime of hour start
     count: int
 
 
 class SitewideStatsResponse(BaseModel):
     """Comprehensive sitewide statistics (moderator only).
-    
+
     Includes both "all" (including unauthenticated) and "authenticated-only" statistics.
     """
-    
+
     # Summary metrics (30 days) - all
     total_page_views_30d: int
     unique_visitors_30d: int
@@ -1277,40 +1315,40 @@ class SitewideStatsResponse(BaseModel):
     new_posts_30d: int
     total_api_calls_30d: int
     total_errors_30d: int
-    
+
     # Summary metrics (30 days) - authenticated only
     total_page_views_30d_authenticated: int
     unique_visitors_30d_authenticated: int
-    
+
     # Trends (30 days) - all
     daily_views: list[DailyCount]
     daily_signups: list[DailyCount]
     daily_posts: list[DailyCount]
-    
+
     # Trends (30 days) - authenticated only
     daily_views_authenticated: list[DailyCount]
-    
+
     # Granular data (last 24h from events) - all
     hourly_views: list[HourlyCount]
-    
+
     # Granular data (last 24h from events) - authenticated only
     hourly_views_authenticated: list[HourlyCount]
-    
+
     # Breakdowns - all
     views_by_page: dict[str, int]  # Top 20 pages: {"/recent": 500, "/posts": 300, ...}
     views_by_country: dict[str, int]  # Top 10 countries: {"US": 200, "BR": 150, ...}
     views_by_device: dict[str, int]  # {"desktop": 400, "mobile": 350, ...}
     top_referrers: dict[str, int]  # Top 10 referrers: {"google.com": 100, ...}
-    
+
     # Breakdowns - authenticated only
     views_by_page_authenticated: dict[str, int]  # Top 20 pages
     views_by_country_authenticated: dict[str, int]  # Top 10 countries
     views_by_device_authenticated: dict[str, int]
     top_referrers_authenticated: dict[str, int]  # Top 10 referrers
-    
+
     # Error tracking
     errors_by_type: dict[str, int]  # {"404": 50, "500": 5, ...}
-    
+
     computed_at: datetime
 
 
