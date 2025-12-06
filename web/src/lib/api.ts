@@ -77,17 +77,20 @@ export function clearTokens(): void {
 export async function refreshAccessToken(): Promise<boolean> {
   // If already refreshing, wait for the existing refresh to complete
   if (isRefreshing && refreshPromise) {
+    console.log("[Auth] Refresh already in progress, waiting...");
     return refreshPromise;
   }
 
   const refreshToken = getRefreshToken();
   if (!refreshToken) {
+    console.log("[Auth] No refresh token available");
     return false;
   }
 
   isRefreshing = true;
   refreshPromise = (async () => {
     try {
+      console.log("[Auth] Attempting to refresh access token...");
       const response = await fetch(`${publicBaseUrl}/api/auth/refresh`, {
         method: "POST",
         headers: {
@@ -97,24 +100,48 @@ export async function refreshAccessToken(): Promise<boolean> {
       });
 
       if (!response.ok) {
-        // Refresh failed - clear tokens
+        // Refresh failed - log the reason and clear tokens
+        const errorText = await response.text().catch(() => "Unknown error");
+        console.error(`[Auth] Refresh failed (${response.status}): ${errorText}`);
         clearTokens();
         return false;
       }
 
       const data = await response.json();
       
+      // Validate the response has required fields
+      if (!data.token) {
+        console.error("[Auth] Refresh response missing access token");
+        clearTokens();
+        return false;
+      }
+      
       // Store the new tokens
       storeTokens(data.token, data.refresh_token);
+      console.log("[Auth] Tokens refreshed successfully");
       
       // Also update user_id if provided
       if (data.user_id) {
-        localStorage.setItem("user_id", data.user_id);
+        localStorage.setItem("user_id", String(data.user_id));
+      }
+      
+      // Store public_sqid and handle if provided
+      if (data.public_sqid) {
+        localStorage.setItem("public_sqid", data.public_sqid);
+      }
+      if (data.user_handle) {
+        localStorage.setItem("user_handle", data.user_handle);
       }
 
       return true;
     } catch (error) {
-      console.error("Failed to refresh token:", error);
+      console.error("[Auth] Failed to refresh token:", error);
+      // Only clear tokens on network errors if we're sure the request failed
+      // Don't clear on transient errors that might be resolved on retry
+      if (error instanceof TypeError && error.message.includes("fetch")) {
+        console.log("[Auth] Network error during refresh, keeping tokens for retry");
+        return false;
+      }
       clearTokens();
       return false;
     } finally {
@@ -136,14 +163,21 @@ export async function authenticatedFetch(
   options: RequestInit = {}
 ): Promise<Response> {
   let accessToken = getAccessToken();
+  const refreshToken = getRefreshToken();
 
   // Check if token needs refresh before making the request
   if (accessToken && isTokenExpired(accessToken)) {
+    console.log("[Auth] Access token expired, attempting pre-request refresh");
     const refreshed = await refreshAccessToken();
     if (refreshed) {
       accessToken = getAccessToken();
+    } else if (!refreshToken) {
+      // No refresh token available - user needs to log in
+      console.log("[Auth] No refresh token, returning 401");
+      return new Response(null, { status: 401, statusText: "No refresh token available" });
     } else {
-      // Could not refresh - return a 401-like response to trigger login redirect
+      // Refresh failed but we had a refresh token - it may have been revoked or expired
+      console.log("[Auth] Refresh failed, returning 401");
       return new Response(null, { status: 401, statusText: "Token refresh failed" });
     }
   }
@@ -168,10 +202,14 @@ export async function authenticatedFetch(
 
   // If we get a 401, try to refresh the token and retry once
   if (response.status === 401 && accessToken) {
+    console.log("[Auth] Got 401 from API, attempting token refresh");
     const refreshed = await refreshAccessToken();
     if (refreshed) {
       accessToken = getAccessToken();
+      console.log("[Auth] Refresh successful, retrying request");
       response = await makeRequest(accessToken);
+    } else {
+      console.log("[Auth] Refresh failed after 401");
     }
   }
 

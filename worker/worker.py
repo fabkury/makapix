@@ -55,5 +55,6 @@ if __name__ == "__main__":
         print(f"\n❌ Error connecting to database: {e}\n")
         print("=" * 60 + "\n")
     
-    # Start the Celery worker
-    celery_app.worker_main(["worker", "--loglevel=info"])
+    # Start the Celery worker with beat scheduler
+    # Beat runs periodic tasks like rollup_view_events, rollup_site_events
+    celery_app.worker_main(["worker", "--beat", "--loglevel=info"])
