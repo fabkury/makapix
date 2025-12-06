@@ -309,7 +309,7 @@ class Comment(BaseModel):
 
     id: UUID
     post_id: int  # Changed from UUID to int (FK to posts.id)
-    author_id: UUID | None = None  # None for anonymous comments
+    author_id: int | None = None  # None for anonymous comments (FK to users.id)
     author_ip: str | None = None  # For anonymous users (visible to moderators)
     parent_id: UUID | None = None
     depth: int = Field(..., ge=0, le=2)
@@ -483,7 +483,7 @@ class BlogPostComment(BaseModel):
 
     id: UUID
     blog_post_id: int
-    author_id: UUID | None = None  # None for anonymous comments
+    author_id: int | None = None  # None for anonymous comments (FK to users.id)
     author_ip: str | None = None  # For anonymous users (visible to moderators)
     parent_id: UUID | None = None
     depth: int = Field(..., ge=0, le=3)
@@ -1018,7 +1018,7 @@ class AdminNoteItem(BaseModel):
 
     id: UUID
     note: str
-    created_by: UUID
+    created_by: int  # FK to users.id
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -1050,7 +1050,7 @@ class AuditLogEntry(BaseModel):
     """Audit log entry."""
 
     id: UUID
-    actor_id: UUID
+    actor_id: int  # FK to users.id
     action: str
     target_type: str | None
     target_id: str | None  # String to support both UUID and integer IDs
