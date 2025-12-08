@@ -773,7 +773,7 @@ class OAuthTokens(BaseModel):
     """OAuth token response."""
 
     token: str
-    refresh_token: str | None = None
+    refresh_token: str  # Always required - critical for session persistence
     user_id: int
     user_key: UUID  # UUID for legacy URL building
     public_sqid: str | None = None  # Sqids for canonical URLs

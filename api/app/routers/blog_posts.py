@@ -29,6 +29,7 @@ from ..deps import get_db
 from ..pagination import apply_cursor_filter, create_page_response
 from ..services.blog_post_stats import annotate_blog_posts_with_counts
 from ..utils.audit import log_moderation_action
+from ..utils.site_tracking import record_site_event
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,7 @@ def extract_image_urls_from_markdown(body: str) -> list[str]:
 
 @router.get("", response_model=schemas.Page[schemas.BlogPost])
 def list_blog_posts(
+    request: Request,
     owner_id: int | None = None,
     visible_only: bool = True,
     cursor: str | None = None,
@@ -135,6 +137,10 @@ def list_blog_posts(
     # Create paginated response
     page_data = create_page_response(posts, limit, cursor)
     
+    # Record site event for page view
+    user = current_user if isinstance(current_user, models.User) else None
+    record_site_event(request, "page_view", user=user)
+    
     return schemas.Page(
         items=[schemas.BlogPost.model_validate(p) for p in page_data["items"]],
         next_cursor=page_data["next_cursor"],
@@ -193,6 +199,7 @@ def create_blog_post(
 @router.get("/b/{public_sqid}", response_model=schemas.BlogPost)
 def get_blog_post_by_sqid(
     public_sqid: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: models.User | None = Depends(get_current_user_or_anonymous),
 ) -> schemas.BlogPost:
@@ -232,12 +239,17 @@ def get_blog_post_by_sqid(
         if not current_user or not isinstance(current_user, models.User) or not ("moderator" in current_user.roles or "owner" in current_user.roles):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
     
+    # Record site event for page view
+    user = current_user if isinstance(current_user, models.User) else None
+    record_site_event(request, "page_view", user=user)
+    
     return schemas.BlogPost.model_validate(blog_post)
 
 
 @router.get("/{id}", response_model=schemas.BlogPost)
 def get_blog_post(
     id: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: models.User | None = Depends(get_current_user_or_anonymous),
 ) -> schemas.BlogPost | RedirectResponse:
@@ -285,6 +297,10 @@ def get_blog_post(
         if blog_post.hidden_by_mod:
             if not current_user or not isinstance(current_user, models.User) or not ("moderator" in current_user.roles or "owner" in current_user.roles):
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
+        
+        # Record site event for page view
+        user = current_user if isinstance(current_user, models.User) else None
+        record_site_event(request, "page_view", user=user)
         
         return schemas.BlogPost.model_validate(blog_post)
     except ValueError:

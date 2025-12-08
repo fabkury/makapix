@@ -17,7 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..auth import check_user_can_authenticate, create_access_token, create_refresh_token, get_current_user, revoke_refresh_token, verify_refresh_token
+from ..auth import check_user_can_authenticate, create_access_token, create_refresh_token, get_current_user, mark_refresh_token_rotated, revoke_refresh_token, verify_refresh_token
 from ..deps import get_db
 from ..github import verify_installation_belongs_to_app
 from ..services.auth_identities import (
@@ -1365,6 +1365,12 @@ def exchange_github_code(payload: schemas.GithubExchangeRequest, db: Session = D
 def refresh_token(payload: schemas.RefreshTokenRequest, db: Session = Depends(get_db)) -> schemas.OAuthTokens:
     """
     Refresh access token using refresh token.
+    
+    Uses token rotation with a grace period: the old refresh token remains valid
+    for 60 seconds after a new one is issued. This handles race conditions where:
+    - Two browser tabs try to refresh simultaneously
+    - Network issues cause the response to be lost
+    - The browser closes before the new token is stored
     """
     user = verify_refresh_token(payload.refresh_token, db)
     if not user:
@@ -1376,8 +1382,10 @@ def refresh_token(payload: schemas.RefreshTokenRequest, db: Session = Depends(ge
     # Check if user is allowed to authenticate
     check_user_can_authenticate(user)
     
-    # Revoke the old refresh token (token rotation for security)
-    revoke_refresh_token(payload.refresh_token, db)
+    # Mark the old refresh token as rotated with a 60-second grace period
+    # This allows the client to retry if the response is lost, while still
+    # providing security through token rotation
+    mark_refresh_token_rotated(payload.refresh_token, db, grace_seconds=60)
     
     # Generate new tokens
     access_token = create_access_token(user.user_key)
@@ -1392,6 +1400,9 @@ def refresh_token(payload: schemas.RefreshTokenRequest, db: Session = Depends(ge
         token=access_token,
         refresh_token=new_refresh_token,
         user_id=user.id,
+        user_key=user.user_key,
+        public_sqid=user.public_sqid,
+        user_handle=user.handle,
         expires_at=expires_at,
     )
 
