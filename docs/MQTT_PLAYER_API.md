@@ -403,6 +403,28 @@ A complete test suite is available in `api/tests/test_mqtt_player_requests.py` c
 - Idempotency
 - Permission enforcement
 
+### Manual Validation
+
+A validation script is provided in `scripts/validate_mqtt_player_api.py` for manual testing:
+
+```bash
+# Basic validation (queries only)
+python3 scripts/validate_mqtt_player_api.py \
+    --player-key "your-player-uuid" \
+    --host "localhost" \
+    --port 1883
+
+# Full validation including view/reaction/comment tests
+python3 scripts/validate_mqtt_player_api.py \
+    --player-key "your-player-uuid" \
+    --host "dev.makapix.club" \
+    --port 8883 \
+    --tls \
+    --post-id 123
+```
+
+The script will run through all API operations and report success/failure for each.
+
 ## Changelog
 
 ### Version 1.0 (2025-12-08)
