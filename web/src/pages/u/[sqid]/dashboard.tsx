@@ -320,10 +320,10 @@ export default function ArtistDashboard() {
                       {new Date(post.created_at).toLocaleDateString()}
                     </div>
                   </div>
-                  <div className="col-stat">{postStats.views.toLocaleString()}</div>
-                  <div className="col-stat">{postStats.unique.toLocaleString()}</div>
-                  <div className="col-stat">{postStats.reactions.toLocaleString()}</div>
-                  <div className="col-stat">{postStats.comments.toLocaleString()}</div>
+                  <div className="col-stat" data-label="Views:">{postStats.views.toLocaleString()}</div>
+                  <div className="col-stat" data-label="Unique:">{postStats.unique.toLocaleString()}</div>
+                  <div className="col-stat" data-label="Reactions:">{postStats.reactions.toLocaleString()}</div>
+                  <div className="col-stat" data-label="Comments:">{postStats.comments.toLocaleString()}</div>
                 </div>
               );
             })}

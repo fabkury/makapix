@@ -199,19 +199,30 @@ class ArtistDashboardService:
         authenticated_views = [v for v in recent_views if v.viewer_user_id is not None]
         
         # Aggregate total views and unique viewers (all)
+        # Note: For unique viewers across days, we collect all unique IP hashes
+        # from recent views. For daily_stats, we sum the views but note that
+        # unique_viewers is an approximation as we can't deduplicate across days
+        # from aggregated data.
         total_views = len(recent_views)
         unique_ip_hashes = set(v.viewer_ip_hash for v in recent_views)
         unique_viewers = len(unique_ip_hashes)
         
-        # Aggregate authenticated-only views and unique viewers
+        # Aggregate authenticated-only views and unique viewers from recent views
         total_views_authenticated = len(authenticated_views)
         unique_ip_hashes_authenticated = set(v.viewer_ip_hash for v in authenticated_views)
         unique_viewers_authenticated = len(unique_ip_hashes_authenticated)
         
         # Add older aggregated data (all)
+        # Note: unique_viewers from daily_stats is summed as an approximation
+        # since we can't deduplicate IP hashes across aggregated days
         for ds in daily_stats:
             total_views += ds.total_views
-            unique_viewers += ds.unique_viewers
+            unique_viewers += ds.unique_viewers  # This is an approximation
+        
+        # For authenticated stats from daily_stats, we note that PostStatsDaily
+        # doesn't currently separate authenticated/unauthenticated data.
+        # Therefore, authenticated stats are based only on recent_views.
+        # This is acceptable for a 30-day window as we keep 7 days of raw events.
         
         # Aggregate views by country (all)
         views_by_country: dict[str, int] = {}
