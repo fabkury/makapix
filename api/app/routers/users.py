@@ -13,6 +13,7 @@ from ..deps import get_db
 from ..utils.handles import validate_handle, is_handle_taken
 from ..pagination import apply_cursor_filter, create_page_response, decode_cursor, encode_cursor
 from ..services.blog_post_stats import annotate_blog_posts_with_counts
+from ..services.artist_dashboard import get_artist_stats, get_posts_stats_list
 
 router = APIRouter(prefix="/user", tags=["Users"])
 
@@ -466,4 +467,123 @@ def get_user_blog_posts(
     return schemas.Page(
         items=[schemas.BlogPost.model_validate(p) for p in page_data["items"]],
         next_cursor=page_data["next_cursor"],
+    )
+
+
+@router.get("/{user_key}/artist-dashboard", response_model=schemas.ArtistDashboardResponse)
+def get_artist_dashboard(
+    user_key: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.ArtistDashboardResponse:
+    """
+    Get artist dashboard with aggregated statistics and post list.
+    
+    Returns comprehensive statistics across all posts by the artist,
+    plus a paginated list of individual post statistics.
+    
+    **Authorization:**
+    - Artist can view their own dashboard
+    - Moderators and owners can view any artist's dashboard
+    
+    **Query Parameters:**
+    - `page`: Page number (1-indexed, default: 1)
+    - `page_size`: Number of posts per page (1-100, default: 20)
+    """
+    # Resolve user_key (could be user_key UUID or public_sqid)
+    try:
+        user_key_uuid = UUID(user_key)
+        user = db.query(models.User).filter(models.User.user_key == user_key_uuid).first()
+    except ValueError:
+        # Not a valid UUID, try as public_sqid
+        user = db.query(models.User).filter(models.User.public_sqid == user_key).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Authorization: owner of profile OR moderator/owner role
+    is_owner = user.id == current_user.id
+    is_moderator = "moderator" in current_user.roles or "owner" in current_user.roles
+    
+    if not is_owner and not is_moderator:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to view this artist dashboard"
+        )
+    
+    # Get aggregated artist stats
+    artist_stats = get_artist_stats(db, user.user_key)
+    
+    if artist_stats is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to compute artist statistics"
+        )
+    
+    # Get paginated post stats list
+    offset = (page - 1) * page_size
+    posts_stats = get_posts_stats_list(db, user.user_key, limit=page_size + 1, offset=offset)
+    
+    # Check if there are more pages
+    has_more = len(posts_stats) > page_size
+    if has_more:
+        posts_stats = posts_stats[:page_size]
+    
+    # Convert artist stats to response schema
+    from datetime import datetime
+    
+    artist_stats_response = schemas.ArtistStatsResponse(
+        user_id=artist_stats.user_id,
+        user_key=artist_stats.user_key,
+        total_posts=artist_stats.total_posts,
+        total_views=artist_stats.total_views,
+        unique_viewers=artist_stats.unique_viewers,
+        views_by_country=artist_stats.views_by_country,
+        views_by_device=artist_stats.views_by_device,
+        total_reactions=artist_stats.total_reactions,
+        reactions_by_emoji=artist_stats.reactions_by_emoji,
+        total_comments=artist_stats.total_comments,
+        total_views_authenticated=artist_stats.total_views_authenticated,
+        unique_viewers_authenticated=artist_stats.unique_viewers_authenticated,
+        views_by_country_authenticated=artist_stats.views_by_country_authenticated,
+        views_by_device_authenticated=artist_stats.views_by_device_authenticated,
+        total_reactions_authenticated=artist_stats.total_reactions_authenticated,
+        reactions_by_emoji_authenticated=artist_stats.reactions_by_emoji_authenticated,
+        total_comments_authenticated=artist_stats.total_comments_authenticated,
+        first_post_at=datetime.fromisoformat(artist_stats.first_post_at) if artist_stats.first_post_at else None,
+        latest_post_at=datetime.fromisoformat(artist_stats.latest_post_at) if artist_stats.latest_post_at else None,
+        computed_at=datetime.fromisoformat(artist_stats.computed_at),
+    )
+    
+    # Convert post stats to response schema
+    posts_response = [
+        schemas.PostStatsListItem(
+            post_id=ps.post_id,
+            public_sqid=ps.public_sqid,
+            title=ps.title,
+            created_at=datetime.fromisoformat(ps.created_at),
+            total_views=ps.total_views,
+            unique_viewers=ps.unique_viewers,
+            total_reactions=ps.total_reactions,
+            total_comments=ps.total_comments,
+            total_views_authenticated=ps.total_views_authenticated,
+            unique_viewers_authenticated=ps.unique_viewers_authenticated,
+            total_reactions_authenticated=ps.total_reactions_authenticated,
+            total_comments_authenticated=ps.total_comments_authenticated,
+        )
+        for ps in posts_stats
+    ]
+    
+    return schemas.ArtistDashboardResponse(
+        artist_stats=artist_stats_response,
+        posts=posts_response,
+        total_posts=artist_stats.total_posts,
+        page=page,
+        page_size=page_size,
+        has_more=has_more,
     )

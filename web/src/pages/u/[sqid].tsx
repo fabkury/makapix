@@ -562,6 +562,9 @@ export default function UserProfilePage() {
               
               {!isEditing && isOwnProfile && (
                 <div className="profile-actions">
+                  <Link href={`/u/${user.public_sqid}/dashboard`} className="dashboard-btn">
+                    📊 Dashboard
+                  </Link>
                   <Link href="/blog/write" className="write-blog-btn">
                     ✍️ Write Blog
                   </Link>
@@ -582,6 +585,14 @@ export default function UserProfilePage() {
                   >
                     🚪
                   </button>
+                </div>
+              )}
+
+              {!isEditing && isModerator && !isOwnProfile && (
+                <div className="profile-actions">
+                  <Link href={`/u/${user.public_sqid}/dashboard`} className="dashboard-btn">
+                    📊 Dashboard
+                  </Link>
                 </div>
               )}
             </div>
@@ -845,7 +856,8 @@ export default function UserProfilePage() {
         }
 
         .profile-actions :global(.write-blog-btn),
-        .profile-actions :global(.players-btn) {
+        .profile-actions :global(.players-btn),
+        .profile-actions :global(.dashboard-btn) {
           background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
           border: none;
           border-radius: 8px;
@@ -863,7 +875,8 @@ export default function UserProfilePage() {
         }
 
         .profile-actions :global(.write-blog-btn:hover),
-        .profile-actions :global(.players-btn:hover) {
+        .profile-actions :global(.players-btn:hover),
+        .profile-actions :global(.dashboard-btn:hover) {
           transform: translateY(-2px);
           box-shadow: var(--glow-pink);
           color: white;
