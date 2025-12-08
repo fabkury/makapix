@@ -386,3 +386,185 @@ def record_views_batch(
     except Exception as e:
         logger.warning(f"Failed to queue batch views: {e}", exc_info=True)
 
+
+def record_blog_post_view(
+    db: Session,
+    blog_post_id: int,
+    request: Request,
+    user: User | None = None,
+    view_type: ViewType = ViewType.INTENTIONAL,
+    view_source: ViewSource = ViewSource.WEB,
+    blog_post_owner_id: int | None = None,
+) -> None:
+    """
+    Queue a blog post view event for async writing via Celery.
+    
+    Extracts all metadata from the request synchronously, then dispatches
+    to Celery for non-blocking database write. Zero database interaction
+    in the request path.
+    
+    Author views are excluded - if the authenticated user is the blog post owner, the view is not recorded.
+    
+    Args:
+        db: Database session (used only to query blog post owner if not provided)
+        blog_post_id: Integer ID of the blog post being viewed
+        request: FastAPI Request object
+        user: Current user (if authenticated)
+        view_type: Type of view (intentional, listing, search, widget)
+        view_source: Source of view (web, api, widget, player)
+        blog_post_owner_id: Integer ID of the blog post owner (if provided, used to exclude author views)
+    """
+    try:
+        from ..models import BlogPost
+        from ..geoip import get_country_code
+        from ..tasks import write_blog_post_view_event
+        
+        # Get blog post owner_id if not provided (minimal DB query)
+        if blog_post_owner_id is None:
+            blog_post = db.query(BlogPost).filter(BlogPost.id == blog_post_id).first()
+            if not blog_post:
+                logger.debug(f"Blog post {blog_post_id} not found, skipping view recording")
+                return
+            blog_post_owner_id = blog_post.owner_id
+        
+        # Skip recording if user is the blog post owner
+        if user is not None and user.id == blog_post_owner_id:
+            logger.debug(f"Skipping view recording for blog post {blog_post_id} - user is the owner")
+            return
+        
+        # Extract request metadata synchronously
+        client_ip = get_client_ip(request)
+        user_agent = request.headers.get("User-Agent")
+        referrer = request.headers.get("Referer")
+        
+        # Detect device type
+        device_type = detect_device_type(user_agent)
+        
+        # Override view_source if device is a player
+        if device_type == DeviceType.PLAYER:
+            view_source = ViewSource.PLAYER
+        
+        # Resolve country code from IP
+        country_code = get_country_code(client_ip)
+        
+        # Prepare event data for Celery
+        event_data = {
+            "blog_post_id": str(blog_post_id),
+            "viewer_user_id": str(user.id) if user else None,
+            "viewer_ip_hash": hash_ip(client_ip),
+            "country_code": country_code,
+            "device_type": device_type.value,
+            "view_source": view_source.value,
+            "view_type": view_type.value,
+            "user_agent_hash": hash_user_agent(user_agent),
+            "referrer_domain": extract_referrer_domain(referrer),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        
+        # Dispatch to Celery for async write (non-blocking)
+        write_blog_post_view_event.delay(event_data)
+        
+        logger.debug(
+            f"Queued view event for blog post {blog_post_id}: "
+            f"device={device_type.value}, source={view_source.value}, "
+            f"type={view_type.value}, country={country_code}"
+        )
+        
+    except Exception as e:
+        # Log error but don't fail the request
+        logger.warning(f"Failed to queue view event for blog post {blog_post_id}: {e}", exc_info=True)
+
+
+def record_blog_post_views_batch(
+    db: Session,
+    blog_post_ids: list[int],
+    request: Request,
+    user: User | None = None,
+    view_type: ViewType = ViewType.LISTING,
+    view_source: ViewSource = ViewSource.WEB,
+    blog_post_owner_ids: dict[int, int] | None = None,
+) -> None:
+    """
+    Queue view events for multiple blog posts for async writing via Celery (batch operation).
+    
+    Used when blog posts appear in feeds or search results.
+    Extracts metadata once and dispatches multiple events to Celery.
+    
+    Author views are excluded - blog posts where the authenticated user is the owner are filtered out.
+    
+    Args:
+        db: Database session (used only to query blog post owners if not provided)
+        blog_post_ids: List of blog post integer IDs being viewed
+        request: FastAPI Request object
+        user: Current user (if authenticated)
+        view_type: Type of view (default: listing)
+        view_source: Source of view (default: web)
+        blog_post_owner_ids: Dict mapping blog_post_id -> owner_id (if None, will query database)
+    """
+    if not blog_post_ids:
+        return
+    
+    try:
+        from ..models import BlogPost
+        from ..geoip import get_country_code
+        from ..tasks import write_blog_post_view_event
+        
+        # Get owner_ids if not provided (minimal DB query)
+        if blog_post_owner_ids is None:
+            blog_posts = db.query(BlogPost.id, BlogPost.owner_id).filter(BlogPost.id.in_(blog_post_ids)).all()
+            blog_post_owner_ids = {bp.id: bp.owner_id for bp in blog_posts}
+        
+        # Filter out blog posts where user is the owner
+        if user is not None:
+            filtered_blog_post_ids = [
+                blog_post_id for blog_post_id in blog_post_ids
+                if blog_post_id not in blog_post_owner_ids or blog_post_owner_ids[blog_post_id] != user.id
+            ]
+        else:
+            filtered_blog_post_ids = blog_post_ids
+        
+        if not filtered_blog_post_ids:
+            logger.debug(f"All {len(blog_post_ids)} blog posts filtered out (user is owner), skipping batch view recording")
+            return
+        
+        # Extract request metadata once
+        client_ip = get_client_ip(request)
+        user_agent = request.headers.get("User-Agent")
+        referrer = request.headers.get("Referer")
+        
+        # Process metadata once
+        device_type = detect_device_type(user_agent)
+        if device_type == DeviceType.PLAYER:
+            view_source = ViewSource.PLAYER
+        
+        country_code = get_country_code(client_ip)
+        ip_hash = hash_ip(client_ip)
+        ua_hash = hash_user_agent(user_agent)
+        referrer_domain = extract_referrer_domain(referrer)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        user_id_str = str(user.id) if user else None
+        
+        # Queue events for filtered blog posts (non-blocking Celery dispatch)
+        for blog_post_id in filtered_blog_post_ids:
+            event_data = {
+                "blog_post_id": str(blog_post_id),
+                "viewer_user_id": user_id_str,
+                "viewer_ip_hash": ip_hash,
+                "country_code": country_code,
+                "device_type": device_type.value,
+                "view_source": view_source.value,
+                "view_type": view_type.value,
+                "user_agent_hash": ua_hash,
+                "referrer_domain": referrer_domain,
+                "created_at": now_iso,
+            }
+            write_blog_post_view_event.delay(event_data)
+        
+        logger.debug(
+            f"Queued {len(filtered_blog_post_ids)} blog post batch views (filtered {len(blog_post_ids) - len(filtered_blog_post_ids)} owner views): "
+            f"device={device_type.value}, type={view_type.value}"
+        )
+        
+    except Exception as e:
+        logger.warning(f"Failed to queue blog post batch views: {e}", exc_info=True)
+
