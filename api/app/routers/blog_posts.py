@@ -29,6 +29,8 @@ from ..deps import get_db
 from ..pagination import apply_cursor_filter, create_page_response
 from ..services.blog_post_stats import annotate_blog_posts_with_counts
 from ..utils.audit import log_moderation_action
+from ..utils.view_tracking import record_blog_post_view, ViewType, ViewSource
+from ..utils.site_tracking import record_site_event
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +195,7 @@ def create_blog_post(
 @router.get("/b/{public_sqid}", response_model=schemas.BlogPost)
 def get_blog_post_by_sqid(
     public_sqid: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: models.User | None = Depends(get_current_user_or_anonymous),
 ) -> schemas.BlogPost:
@@ -232,12 +235,28 @@ def get_blog_post_by_sqid(
         if not current_user or not isinstance(current_user, models.User) or not ("moderator" in current_user.roles or "owner" in current_user.roles):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
     
+    # Record site event for page view (sitewide stats)
+    user = current_user if isinstance(current_user, models.User) else None
+    record_site_event(request, "page_view", user=user)
+    
+    # Record view event for blog post stats (excludes author views)
+    record_blog_post_view(
+        db=db,
+        blog_post_id=blog_post.id,
+        request=request,
+        user=user,
+        view_type=ViewType.INTENTIONAL,
+        view_source=ViewSource.WEB,
+        blog_post_owner_id=blog_post.owner_id,
+    )
+    
     return schemas.BlogPost.model_validate(blog_post)
 
 
 @router.get("/{id}", response_model=schemas.BlogPost)
 def get_blog_post(
     id: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: models.User | None = Depends(get_current_user_or_anonymous),
 ) -> schemas.BlogPost | RedirectResponse:
@@ -285,6 +304,21 @@ def get_blog_post(
         if blog_post.hidden_by_mod:
             if not current_user or not isinstance(current_user, models.User) or not ("moderator" in current_user.roles or "owner" in current_user.roles):
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
+        
+        # Record site event for page view (sitewide stats)
+        user = current_user if isinstance(current_user, models.User) else None
+        record_site_event(request, "page_view", user=user)
+        
+        # Record view event for blog post stats (excludes author views)
+        record_blog_post_view(
+            db=db,
+            blog_post_id=blog_post.id,
+            request=request,
+            user=user,
+            view_type=ViewType.INTENTIONAL,
+            view_source=ViewSource.WEB,
+            blog_post_owner_id=blog_post.owner_id,
+        )
         
         return schemas.BlogPost.model_validate(blog_post)
     except ValueError:
@@ -857,4 +891,98 @@ def unhide_blog_post(
             target_id=id,
         )
     db.commit()
+
+
+@router.get("/{id}/stats", response_model=schemas.BlogPostStatsResponse)
+async def get_blog_post_statistics(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.BlogPostStatsResponse:
+    """
+    Get statistics for a blog post.
+    
+    Returns both "all" (including unauthenticated) and "authenticated-only" statistics
+    in a single response. Frontend can toggle between the two without additional API calls.
+    
+    **Authorization:**
+    - Blog post owner can view statistics for their own blog posts
+    - Moderators and owners can view statistics for any blog post
+    
+    **Response includes:**
+    - All statistics (including unauthenticated): `total_views`, `unique_viewers`, etc.
+    - Authenticated-only statistics: `total_views_authenticated`, `unique_viewers_authenticated`, etc.
+    - Timestamps: `first_view_at`, `last_view_at`, `computed_at`
+    """
+    from ..services.blog_post_stats_service import get_blog_post_stats
+    
+    # Check if blog post exists
+    blog_post = db.query(models.BlogPost).filter(models.BlogPost.id == id).first()
+    if not blog_post:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Blog post not found"
+        )
+    
+    # Authorization: owner of blog post OR moderator/owner role
+    is_owner = blog_post.owner_id == current_user.id
+    is_moderator = "moderator" in current_user.roles or "owner" in current_user.roles
+    
+    if not is_owner and not is_moderator:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to view statistics for this blog post"
+        )
+    
+    # Get statistics
+    stats = get_blog_post_stats(db, id)
+    
+    if stats is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to compute statistics"
+        )
+    
+    # Convert to response schema
+    return schemas.BlogPostStatsResponse(
+        blog_post_id=int(stats.blog_post_id),
+        # All statistics
+        total_views=stats.total_views,
+        unique_viewers=stats.unique_viewers,
+        views_by_country=stats.views_by_country,
+        views_by_device=stats.views_by_device,
+        views_by_type=stats.views_by_type,
+        daily_views=[
+            schemas.DailyViewCount(
+                date=dv.date,
+                views=dv.views,
+                unique_viewers=dv.unique_viewers
+            )
+            for dv in stats.daily_views
+        ],
+        total_reactions=stats.total_reactions,
+        reactions_by_emoji=stats.reactions_by_emoji,
+        total_comments=stats.total_comments,
+        # Authenticated-only statistics
+        total_views_authenticated=stats.total_views_authenticated,
+        unique_viewers_authenticated=stats.unique_viewers_authenticated,
+        views_by_country_authenticated=stats.views_by_country_authenticated,
+        views_by_device_authenticated=stats.views_by_device_authenticated,
+        views_by_type_authenticated=stats.views_by_type_authenticated,
+        daily_views_authenticated=[
+            schemas.DailyViewCount(
+                date=dv.date,
+                views=dv.views,
+                unique_viewers=dv.unique_viewers
+            )
+            for dv in stats.daily_views_authenticated
+        ],
+        total_reactions_authenticated=stats.total_reactions_authenticated,
+        reactions_by_emoji_authenticated=stats.reactions_by_emoji_authenticated,
+        total_comments_authenticated=stats.total_comments_authenticated,
+        # Timestamps
+        first_view_at=datetime.fromisoformat(stats.first_view_at) if stats.first_view_at else None,
+        last_view_at=datetime.fromisoformat(stats.last_view_at) if stats.last_view_at else None,
+        computed_at=datetime.fromisoformat(stats.computed_at),
+    )
 
