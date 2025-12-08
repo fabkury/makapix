@@ -35,6 +35,7 @@ from .routers import (
     search,
     stats,
     system,
+    tracking,
     users,
 )
 from .seed import ensure_seed_data
@@ -193,6 +194,7 @@ app.include_router(categories.router)
 app.include_router(admin.router)
 app.include_router(search.router)
 app.include_router(stats.router)
+app.include_router(tracking.router)
 app.include_router(relay.router)
 app.include_router(mqtt.router)
 app.include_router(legacy.router)
