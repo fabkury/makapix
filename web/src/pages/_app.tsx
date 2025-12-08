@@ -3,11 +3,15 @@ import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import '../styles/globals.css';
 import { getAccessToken, getRefreshToken, isTokenExpired, refreshAccessToken } from '../lib/api';
+import { usePageViewTracking } from '../hooks/usePageViewTracking';
 
 export default function App({ Component, pageProps }: AppProps) {
   const router = useRouter();
   // Use ref to prevent duplicate refresh attempts
   const isCheckingRef = useRef(false);
+
+  // Track page views for analytics
+  usePageViewTracking();
 
   // Check token and refresh if needed
   // This function handles all token refresh scenarios including:
