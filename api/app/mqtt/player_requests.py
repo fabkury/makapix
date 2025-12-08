@@ -122,7 +122,7 @@ def _handle_query_posts(
         
         # Apply channel filter
         if request.channel == "promoted":
-            query = query.filter(models.Post.promoted == True)
+            query = query.filter(models.Post.promoted.is_(True))
         elif request.channel == "user":
             # Only query player owner's posts
             query = query.filter(models.Post.owner_id == player.owner_id)
@@ -133,13 +133,13 @@ def _handle_query_posts(
         
         if not is_moderator:
             query = query.filter(
-                models.Post.visible == True,
-                models.Post.hidden_by_mod == False,
-                models.Post.non_conformant == False,
+                models.Post.visible,
+                ~models.Post.hidden_by_mod,
+                ~models.Post.non_conformant,
             )
         else:
             # Moderators see everything except non-visible
-            query = query.filter(models.Post.visible == True)
+            query = query.filter(models.Post.visible)
         
         # Apply sorting
         if request.sort == "created_at":
@@ -148,13 +148,11 @@ def _handle_query_posts(
             # Use random seed if provided for reproducible ordering
             if request.random_seed is not None:
                 # PostgreSQL-specific random ordering with seed
-                # Note: This is not truly reproducible across different dataset sizes
+                # Use parameterized query to prevent SQL injection
+                from sqlalchemy import text
                 seed_value = (request.random_seed % 1000000) / 1000000.0
-                query = query.order_by(func.random())
-                # Execute seed setting in a separate statement
-                db.execute(f"SELECT setseed({seed_value})")
-            else:
-                query = query.order_by(func.random())
+                db.execute(text("SELECT setseed(:seed)"), {"seed": seed_value})
+            query = query.order_by(func.random())
         else:
             # "server_order" - use id order (insertion order)
             query = query.order_by(models.Post.id.desc())
@@ -276,7 +274,14 @@ def _handle_submit_view(
         from datetime import datetime, timezone
         
         # Map view_intent to view_type
-        view_type = ViewType.INTENTIONAL if request.view_intent == "intentional" else ViewType.LISTING
+        if request.view_intent == "intentional":
+            view_type = ViewType.INTENTIONAL
+        elif request.view_intent == "automated":
+            view_type = ViewType.LISTING
+        else:
+            # Default to LISTING for unexpected values
+            logger.warning(f"Unexpected view_intent value: {request.view_intent}, defaulting to LISTING")
+            view_type = ViewType.LISTING
         
         # Create view event data
         # For player views, we use a synthetic IP hash based on player_key
@@ -510,7 +515,7 @@ def _handle_get_comments(
         # Filter by moderation status
         is_moderator = "moderator" in player.owner.roles or "owner" in player.owner.roles
         if not is_moderator:
-            query = query.filter(models.Comment.hidden_by_mod == False)
+            query = query.filter(~models.Comment.hidden_by_mod)
         
         # Filter by depth (max 2)
         query = query.filter(models.Comment.depth <= 2)
@@ -542,10 +547,16 @@ def _handle_get_comments(
             next_cursor = str(offset + request.limit)
         
         # Build comment summaries
+        # Note: Deleted comments are filtered in a simplified way here.
+        # A full implementation would require checking if deleted comments have children
+        # and preserving them in the tree structure with modified content.
         comment_summaries = []
         for comment in comments:
-            # Skip deleted comments without children
-            # (simplified - full logic would require checking for children)
+            # Skip deleted comments (simplified filtering)
+            # In a full implementation, we would:
+            # 1. Build a parent-child map
+            # 2. Keep deleted comments that have non-deleted children
+            # 3. Mark deleted comments with a placeholder message
             if comment.deleted_by_owner:
                 continue
             
@@ -617,6 +628,13 @@ def _on_request_message(client: mqtt_client.Client, userdata: Any, msg: mqtt_cli
             payload = json.loads(msg.payload.decode("utf-8"))
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse request payload: {e}")
+            # Try to extract player_key from topic for error response
+            _send_error_response(
+                player_key,
+                "unknown",
+                "Invalid JSON in request payload",
+                "invalid_json",
+            )
             return
         
         request_type = payload.get("request_type")

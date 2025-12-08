@@ -156,7 +156,7 @@ class GetCommentsRequest(PlayerRequestBase):
         50,
         ge=1,
         le=200,
-        description="Number of comments to return (1-200)"
+        description="Number of comments to return (1-200). Higher limit than posts due to typically smaller payload size."
     )
 
 
