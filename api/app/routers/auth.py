@@ -1392,6 +1392,9 @@ def refresh_token(payload: schemas.RefreshTokenRequest, db: Session = Depends(ge
         token=access_token,
         refresh_token=new_refresh_token,
         user_id=user.id,
+        user_key=user.user_key,
+        public_sqid=user.public_sqid,
+        user_handle=user.handle,
         expires_at=expires_at,
     )
 
