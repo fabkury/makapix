@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import Layout from '../../../components/Layout';
@@ -61,9 +61,12 @@ export default function ArtistDashboard() {
   const [page, setPage] = useState(1);
   const [showAuthenticatedOnly, setShowAuthenticatedOnly] = useState(false);
 
-  const API_BASE_URL = typeof window !== 'undefined'
-    ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
-    : '';
+  const API_BASE_URL = useMemo(
+    () => typeof window !== 'undefined'
+      ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
+      : '',
+    []
+  );
 
   useEffect(() => {
     if (!sqid || typeof sqid !== 'string') return;
@@ -103,7 +106,7 @@ export default function ArtistDashboard() {
     };
 
     fetchDashboard();
-  }, [sqid, page, API_BASE_URL]);
+  }, [sqid, page, API_BASE_URL, router]);
 
   if (loading) {
     return (

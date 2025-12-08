@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -535,8 +536,6 @@ def get_artist_dashboard(
         posts_stats = posts_stats[:page_size]
     
     # Convert artist stats to response schema
-    from datetime import datetime
-    
     artist_stats_response = schemas.ArtistStatsResponse(
         user_id=artist_stats.user_id,
         user_key=artist_stats.user_key,

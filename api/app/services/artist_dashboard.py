@@ -13,7 +13,6 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import func, distinct
 from sqlalchemy.orm import Session
 
 if TYPE_CHECKING:
