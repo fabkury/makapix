@@ -38,7 +38,8 @@ Query N posts from a channel with sorting and pagination.
   "request_id": "unique-request-id",
   "request_type": "query_posts",
   "player_key": "player-uuid",
-  "channel": "all",  // "all", "promoted", or "user"
+  "channel": "all",  // "all", "promoted", "user", or "by_user"
+  "user_handle": "artist123",  // required when channel="by_user"
   "sort": "server_order",  // "server_order", "created_at", or "random"
   "random_seed": 12345,  // optional, only used when sort="random"
   "cursor": null,  // optional, for pagination
@@ -50,6 +51,7 @@ Query N posts from a channel with sorting and pagination.
 - `all`: Recent posts from all users (respects visibility settings)
 - `promoted`: Only promoted posts (editor picks, frontpage, etc.)
 - `user`: Posts from the player owner's account
+- `by_user`: Posts from an arbitrary user specified by `user_handle`
 
 **Sort Options:**
 - `server_order`: Original insertion order (by post ID)
@@ -92,6 +94,17 @@ request = {
     "channel": "promoted",
     "sort": "created_at",
     "limit": 10
+}
+
+# Query posts from a specific user
+request = {
+    "request_id": "req-002",
+    "request_type": "query_posts",
+    "player_key": "your-player-uuid",
+    "channel": "by_user",
+    "user_handle": "artist123",
+    "sort": "created_at",
+    "limit": 20
 }
 ```
 

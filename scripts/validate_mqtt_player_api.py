@@ -169,6 +169,26 @@ class PlayerAPIValidator:
         else:
             print(f"✗ Promoted posts query failed")
         
+        time.sleep(1)
+        
+        # Test 3: Query posts by user handle (if we can get a handle from previous queries)
+        if response and response.get("posts") and len(response.get("posts", [])) > 0:
+            user_handle = response["posts"][0].get("owner_handle")
+            if user_handle:
+                request_id = self.send_request(
+                    "query_posts",
+                    channel="by_user",
+                    user_handle=user_handle,
+                    sort="created_at",
+                    limit=10
+                )
+                
+                response = self.wait_for_response(request_id)
+                if response and response.get("success"):
+                    print(f"✓ User posts query successful for '{user_handle}': {len(response.get('posts', []))} posts")
+                else:
+                    print(f"✗ User posts query failed")
+        
         return True
     
     def validate_submit_view(self, post_id: int):

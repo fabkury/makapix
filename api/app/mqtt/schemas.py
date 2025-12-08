@@ -41,9 +41,13 @@ class QueryPostsRequest(PlayerRequestBase):
     """Request to query posts with filters and pagination."""
     
     request_type: Literal["query_posts"] = "query_posts"
-    channel: Literal["all", "promoted", "user"] = Field(
+    channel: Literal["all", "promoted", "user", "by_user"] = Field(
         "all",
-        description="Channel to query: 'all' for recent posts, 'promoted' for promoted posts, 'user' for user's own posts"
+        description="Channel to query: 'all' for recent posts, 'promoted' for promoted posts, 'user' for player owner's posts, 'by_user' for arbitrary user's posts (requires user_handle)"
+    )
+    user_handle: str | None = Field(
+        None,
+        description="User handle for 'by_user' channel (e.g., 'artist123'). Required when channel='by_user'."
     )
     sort: Literal["server_order", "created_at", "random"] = Field(
         "server_order",

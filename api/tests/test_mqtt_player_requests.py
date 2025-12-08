@@ -271,6 +271,81 @@ class TestQueryPosts:
         assert payload["has_more"] is True
         assert payload["next_cursor"] is not None
 
+    @patch("app.mqtt.player_requests.publish")
+    def test_query_by_user_handle(
+        self,
+        mock_publish: MagicMock,
+        test_player: Player,
+        other_user: User,
+        other_user_post: Post,
+        db: Session,
+    ):
+        """Test querying posts by arbitrary user handle."""
+        request = QueryPostsRequest(
+            request_id="test-req-5",
+            player_key=test_player.player_key,
+            channel="by_user",
+            user_handle=other_user.handle,
+            sort="server_order",
+            limit=10,
+        )
+        
+        _handle_query_posts(test_player, request, db)
+        
+        assert mock_publish.called
+        payload = mock_publish.call_args[1]["payload"]
+        
+        # Should return posts from the specified user
+        assert payload["success"] is True
+        assert len(payload["posts"]) == 1
+        assert payload["posts"][0]["owner_handle"] == other_user.handle
+
+    @patch("app.mqtt.player_requests._send_error_response")
+    def test_query_by_user_handle_missing(
+        self,
+        mock_error: MagicMock,
+        test_player: Player,
+        db: Session,
+    ):
+        """Test querying by user without providing user_handle."""
+        request = QueryPostsRequest(
+            request_id="test-req-6",
+            player_key=test_player.player_key,
+            channel="by_user",
+            # user_handle not provided
+            sort="server_order",
+            limit=10,
+        )
+        
+        _handle_query_posts(test_player, request, db)
+        
+        # Error response should be sent
+        assert mock_error.called
+        assert "user_handle is required" in mock_error.call_args[0][2]
+
+    @patch("app.mqtt.player_requests._send_error_response")
+    def test_query_by_user_handle_not_found(
+        self,
+        mock_error: MagicMock,
+        test_player: Player,
+        db: Session,
+    ):
+        """Test querying by non-existent user handle."""
+        request = QueryPostsRequest(
+            request_id="test-req-7",
+            player_key=test_player.player_key,
+            channel="by_user",
+            user_handle="nonexistentuser",
+            sort="server_order",
+            limit=10,
+        )
+        
+        _handle_query_posts(test_player, request, db)
+        
+        # Error response should be sent
+        assert mock_error.called
+        assert "not found" in mock_error.call_args[0][2]
+
 
 class TestSubmitView:
     """Test submit_view functionality."""

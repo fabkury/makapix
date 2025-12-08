@@ -126,6 +126,29 @@ def _handle_query_posts(
         elif request.channel == "user":
             # Only query player owner's posts
             query = query.filter(models.Post.owner_id == player.owner_id)
+        elif request.channel == "by_user":
+            # Query arbitrary user's posts by handle
+            if not request.user_handle:
+                _send_error_response(
+                    player.player_key,
+                    request.request_id,
+                    "user_handle is required when channel='by_user'",
+                    "missing_user_handle",
+                )
+                return
+            
+            # Look up user by handle
+            target_user = db.query(models.User).filter(models.User.handle == request.user_handle).first()
+            if not target_user:
+                _send_error_response(
+                    player.player_key,
+                    request.request_id,
+                    f"User '{request.user_handle}' not found",
+                    "user_not_found",
+                )
+                return
+            
+            query = query.filter(models.Post.owner_id == target_user.id)
         # "all" requires no additional filter
         
         # Apply visibility filters (respect user privileges)

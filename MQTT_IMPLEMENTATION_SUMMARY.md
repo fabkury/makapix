@@ -15,6 +15,7 @@ Physical players can query N (1 ≤ N ≤ 50) posts from channels with sorting a
   - `all`: Recent posts from all users
   - `promoted`: Editor picks and promoted content
   - `user`: Posts from the player owner's account
+  - `by_user`: Posts from an arbitrary user (specified by handle)
 
 - **Sort Orders**:
   - `server_order`: Original insertion order (by post ID)
