@@ -1,7 +1,7 @@
 """add blog post view tracking tables
 
 Revision ID: 20251208000000
-Revises: 20251204000000_add_width_height_fields
+Revises: 20251204000000
 Create Date: 2025-12-08 00:00:00.000000
 
 This migration adds tables for blog post view tracking and statistics:
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision = "20251208000000"
-down_revision = "20251204000000_add_width_height_fields"
+down_revision = "20251204000000"
 branch_labels = None
 depends_on = None
 
