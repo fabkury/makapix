@@ -95,7 +95,12 @@ def get_rate_limits():
     TODO: Add rate limit headers to response
     """
     # PLACEHOLDER: Return unlimited
-    return schemas.RateLimitStatus(...)
+    return schemas.RateLimitStatus(
+        buckets={
+            "commands": {"remaining": 9999, "reset_at": "..."},
+            "publishes": {"remaining": 9999, "reset_at": "..."},
+        }
+    )
 ```
 
 **Note**: A `rate_limit.py` service exists and IS being used in `auth.py` and `player.py`, so this placeholder could potentially use the existing service.
@@ -116,10 +121,11 @@ def get_rate_limits():
 **Location**: `api/app/routers/posts.py` (line 200)
 
 ```python
-max_file_kb = 5 * 1024  # 15 MB limit
+# The comment says "15 MB limit" but the actual value is 5 * 1024 KB = 5 MB
+max_file_kb = 5 * 1024  # 15 MB limit  # <-- Incorrect comment!
 ```
 
-**Issue**: The comment says "15 MB limit" but the actual value is `5 * 1024 KB = 5 MB`.
+**Issue**: The comment says "15 MB limit" but the calculation `5 * 1024 KB = 5,120 KB = 5 MB`.
 
 **Related Inconsistencies**:
 - `api/app/vault.py` line 23: `MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024` (5 MB)
