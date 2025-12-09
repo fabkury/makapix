@@ -1391,6 +1391,71 @@ class SitewideStatsResponse(BaseModel):
 
 
 # ============================================================================
+# ARTIST DASHBOARD SCHEMAS
+# ============================================================================
+
+
+class ArtistStatsResponse(BaseModel):
+    """Aggregated statistics for an artist across all their posts."""
+    
+    user_id: int
+    user_key: str
+    total_posts: int
+    # Aggregated view statistics (all)
+    total_views: int
+    unique_viewers: int
+    views_by_country: dict[str, int]  # Top 10 countries
+    views_by_device: dict[str, int]   # desktop, mobile, tablet, player
+    # Aggregated reactions and comments
+    total_reactions: int
+    reactions_by_emoji: dict[str, int]
+    total_comments: int
+    # Authenticated-only statistics
+    total_views_authenticated: int
+    unique_viewers_authenticated: int
+    views_by_country_authenticated: dict[str, int]
+    views_by_device_authenticated: dict[str, int]
+    total_reactions_authenticated: int
+    reactions_by_emoji_authenticated: dict[str, int]
+    total_comments_authenticated: int
+    # Timestamps
+    first_post_at: datetime | None
+    latest_post_at: datetime | None
+    computed_at: datetime
+
+
+class PostStatsListItem(BaseModel):
+    """Simplified post statistics for list view in artist dashboard."""
+    
+    post_id: int
+    public_sqid: str
+    title: str
+    created_at: datetime
+    # View statistics (all)
+    total_views: int
+    unique_viewers: int
+    # Reactions and comments
+    total_reactions: int
+    total_comments: int
+    # Authenticated-only statistics
+    total_views_authenticated: int
+    unique_viewers_authenticated: int
+    total_reactions_authenticated: int
+    total_comments_authenticated: int
+
+
+class ArtistDashboardResponse(BaseModel):
+    """Complete artist dashboard with aggregated stats and post list."""
+    
+    artist_stats: ArtistStatsResponse
+    posts: list[PostStatsListItem]
+    total_posts: int
+    page: int
+    page_size: int
+    has_more: bool
+
+
+# ============================================================================
 # LEGACY SCHEMAS (for backwards compatibility)
 # ============================================================================
 
