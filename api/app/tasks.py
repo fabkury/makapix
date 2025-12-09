@@ -330,6 +330,11 @@ celery_app.conf.update(
             "schedule": 86400.0,  # Daily (in seconds)
             "options": {"queue": "default"},
         },
+        "rollup-blog-post-view-events": {
+            "task": "app.tasks.rollup_blog_post_view_events",
+            "schedule": 86400.0,  # Daily (in seconds)
+            "options": {"queue": "default"},
+        },
         "rollup-site-events": {
             "task": "app.tasks.rollup_site_events",
             "schedule": 86400.0,  # Daily at 1AM UTC (in seconds)
@@ -874,6 +879,68 @@ def write_view_event(self, event_data: dict) -> None:
         db.close()
 
 
+@celery_app.task(name="app.tasks.write_blog_post_view_event", bind=True, ignore_result=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
+def write_blog_post_view_event(self, event_data: dict) -> None:
+    """
+    Async Celery task to write a blog post view event to the database.
+    
+    This task receives serialized event data and creates a BlogPostViewEvent record.
+    Called asynchronously from record_blog_post_view() to avoid blocking request handlers.
+    
+    Args:
+        event_data: Dictionary containing blog post view event fields:
+            - blog_post_id: Integer ID (as string)
+            - viewer_user_id: Integer ID (as string) or None
+            - viewer_ip_hash: SHA256 hash string
+            - country_code: ISO country code or None
+            - device_type: device type string
+            - view_source: view source string
+            - view_type: view type string
+            - user_agent_hash: SHA256 hash or None
+            - referrer_domain: domain string or None
+            - created_at: ISO datetime string
+    """
+    from datetime import datetime
+    from . import models
+    from .db import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        # Parse blog_post_id as int
+        blog_post_id = int(event_data["blog_post_id"])
+        viewer_user_id = int(event_data["viewer_user_id"]) if event_data.get("viewer_user_id") else None
+        
+        # Parse datetime
+        created_at = datetime.fromisoformat(event_data["created_at"])
+        
+        # Create blog post view event
+        view_event = models.BlogPostViewEvent(
+            id=uuid.uuid4(),
+            blog_post_id=blog_post_id,
+            viewer_user_id=viewer_user_id,
+            viewer_ip_hash=event_data["viewer_ip_hash"],
+            country_code=event_data.get("country_code"),
+            device_type=event_data["device_type"],
+            view_source=event_data["view_source"],
+            view_type=event_data["view_type"],
+            user_agent_hash=event_data.get("user_agent_hash"),
+            referrer_domain=event_data.get("referrer_domain"),
+            created_at=created_at,
+        )
+        
+        db.add(view_event)
+        db.commit()
+        
+        logger.debug(f"Wrote deferred blog post view event for blog post {blog_post_id}")
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to write deferred blog post view event: {e}", exc_info=True)
+        raise  # Re-raise to trigger Celery retry
+    finally:
+        db.close()
+
+
 @celery_app.task(name="app.tasks.write_site_event", bind=True, ignore_result=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
 def write_site_event(self, event_data: dict) -> None:
     """
@@ -1088,6 +1155,135 @@ def rollup_view_events(self) -> dict[str, Any]:
         
     except Exception as e:
         logger.error(f"Error in rollup_view_events task: {e}", exc_info=True)
+        db.rollback()
+        return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.rollup_blog_post_view_events", bind=True)
+def rollup_blog_post_view_events(self) -> dict[str, Any]:
+    """
+    Daily task: Roll up blog post view events older than 7 days into daily aggregates.
+    
+    This task:
+    1. Selects blog post view events older than 7 days
+    2. Aggregates them by (blog_post_id, date)
+    3. Upserts into blog_post_stats_daily table
+    4. Deletes the old raw events
+    
+    Should run daily (configured in beat_schedule).
+    """
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import func, cast, Date
+    from . import models
+    from .db import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        logger.info("Starting blog post view events rollup task")
+        
+        # Get events older than 7 days
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=7)
+        
+        # Query events to aggregate, grouped by blog_post_id and date
+        old_events = db.query(models.BlogPostViewEvent).filter(
+            models.BlogPostViewEvent.created_at < cutoff_date
+        ).all()
+        
+        if not old_events:
+            logger.info("No old blog post view events to roll up")
+            return {"status": "success", "rolled_up": 0, "deleted": 0}
+        
+        logger.info(f"Found {len(old_events)} old blog post view events to roll up")
+        
+        # Aggregate events by (blog_post_id, date)
+        aggregates: dict[tuple, dict] = {}  # (blog_post_id, date) -> aggregate data
+        
+        for event in old_events:
+            key = (event.blog_post_id, event.created_at.date())
+            
+            if key not in aggregates:
+                aggregates[key] = {
+                    "total_views": 0,
+                    "unique_ip_hashes": set(),
+                    "views_by_country": {},
+                    "views_by_device": {},
+                    "views_by_type": {},
+                }
+            
+            agg = aggregates[key]
+            agg["total_views"] += 1
+            agg["unique_ip_hashes"].add(event.viewer_ip_hash)
+            
+            if event.country_code:
+                agg["views_by_country"][event.country_code] = \
+                    agg["views_by_country"].get(event.country_code, 0) + 1
+            
+            agg["views_by_device"][event.device_type] = \
+                agg["views_by_device"].get(event.device_type, 0) + 1
+            
+            agg["views_by_type"][event.view_type] = \
+                agg["views_by_type"].get(event.view_type, 0) + 1
+        
+        # Upsert aggregates into blog_post_stats_daily
+        rolled_up = 0
+        for (blog_post_id, date), agg in aggregates.items():
+            # Check if record exists
+            existing = db.query(models.BlogPostStatsDaily).filter(
+                models.BlogPostStatsDaily.blog_post_id == blog_post_id,
+                models.BlogPostStatsDaily.date == date
+            ).first()
+            
+            if existing:
+                # Merge with existing data
+                existing.total_views += agg["total_views"]
+                existing.unique_viewers += len(agg["unique_ip_hashes"])
+                
+                # Merge country data
+                existing_countries = existing.views_by_country or {}
+                for country, count in agg["views_by_country"].items():
+                    existing_countries[country] = existing_countries.get(country, 0) + count
+                existing.views_by_country = existing_countries
+                
+                # Merge device data
+                existing_devices = existing.views_by_device or {}
+                for device, count in agg["views_by_device"].items():
+                    existing_devices[device] = existing_devices.get(device, 0) + count
+                existing.views_by_device = existing_devices
+                
+                # Merge type data
+                existing_types = existing.views_by_type or {}
+                for vtype, count in agg["views_by_type"].items():
+                    existing_types[vtype] = existing_types.get(vtype, 0) + count
+                existing.views_by_type = existing_types
+            else:
+                # Create new record
+                daily_stat = models.BlogPostStatsDaily(
+                    blog_post_id=blog_post_id,
+                    date=date,
+                    total_views=agg["total_views"],
+                    unique_viewers=len(agg["unique_ip_hashes"]),
+                    views_by_country=agg["views_by_country"],
+                    views_by_device=agg["views_by_device"],
+                    views_by_type=agg["views_by_type"],
+                )
+                db.add(daily_stat)
+            
+            rolled_up += 1
+        
+        # Delete old events
+        deleted_count = db.query(models.BlogPostViewEvent).filter(
+            models.BlogPostViewEvent.created_at < cutoff_date
+        ).delete(synchronize_session=False)
+        
+        db.commit()
+        
+        logger.info(f"Rolled up {rolled_up} blog post daily aggregates, deleted {deleted_count} old events")
+        return {"status": "success", "rolled_up": rolled_up, "deleted": deleted_count}
+        
+    except Exception as e:
+        logger.error(f"Error in rollup_blog_post_view_events task: {e}", exc_info=True)
         db.rollback()
         return {"status": "error", "message": str(e)}
     finally:

@@ -35,7 +35,7 @@ def record_site_event(
         request: FastAPI Request object
         event_type: Type of event (page_view, signup, upload, api_call, error)
         user: Current user (if authenticated)
-        event_data: Optional event-specific data dict
+        event_data: Optional event-specific data dict (can include "client_path" for frontend tracking)
     """
     try:
         from ..utils.view_tracking import (
@@ -51,7 +51,12 @@ def record_site_event(
         client_ip = get_client_ip(request)
         user_agent = request.headers.get("User-Agent")
         referrer = request.headers.get("Referer")
-        page_path = str(request.url.path)
+        
+        # Use client-provided path if available (for frontend tracking), otherwise use request path
+        if event_data and "client_path" in event_data:
+            page_path = event_data["client_path"]
+        else:
+            page_path = str(request.url.path)
         
         # Detect device type
         device_type = detect_device_type(user_agent)

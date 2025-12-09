@@ -1288,6 +1288,44 @@ class PostStatsResponse(BaseModel):
     computed_at: datetime
 
 
+class BlogPostStatsResponse(BaseModel):
+    """Statistics for a single blog post.
+
+    Includes both "all" (including unauthenticated) and "authenticated-only" statistics.
+    Frontend can toggle between the two without additional API calls.
+    """
+
+    blog_post_id: int
+    # "All" statistics (including unauthenticated)
+    total_views: int
+    unique_viewers: int
+    views_by_country: dict[str, int]  # Top 10 countries: {"US": 50, "BR": 30, ...}
+    views_by_device: dict[
+        str, int
+    ]  # {"desktop": 40, "mobile": 35, "tablet": 10, "player": 5}
+    views_by_type: dict[str, int]  # {"intentional": 60, "listing": 30, "search": 10}
+    daily_views: list[DailyViewCount]  # Last 30 days
+    total_reactions: int
+    reactions_by_emoji: dict[str, int]  # {"❤️": 10, "🔥": 5, ...}
+    total_comments: int
+    # Authenticated-only statistics
+    total_views_authenticated: int
+    unique_viewers_authenticated: int
+    views_by_country_authenticated: dict[str, int]  # Top 10 countries
+    views_by_device_authenticated: dict[str, int]  # {"desktop": 40, "mobile": 35, ...}
+    views_by_type_authenticated: dict[
+        str, int
+    ]  # {"intentional": 60, "listing": 30, ...}
+    daily_views_authenticated: list[DailyViewCount]  # Last 30 days
+    total_reactions_authenticated: int
+    reactions_by_emoji_authenticated: dict[str, int]  # {"❤️": 10, "🔥": 5, ...}
+    total_comments_authenticated: int
+    # Timestamps
+    first_view_at: datetime | None
+    last_view_at: datetime | None
+    computed_at: datetime
+
+
 class DailyCount(BaseModel):
     """Daily count for trends."""
 
