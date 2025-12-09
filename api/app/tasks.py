@@ -345,6 +345,11 @@ celery_app.conf.update(
             "schedule": 86400.0,  # Daily at 2AM UTC (in seconds)
             "options": {"queue": "default"},
         },
+        "cleanup-old-view-events": {
+            "task": "app.tasks.cleanup_old_view_events",
+            "schedule": 86400.0,  # Daily at 3AM UTC (in seconds)
+            "options": {"queue": "default"},
+        },
         "cleanup-expired-stats-cache": {
             "task": "app.tasks.cleanup_expired_stats_cache",
             "schedule": 3600.0,  # Every hour (in seconds)
@@ -353,6 +358,11 @@ celery_app.conf.update(
         "cleanup-expired-player-registrations": {
             "task": "app.tasks.cleanup_expired_player_registrations",
             "schedule": 3600.0,  # Every hour (in seconds)
+            "options": {"queue": "default"},
+        },
+        "cleanup-expired-auth-tokens": {
+            "task": "app.tasks.cleanup_expired_auth_tokens",
+            "schedule": 86400.0,  # Daily at 3AM UTC (in seconds)
             "options": {"queue": "default"},
         },
     },
@@ -1001,17 +1011,20 @@ def rollup_view_events(self) -> dict[str, Any]:
     Daily task: Roll up view events older than 7 days into daily aggregates.
     
     This task:
-    1. Selects view events older than 7 days
+    1. Selects view events older than 7 days (in batches to avoid memory issues)
     2. Aggregates them by (post_id, date)
     3. Upserts into post_stats_daily table
     4. Deletes the old raw events
     
+    Uses batched processing to handle large datasets without OOM errors.
     Should run daily (configured in beat_schedule).
     """
     from datetime import datetime, timedelta, timezone
     from sqlalchemy import func, cast, Date
     from . import models
     from .db import SessionLocal
+    
+    BATCH_SIZE = 10000  # Process events in batches of 10,000
     
     db = SessionLocal()
     try:
@@ -1020,45 +1033,65 @@ def rollup_view_events(self) -> dict[str, Any]:
         # Get events older than 7 days
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=7)
         
-        # Query events to aggregate, grouped by post_id and date
-        old_events = db.query(models.ViewEvent).filter(
+        # Count total events to process
+        total_count = db.query(func.count(models.ViewEvent.id)).filter(
             models.ViewEvent.created_at < cutoff_date
-        ).all()
+        ).scalar()
         
-        if not old_events:
+        if total_count == 0:
             logger.info("No old view events to roll up")
             return {"status": "success", "rolled_up": 0, "deleted": 0}
         
-        logger.info(f"Found {len(old_events)} old view events to roll up")
+        logger.info(f"Found {total_count} old view events to roll up")
         
-        # Aggregate events by (post_id, date)
+        # Aggregate events by (post_id, date) - process in batches
         aggregates: dict[tuple, dict] = {}  # (post_id, date) -> aggregate data
+        processed_count = 0
+        offset = 0
         
-        for event in old_events:
-            key = (event.post_id, event.created_at.date())
+        while offset < total_count:
+            # Fetch a batch of events
+            batch = db.query(models.ViewEvent).filter(
+                models.ViewEvent.created_at < cutoff_date
+            ).order_by(models.ViewEvent.id).offset(offset).limit(BATCH_SIZE).all()
             
-            if key not in aggregates:
-                aggregates[key] = {
-                    "total_views": 0,
-                    "unique_ip_hashes": set(),
-                    "views_by_country": {},
-                    "views_by_device": {},
-                    "views_by_type": {},
-                }
+            if not batch:
+                break
             
-            agg = aggregates[key]
-            agg["total_views"] += 1
-            agg["unique_ip_hashes"].add(event.viewer_ip_hash)
+            for event in batch:
+                key = (event.post_id, event.created_at.date())
+                
+                if key not in aggregates:
+                    aggregates[key] = {
+                        "total_views": 0,
+                        "unique_ip_hashes": set(),
+                        "views_by_country": {},
+                        "views_by_device": {},
+                        "views_by_type": {},
+                    }
+                
+                agg = aggregates[key]
+                agg["total_views"] += 1
+                agg["unique_ip_hashes"].add(event.viewer_ip_hash)
+                
+                if event.country_code:
+                    agg["views_by_country"][event.country_code] = \
+                        agg["views_by_country"].get(event.country_code, 0) + 1
+                
+                agg["views_by_device"][event.device_type] = \
+                    agg["views_by_device"].get(event.device_type, 0) + 1
+                
+                agg["views_by_type"][event.view_type] = \
+                    agg["views_by_type"].get(event.view_type, 0) + 1
             
-            if event.country_code:
-                agg["views_by_country"][event.country_code] = \
-                    agg["views_by_country"].get(event.country_code, 0) + 1
+            processed_count += len(batch)
+            offset += BATCH_SIZE
             
-            agg["views_by_device"][event.device_type] = \
-                agg["views_by_device"].get(event.device_type, 0) + 1
+            # Clear SQLAlchemy's identity map to free memory
+            db.expire_all()
             
-            agg["views_by_type"][event.view_type] = \
-                agg["views_by_type"].get(event.view_type, 0) + 1
+            if processed_count % 50000 == 0:
+                logger.info(f"Processed {processed_count}/{total_count} view events")
         
         # Upsert aggregates into post_stats_daily
         rolled_up = 0
@@ -1105,6 +1138,10 @@ def rollup_view_events(self) -> dict[str, Any]:
                 db.add(daily_stat)
             
             rolled_up += 1
+            
+            # Commit in batches to avoid holding too many objects
+            if rolled_up % 1000 == 0:
+                db.commit()
         
         # Delete old events
         deleted_count = db.query(models.ViewEvent).filter(
@@ -1298,16 +1335,20 @@ def rollup_site_events(self) -> dict[str, Any]:
     Daily task: Roll up site events older than 7 days into daily aggregates.
     
     This task:
-    1. Selects site events older than 7 days
+    1. Selects site events older than 7 days (in batches to avoid memory issues)
     2. Aggregates them by date
     3. Upserts into site_stats_daily table
     4. Deletes the old raw events
     
+    Uses batched processing to handle large datasets without OOM errors.
     Should run daily at 1AM UTC (configured in beat_schedule).
     """
     from datetime import datetime, timedelta, timezone, date
+    from sqlalchemy import func
     from . import models
     from .db import SessionLocal
+    
+    BATCH_SIZE = 10000  # Process events in batches of 10,000
     
     db = SessionLocal()
     try:
@@ -1316,72 +1357,92 @@ def rollup_site_events(self) -> dict[str, Any]:
         # Get events older than 7 days
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=7)
         
-        # Query events to aggregate, grouped by date
-        old_events = db.query(models.SiteEvent).filter(
+        # Count total events to process
+        total_count = db.query(func.count(models.SiteEvent.id)).filter(
             models.SiteEvent.created_at < cutoff_date
-        ).all()
+        ).scalar()
         
-        if not old_events:
+        if total_count == 0:
             logger.info("No old site events to roll up")
             return {"status": "success", "rolled_up": 0, "deleted": 0}
         
-        logger.info(f"Found {len(old_events)} old site events to roll up")
+        logger.info(f"Found {total_count} old site events to roll up")
         
-        # Aggregate events by date
+        # Aggregate events by date - process in batches
         aggregates: dict[date, dict] = {}  # date -> aggregate data
+        processed_count = 0
+        offset = 0
         
-        for event in old_events:
-            event_date = event.created_at.date()
+        while offset < total_count:
+            # Fetch a batch of events
+            batch = db.query(models.SiteEvent).filter(
+                models.SiteEvent.created_at < cutoff_date
+            ).order_by(models.SiteEvent.id).offset(offset).limit(BATCH_SIZE).all()
             
-            if event_date not in aggregates:
-                aggregates[event_date] = {
-                    "total_page_views": 0,
-                    "unique_ip_hashes": set(),
-                    "new_signups": 0,
-                    "new_posts": 0,
-                    "total_api_calls": 0,
-                    "total_errors": 0,
-                    "views_by_page": {},
-                    "views_by_country": {},
-                    "views_by_device": {},
-                    "errors_by_type": {},
-                    "top_referrers": {},
-                }
+            if not batch:
+                break
             
-            agg = aggregates[event_date]
-            
-            # Count by event type
-            if event.event_type == "page_view":
-                agg["total_page_views"] += 1
-                agg["unique_ip_hashes"].add(event.visitor_ip_hash)
+            for event in batch:
+                event_date = event.created_at.date()
                 
-                # Track page path
-                if event.page_path:
-                    agg["views_by_page"][event.page_path] = agg["views_by_page"].get(event.page_path, 0) + 1
+                if event_date not in aggregates:
+                    aggregates[event_date] = {
+                        "total_page_views": 0,
+                        "unique_ip_hashes": set(),
+                        "new_signups": 0,
+                        "new_posts": 0,
+                        "total_api_calls": 0,
+                        "total_errors": 0,
+                        "views_by_page": {},
+                        "views_by_country": {},
+                        "views_by_device": {},
+                        "errors_by_type": {},
+                        "top_referrers": {},
+                    }
                 
-                # Track country
-                if event.country_code:
-                    agg["views_by_country"][event.country_code] = agg["views_by_country"].get(event.country_code, 0) + 1
+                agg = aggregates[event_date]
                 
-                # Track device
-                agg["views_by_device"][event.device_type] = agg["views_by_device"].get(event.device_type, 0) + 1
-                
-                # Track referrer
-                if event.referrer_domain:
-                    agg["top_referrers"][event.referrer_domain] = agg["top_referrers"].get(event.referrer_domain, 0) + 1
+                # Count by event type
+                if event.event_type == "page_view":
+                    agg["total_page_views"] += 1
+                    agg["unique_ip_hashes"].add(event.visitor_ip_hash)
                     
-            elif event.event_type == "signup":
-                agg["new_signups"] += 1
-            elif event.event_type == "upload":
-                agg["new_posts"] += 1
-            elif event.event_type == "api_call":
-                agg["total_api_calls"] += 1
-            elif event.event_type == "error":
-                agg["total_errors"] += 1
-                # Track error type from event_data
-                if event.event_data and "error_type" in event.event_data:
-                    error_type = str(event.event_data["error_type"])
-                    agg["errors_by_type"][error_type] = agg["errors_by_type"].get(error_type, 0) + 1
+                    # Track page path
+                    if event.page_path:
+                        agg["views_by_page"][event.page_path] = agg["views_by_page"].get(event.page_path, 0) + 1
+                    
+                    # Track country
+                    if event.country_code:
+                        agg["views_by_country"][event.country_code] = agg["views_by_country"].get(event.country_code, 0) + 1
+                    
+                    # Track device
+                    agg["views_by_device"][event.device_type] = agg["views_by_device"].get(event.device_type, 0) + 1
+                    
+                    # Track referrer
+                    if event.referrer_domain:
+                        agg["top_referrers"][event.referrer_domain] = agg["top_referrers"].get(event.referrer_domain, 0) + 1
+                        
+                elif event.event_type == "signup":
+                    agg["new_signups"] += 1
+                elif event.event_type == "upload":
+                    agg["new_posts"] += 1
+                elif event.event_type == "api_call":
+                    agg["total_api_calls"] += 1
+                elif event.event_type == "error":
+                    agg["total_errors"] += 1
+                    # Track error type from event_data
+                    if event.event_data and "error_type" in event.event_data:
+                        error_type = str(event.event_data["error_type"])
+                        agg["errors_by_type"][error_type] = agg["errors_by_type"].get(error_type, 0) + 1
+            
+            processed_count += len(batch)
+            offset += BATCH_SIZE
+            
+            # Clear SQLAlchemy's identity map to free memory
+            db.expire_all()
+            
+            if processed_count % 50000 == 0:
+                logger.info(f"Processed {processed_count}/{total_count} site events")
         
         # Upsert aggregates into site_stats_daily
         rolled_up = 0
@@ -1444,6 +1505,10 @@ def rollup_site_events(self) -> dict[str, Any]:
                 db.add(daily_stat)
             
             rolled_up += 1
+            
+            # Commit in batches to avoid holding too many objects
+            if rolled_up % 100 == 0:
+                db.commit()
         
         # Delete old events
         deleted_count = db.query(models.SiteEvent).filter(
@@ -1500,6 +1565,45 @@ def cleanup_old_site_events(self) -> dict[str, Any]:
         db.close()
 
 
+@celery_app.task(name="app.tasks.cleanup_old_view_events", bind=True)
+def cleanup_old_view_events(self) -> dict[str, Any]:
+    """
+    Daily task: Clean up view events older than 7 days.
+    
+    This is a safety net - rollup_view_events should delete events after rolling them up,
+    but this ensures any stragglers are cleaned up if the rollup fails partway through.
+    
+    Should run daily at 3AM UTC (configured in beat_schedule).
+    """
+    from datetime import datetime, timedelta, timezone
+    from . import models
+    from .db import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        logger.info("Starting old view events cleanup task")
+        
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=7)
+        
+        deleted_count = db.query(models.ViewEvent).filter(
+            models.ViewEvent.created_at < cutoff_date
+        ).delete(synchronize_session=False)
+        
+        db.commit()
+        
+        if deleted_count > 0:
+            logger.info(f"Cleaned up {deleted_count} old view events")
+        
+        return {"status": "success", "deleted": deleted_count}
+        
+    except Exception as e:
+        logger.error(f"Error in cleanup_old_view_events task: {e}", exc_info=True)
+        db.rollback()
+        return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
+
+
 @celery_app.task(name="app.tasks.cleanup_expired_player_registrations", bind=True)
 def cleanup_expired_player_registrations(self) -> dict[str, Any]:
     """
@@ -1537,6 +1641,82 @@ def cleanup_expired_player_registrations(self) -> dict[str, Any]:
         
     except Exception as e:
         logger.error(f"Error in cleanup_expired_player_registrations task: {e}", exc_info=True)
+        db.rollback()
+        return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.cleanup_expired_auth_tokens", bind=True)
+def cleanup_expired_auth_tokens(self) -> dict[str, Any]:
+    """
+    Daily task: Clean up expired authentication tokens from the database.
+    
+    Cleans up:
+    - Expired or revoked refresh tokens (older than 24 hours past expiry/revocation)
+    - Expired email verification tokens (older than 7 days past expiry)
+    - Expired/used password reset tokens (older than 7 days past expiry)
+    
+    This prevents the database from accumulating stale authentication data
+    which could grow unbounded over time.
+    
+    Should run daily at 3AM UTC (configured in beat_schedule).
+    """
+    from datetime import datetime, timezone, timedelta
+    from . import models
+    from .db import get_session
+    
+    db = next(get_session())
+    try:
+        logger.info("Starting expired auth tokens cleanup task")
+        
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        
+        # Clean up refresh tokens that are either:
+        # - Expired more than 24 hours ago, OR
+        # - Revoked more than 24 hours ago
+        # We keep recent expired/revoked tokens briefly in case of debugging needs
+        refresh_cutoff = now - timedelta(hours=24)
+        
+        deleted_refresh = db.query(models.RefreshToken).filter(
+            (models.RefreshToken.expires_at < refresh_cutoff) |
+            ((models.RefreshToken.revoked == True) & (models.RefreshToken.created_at < refresh_cutoff))
+        ).delete(synchronize_session=False)
+        
+        # Clean up email verification tokens older than 7 days past expiry or already used
+        verification_cutoff = now - timedelta(days=7)
+        
+        deleted_verification = db.query(models.EmailVerificationToken).filter(
+            (models.EmailVerificationToken.expires_at < verification_cutoff) |
+            (models.EmailVerificationToken.used_at.isnot(None))
+        ).delete(synchronize_session=False)
+        
+        # Clean up password reset tokens older than 7 days past expiry or already used
+        deleted_reset = db.query(models.PasswordResetToken).filter(
+            (models.PasswordResetToken.expires_at < verification_cutoff) |
+            (models.PasswordResetToken.used_at.isnot(None))
+        ).delete(synchronize_session=False)
+        
+        db.commit()
+        
+        total_deleted = deleted_refresh + deleted_verification + deleted_reset
+        
+        if total_deleted > 0:
+            logger.info(
+                f"Cleaned up auth tokens: {deleted_refresh} refresh, "
+                f"{deleted_verification} verification, {deleted_reset} password reset"
+            )
+        
+        return {
+            "status": "success",
+            "deleted_refresh_tokens": deleted_refresh,
+            "deleted_verification_tokens": deleted_verification,
+            "deleted_reset_tokens": deleted_reset,
+            "total": total_deleted,
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in cleanup_expired_auth_tokens task: {e}", exc_info=True)
         db.rollback()
         return {"status": "error", "message": str(e)}
     finally:

@@ -46,6 +46,7 @@ def extract_image_urls_from_markdown(body: str) -> list[str]:
 
 @router.get("", response_model=schemas.Page[schemas.BlogPost])
 def list_blog_posts(
+    request: Request,
     owner_id: int | None = None,
     visible_only: bool = True,
     cursor: str | None = None,
@@ -136,6 +137,10 @@ def list_blog_posts(
     
     # Create paginated response
     page_data = create_page_response(posts, limit, cursor)
+    
+    # Record site event for page view
+    user = current_user if isinstance(current_user, models.User) else None
+    record_site_event(request, "page_view", user=user)
     
     return schemas.Page(
         items=[schemas.BlogPost.model_validate(p) for p in page_data["items"]],
@@ -250,6 +255,10 @@ def get_blog_post_by_sqid(
         blog_post_owner_id=blog_post.owner_id,
     )
     
+    # Record site event for page view
+    user = current_user if isinstance(current_user, models.User) else None
+    record_site_event(request, "page_view", user=user)
+    
     return schemas.BlogPost.model_validate(blog_post)
 
 
@@ -319,6 +328,10 @@ def get_blog_post(
             view_source=ViewSource.WEB,
             blog_post_owner_id=blog_post.owner_id,
         )
+        
+        # Record site event for page view
+        user = current_user if isinstance(current_user, models.User) else None
+        record_site_event(request, "page_view", user=user)
         
         return schemas.BlogPost.model_validate(blog_post)
     except ValueError:

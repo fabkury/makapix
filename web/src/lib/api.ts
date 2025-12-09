@@ -73,6 +73,11 @@ export function clearTokens(): void {
 /**
  * Attempt to refresh the access token using the refresh token
  * Returns true if successful, false otherwise
+ * 
+ * IMPORTANT: This function is conservative about clearing tokens.
+ * We only clear tokens on definitive auth failures (401/403), not on
+ * transient errors like network issues or server errors (5xx).
+ * This prevents session loss due to temporary connectivity problems.
  */
 export async function refreshAccessToken(): Promise<boolean> {
   // If already refreshing, wait for the existing refresh to complete
@@ -100,19 +105,29 @@ export async function refreshAccessToken(): Promise<boolean> {
       });
 
       if (!response.ok) {
-        // Refresh failed - log the reason and clear tokens
         const errorText = await response.text().catch(() => "Unknown error");
         console.error(`[Auth] Refresh failed (${response.status}): ${errorText}`);
-        clearTokens();
+        
+        // Only clear tokens on definitive auth failures
+        // 401 = Invalid/expired token (server confirmed it's bad)
+        // 403 = User banned/deactivated
+        // Do NOT clear on 5xx errors - those are server issues, token might still be valid
+        if (response.status === 401 || response.status === 403) {
+          console.log("[Auth] Definitive auth failure, clearing tokens");
+          clearTokens();
+        } else {
+          console.log("[Auth] Server error, keeping tokens for retry");
+        }
         return false;
       }
 
       const data = await response.json();
       
       // Validate the response has required fields
-      if (!data.token) {
-        console.error("[Auth] Refresh response missing access token");
-        clearTokens();
+      if (!data.token || !data.refresh_token) {
+        console.error("[Auth] Refresh response missing required tokens");
+        // This is a server bug, but we shouldn't clear tokens - 
+        // the old refresh token might still work (grace period)
         return false;
       }
       
@@ -120,12 +135,13 @@ export async function refreshAccessToken(): Promise<boolean> {
       storeTokens(data.token, data.refresh_token);
       console.log("[Auth] Tokens refreshed successfully");
       
-      // Also update user_id if provided
+      // Update all user data from response
       if (data.user_id) {
         localStorage.setItem("user_id", String(data.user_id));
       }
-      
-      // Store public_sqid and handle if provided
+      if (data.user_key) {
+        localStorage.setItem("user_key", data.user_key);
+      }
       if (data.public_sqid) {
         localStorage.setItem("public_sqid", data.public_sqid);
       }
@@ -135,14 +151,10 @@ export async function refreshAccessToken(): Promise<boolean> {
 
       return true;
     } catch (error) {
-      console.error("[Auth] Failed to refresh token:", error);
-      // Only clear tokens on network errors if we're sure the request failed
-      // Don't clear on transient errors that might be resolved on retry
-      if (error instanceof TypeError && error.message.includes("fetch")) {
-        console.log("[Auth] Network error during refresh, keeping tokens for retry");
-        return false;
-      }
-      clearTokens();
+      // Network errors, timeouts, etc. - don't clear tokens!
+      // The refresh token might still be valid, and the server has a grace period
+      console.error("[Auth] Failed to refresh token (network/transient error):", error);
+      console.log("[Auth] Keeping tokens - error may be transient, will retry later");
       return false;
     } finally {
       isRefreshing = false;

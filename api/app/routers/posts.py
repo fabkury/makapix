@@ -466,6 +466,7 @@ async def upload_artwork(
 
 @router.get("/recent", response_model=schemas.Page[schemas.Post])
 def list_recent_posts(
+    request: Request,
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -497,6 +498,8 @@ def list_recent_posts(
             liked_ids = get_user_liked_post_ids(db, post_ids, current_user.id)
             for item in response.items:
                 item.user_has_liked = item.id in liked_ids
+        # Record site event for page view (even on cache hit)
+        record_site_event(request, "page_view", user=current_user)
         return response
 
     query = (
@@ -539,6 +542,9 @@ def list_recent_posts(
     # Cache for 2 minutes (120 seconds) - shorter due to high churn
     # Note: Cache stores base data; user_has_liked is added when retrieving from cache
     cache_set(cache_key, response.model_dump(), ttl=120)
+
+    # Record site event for page view
+    record_site_event(request, "page_view", user=current_user)
 
     return response
 

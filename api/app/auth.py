@@ -6,16 +6,13 @@ import secrets
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
 
 import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-if TYPE_CHECKING:
-    from . import models
-
+from . import models
 from .deps import get_db
 
 # Security scheme for Bearer token
@@ -164,6 +161,42 @@ def revoke_refresh_token(token: str, db: Session) -> bool:
         return True
     
     return False
+
+
+def mark_refresh_token_rotated(token: str, db: Session, grace_seconds: int = 60) -> None:
+    """
+    Mark a refresh token as rotated with a grace period.
+    
+    Instead of immediately revoking the token, we shorten its expiry to allow
+    a grace period. This handles race conditions where:
+    - Two browser tabs try to refresh simultaneously
+    - Network issues cause the response to be lost
+    - The browser closes before localStorage is updated
+    
+    The token remains valid for grace_seconds after rotation, giving the client
+    time to retry if the first response was lost.
+    
+    Args:
+        token: The raw refresh token string
+        db: Database session
+        grace_seconds: How long the old token remains valid (default 60s)
+    """
+    from . import models
+    from datetime import timezone
+    
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    
+    refresh_token = db.query(models.RefreshToken).filter(
+        models.RefreshToken.token_hash == token_hash
+    ).first()
+    
+    if refresh_token and not refresh_token.revoked:
+        # Set a grace period - token will be invalid after this time
+        grace_expiry = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=grace_seconds)
+        # Use the earlier of existing expiry or grace expiry
+        if refresh_token.expires_at > grace_expiry:
+            refresh_token.expires_at = grace_expiry
+        db.commit()
 
 
 async def get_current_user(
