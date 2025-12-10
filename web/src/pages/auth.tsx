@@ -5,7 +5,7 @@ import Layout from '../components/Layout';
 
 interface AuthTokens {
   token: string;
-  refresh_token: string;  // Required - critical for session persistence
+  refresh_token?: string | null;  // Optional - now stored in HttpOnly cookie, not returned in body
   user_id: number;
   user_key: string;
   public_sqid: string | null;
@@ -52,13 +52,8 @@ export default function AuthPage() {
         const { tokens } = event.data;
         if (tokens) {
           localStorage.setItem('access_token', tokens.access_token || tokens.token);
-          // refresh_token is required - warn if missing
-          if (tokens.refresh_token) {
-            localStorage.setItem('refresh_token', tokens.refresh_token);
-          } else {
-            console.error('[Auth] OAuth response missing refresh_token - this should not happen');
-            localStorage.setItem('refresh_token', '');
-          }
+          // refresh_token is now stored in HttpOnly cookie, not in localStorage
+          // Do not store refresh_token even if provided
           localStorage.setItem('user_id', String(tokens.user_id));
           localStorage.setItem('user_key', tokens.user_key || '');
           localStorage.setItem('public_sqid', tokens.public_sqid || '');
@@ -138,6 +133,7 @@ export default function AuthPage() {
       } else {
         const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
           method: 'POST',
+          credentials: 'include', // CRITICAL: Include cookies to receive refresh token cookie
           headers: {
             'Content-Type': 'application/json',
           },
@@ -177,12 +173,8 @@ export default function AuthPage() {
 
         const data: AuthTokens = await response.json();
         localStorage.setItem('access_token', data.token);
-        // refresh_token is now required by the API - always store it
-        if (data.refresh_token) {
-          localStorage.setItem('refresh_token', data.refresh_token);
-        } else {
-          console.error('[Auth] Login response missing refresh_token - this should not happen');
-        }
+        // refresh_token is now stored in HttpOnly cookie, not in localStorage
+        // Do not store refresh_token even if provided in response
         localStorage.setItem('user_id', String(data.user_id));
         localStorage.setItem('user_key', data.user_key || '');
         localStorage.setItem('public_sqid', data.public_sqid || '');

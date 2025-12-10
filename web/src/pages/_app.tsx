@@ -2,7 +2,7 @@ import type { AppProps } from 'next/app';
 import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import '../styles/globals.css';
-import { getAccessToken, getRefreshToken, isTokenExpired, refreshAccessToken } from '../lib/api';
+import { getAccessToken, isTokenExpired, refreshAccessToken } from '../lib/api';
 import { usePageViewTracking } from '../hooks/usePageViewTracking';
 
 export default function App({ Component, pageProps }: AppProps) {
@@ -29,18 +29,12 @@ export default function App({ Component, pageProps }: AppProps) {
     
     try {
       const token = getAccessToken();
-      const refreshToken = getRefreshToken();
       
-      // No tokens at all - user is logged out, nothing to do
-      if (!token && !refreshToken) {
-        console.log(`[Auth] No tokens found (${reason}) - user not logged in`);
-        return;
-      }
-      
-      // If we have a refresh token but no access token, try to refresh
-      // This can happen if access token was cleared but refresh token remains
-      if (!token && refreshToken) {
-        console.log(`[Auth] No access token but have refresh token, attempting refresh (${reason})`);
+      // If we have no access token, try to refresh using the refresh token cookie
+      // The refresh token is now in HttpOnly cookie, so we can't check for it directly
+      // We'll attempt refresh and let the server tell us if there's no valid refresh token
+      if (!token) {
+        console.log(`[Auth] No access token found, attempting refresh from cookie (${reason})`);
         const success = await refreshAccessToken();
         if (success) {
           console.log('[Auth] Refresh successful - session restored');
@@ -116,10 +110,11 @@ export default function App({ Component, pageProps }: AppProps) {
 
     // Handle storage events from other tabs
     // This synchronizes auth state when another tab logs out or refreshes
+    // Note: refresh_token is now in HttpOnly cookie, so storage events won't fire for it
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === 'access_token' || event.key === 'refresh_token') {
+      if (event.key === 'access_token') {
         console.log(`[Auth] Storage changed from another tab: ${event.key}`);
-        // Another tab modified tokens, re-check our state
+        // Another tab modified access token, re-check our state
         checkAndRefreshToken('storage-sync');
       }
     };

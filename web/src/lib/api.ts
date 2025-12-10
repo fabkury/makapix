@@ -42,21 +42,26 @@ export function getAccessToken(): string | null {
 
 /**
  * Get the stored refresh token from localStorage
+ * 
+ * NOTE: Refresh tokens are now stored in HttpOnly cookies and not accessible to JavaScript.
+ * This function returns null as refresh tokens are handled server-side via cookies.
  */
 export function getRefreshToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("refresh_token");
+  // Refresh token is now in HttpOnly cookie, not accessible to JavaScript
+  return null;
 }
 
 /**
  * Store tokens in localStorage
+ * 
+ * NOTE: Refresh tokens are now stored in HttpOnly cookies and should not be stored in localStorage.
+ * Only the access token is stored in localStorage (short-lived).
  */
 export function storeTokens(accessToken: string, refreshToken?: string | null): void {
   if (typeof window === "undefined") return;
   localStorage.setItem("access_token", accessToken);
-  if (refreshToken) {
-    localStorage.setItem("refresh_token", refreshToken);
-  }
+  // Refresh token is now stored in HttpOnly cookie, not in localStorage
+  // Do not store refreshToken even if provided
 }
 
 /**
@@ -86,11 +91,8 @@ export async function refreshAccessToken(): Promise<boolean> {
     return refreshPromise;
   }
 
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) {
-    console.log("[Auth] No refresh token available");
-    return false;
-  }
+  // Refresh token is now in HttpOnly cookie, so we don't need to check for it
+  // The cookie will be sent automatically with credentials: "include"
 
   isRefreshing = true;
   refreshPromise = (async () => {
@@ -98,10 +100,11 @@ export async function refreshAccessToken(): Promise<boolean> {
       console.log("[Auth] Attempting to refresh access token...");
       const response = await fetch(`${publicBaseUrl}/api/auth/refresh`, {
         method: "POST",
+        credentials: "include", // CRITICAL: Include cookies (refresh token is in cookie)
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ refresh_token: refreshToken }),
+        // No body needed - refresh token is in HttpOnly cookie
       });
 
       if (!response.ok) {
@@ -124,15 +127,15 @@ export async function refreshAccessToken(): Promise<boolean> {
       const data = await response.json();
       
       // Validate the response has required fields
-      if (!data.token || !data.refresh_token) {
-        console.error("[Auth] Refresh response missing required tokens");
+      if (!data.token) {
+        console.error("[Auth] Refresh response missing access token");
         // This is a server bug, but we shouldn't clear tokens - 
         // the old refresh token might still work (grace period)
         return false;
       }
       
-      // Store the new tokens
-      storeTokens(data.token, data.refresh_token);
+      // Store the new access token (refresh token is automatically updated in cookie by server)
+      storeTokens(data.token);
       console.log("[Auth] Tokens refreshed successfully");
       
       // Update all user data from response
@@ -175,7 +178,6 @@ export async function authenticatedFetch(
   options: RequestInit = {}
 ): Promise<Response> {
   let accessToken = getAccessToken();
-  const refreshToken = getRefreshToken();
 
   // Check if token needs refresh before making the request
   if (accessToken && isTokenExpired(accessToken)) {
@@ -183,12 +185,9 @@ export async function authenticatedFetch(
     const refreshed = await refreshAccessToken();
     if (refreshed) {
       accessToken = getAccessToken();
-    } else if (!refreshToken) {
-      // No refresh token available - user needs to log in
-      console.log("[Auth] No refresh token, returning 401");
-      return new Response(null, { status: 401, statusText: "No refresh token available" });
     } else {
-      // Refresh failed but we had a refresh token - it may have been revoked or expired
+      // Refresh failed - refresh token may have been revoked or expired
+      // Refresh token is in cookie, so we can't check it directly
       console.log("[Auth] Refresh failed, returning 401");
       return new Response(null, { status: 401, statusText: "Token refresh failed" });
     }
@@ -206,6 +205,7 @@ export async function authenticatedFetch(
 
     return fetch(url, {
       ...options,
+      credentials: "include", // CRITICAL: Include cookies for all authenticated requests
       headers,
     });
   };
@@ -267,6 +267,40 @@ export async function authenticatedPostJson<TResponse>(
     { body: JSON.stringify(payload) },
     "POST"
   );
+}
+
+/**
+ * Logout the current user by calling the logout endpoint.
+ * This revokes the refresh token in the database and clears the cookie.
+ * 
+ * Note: The logout endpoint requires authentication, but we handle failures gracefully.
+ * Even if the API call fails (e.g., expired access token), we still clear local storage.
+ */
+export async function logout(): Promise<void> {
+  try {
+    // Try to call logout API with authentication
+    // This will revoke the refresh token in the database and clear the cookie
+    const response = await authenticatedFetch(`${publicBaseUrl}/api/auth/logout`, {
+      method: "POST",
+      credentials: "include", // CRITICAL: Include cookies
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+    
+    // Logout endpoint returns 204 on success, but we don't need to check
+    // If it fails (401, etc.), we'll still clear local storage
+    if (!response.ok && response.status !== 401) {
+      console.warn(`[Auth] Logout API returned ${response.status}, but continuing with cleanup`);
+    }
+  } catch (error) {
+    console.error("[Auth] Logout API call failed:", error);
+    // Continue with local cleanup even if API call fails
+  } finally {
+    // Always clear local storage regardless of API call success
+    // This ensures the user appears logged out even if the API call failed
+    clearTokens();
+  }
 }
 
 // ============================================================================

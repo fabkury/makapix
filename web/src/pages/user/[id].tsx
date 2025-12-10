@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
 import CardGrid from '../../components/CardGrid';
-import { authenticatedFetch, authenticatedRequestJson, authenticatedPostJson, clearTokens } from '../../lib/api';
+import { authenticatedFetch, authenticatedRequestJson, authenticatedPostJson, clearTokens, logout } from '../../lib/api';
 
 interface User {
   id: number;
@@ -292,15 +292,10 @@ export default function UserProfilePage() {
   };
 
   // Handle logout with confirmation
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (window.confirm('Are you sure you want to log out?')) {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      localStorage.removeItem('user_id');
-      localStorage.removeItem('user_key');
-      localStorage.removeItem('public_sqid');
-      localStorage.removeItem('user_handle');
-      localStorage.removeItem('user_display_name');
+      // Call logout API to revoke refresh token and clear cookie
+      await logout();
       router.push('/');
     }
   };

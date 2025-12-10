@@ -107,13 +107,8 @@ export default function Layout({ children, title, description }: LayoutProps) {
         const { tokens } = event.data;
         if (tokens) {
           localStorage.setItem('access_token', tokens.access_token || tokens.token);
-          // refresh_token is required - warn if missing but still store empty to avoid undefined
-          if (tokens.refresh_token) {
-            localStorage.setItem('refresh_token', tokens.refresh_token);
-          } else {
-            console.error('[Auth] OAuth response missing refresh_token - this should not happen');
-            localStorage.setItem('refresh_token', '');
-          }
+          // refresh_token is now stored in HttpOnly cookie, not in localStorage
+          // Do not store refresh_token even if provided
           localStorage.setItem('user_id', String(tokens.user_id));
           localStorage.setItem('user_key', tokens.user_key || '');
           localStorage.setItem('public_sqid', tokens.public_sqid || '');

@@ -12,12 +12,22 @@ from uuid import UUID
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..auth import check_user_can_authenticate, create_access_token, create_refresh_token, get_current_user, mark_refresh_token_rotated, revoke_refresh_token, verify_refresh_token
+from ..auth import (
+    check_user_can_authenticate,
+    clear_refresh_token_cookie,
+    create_access_token,
+    create_refresh_token,
+    get_current_user,
+    mark_refresh_token_rotated,
+    revoke_refresh_token,
+    set_refresh_token_cookie,
+    verify_refresh_token,
+)
 from ..deps import get_db
 from ..github import verify_installation_belongs_to_app
 from ..services.auth_identities import (
@@ -270,6 +280,7 @@ def register(
 def login(
     payload: schemas.LoginRequest,
     request: Request,
+    response: Response,
     db: Session = Depends(get_db),
 ) -> schemas.OAuthTokens:
     """
@@ -278,9 +289,12 @@ def login(
     Requires email verification for password-based login.
     Rate limited to 10 login attempts per 5 minutes per IP address.
     
+    The refresh token is stored in an HttpOnly cookie and not returned in the response body.
+    
     Args:
         payload: Login credentials (email and password)
         request: HTTP request (used for rate limiting IP extraction)
+        response: HTTP response (used to set cookie)
         db: Database session
     """
     email = payload.email.lower().strip()
@@ -327,14 +341,18 @@ def login(
     access_token = create_access_token(user.user_key)
     refresh_token = create_refresh_token(user.user_key, db)
     
+    # Set refresh token as HttpOnly cookie
+    set_refresh_token_cookie(response, refresh_token, request)
+    
     # Calculate token expiration time
     from ..auth import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
     from datetime import timezone
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
     
+    # Return response without refresh_token (it's in the cookie)
     return schemas.OAuthTokens(
         token=access_token,
-        refresh_token=refresh_token,
+        refresh_token=None,  # Stored in HttpOnly cookie, not returned in body
         user_id=user.id,
         user_key=user.user_key,
         public_sqid=user.public_sqid,
@@ -799,6 +817,7 @@ def github_login(installation_id: int = Query(None)):
 @router.get("/github/callback")
 def github_callback(
     request: Request,
+    response: Response,
     code: str = Query(...),
     state: str = Query(...),
     installation_id: int = Query(None),
@@ -1092,6 +1111,9 @@ def github_callback(
                 detail="Failed to generate authentication tokens. Please try again."
             )
 
+        # Set refresh token as HttpOnly cookie
+        set_refresh_token_cookie(response, makapix_refresh_token, request)
+
         # Determine the base URL from the request
         base_url = str(request.base_url).rstrip('/')
         # Handle both http and https
@@ -1148,9 +1170,9 @@ def github_callback(
             
             <script>
                 // Use secure data passing via JSON to prevent XSS
+                // Note: refresh_token is now stored in HttpOnly cookie, not in localStorage
                 const authData = {{
                     access_token: {json.dumps(makapix_access_token)},
-                    refresh_token: {json.dumps(makapix_refresh_token)},
                     user_id: {json.dumps(str(user.id))},
                     user_handle: {json.dumps(user.handle)}
                 }};
@@ -1159,10 +1181,9 @@ def github_callback(
                 console.log('User ID:', authData.user_id);
                 console.log('Handle:', authData.user_handle);
                 
-                // Store tokens in localStorage for the main app
+                // Store access token in localStorage (refresh token is in HttpOnly cookie)
                 try {{
                     localStorage.setItem('access_token', authData.access_token);
-                    localStorage.setItem('refresh_token', authData.refresh_token);
                     localStorage.setItem('user_id', authData.user_id);
                     localStorage.setItem('user_handle', authData.user_handle);
                     
@@ -1206,7 +1227,12 @@ def github_callback(
     response_model=schemas.OAuthTokens,
     status_code=status.HTTP_201_CREATED,
 )
-def exchange_github_code(payload: schemas.GithubExchangeRequest, db: Session = Depends(get_db)) -> schemas.OAuthTokens:
+def exchange_github_code(
+    payload: schemas.GithubExchangeRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db)
+) -> schemas.OAuthTokens:
     """
     Exchange GitHub OAuth code for Makapix JWT.
     """
@@ -1269,7 +1295,7 @@ def exchange_github_code(payload: schemas.GithubExchangeRequest, db: Session = D
     if identity:
         # Existing user
         user = db.query(models.User).filter(models.User.id == identity.user_id).first()
-    if not user:
+        if not user:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="User account not found"
@@ -1345,14 +1371,18 @@ def exchange_github_code(payload: schemas.GithubExchangeRequest, db: Session = D
     access_token = create_access_token(user.user_key)
     refresh_token = create_refresh_token(user.user_key, db)
     
+    # Set refresh token as HttpOnly cookie
+    set_refresh_token_cookie(response, refresh_token, request)
+    
     # Calculate token expiration time
     from ..auth import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
     from datetime import timezone
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
     
+    # Return response without refresh_token (it's in the cookie)
     return schemas.OAuthTokens(
         token=access_token,
-        refresh_token=refresh_token,
+        refresh_token=None,  # Stored in HttpOnly cookie, not returned in body
         user_id=user.id,
         user_key=user.user_key,
         public_sqid=user.public_sqid,
@@ -1362,17 +1392,32 @@ def exchange_github_code(payload: schemas.GithubExchangeRequest, db: Session = D
 
 
 @router.post("/refresh", response_model=schemas.OAuthTokens)
-def refresh_token(payload: schemas.RefreshTokenRequest, db: Session = Depends(get_db)) -> schemas.OAuthTokens:
+def refresh_token(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> schemas.OAuthTokens:
     """
-    Refresh access token using refresh token.
+    Refresh access token using refresh token from HttpOnly cookie.
     
     Uses token rotation with a grace period: the old refresh token remains valid
     for 60 seconds after a new one is issued. This handles race conditions where:
     - Two browser tabs try to refresh simultaneously
     - Network issues cause the response to be lost
     - The browser closes before the new token is stored
+    
+    The refresh token is read from the HttpOnly cookie and the new refresh token
+    is set in the cookie. It is not returned in the response body.
     """
-    user = verify_refresh_token(payload.refresh_token, db)
+    # Read refresh token from cookie
+    refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No refresh token found in cookie"
+        )
+    
+    user = verify_refresh_token(refresh_token, db)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -1385,20 +1430,24 @@ def refresh_token(payload: schemas.RefreshTokenRequest, db: Session = Depends(ge
     # Mark the old refresh token as rotated with a 60-second grace period
     # This allows the client to retry if the response is lost, while still
     # providing security through token rotation
-    mark_refresh_token_rotated(payload.refresh_token, db, grace_seconds=60)
+    mark_refresh_token_rotated(refresh_token, db, grace_seconds=60)
     
     # Generate new tokens
     access_token = create_access_token(user.user_key)
     new_refresh_token = create_refresh_token(user.user_key, db)
+    
+    # Set new refresh token as HttpOnly cookie
+    set_refresh_token_cookie(response, new_refresh_token, request)
     
     # Calculate token expiration time
     from ..auth import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
     from datetime import timezone
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
     
+    # Return response without refresh_token (it's in the cookie)
     return schemas.OAuthTokens(
         token=access_token,
-        refresh_token=new_refresh_token,
+        refresh_token=None,  # Stored in HttpOnly cookie, not returned in body
         user_id=user.id,
         user_key=user.user_key,
         public_sqid=user.public_sqid,
@@ -1409,15 +1458,25 @@ def refresh_token(payload: schemas.RefreshTokenRequest, db: Session = Depends(ge
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(
-    payload: schemas.RefreshTokenRequest,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ) -> None:
     """
-    Logout current user by revoking refresh token.
+    Logout current user by revoking refresh token from cookie.
+    
+    The refresh token is read from the HttpOnly cookie, revoked in the database,
+    and the cookie is cleared.
     """
-    # Revoke the refresh token
-    revoke_refresh_token(payload.refresh_token, db)
+    # Read refresh token from cookie
+    refresh_token = request.cookies.get("refresh_token")
+    if refresh_token:
+        # Revoke the refresh token in database
+        revoke_refresh_token(refresh_token, db)
+    
+    # Clear the refresh token cookie
+    clear_refresh_token_cookie(response, request)
 
 
 @router.get("/me", response_model=schemas.MeResponse)

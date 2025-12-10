@@ -18,7 +18,9 @@ export const getServerSideProps: GetServerSideProps = async ({ res, query }) => 
   res.setHeader("Content-Type", "text/html; charset=utf-8");
 
   const script = `(() => {
-    const STORAGE_KEYS = ['access_token','refresh_token','user_id','user_handle','user_display_name'];
+    // Note: refresh_token is now stored in HttpOnly cookie and not accessible to JavaScript
+    // It cannot be transferred via URL hash, but will be sent automatically with requests
+    const STORAGE_KEYS = ['access_token','user_id','user_handle','user_display_name'];
     const params = new URLSearchParams(window.location.search);
     const returnParam = params.get('return');
     const reasonParam = params.get('reason') || '';

@@ -770,10 +770,14 @@ class TLSCertBundle(BaseModel):
 
 
 class OAuthTokens(BaseModel):
-    """OAuth token response."""
+    """OAuth token response.
+    
+    Note: refresh_token is now stored in HttpOnly cookie and not returned in response body.
+    This field is optional for backward compatibility during migration.
+    """
 
     token: str
-    refresh_token: str  # Always required - critical for session persistence
+    refresh_token: str | None = None  # Now stored in HttpOnly cookie, not returned in body
     user_id: int
     user_key: UUID  # UUID for legacy URL building
     public_sqid: str | None = None  # Sqids for canonical URLs
@@ -791,7 +795,11 @@ class GithubExchangeRequest(BaseModel):
 
 
 class RefreshTokenRequest(BaseModel):
-    """Token refresh request."""
+    """Token refresh request.
+    
+    DEPRECATED: Refresh tokens are now read from HttpOnly cookies, not request body.
+    This schema is kept for backward compatibility but is no longer used by the refresh endpoint.
+    """
 
     refresh_token: str
 

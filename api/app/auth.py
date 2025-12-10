@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 import jwt
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -35,7 +35,7 @@ if len(JWT_SECRET_KEY) < 32:
         "Note: This checks length, not entropy. Use cryptographically random values."
     )
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "240"))
 JWT_REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "30"))
 
 
@@ -470,5 +470,126 @@ async def get_current_user_or_anonymous(
     
     return AnonymousUser(ip=ip, guest_name=guest_name)
 
+
+# ============================================================================
+# COOKIE CONFIGURATION
+# ============================================================================
+
+
+def get_cookie_config(request: Request | None = None) -> dict[str, any]:
+    """
+    Get cookie configuration from environment variables.
+    
+    Environment variables:
+    - COOKIE_SECURE: Set to 'true' for HTTPS-only cookies (default: auto-detect from request)
+    - COOKIE_DOMAIN: Cookie domain (default: '.makapix.club' for subdomain support)
+    - COOKIE_SAMESITE: SameSite attribute (default: 'lax')
+    
+    Returns dict with cookie settings for use with response.set_cookie()
+    """
+    # Determine if we're in production (HTTPS)
+    secure_env = os.getenv("COOKIE_SECURE", "").lower()
+    if secure_env == "true":
+        secure = True
+    elif secure_env == "false":
+        secure = False
+    else:
+        # Auto-detect from request if available
+        if request:
+            # Check if request is HTTPS (production)
+            secure = (
+                request.url.scheme == "https"
+                or request.headers.get("x-forwarded-proto") == "https"
+            )
+        else:
+            # Default to True for production safety
+            secure = True
+    
+    # Get domain from environment, or auto-detect from request
+    domain_env = os.getenv("COOKIE_DOMAIN", "")
+    
+    if domain_env:
+        # Use explicitly configured domain
+        # Empty string means omit domain (useful for localhost)
+        domain = domain_env if domain_env.strip() else None
+    elif request:
+        # Auto-detect domain from request
+        host = request.headers.get("host", "")
+        # Remove port if present (e.g., "localhost:3000" -> "localhost")
+        hostname = host.split(":")[0] if ":" in host else host
+        
+        # For localhost/127.0.0.1, don't set domain attribute (browsers reject domain on localhost)
+        if hostname in ("localhost", "127.0.0.1") or hostname.startswith("localhost"):
+            domain = None  # Omit domain attribute for localhost
+        elif "." in hostname:
+            # For production domains, use dot prefix for subdomain support
+            # Extract base domain (e.g., "dev.makapix.club" -> ".makapix.club")
+            parts = hostname.split(".")
+            if len(parts) >= 2:
+                domain = "." + ".".join(parts[-2:])  # Last two parts (e.g., "makapix.club")
+            else:
+                domain = None
+        else:
+            # Single-word hostname without dots - likely localhost variant
+            domain = None
+    else:
+        # Default to .makapix.club for production (when no request available)
+        domain = ".makapix.club"
+    
+    # Get SameSite setting (default to 'lax' for CSRF protection)
+    samesite = os.getenv("COOKIE_SAMESITE", "lax").lower()
+    if samesite not in ["strict", "lax", "none"]:
+        samesite = "lax"
+    
+    cookie_config = {
+        "httponly": True,
+        "secure": secure,
+        "samesite": samesite,
+        "path": "/",
+        "max_age": JWT_REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,  # 30 days in seconds
+    }
+    
+    # Only set domain if it's not None (None means omit the attribute, which works for localhost)
+    if domain is not None:
+        cookie_config["domain"] = domain
+    
+    return cookie_config
+
+
+def set_refresh_token_cookie(response: Response, refresh_token: str, request: Request | None = None) -> None:
+    """
+    Set refresh token as HttpOnly cookie.
+    
+    Args:
+        response: FastAPI Response object
+        refresh_token: The refresh token string to store
+        request: Optional Request object for auto-detecting HTTPS
+    """
+    cookie_config = get_cookie_config(request)
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        **cookie_config
+    )
+
+
+def clear_refresh_token_cookie(response: Response, request: Request | None = None) -> None:
+    """
+    Clear refresh token cookie.
+    
+    Args:
+        response: FastAPI Response object
+        request: Optional Request object for auto-detecting domain
+    """
+    cookie_config = get_cookie_config(request)
+    delete_kwargs = {
+        "key": "refresh_token",
+        "path": cookie_config["path"],
+    }
+    # Only include domain if it was set (None means omit, which works for localhost)
+    if "domain" in cookie_config:
+        delete_kwargs["domain"] = cookie_config["domain"]
+    
+    response.delete_cookie(**delete_kwargs)
 
 
