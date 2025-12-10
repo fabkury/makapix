@@ -38,7 +38,12 @@ def get_user_by_sqid(sqid: str, db: Session) -> models.User:
         )
     
     return user
-from ..mqtt.cert_generator import generate_client_certificate, load_ca_certificate
+from ..mqtt.cert_generator import (
+    disconnect_mqtt_client,
+    generate_client_certificate,
+    load_ca_certificate,
+    revoke_certificate,
+)
 from ..mqtt.player_commands import log_command, publish_player_command
 from ..services.rate_limit import check_rate_limit
 from ..utils.registration import generate_registration_code
@@ -464,6 +469,7 @@ def delete_player(
     player_name = player.name
     device_model = player.device_model
     firmware_version = player.firmware_version
+    cert_serial = player.cert_serial_number
     
     # Log the device removal as a special "remove_device" command BEFORE deletion
     # This log entry will have player_id set to NULL after the player is deleted
@@ -481,6 +487,35 @@ def delete_player(
             "removed_by": str(current_user.id),
         },
     )
+    
+    # Revoke TLS certificate to prevent reconnection via mTLS
+    if cert_serial:
+        ca_cert_path = os.getenv("MQTT_CA_FILE", "/certs/ca.crt")
+        ca_key_path = os.getenv("MQTT_CA_KEY_FILE", "/certs/ca.key")
+        crl_path = os.getenv("MQTT_CRL_FILE", "/certs/crl.pem")
+        
+        try:
+            revoked = revoke_certificate(
+                serial_number=cert_serial,
+                ca_cert_path=ca_cert_path,
+                ca_key_path=ca_key_path,
+                crl_path=crl_path,
+            )
+            if revoked:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"Revoked certificate {cert_serial} for player {player_key_str}")
+            else:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to revoke certificate {cert_serial} for player {player_key_str}")
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.exception(f"Error revoking certificate for player {player_key_str}: {e}")
+    
+    # Disconnect active MQTT connection (best effort)
+    disconnect_mqtt_client(player.player_key)
     
     # Delete player from database (command logs preserved with player_id = NULL)
     db.delete(player)

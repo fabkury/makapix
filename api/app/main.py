@@ -121,6 +121,10 @@ def run_startup_tasks() -> None:
         run_migrations()
         logger.info("run_startup_tasks: Migrations completed, running seed data...")
         ensure_seed_data()
+        logger.info("run_startup_tasks: Seed data completed, ensuring CRL exists...")
+        # Initialize empty CRL if it doesn't exist
+        from .mqtt.crl_init import ensure_crl_exists
+        ensure_crl_exists()
         _STARTUP_COMPLETE = True
         logger.info("Startup tasks completed.")
     except Exception as e:

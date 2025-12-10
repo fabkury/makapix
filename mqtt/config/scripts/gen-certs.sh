@@ -56,6 +56,50 @@ chmod 644 "${CERT_DIR}/server.key" "${CERT_DIR}/server.crt" "${CERT_DIR}/ca.crt"
 chmod 600 "${CERT_DIR}/ca.key"
 chmod 644 "${CERT_DIR}/ca.srl" 2>/dev/null || true
 
+# Generate empty CRL if it doesn't exist
+CRL_FILE="${CERT_DIR}/crl.pem"
+if [[ ! -f "${CRL_FILE}" ]]; then
+  echo "Generating empty Certificate Revocation List (CRL)..."
+  # Create empty CRL using openssl
+  openssl ca -gencrl -keyfile "${CA_KEY}" -cert "${CA_CRT}" \
+    -out "${CRL_FILE}" -config /dev/stdin << 'CRLEOF'
+[ ca ]
+default_ca = CA_default
+
+[ CA_default ]
+database = /tmp/index.txt
+crlnumber = /tmp/crlnumber
+default_crl_days = 30
+default_md = sha256
+
+[ crl_ext ]
+authorityKeyIdentifier=keyid:always
+CRLEOF
+  
+  # Create minimal database files if they don't exist
+  touch /tmp/index.txt
+  echo 01 > /tmp/crlnumber
+  
+  # Generate the CRL
+  openssl ca -gencrl -keyfile "${CA_KEY}" -cert "${CA_CRT}" \
+    -out "${CRL_FILE}" -config /dev/stdin << 'CRLEOF'
+[ ca ]
+default_ca = CA_default
+
+[ CA_default ]
+database = /tmp/index.txt
+crlnumber = /tmp/crlnumber
+default_crl_days = 30
+default_md = sha256
+
+[ crl_ext ]
+authorityKeyIdentifier=keyid:always
+CRLEOF
+  
+  chmod 644 "${CRL_FILE}"
+  echo "Empty CRL created at ${CRL_FILE}"
+fi
+
 # Generate password file if it doesn't exist
 /mosquitto/config/scripts/gen-passwd.sh
 
