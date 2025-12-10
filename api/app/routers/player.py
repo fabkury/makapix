@@ -495,6 +495,9 @@ def delete_player(
         crl_path = os.getenv("MQTT_CRL_FILE", "/certs/crl.pem")
         
         try:
+            import logging
+            logger = logging.getLogger(__name__)
+            
             revoked = revoke_certificate(
                 serial_number=cert_serial,
                 ca_cert_path=ca_cert_path,
@@ -502,16 +505,10 @@ def delete_player(
                 crl_path=crl_path,
             )
             if revoked:
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.info(f"Revoked certificate {cert_serial} for player {player_key_str}")
             else:
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.warning(f"Failed to revoke certificate {cert_serial} for player {player_key_str}")
         except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
             logger.exception(f"Error revoking certificate for player {player_key_str}: {e}")
     
     # Disconnect active MQTT connection (best effort)

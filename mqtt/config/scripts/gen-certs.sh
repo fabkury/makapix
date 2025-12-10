@@ -60,27 +60,12 @@ chmod 644 "${CERT_DIR}/ca.srl" 2>/dev/null || true
 CRL_FILE="${CERT_DIR}/crl.pem"
 if [[ ! -f "${CRL_FILE}" ]]; then
   echo "Generating empty Certificate Revocation List (CRL)..."
-  # Create empty CRL using openssl
-  openssl ca -gencrl -keyfile "${CA_KEY}" -cert "${CA_CRT}" \
-    -out "${CRL_FILE}" -config /dev/stdin << 'CRLEOF'
-[ ca ]
-default_ca = CA_default
-
-[ CA_default ]
-database = /tmp/index.txt
-crlnumber = /tmp/crlnumber
-default_crl_days = 30
-default_md = sha256
-
-[ crl_ext ]
-authorityKeyIdentifier=keyid:always
-CRLEOF
   
   # Create minimal database files if they don't exist
   touch /tmp/index.txt
   echo 01 > /tmp/crlnumber
   
-  # Generate the CRL
+  # Create empty CRL using openssl
   openssl ca -gencrl -keyfile "${CA_KEY}" -cert "${CA_CRT}" \
     -out "${CRL_FILE}" -config /dev/stdin << 'CRLEOF'
 [ ca ]
