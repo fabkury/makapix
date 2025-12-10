@@ -9,6 +9,8 @@ from typing import Callable
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from .utils.site_tracking import record_site_event
+
 logger = logging.getLogger(__name__)
 
 # Paths to exclude from API call tracking
@@ -75,8 +77,6 @@ class APITelemetryMiddleware(BaseHTTPMiddleware):
     def _record_api_call(self, request: Request, response: Response) -> None:
         """Record an API call event for telemetry."""
         try:
-            from .utils.site_tracking import record_site_event
-            
             # Record the API call event
             # Note: We don't pass user here as middleware doesn't have access to
             # authenticated user. User association is done by route handlers for
