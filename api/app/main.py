@@ -39,7 +39,7 @@ from .routers import (
     users,
 )
 from .seed import ensure_seed_data
-from .middleware import SecurityHeadersMiddleware
+from .middleware import SecurityHeadersMiddleware, APITelemetryMiddleware
 
 load_dotenv()
 
@@ -178,6 +178,9 @@ app.add_middleware(
 
 # Add security headers middleware
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Add API telemetry middleware to track API calls for the moderator dashboard
+app.add_middleware(APITelemetryMiddleware)
 
 
 # Include all routers
