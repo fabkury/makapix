@@ -52,7 +52,8 @@ class APITelemetryMiddleware(BaseHTTPMiddleware):
         # Process the request
         response = await call_next(request)
         
-        # Track the API call if appropriate (after response to not block)
+        # Track the API call if appropriate
+        # Note: This queues a Celery task so it's lightweight and non-blocking
         if should_track:
             self._record_api_call(request, response)
         
@@ -91,7 +92,9 @@ class APITelemetryMiddleware(BaseHTTPMiddleware):
                 }
             )
             
-            # Also record an error event for 4xx and 5xx responses
+            # Also record a separate error event for 4xx and 5xx responses
+            # This is intentional duplication: api_call counts total API usage,
+            # while error events enable error type breakdown and alerting
             if response.status_code >= 400:
                 error_type = self._classify_error(response.status_code)
                 record_site_event(
