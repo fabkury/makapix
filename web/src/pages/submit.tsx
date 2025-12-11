@@ -80,19 +80,54 @@ export default function SubmitPage() {
   const validateImageDimensions = useCallback((width: number, height: number): ValidationError[] => {
     const errors: ValidationError[] = [];
     
-    // Check if square
-    if (width !== height) {
+    // Check minimum size
+    if (width < 1 || height < 1) {
       errors.push({
         type: 'dimensions',
-        message: `Image must be a perfect square. Got ${width}x${height}`,
+        message: 'Image dimensions must be at least 1x1',
       });
+      return errors;
     }
     
-    // Check max size
-    if (width > MAX_CANVAS_SIZE || height > MAX_CANVAS_SIZE) {
+    // Check if either dimension exceeds 256
+    if (width > 256 || height > 256) {
       errors.push({
         type: 'dimensions',
-        message: `Maximum dimensions are ${MAX_CANVAS_SIZE}x${MAX_CANVAS_SIZE}. Got ${width}x${height}`,
+        message: `Image dimensions exceed maximum of 256x256. Got ${width}x${height}`,
+      });
+      return errors;
+    }
+    
+    // Define allowed sizes for dimensions under 128x128
+    // Includes both orientations (e.g., 8x16 and 16x8 are both allowed)
+    const allowedSizes = [
+      [8, 8], [8, 16], [16, 8],
+      [16, 16], [16, 32], [32, 16],
+      [32, 32], [32, 64], [64, 32],
+      [64, 64], [64, 128], [128, 64],
+    ];
+    
+    // If both dimensions are >= 128, any size is allowed (up to 256x256)
+    if (width >= 128 && height >= 128) {
+      return errors;
+    }
+    
+    // Otherwise, check if the size is in the allowed list
+    // This covers cases where at least one dimension is < 128
+    const isAllowed = allowedSizes.some(([w, h]) => 
+      width === w && height === h
+    );
+    
+    if (!isAllowed) {
+      // Show unique sizes in error message (group by min/max to show both orientations)
+      const sizeSet = new Set<string>();
+      allowedSizes.forEach(([w, h]) => {
+        sizeSet.add(`${w}x${h}`);
+      });
+      const allowedStr = Array.from(sizeSet).sort().join(', ');
+      errors.push({
+        type: 'dimensions',
+        message: `Image size ${width}x${height} is not allowed. Under 128x128, only these sizes are allowed (rotations included): ${allowedStr}`,
       });
     }
     
@@ -313,7 +348,7 @@ export default function SubmitPage() {
                 <label htmlFor="file-upload" className="upload-label">
                   <span className="upload-icon">📁</span>
                   <span className="upload-text">Drop image here or click to select</span>
-                  <span className="upload-hint">PNG, GIF, or WebP • Max 5 MB • Square, up to 256x256</span>
+                  <span className="upload-hint">PNG, GIF, or WebP • Max 5 MB • See size rules below</span>
                 </label>
               )}
             </div>

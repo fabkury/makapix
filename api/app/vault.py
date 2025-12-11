@@ -176,7 +176,13 @@ def get_artwork_url(artwork_id: UUID, extension: str) -> str:
 
 def validate_image_dimensions(width: int, height: int) -> tuple[bool, str | None]:
     """
-    Validate that the image is a perfect square and within size limits.
+    Validate image dimensions according to Makapix Club size rules.
+    
+    Rules:
+    - Under 128x128: Only specific sizes allowed (8x8, 8x16, 16x8, 16x16, 16x32, 32x16, 32x32, 32x64, 64x32, 64x64, 64x128, 128x64)
+      All 90-degree rotations of these sizes are also allowed (e.g., 8x16 and 16x8 are both valid)
+    - From 128x128 to 256x256 (inclusive): Any size allowed (square or rectangular)
+    - Above 256x256: Not allowed
     
     Args:
         width: Image width in pixels
@@ -185,14 +191,33 @@ def validate_image_dimensions(width: int, height: int) -> tuple[bool, str | None
     Returns:
         Tuple of (is_valid, error_message)
     """
-    if width != height:
-        return False, f"Image must be a perfect square. Got {width}x{height}"
-    
-    if width > MAX_CANVAS_SIZE:
-        return False, f"Image dimensions exceed maximum of {MAX_CANVAS_SIZE}x{MAX_CANVAS_SIZE}. Got {width}x{height}"
-    
-    if width < 1:
+    if width < 1 or height < 1:
         return False, "Image dimensions must be at least 1x1"
+    
+    # Check if either dimension exceeds 256
+    if width > 256 or height > 256:
+        return False, f"Image dimensions exceed maximum of 256x256. Got {width}x{height}"
+    
+    # Define allowed sizes for dimensions under 128x128
+    # Includes both orientations (e.g., 8x16 and 16x8 are both allowed)
+    allowed_sizes = [
+        (8, 8), (8, 16), (16, 8),
+        (16, 16), (16, 32), (32, 16),
+        (32, 32), (32, 64), (64, 32),
+        (64, 64), (64, 128), (128, 64),
+    ]
+    
+    # If both dimensions are >= 128, any size is allowed (up to 256x256)
+    if width >= 128 and height >= 128:
+        return True, None
+    
+    # Otherwise, check if the size is in the allowed list
+    # This covers cases where at least one dimension is < 128
+    if (width, height) not in allowed_sizes:
+        # Create a sorted list for the error message (remove duplicates)
+        unique_sizes = sorted(set(allowed_sizes))
+        allowed_str = ", ".join([f"{w}x{h}" for w, h in unique_sizes])
+        return False, f"Image size {width}x{height} is not allowed. Under 128x128, only these sizes are allowed (rotations included): {allowed_str}"
     
     return True, None
 

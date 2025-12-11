@@ -44,7 +44,6 @@ from ..utils.site_tracking import record_site_event
 from ..services.post_stats import annotate_posts_with_counts, get_user_liked_post_ids
 from ..vault import (
     ALLOWED_MIME_TYPES,
-    MAX_CANVAS_SIZE,
     MAX_FILE_SIZE_BYTES,
     get_artwork_url,
     save_artwork_to_vault,
@@ -177,23 +176,12 @@ def create_post(
             detail=f"Invalid canvas format '{payload.canvas}'. Expected format: WIDTHxHEIGHT (e.g., '64x64')"
         )
     
-    # Validate canvas dimensions against allowed list
-    allowed_canvases = [
-        "16x16",
-        "32x32",
-        "64x64",
-        "96x64",
-        "128x64",
-        "128x128",
-        "160x128",
-        "240x135",
-        "240x240",
-        "256x256",
-    ]
-    if payload.canvas not in allowed_canvases:
+    # Validate canvas dimensions using the same validation logic as image uploads
+    is_valid, error = validate_image_dimensions(width, height)
+    if not is_valid:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Canvas size '{payload.canvas}' not allowed. Allowed sizes: {', '.join(allowed_canvases)}",
+            detail=error,
         )
 
     # Validate file size (basic check)
@@ -277,8 +265,9 @@ async def upload_artwork(
     Upload a single artwork image directly to the vault.
 
     The image must be:
-    - A perfect square (width == height)
-    - Max 256x256 pixels
+    - Under 128x128: Only specific sizes allowed (8x8, 8x16, 16x16, 16x32, 32x32, 32x64, 64x64, 64x128)
+    - From 128x128 to 256x256 (inclusive): Any size allowed (square or rectangular)
+    - Above 256x256: Not allowed
     - Max 5 MB file size
     - PNG, GIF, or WebP format
 
@@ -361,7 +350,7 @@ async def upload_artwork(
     except Exception as e:
         logger.warning(f"Failed to detect transparency: {e}")
 
-    # Validate dimensions (must be square, max 256x256)
+    # Validate dimensions according to Makapix Club size rules
     is_valid, error = validate_image_dimensions(width, height)
     if not is_valid:
         raise HTTPException(

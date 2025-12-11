@@ -8,7 +8,11 @@ from typing import Tuple, List
 
 MAX_BUNDLE_SIZE = 50 * 1024 * 1024  # 50 MB
 MAX_FILE_SIZE = 15 * 1024 * 1024  # 15 MB per artwork
-ALLOWED_CANVASES = ["16x16", "32x32", "64x64", "128x128", "256x256"]
+
+# Note: Canvas validation now uses validate_image_dimensions from vault.py
+# This list is kept for backward compatibility but should not be used for validation
+# Rotations are included (e.g., 8x16 and 16x8 are both allowed)
+ALLOWED_CANVASES = ["8x8", "8x16", "16x8", "16x16", "16x32", "32x16", "32x32", "32x64", "64x32", "64x64", "64x128", "128x64"]
 
 
 def is_safe_path(base_path: Path, target_path: str) -> bool:
@@ -114,10 +118,24 @@ def validate_manifest(manifest: dict) -> Tuple[bool, List[str]]:
                 elif len(title) > 200:
                     errors.append(f"Title too long in artwork {idx} (max 200 chars)")
                 
-                # Canvas validation
+                # Canvas validation using the same logic as image uploads
                 canvas = art.get("canvas")
-                if canvas not in ALLOWED_CANVASES:
-                    errors.append(f"Invalid canvas in artwork {idx}: {canvas}. Allowed: {ALLOWED_CANVASES}")
+                if canvas:
+                    try:
+                        # Parse canvas dimensions from "WxH" format
+                        width_str, height_str = canvas.split('x')
+                        width = int(width_str)
+                        height = int(height_str)
+                        
+                        # Import here to avoid circular imports
+                        from ..vault import validate_image_dimensions
+                        is_valid, error = validate_image_dimensions(width, height)
+                        if not is_valid:
+                            errors.append(f"Invalid canvas in artwork {idx}: {error}")
+                    except (ValueError, AttributeError):
+                        errors.append(f"Invalid canvas format in artwork {idx}: '{canvas}'. Expected format: WIDTHxHEIGHT (e.g., '64x64')")
+                else:
+                    errors.append(f"Missing canvas in artwork {idx}")
                 
                 # File size validation
                 file_kb = art.get("file_kb", 0)
