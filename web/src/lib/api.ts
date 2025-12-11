@@ -53,7 +53,7 @@ export function getRefreshToken(): string | null {
 
 /**
  * Store tokens in localStorage
- * 
+ *
  * NOTE: Refresh tokens are now stored in HttpOnly cookies and should not be stored in localStorage.
  * Only the access token is stored in localStorage (short-lived).
  */
@@ -61,7 +61,8 @@ export function storeTokens(accessToken: string, refreshToken?: string | null): 
   if (typeof window === "undefined") return;
   localStorage.setItem("access_token", accessToken);
   // Refresh token is now stored in HttpOnly cookie, not in localStorage
-  // Do not store refreshToken even if provided
+  // Clean up old refresh token if it exists (migration from old system)
+  localStorage.removeItem("refresh_token");
 }
 
 /**
