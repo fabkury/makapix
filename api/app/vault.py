@@ -201,7 +201,7 @@ def validate_image_dimensions(width: int, height: int) -> tuple[bool, str | None
     # Define allowed sizes for dimensions under 128x128
     # Includes both orientations (e.g., 8x16 and 16x8 are both allowed)
     allowed_sizes = [
-        (8, 8), (8, 16), (16, 8),
+        (8, 8), (8, 16), (16, 8), (8, 32), (32, 8),
         (16, 16), (16, 32), (32, 16),
         (32, 32), (32, 64), (64, 32),
         (64, 64), (64, 128), (128, 64),

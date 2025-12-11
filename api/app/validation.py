@@ -10,9 +10,6 @@ MAX_BUNDLE_SIZE = 50 * 1024 * 1024  # 50 MB
 MAX_FILE_SIZE = 15 * 1024 * 1024  # 15 MB per artwork
 
 # Note: Canvas validation now uses validate_image_dimensions from vault.py
-# This list is kept for backward compatibility but should not be used for validation
-# Rotations are included (e.g., 8x16 and 16x8 are both allowed)
-ALLOWED_CANVASES = ["8x8", "8x16", "16x8", "16x16", "16x32", "32x16", "32x32", "32x64", "64x32", "64x64", "64x128", "128x64"]
 
 
 def is_safe_path(base_path: Path, target_path: str) -> bool:

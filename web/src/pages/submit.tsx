@@ -101,7 +101,7 @@ export default function SubmitPage() {
     // Define allowed sizes for dimensions under 128x128
     // Includes both orientations (e.g., 8x16 and 16x8 are both allowed)
     const allowedSizes = [
-      [8, 8], [8, 16], [16, 8],
+      [8, 8], [8, 16], [16, 8], [8, 32], [32, 8],
       [16, 16], [16, 32], [32, 16],
       [32, 32], [32, 64], [64, 32],
       [64, 64], [64, 128], [128, 64],
@@ -245,9 +245,12 @@ export default function SubmitPage() {
       const data = await response.json();
       setUploadedArtwork({
         id: data.post.id,
+        public_sqid: data.post.public_sqid,
         title: data.post.title,
         art_url: data.post.art_url,
         canvas: data.post.canvas,
+        width: data.post.width,
+        height: data.post.height,
         public_visibility: data.post.public_visibility,
       });
       

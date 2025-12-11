@@ -64,7 +64,7 @@ class Config(BaseModel):
     max_comments_per_post: int = 1000
     max_emojis_per_user_per_post: int = 5
     max_hashtags_per_post: int = 64
-    allowed_canvases: list[str] = ["8x8", "8x16", "16x8", "16x16", "16x32", "32x16", "32x32", "32x64", "64x32", "64x64", "64x128", "128x64"]
+    allowed_canvases: list[str] = ["8x8", "8x16", "16x8", "8x32", "32x8", "16x16", "16x32", "32x16", "32x32", "32x64", "64x32", "64x64", "64x128", "128x64"]
     # Note: Sizes from 128x128 to 256x256 (inclusive) are also allowed but not listed here
     # All 90-degree rotations of the listed sizes are allowed (e.g., 8x16 and 16x8 are both valid)
     max_art_file_kb_default: int = 15 * 1024  # 15 MB
