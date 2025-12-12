@@ -196,9 +196,12 @@ client.loop_stop()
 
 ## Example Implementation (C/ESP32)
 
+**Note:** The examples below are simplified for clarity. In production code, use a proper UUID library or follow RFC 4122 for UUID v4 generation.
+
 ```c
 #include "mqtt_client.h"
 #include "cJSON.h"
+#include "esp_random.h"  // For esp_random() function
 
 // Send reaction
 void send_reaction(esp_mqtt_client_handle_t client, 
