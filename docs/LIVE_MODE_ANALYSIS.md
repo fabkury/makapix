@@ -142,7 +142,7 @@ All the following must be true for devices to synchronize:
 #### 1. Master Seed Storage
 ```sql
 ALTER TABLE players 
-ADD COLUMN master_seed INTEGER NOT NULL DEFAULT 4011;  -- 0xFAB
+ADD COLUMN master_seed INTEGER NOT NULL DEFAULT 4011;  -- 0xFAB in hex = 4011 in decimal
 ```
 
 #### 2. Channel Metadata
@@ -238,9 +238,9 @@ Options:
 ### 1. Channel Creation Date
 **Question:** What is the actual channel creation date?
 
-**Issue:** Requirement states "Jan 16, 2026" but that's in the future.
+**Issue:** Requirement states "all channels were created on Jan. 16, 2026" which is approximately one month in the future from the time of this writing (Dec 2025).
 
-**Decision needed:** Clarify date and timezone (UTC assumed).
+**Decision needed:** Clarify if this is the intended date or if it should be Jan 16, 2025 (past), and confirm timezone (UTC assumed).
 
 ### 2. Dwell Time Defaults
 **Question:** What are the default dwell times?
@@ -396,7 +396,7 @@ start_frame = floor(time_into_animation / frame_duration)
 #### 1.1 Database Schema
 ```sql
 ALTER TABLE players 
-ADD COLUMN master_seed INTEGER NOT NULL DEFAULT 4011;
+ADD COLUMN master_seed INTEGER NOT NULL DEFAULT 4011;  -- 0xFAB in hex
 
 ALTER TABLE posts 
 ADD COLUMN dwell_time_ms INTEGER NULL;
@@ -491,7 +491,7 @@ int64_t get_dwell_time(Post* post, Playlist* playlist) {
 
 Hardcode in firmware:
 ```c
-#define CHANNEL_CREATION_TIME_MS 1768531200000LL  // 2026-01-16 00:00:00 UTC
+#define CHANNEL_CREATION_TIME_MS 1768521600000LL  // 2026-01-16 00:00:00 UTC
 ```
 
 ---
