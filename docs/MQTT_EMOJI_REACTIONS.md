@@ -208,8 +208,15 @@ void send_reaction(esp_mqtt_client_handle_t client,
     char topic[128];
     char request_id[37]; // UUID string
     
-    // Generate request ID (simplified - use proper UUID generation)
-    sprintf(request_id, "%08x-%04x-%04x", rand(), rand(), rand());
+    // Generate request ID (use proper UUID library in production)
+    // Example with esp_random() for better entropy
+    sprintf(request_id, "%08x-%04x-4%03x-%04x-%08x%04x", 
+            esp_random(), 
+            (esp_random() & 0xFFFF),
+            (esp_random() & 0xFFF),
+            ((esp_random() & 0x3FFF) | 0x8000),
+            esp_random(),
+            (esp_random() & 0xFFFF));
     
     // Build topic
     sprintf(topic, "makapix/player/%s/request/%s", player_key, request_id);
@@ -240,7 +247,14 @@ void remove_reaction(esp_mqtt_client_handle_t client,
     char topic[128];
     char request_id[37];
     
-    sprintf(request_id, "%08x-%04x-%04x", rand(), rand(), rand());
+    // Generate request ID (use proper UUID library in production)
+    sprintf(request_id, "%08x-%04x-4%03x-%04x-%08x%04x", 
+            esp_random(), 
+            (esp_random() & 0xFFFF),
+            (esp_random() & 0xFFF),
+            ((esp_random() & 0x3FFF) | 0x8000),
+            esp_random(),
+            (esp_random() & 0xFFFF));
     sprintf(topic, "makapix/player/%s/request/%s", player_key, request_id);
     
     cJSON *root = cJSON_CreateObject();
@@ -259,15 +273,27 @@ void remove_reaction(esp_mqtt_client_handle_t client,
 
 // Handle response
 void handle_response(const char* data) {
+    if (data == NULL) {
+        printf("Error: NULL data received\n");
+        return;
+    }
+    
     cJSON *root = cJSON_Parse(data);
-    if (root == NULL) return;
+    if (root == NULL) {
+        printf("Error: Failed to parse JSON\n");
+        return;
+    }
     
     cJSON *success = cJSON_GetObjectItem(root, "success");
     if (cJSON_IsTrue(success)) {
         printf("Reaction operation succeeded\n");
     } else {
         cJSON *error = cJSON_GetObjectItem(root, "error");
-        printf("Error: %s\n", error->valuestring);
+        if (error != NULL && cJSON_IsString(error)) {
+            printf("Error: %s\n", error->valuestring);
+        } else {
+            printf("Error: Unknown error occurred\n");
+        }
     }
     
     cJSON_Delete(root);
