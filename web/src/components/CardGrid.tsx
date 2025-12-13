@@ -1,13 +1,12 @@
-import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/router';
 import { setNavigationContext, NavigationSource } from '../lib/navigation-context';
-import { authenticatedFetch, clearTokens } from '../lib/api';
 
 interface PostOwner {
   id: string;
   handle: string;
   avatar_url?: string | null;
+  public_sqid?: string;
 }
 
 interface Post {
@@ -23,10 +22,6 @@ interface Post {
   owner_id: string;
   created_at: string;
   owner?: PostOwner;
-  // Stats returned by the API (from annotate_posts_with_counts)
-  reaction_count?: number;
-  comment_count?: number;
-  user_has_liked?: boolean;
 }
 
 interface CardGridProps {
@@ -37,18 +32,23 @@ interface CardGridProps {
   prevCursor?: string | null;
 }
 
-// Local state for optimistic like updates
-interface LikeState {
-  liked: boolean;
-  reactionCount: number;
-}
-
-export default function CardGrid({ posts, API_BASE_URL, source, cursor = null, prevCursor }: CardGridProps) {
-  const router = useRouter();
+export default function CardGrid({ posts, API_BASE_URL: _API_BASE_URL, source, cursor = null, prevCursor }: CardGridProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
-  // Track local like state for optimistic updates (keyed by post id)
-  const [likeOverrides, setLikeOverrides] = useState<Record<number, LikeState>>({});
-  const [loadingLikes, setLoadingLikes] = useState<Record<number, boolean>>({});
+  const packRef = useRef<HTMLDivElement>(null);
+
+  const TILE_SIZE = 128;
+  const MAX_COLUMNS = 8;
+  const [columnCount, setColumnCount] = useState(1);
+  const [superPostId, setSuperPostId] = useState<number | null>(null);
+
+  // Choose one "super post" per component mount (surrogate for backend flag).
+  useEffect(() => {
+    if (superPostId !== null) return;
+    if (posts.length === 0) return;
+    const chosen = posts[Math.floor(Math.random() * posts.length)];
+    if (chosen) setSuperPostId(chosen.id);
+  }, [posts, superPostId]);
 
   // Handle post click - store navigation context before navigating
   const handlePostClick = (postIndex: number) => {
@@ -63,132 +63,16 @@ export default function CardGrid({ posts, API_BASE_URL, source, cursor = null, p
     setNavigationContext(contextPosts, postIndex, source, cursor, prevCursor);
   };
 
-  // Reset overrides when posts change (e.g., new page loaded)
-  useEffect(() => {
-    setLikeOverrides({});
-  }, [posts]);
-
-  // Handle like/unlike with optimistic update
-  const handleLike = async (postId: number, currentlyLiked: boolean, currentReactionCount: number) => {
-    setLoadingLikes(prev => ({ ...prev, [postId]: true }));
-
-    // Optimistic update
-    setLikeOverrides(prev => ({
-      ...prev,
-      [postId]: {
-        liked: !currentlyLiked,
-        reactionCount: currentReactionCount + (currentlyLiked ? -1 : 1)
-      }
-    }));
-
-    try {
-      const url = `${API_BASE_URL}/api/post/${postId}/reactions/👍`;
-      const method = currentlyLiked ? 'DELETE' : 'PUT';
-      
-      const response = await authenticatedFetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.status === 401) {
-        // Token refresh failed - revert optimistic update, clear tokens and redirect
-        setLikeOverrides(prev => ({
-          ...prev,
-          [postId]: {
-            liked: currentlyLiked,
-            reactionCount: currentReactionCount
-          }
-        }));
-        clearTokens();
-        router.push('/auth');
-        return;
-      }
-
-      if (!response.ok && response.status !== 204) {
-        // Revert optimistic update on failure
-        setLikeOverrides(prev => ({
-          ...prev,
-          [postId]: {
-            liked: currentlyLiked,
-            reactionCount: currentReactionCount
-          }
-        }));
-      }
-    } catch (err) {
-      console.error(`Error ${currentlyLiked ? 'unliking' : 'liking'} post:`, err);
-      // Revert optimistic update on error
-      setLikeOverrides(prev => ({
-        ...prev,
-        [postId]: {
-          liked: currentlyLiked,
-          reactionCount: currentReactionCount
-        }
-      }));
-    } finally {
-      setLoadingLikes(prev => ({ ...prev, [postId]: false }));
-    }
-  };
-
-  // Apply crisp scaling to artworks and calculate dynamic spacing
-  // Using useLayoutEffect to calculate before browser paint (prevents visible reflow)
   useLayoutEffect(() => {
-    const grid = gridRef.current;
-    if (!grid) return;
-
-    const calculateSpacing = () => {
-      const containerWidth = grid.clientWidth;
-      if (containerWidth === 0) return;
-      
-      const gridStyles = window.getComputedStyle(grid);
-      const templateColumns = gridStyles.gridTemplateColumns;
-      const columns = templateColumns.split(' ').filter(col => col.trim().length > 0 && col.includes('px'));
-      const columnCount = Math.max(columns.length, 1);
-      
-      const cardSize = 180; // Fixed card cell size
-      const maxGapSize = cardSize; // Maximum spacing between columns equals card size
-      const totalCardsWidth = columnCount * cardSize;
-      const remainingSpace = containerWidth - totalCardsWidth;
-      
-      // Calculate spacing if distributed evenly
-      const gapCount = columnCount + 1; // sides + between columns
-      const evenSpacing = Math.max(1, Math.floor(remainingSpace / gapCount));
-      
-      // Cap the gap between columns at the card size
-      const gapBetweenColumns = Math.min(evenSpacing, maxGapSize);
-      
-      // Calculate space used by gaps between columns
-      const gapsBetweenColumnsCount = columnCount - 1;
-      const spaceUsedByGaps = gapsBetweenColumnsCount * gapBetweenColumns;
-      
-      // Remaining space goes to sides
-      const spaceForSides = remainingSpace - spaceUsedByGaps;
-      const sideSpacing = Math.max(1, Math.floor(spaceForSides / 2));
-      
-      // Set CSS variable for spacing (used by CSS as fallback)
-      grid.style.setProperty('--grid-spacing', `${sideSpacing}px`);
-      // Set gap directly (applies to both horizontal and vertical spacing)
-      // Gap between columns is capped at card size, and same applies to rows
-      // This becomes the reference spacing for the entire layout
-      grid.style.gap = `${gapBetweenColumns}px`;
-      // Set side padding (excess space goes here)
-      grid.style.paddingLeft = `${sideSpacing}px`;
-      grid.style.paddingRight = `${sideSpacing}px`;
-      // Set vertical padding to match the reference spacing (capped column gap)
-      grid.style.paddingTop = `${gapBetweenColumns}px`;
-      grid.style.paddingBottom = `${gapBetweenColumns}px`;
-      // Set margin-top based on reference spacing (capped column gap)
-      // Using quarter of the reference spacing for header-to-grid gap
-      grid.style.marginTop = `${gapBetweenColumns / 4}px`;
-    };
-
     const calculateScales = () => {
-      const artworkAreas = grid.querySelectorAll('.artwork-area');
-      
-      artworkAreas.forEach((area) => {
-        const image = area.querySelector('.artwork-image') as HTMLImageElement;
-        if (!image) return;
+      const grid = gridRef.current;
+      if (!grid) return;
+
+      const images = grid.querySelectorAll('img.artwork-image');
+      images.forEach((imageEl) => {
+        const image = imageEl as HTMLImageElement;
+        const card = image.closest('a.artwork-card') as HTMLAnchorElement | null;
+        const tileSize = card?.classList.contains('super-post') ? TILE_SIZE * 2 : TILE_SIZE;
 
         const canvasStr = image.getAttribute('data-canvas') || '';
         if (!canvasStr) return;
@@ -199,69 +83,140 @@ export default function CardGrid({ posts, API_BASE_URL, source, cursor = null, p
 
         if (!nativeWidth || !nativeHeight || isNaN(nativeWidth) || isNaN(nativeHeight)) return;
 
-        // Use the larger dimension to calculate scale
-        const nativeSize = Math.max(nativeWidth, nativeHeight);
-        
-        // Calculate maximum integer scale that fits in 128px
-        const scale = Math.floor(128 / nativeSize);
-        const finalScale = Math.max(1, scale);
+        // Scale the artwork to "cover" the square artwork area (then crop via overflow hidden).
+        // IMPORTANT: do NOT force integer upscales here; it can massively overscale near-tile images
+        // (e.g. 240x240 into a 256px super tile would jump to 480px if we used ceil()).
+        const scale = tileSize / Math.min(nativeWidth, nativeHeight);
+        const scaledW = Math.max(1, Math.round(nativeWidth * scale));
+        const scaledH = Math.max(1, Math.round(nativeHeight * scale));
 
-        // Calculate display size at integer multiple
-        const displayWidth = nativeWidth * finalScale;
-        const displayHeight = nativeHeight * finalScale;
-
-        // Apply size to image
-        image.style.width = `${displayWidth}px`;
-        image.style.height = `${displayHeight}px`;
+        image.style.width = `${scaledW}px`;
+        image.style.height = `${scaledH}px`;
         image.style.maxWidth = 'none';
         image.style.maxHeight = 'none';
-        image.style.objectFit = 'contain';
       });
     };
 
+    const calculateColumns = () => {
+      const scroller = scrollContainerRef.current;
+      const grid = gridRef.current;
+      const pack = packRef.current;
+      if (!scroller || !grid || !pack) return;
+
+      const containerWidth = scroller.clientWidth;
+      if (containerWidth === 0) return;
+
+      const nextColumnCount = Math.min(
+        MAX_COLUMNS,
+        Math.max(1, Math.floor(containerWidth / TILE_SIZE))
+      );
+
+      if (nextColumnCount !== columnCount) setColumnCount(nextColumnCount);
+
+      const gridWidth = nextColumnCount * TILE_SIZE;
+      grid.style.setProperty('--grid-columns', String(nextColumnCount));
+      grid.style.setProperty('--grid-width', `${gridWidth}px`);
+      pack.style.setProperty('--grid-width', `${gridWidth}px`);
+
+      // Edge glow heights must match the actual rendered border columns,
+      // including super posts that span multiple rows/columns.
+      const cards = Array.from(grid.querySelectorAll('a.artwork-card')) as HTMLAnchorElement[];
+      let leftMaxBottom = 0;
+      let rightMaxBottom = 0;
+      const eps = 1;
+      for (const el of cards) {
+        const left = el.offsetLeft;
+        const right = el.offsetLeft + el.offsetWidth;
+        const bottom = el.offsetTop + el.offsetHeight;
+        if (Math.abs(left - 0) <= eps) leftMaxBottom = Math.max(leftMaxBottom, bottom);
+        if (Math.abs(right - gridWidth) <= eps) rightMaxBottom = Math.max(rightMaxBottom, bottom);
+      }
+
+      pack.style.setProperty('--left-glow-height', `${leftMaxBottom}px`);
+      pack.style.setProperty('--right-glow-height', `${rightMaxBottom}px`);
+
+      // Ragged-edge glow for the bottom band when the right side is shorter than the left.
+      // The "bottom band" is defined as the vertical span of the tiles that touch the grid bottom.
+      // If the bottom-most tile is a super post, the band height becomes 256px.
+      let gridMaxBottom = 0;
+      for (const el of cards) {
+        gridMaxBottom = Math.max(gridMaxBottom, el.offsetTop + el.offsetHeight);
+      }
+
+      let bottomBandTop = gridMaxBottom;
+      for (const el of cards) {
+        const bottom = el.offsetTop + el.offsetHeight;
+        if (Math.abs(bottom - gridMaxBottom) <= eps) {
+          bottomBandTop = Math.min(bottomBandTop, el.offsetTop);
+        }
+      }
+      if (!isFinite(bottomBandTop) || bottomBandTop === gridMaxBottom) {
+        bottomBandTop = Math.max(0, gridMaxBottom - TILE_SIZE);
+      }
+      const bottomBandHeight = Math.max(TILE_SIZE, gridMaxBottom - bottomBandTop);
+
+      let bottomBandOccupiedRight = 0;
+      for (const el of cards) {
+        const top = el.offsetTop;
+        const bottom = el.offsetTop + el.offsetHeight;
+        // intersects bottom band?
+        if (bottom > bottomBandTop + eps && top < gridMaxBottom - eps) {
+          bottomBandOccupiedRight = Math.max(bottomBandOccupiedRight, el.offsetLeft + el.offsetWidth);
+        }
+      }
+
+      const hasRaggedRight = bottomBandOccupiedRight < gridWidth - eps;
+      pack.style.setProperty('--ragged-glow-left', `${bottomBandOccupiedRight}px`);
+      pack.style.setProperty('--ragged-glow-top', `${bottomBandTop}px`);
+      pack.style.setProperty('--ragged-glow-height', `${bottomBandHeight}px`);
+      pack.style.setProperty('--ragged-glow-opacity', hasRaggedRight ? '0.9' : '0');
+
+      // Add bottom glow to the last C artwork-cards (C = number of columns)
+      cards.forEach((el) => el.classList.remove('bottom-glow'));
+      const start = Math.max(0, cards.length - nextColumnCount);
+      for (let i = start; i < cards.length; i++) {
+        cards[i]?.classList.add('bottom-glow');
+      }
+    };
+
     const updateLayout = () => {
-      calculateSpacing();
+      calculateColumns();
       calculateScales();
     };
 
-    // Run immediately - no setTimeout delay
     updateLayout();
 
     const resizeObserver = new ResizeObserver(() => {
       updateLayout();
     });
 
-    resizeObserver.observe(grid);
-
-    const handleResize = () => {
-      updateLayout();
-    };
-
-    window.addEventListener('resize', handleResize);
+    if (scrollContainerRef.current) resizeObserver.observe(scrollContainerRef.current);
 
     return () => {
       resizeObserver.disconnect();
-      window.removeEventListener('resize', handleResize);
     };
-  }, [posts]);
+  }, [posts, columnCount, superPostId]);
 
   return (
-    <div className="card-grid" ref={gridRef}>
-      {posts.map((post, index) => {
-        // Use local override if available (for optimistic updates), otherwise use API data
-        const override = likeOverrides[post.id];
-        const reactionCount = override?.reactionCount ?? post.reaction_count ?? 0;
-        const commentCount = post.comment_count ?? 0;
-        const isLiked = override?.liked ?? post.user_has_liked ?? false;
-        const isLoading = loadingLikes[post.id] || false;
+    <div className="card-grid-scroll-container" ref={scrollContainerRef}>
+      <div className="card-grid-pack" ref={packRef}>
+        <div className="edge-glow edge-glow-left" />
+        <div className="edge-glow edge-glow-right" />
+        <div className="edge-glow edge-glow-ragged" />
 
-        const postIndex = index;
-
-        return (
-          <div key={post.id} className="artwork-card">
-            <div className="card-top">
-              <div className="artwork-area">
-                <Link href={`/p/${post.public_sqid}`} onClick={() => handlePostClick(postIndex)}>
+        <div className="card-grid" ref={gridRef}>
+          {posts.map((post, index) => {
+            const postIndex = index;
+            const isSuper = columnCount >= 2 && superPostId !== null && post.id === superPostId;
+            return (
+              <Link
+                key={post.id}
+                href={`/p/${post.public_sqid}`}
+                className={`artwork-card${isSuper ? ' super-post' : ''}`}
+                onClick={() => handlePostClick(postIndex)}
+                aria-label={post.title}
+              >
+                <div className="artwork-area">
                   <img
                     src={post.art_url}
                     alt={post.title}
@@ -269,286 +224,179 @@ export default function CardGrid({ posts, API_BASE_URL, source, cursor = null, p
                     data-canvas={post.canvas}
                     loading="lazy"
                   />
-                </Link>
-              </div>
-              <div className="stats-panel">
-                <div className="stat-item">
-                  <span className="stat-emoji">⚡</span>
-                  <span className="stat-count">{reactionCount}</span>
                 </div>
-                <div className="stat-item">
-                  <span className="stat-emoji">💬</span>
-                  <span className="stat-count">{commentCount}</span>
-                </div>
-                <button
-                  className={`like-button ${isLiked ? 'liked' : ''}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleLike(post.id, isLiked, reactionCount);
-                  }}
-                  disabled={isLoading}
-                  aria-label={isLiked ? 'Unlike' : 'Like'}
-                >
-                  👍
-                </button>
-              </div>
-            </div>
-            <div className="author-bar">
-              <div className="author-line">
-                <Link href={`/u/${post.owner?.public_sqid}`} className="author-handle" style={{ fontSize: '0.7rem', color: 'white', display: 'flex', alignItems: 'center' }}>
-                  {post.owner?.avatar_url && (
-                    <img src={post.owner.avatar_url} alt="" className="author-avatar" />
-                  )}
-                  <span>{post.owner?.handle || 'Unknown'}</span>
-                </Link>
-              </div>
-              <div className="title-line">
-                <Link href={`/p/${post.public_sqid}`} className="post-title" style={{ fontSize: '0.7rem', color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center' }} onClick={() => handlePostClick(postIndex)}>
-                  {post.title}
-                </Link>
-              </div>
-            </div>
-          </div>
-        );
-      })}
+              </Link>
+            );
+          })}
+        </div>
 
       <style jsx>{`
+        .card-grid-scroll-container {
+          width: 100%;
+          overflow-x: auto;
+          overflow-y: visible;
+          -webkit-overflow-scrolling: touch;
+          display: block;
+          padding: 0;
+        }
+
+        .card-grid-pack {
+          position: relative;
+          width: var(--grid-width, 128px);
+          margin-left: auto;
+          margin-right: auto;
+        }
+
+        .edge-glow {
+          position: absolute;
+          top: 0;
+          width: 56px;
+          pointer-events: none;
+          filter: blur(10px) hue-rotate(0deg);
+          opacity: 0.9;
+          animation: sinebow-hue 16s linear infinite;
+        }
+
+        .edge-glow-left {
+          left: -56px;
+          height: var(--left-glow-height, 0px);
+          background: linear-gradient(
+            to left,
+            rgba(0, 212, 255, 0.22) 0%,
+            rgba(0, 212, 255, 0.210546875) 12.5%,
+            rgba(0, 212, 255, 0.185625) 25%,
+            rgba(0, 212, 255, 0.150390625) 37.5%,
+            rgba(0, 212, 255, 0.11) 50%,
+            rgba(0, 212, 255, 0.069609375) 62.5%,
+            rgba(0, 212, 255, 0.034375) 75%,
+            rgba(0, 212, 255, 0.009453125) 87.5%,
+            rgba(0, 212, 255, 0) 100%
+          );
+        }
+
+        .edge-glow-right {
+          right: -56px;
+          height: var(--right-glow-height, 0px);
+          background: linear-gradient(
+            to right,
+            rgba(0, 212, 255, 0.22) 0%,
+            rgba(0, 212, 255, 0.210546875) 12.5%,
+            rgba(0, 212, 255, 0.185625) 25%,
+            rgba(0, 212, 255, 0.150390625) 37.5%,
+            rgba(0, 212, 255, 0.11) 50%,
+            rgba(0, 212, 255, 0.069609375) 62.5%,
+            rgba(0, 212, 255, 0.034375) 75%,
+            rgba(0, 212, 255, 0.009453125) 87.5%,
+            rgba(0, 212, 255, 0) 100%
+          );
+        }
+
+        /* Extra glow for a ragged right edge on the last row */
+        .edge-glow-ragged {
+          left: var(--ragged-glow-left, 0px);
+          top: var(--ragged-glow-top, 0px);
+          height: var(--ragged-glow-height, 0px);
+          opacity: var(--ragged-glow-opacity, 0);
+          background: linear-gradient(
+            to right,
+            rgba(0, 212, 255, 0.22) 0%,
+            rgba(0, 212, 255, 0.210546875) 12.5%,
+            rgba(0, 212, 255, 0.185625) 25%,
+            rgba(0, 212, 255, 0.150390625) 37.5%,
+            rgba(0, 212, 255, 0.11) 50%,
+            rgba(0, 212, 255, 0.069609375) 62.5%,
+            rgba(0, 212, 255, 0.034375) 75%,
+            rgba(0, 212, 255, 0.009453125) 87.5%,
+            rgba(0, 212, 255, 0) 100%
+          );
+        }
+
         .card-grid {
           display: grid;
-          grid-template-columns: repeat(1, 180px);
-          gap: var(--grid-spacing, 16px);
-          padding-left: var(--grid-spacing, 16px);
-          padding-right: var(--grid-spacing, 16px);
-          padding-top: var(--grid-spacing, 16px);
-          padding-bottom: var(--grid-spacing, 16px);
-          max-width: 100%;
-          margin: 0 auto;
-          justify-content: start;
-        }
-
-        @media (min-width: 362px) {
-          .card-grid {
-            grid-template-columns: repeat(2, 180px);
-          }
-        }
-
-        @media (min-width: 544px) {
-          .card-grid {
-            grid-template-columns: repeat(3, 180px);
-          }
-        }
-
-        @media (min-width: 726px) {
-          .card-grid {
-            grid-template-columns: repeat(4, 180px);
-          }
-        }
-
-        .artwork-card {
-          display: flex;
-          flex-direction: column;
-          width: 178px;
-          height: 178px;
-          background: var(--bg-secondary);
-          overflow: hidden;
-          transition: box-shadow var(--transition-fast);
-          border: 1px solid transparent;
-        }
-
-        .artwork-card:hover {
-          box-shadow: 0 0 20px rgba(0, 212, 255, 0.2);
-          z-index: 1;
-        }
-
-        .card-top {
-          display: flex;
-          flex-direction: row;
-          width: 100%;
-          height: 128px;
-          gap: 1px;
+          grid-template-columns: repeat(var(--grid-columns, 1), 128px);
+          grid-auto-rows: 128px;
+          grid-auto-flow: dense;
+          gap: 0;
+          padding: 0;
+          margin: 0;
+          width: var(--grid-width, 128px);
         }
 
         .artwork-area {
           width: 128px;
           height: 128px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: var(--bg-tertiary);
-          flex-shrink: 0;
+          position: relative;
+          overflow: hidden;
         }
 
-        .artwork-area a {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 100%;
-          height: 100%;
+        :global(a.artwork-card) {
+          display: block;
+          width: 128px;
+          height: 128px;
           line-height: 0;
+          position: relative;
+          overflow: visible;
+        }
+
+        :global(a.artwork-card.super-post) {
+          width: 256px;
+          height: 256px;
+          grid-column: span 2;
+          grid-row: span 2;
+        }
+
+        :global(a.artwork-card.super-post) .artwork-area {
+          width: 256px;
+          height: 256px;
+        }
+
+        :global(a.artwork-card:focus-visible) {
+          outline: none;
+        }
+
+        :global(a.artwork-card.bottom-glow)::after {
+          content: '';
+          position: absolute;
+          left: 0;
+          right: 0;
+          top: 100%;
+          height: 64px;
+          pointer-events: none;
+          background: linear-gradient(
+            to bottom,
+            rgba(0, 212, 255, 0.22) 0%,
+            rgba(0, 212, 255, 0.210546875) 12.5%,
+            rgba(0, 212, 255, 0.185625) 25%,
+            rgba(0, 212, 255, 0.150390625) 37.5%,
+            rgba(0, 212, 255, 0.11) 50%,
+            rgba(0, 212, 255, 0.069609375) 62.5%,
+            rgba(0, 212, 255, 0.034375) 75%,
+            rgba(0, 212, 255, 0.009453125) 87.5%,
+            rgba(0, 212, 255, 0) 100%
+          );
+          filter: blur(10px) hue-rotate(0deg);
+          opacity: 0.9;
+          animation: sinebow-hue 16s linear infinite;
+        }
+
+        @keyframes sinebow-hue {
+          from {
+            filter: blur(10px) hue-rotate(0deg);
+          }
+          to {
+            filter: blur(10px) hue-rotate(360deg);
+          }
         }
 
         .artwork-image {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          transform: translate(-50%, -50%);
           display: block;
-          image-rendering: -webkit-optimize-contrast !important;
-          image-rendering: -moz-crisp-edges !important;
-          image-rendering: crisp-edges !important;
-          image-rendering: pixelated !important;
-          -ms-interpolation-mode: nearest-neighbor !important;
-        }
-
-        .stats-panel {
-          width: 49px;
-          height: 128px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          background: var(--bg-secondary);
-          flex-shrink: 0;
-          padding: 8px 4px;
-        }
-
-        .stat-item {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 2px;
-          font-size: 0.75rem;
-          color: var(--text-secondary);
-        }
-
-        .stat-emoji {
-          font-size: 1rem;
-        }
-
-        .stat-count {
-          font-weight: 600;
-          font-size: 0.7rem;
-        }
-
-        .like-button {
-          width: 28px;
-          height: 28px;
-          border-radius: 50%;
-          border: 2px solid var(--bg-tertiary);
-          background: var(--bg-secondary);
-          font-size: 0.9rem;
-          cursor: pointer;
-          transition: all var(--transition-fast);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-          margin-top: 4px;
-        }
-
-        .like-button:hover:not(:disabled) {
-          background: var(--bg-tertiary);
-          border-color: var(--accent-pink);
-          transform: scale(1.1);
-        }
-
-        .like-button:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-
-        .like-button.liked {
-          background: var(--accent-pink);
-          border-color: var(--accent-pink);
-        }
-
-        .like-button.liked:hover:not(:disabled) {
-          background: var(--accent-cyan);
-          border-color: var(--accent-cyan);
-        }
-
-        .author-bar {
-          width: 168px;
-          height: 49px;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          gap: 4px;
-          background: var(--bg-secondary);
-          padding: 4px 6px;
-          margin-top: 1px;
-        }
-
-        .author-line {
-          display: block;
-          width: 100%;
-          height: 18px;
-          line-height: 18px;
-          overflow: hidden;
-          white-space: nowrap;
-          text-overflow: ellipsis;
-        }
-
-        .title-line {
-          display: block;
-          width: 100%;
-          height: 18px;
-          line-height: 18px;
-          overflow: hidden;
-          white-space: nowrap;
-          text-overflow: ellipsis;
-        }
-
-        .author-handle {
-          display: inline-flex;
-          flex-direction: row;
-          align-items: center;
-          gap: 3px;
-          font-size: 0.35rem;
-          font-weight: 600;
-          color: var(--accent-cyan);
-          text-decoration: none;
-          transition: color var(--transition-fast);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          max-width: 100%;
-          vertical-align: middle;
-        }
-
-        .author-handle span {
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        .author-handle:hover {
-          color: var(--accent-blue);
-        }
-
-        .author-avatar {
-          width: 12px;
-          height: 12px;
-          border-radius: 50%;
-          object-fit: cover;
-          flex-shrink: 0;
-        }
-
-        .post-title {
-          display: inline-block;
-          font-size: 0.35rem;
-          font-weight: 600;
-          color: var(--accent-pink);
-          text-decoration: none;
-          transition: color var(--transition-fast);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          max-width: 100%;
-          vertical-align: middle;
-        }
-
-        .post-title:hover {
-          color: var(--accent-purple);
         }
       `}</style>
+      </div>
     </div>
   );
 }

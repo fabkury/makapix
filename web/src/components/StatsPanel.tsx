@@ -238,13 +238,27 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
                   const height = maxDailyViews > 0 ? (day.views / maxDailyViews) * 100 : 0;
                   const date = new Date(day.date);
                   const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                  const showLabel =
+                    // Show every 5th bar + last bar to avoid clutter
+                    index % 5 === 0 ||
+                    index === displayedStats.daily_views.length - 1 ||
+                    // Always show max day(s)
+                    day.views === maxDailyViews;
                   return (
-                    <div
-                      key={day.date}
-                      className={`trend-bar ${isWeekend ? 'weekend' : ''}`}
-                      style={{ height: `${Math.max(height, 2)}%` }}
-                      title={`${day.date}: ${day.views} views, ${day.unique_viewers} unique`}
-                    />
+                    <div key={day.date} className="trend-bar-wrap">
+                      {showLabel && (
+                        <span className="trend-bar-label" aria-hidden="true">
+                          {day.views.toLocaleString()}
+                        </span>
+                      )}
+                      <div
+                        className={`trend-bar ${isWeekend ? 'weekend' : ''}`}
+                        style={{ height: `${Math.max(height, 2)}%` }}
+                        title={`${day.date}: ${day.views} views, ${day.unique_viewers} unique`}
+                        aria-label={`${day.date}: ${day.views} views, ${day.unique_viewers} unique`}
+                        role="img"
+                      />
+                    </div>
                   );
                 })}
               </div>
@@ -541,13 +555,35 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
           padding: 12px 8px;
         }
 
-        .trend-bar {
+        .trend-bar-wrap {
           flex: 1;
+          position: relative;
+          height: 100%;
+          display: flex;
+          align-items: flex-end;
+          justify-content: center;
+          min-width: 0;
+        }
+
+        .trend-bar {
+          width: 100%;
           background: linear-gradient(to top, var(--accent-purple, #b44eff), var(--accent-cyan, #4ecdc4));
           border-radius: 2px 2px 0 0;
           min-height: 2px;
           cursor: pointer;
           transition: opacity 0.2s;
+        }
+
+        .trend-bar-label {
+          position: absolute;
+          top: -2px;
+          transform: translateY(-100%);
+          font-size: 10px;
+          line-height: 1;
+          color: rgba(255, 255, 255, 0.72);
+          white-space: nowrap;
+          pointer-events: none;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
         }
 
         .trend-bar.weekend {

@@ -51,7 +51,7 @@ def validate_handle(handle: str, min_length: int = 2, max_length: int = 50) -> t
     return True, None
 
 
-def is_handle_taken(db: Session, handle: str, exclude_user_id: str | None = None) -> bool:
+def is_handle_taken(db: Session, handle: str, exclude_user_id: int | None = None) -> bool:
     """
     Check if a handle is already taken.
     
@@ -62,7 +62,7 @@ def is_handle_taken(db: Session, handle: str, exclude_user_id: str | None = None
     """
     query = db.query(User).filter(User.handle == handle.lower())
     
-    if exclude_user_id:
+    if exclude_user_id is not None:
         query = query.filter(User.id != exclude_user_id)
     
     return query.first() is not None

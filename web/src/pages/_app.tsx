@@ -2,7 +2,7 @@ import type { AppProps } from 'next/app';
 import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import '../styles/globals.css';
-import { getAccessToken, isTokenExpired, refreshAccessToken } from '../lib/api';
+import { getAccessToken, isTokenExpired, refreshAccessToken, wasRecentlyLoggedOut } from '../lib/api';
 import { usePageViewTracking } from '../hooks/usePageViewTracking';
 
 export default function App({ Component, pageProps }: AppProps) {
@@ -12,6 +12,33 @@ export default function App({ Component, pageProps }: AppProps) {
 
   // Track page views for analytics
   usePageViewTracking();
+
+  // In dev tooling (including automated browsers), extra DOM attributes may be injected
+  // before hydration (e.g. `data-cursor-ref`), which can cause noisy hydration warnings.
+  // Filter only that specific warning so real issues still surface.
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+
+    const origError = console.error;
+    const origWarn = console.warn;
+
+    const shouldFilter = (args: unknown[]) =>
+      args.some((a) => typeof a === 'string' && a.includes('data-cursor-ref'));
+
+    console.error = (...args: unknown[]) => {
+      if (shouldFilter(args)) return;
+      origError(...args);
+    };
+    console.warn = (...args: unknown[]) => {
+      if (shouldFilter(args)) return;
+      origWarn(...args);
+    };
+
+    return () => {
+      console.error = origError;
+      console.warn = origWarn;
+    };
+  }, []);
 
   // Check token and refresh if needed
   // This function handles all token refresh scenarios including:
@@ -34,6 +61,12 @@ export default function App({ Component, pageProps }: AppProps) {
       // The refresh token is now in HttpOnly cookie, so we can't check for it directly
       // We'll attempt refresh and let the server tell us if there's no valid refresh token
       if (!token) {
+        // If the user explicitly logged out very recently, do NOT try to refresh from cookie.
+        // This avoids noisy 401s like "No refresh token found in cookie" immediately after logout.
+        if (wasRecentlyLoggedOut()) {
+          console.log(`[Auth] Skipping refresh-from-cookie (${reason}) - user recently logged out`);
+          return;
+        }
         console.log(`[Auth] No access token found, attempting refresh from cookie (${reason})`);
         const success = await refreshAccessToken();
         if (success) {

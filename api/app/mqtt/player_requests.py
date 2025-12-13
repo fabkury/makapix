@@ -20,13 +20,18 @@ from .publisher import publish
 from .schemas import (
     QueryPostsRequest,
     QueryPostsResponse,
-    PostSummary,
+    ArtworkPostPayload,
+    PlaylistArtworkPayload,
+    PlaylistPostPayload,
+    PlayerPostPayload,
     SubmitViewRequest,
     SubmitViewResponse,
     RevokeReactionRequest,
     RevokeReactionResponse,
     SubmitReactionRequest,
     SubmitReactionResponse,
+    GetPostRequest,
+    GetPostResponse,
     GetCommentsRequest,
     GetCommentsResponse,
     CommentSummary,
@@ -103,6 +108,203 @@ def _send_error_response(
     )
 
 
+MAX_MQTT_PAYLOAD_BYTES = 131072  # 128 KiB hard limit (p3a inbound buffer)
+MAX_PLAYLIST_ARTWORKS = 1024
+DEFAULT_DWELL_MS = 30000
+
+
+def _payload_size_bytes(payload: dict[str, Any]) -> int:
+    # Minified JSON to better match the real on-wire size.
+    return len(json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+
+
+def _build_artwork_payload(post: models.Post) -> ArtworkPostPayload:
+    return ArtworkPostPayload(
+        post_id=post.id,
+        kind="artwork",
+        owner_handle=post.owner.handle,
+        created_at=post.created_at,
+        metadata_modified_at=post.metadata_modified_at,
+        storage_key=str(post.storage_key),
+        art_url=post.art_url or "",
+        canvas=post.canvas or "",
+        width=int(post.width or 0),
+        height=int(post.height or 0),
+        frame_count=int(post.frame_count or 1),
+        has_transparency=bool(post.has_transparency),
+        artwork_modified_at=post.artwork_modified_at,
+        dwell_time_ms=int(getattr(post, "dwell_time_ms", DEFAULT_DWELL_MS) or DEFAULT_DWELL_MS),
+    )
+
+
+def _build_playlist_payload(
+    playlist_post: models.Post,
+    db: Session,
+    pe: int,
+) -> PlaylistPostPayload:
+    # Total artworks is the full playlist size, irrespective of truncation.
+    total_artworks = (
+        db.query(func.count(models.PlaylistItem.id))
+        .filter(models.PlaylistItem.playlist_post_id == playlist_post.id)
+        .scalar()
+        or 0
+    )
+
+    # Determine how many items to include for this request.
+    if pe == 0:
+        include_limit = MAX_PLAYLIST_ARTWORKS
+    else:
+        include_limit = max(0, min(int(pe), MAX_PLAYLIST_ARTWORKS))
+
+    item_rows = (
+        db.query(models.PlaylistItem.artwork_post_id, models.PlaylistItem.dwell_time_ms)
+        .filter(models.PlaylistItem.playlist_post_id == playlist_post.id)
+        .order_by(models.PlaylistItem.position.asc())
+        .limit(include_limit)
+        .all()
+    )
+    artwork_ids_in_order = [pid for (pid, _d) in item_rows]
+    dwell_by_post_id: dict[int, int] = {
+        int(pid): int(d or DEFAULT_DWELL_MS) for (pid, d) in item_rows
+    }
+
+    artworks: list[PlaylistArtworkPayload] = []
+    if artwork_ids_in_order:
+        artwork_posts = (
+            db.query(models.Post)
+            .options(joinedload(models.Post.owner))
+            .filter(models.Post.id.in_(artwork_ids_in_order))
+            .all()
+        )
+        by_id: dict[int, models.Post] = {p.id: p for p in artwork_posts}
+
+        for pid in artwork_ids_in_order:
+            p = by_id.get(pid)
+            if not p:
+                continue
+            # Apply the same visibility constraints as for top-level posts later.
+            if not p.visible or p.hidden_by_user or p.hidden_by_mod or p.non_conformant:
+                continue
+            if p.kind != "artwork":
+                continue
+
+            artworks.append(
+                PlaylistArtworkPayload(
+                    post_id=p.id,
+                    storage_key=str(p.storage_key),
+                    art_url=p.art_url or "",
+                    canvas=p.canvas or "",
+                    width=int(p.width or 0),
+                    height=int(p.height or 0),
+                    frame_count=int(p.frame_count or 1),
+                    has_transparency=bool(p.has_transparency),
+                    owner_handle=p.owner.handle,
+                    created_at=p.created_at,
+                    metadata_modified_at=p.metadata_modified_at,
+                    artwork_modified_at=p.artwork_modified_at,
+                    dwell_time_ms=dwell_by_post_id.get(p.id, int(getattr(p, "dwell_time_ms", DEFAULT_DWELL_MS) or DEFAULT_DWELL_MS)),
+                )
+            )
+
+    return PlaylistPostPayload(
+        post_id=playlist_post.id,
+        kind="playlist",
+        owner_handle=playlist_post.owner.handle,
+        created_at=playlist_post.created_at,
+        metadata_modified_at=playlist_post.metadata_modified_at,
+        total_artworks=int(total_artworks),
+        dwell_time_ms=int(getattr(playlist_post, "dwell_time_ms", DEFAULT_DWELL_MS) or DEFAULT_DWELL_MS),
+        artworks=artworks,
+    )
+
+
+def _trim_posts_payload_to_limit(payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    Enforce MAX_MQTT_PAYLOAD_BYTES.
+
+    Primary trimming mechanism (per requirements):
+    - Only trim by removing individual artworks from playlist posts (preserving play order),
+      using binary search to find the largest prefix of playlist artworks that fits.
+
+    Fallback:
+    - If payload is still too large even with 0 playlist artworks, trim posts from the end.
+    """
+    if _payload_size_bytes(payload) <= MAX_MQTT_PAYLOAD_BYTES:
+        return payload
+
+    posts = payload.get("posts")
+    if isinstance(posts, list):
+        # Build flattened playlist-artwork index in play order (posts order, then playlist order).
+        flat: list[tuple[int, int]] = []
+        for pi, post in enumerate(posts):
+            if isinstance(post, dict) and post.get("kind") == "playlist":
+                artworks = post.get("artworks") or []
+                if isinstance(artworks, list):
+                    for ai in range(len(artworks)):
+                        flat.append((pi, ai))
+
+        if flat:
+            original_artworks_by_post: dict[int, list[Any]] = {}
+            for pi, post in enumerate(posts):
+                if isinstance(post, dict) and post.get("kind") == "playlist":
+                    artworks = post.get("artworks") or []
+                    if isinstance(artworks, list):
+                        original_artworks_by_post[pi] = artworks
+
+            def build_with_prefix(n: int) -> dict[str, Any]:
+                keep_counts: dict[int, int] = {}
+                for (pi, ai) in flat[:n]:
+                    keep_counts[pi] = max(keep_counts.get(pi, 0), ai + 1)
+
+                new_posts: list[Any] = []
+                for pi, post in enumerate(posts):
+                    if isinstance(post, dict) and post.get("kind") == "playlist":
+                        new_post = dict(post)
+                        orig_artworks = original_artworks_by_post.get(pi, [])
+                        k = keep_counts.get(pi, 0)
+                        new_post["artworks"] = orig_artworks[:k]
+                        new_posts.append(new_post)
+                    else:
+                        new_posts.append(post)
+
+                new_payload = dict(payload)
+                new_payload["posts"] = new_posts
+                return new_payload
+
+            low, high = 0, len(flat)
+            while low < high:
+                mid = (low + high + 1) // 2
+                candidate = build_with_prefix(mid)
+                if _payload_size_bytes(candidate) <= MAX_MQTT_PAYLOAD_BYTES:
+                    low = mid
+                else:
+                    high = mid - 1
+
+            payload = build_with_prefix(low)
+
+    # Fallback: if still too large, drop posts from the end (best effort).
+    if _payload_size_bytes(payload) <= MAX_MQTT_PAYLOAD_BYTES:
+        return payload
+
+    posts = payload.get("posts")
+    if not isinstance(posts, list) or not posts:
+        return payload
+
+    low, high = 0, len(posts)
+    while low < high:
+        mid = (low + high + 1) // 2
+        candidate = dict(payload)
+        candidate["posts"] = posts[:mid]
+        if _payload_size_bytes(candidate) <= MAX_MQTT_PAYLOAD_BYTES:
+            low = mid
+        else:
+            high = mid - 1
+
+    trimmed = dict(payload)
+    trimmed["posts"] = posts[:low]
+    return trimmed
+
+
 def _handle_query_posts(
     player: models.Player,
     request: QueryPostsRequest,
@@ -117,8 +319,12 @@ def _handle_query_posts(
         db: Database session
     """
     try:
-        # Build base query
-        query = db.query(models.Post).options(joinedload(models.Post.owner))
+        pe = request.PE if request.PE is not None else 1
+
+        # Build base query (include both artwork and playlist posts)
+        query = db.query(models.Post).options(joinedload(models.Post.owner)).filter(
+            models.Post.kind.in_(["artwork", "playlist"])
+        )
         
         # Apply channel filter
         if request.channel == "promoted":
@@ -149,6 +355,9 @@ def _handle_query_posts(
                 return
             
             query = query.filter(models.Post.owner_id == target_user.id)
+        elif request.channel == "artwork":
+            # Protocol compatibility: do not exclude playlists (per server policy).
+            pass
         # "all" requires no additional filter
         
         # Apply visibility filters (respect user privileges)
@@ -157,12 +366,13 @@ def _handle_query_posts(
         if not is_moderator:
             query = query.filter(
                 models.Post.visible,
+                ~models.Post.hidden_by_user,
                 ~models.Post.hidden_by_mod,
                 ~models.Post.non_conformant,
             )
         else:
             # Moderators see everything except non-visible
-            query = query.filter(models.Post.visible)
+            query = query.filter(models.Post.visible, ~models.Post.hidden_by_user)
         
         # Apply sorting
         if request.sort == "created_at":
@@ -204,41 +414,35 @@ def _handle_query_posts(
         if has_more:
             next_cursor = str(offset + request.limit)
         
-        # Build response
-        post_summaries = [
-            PostSummary(
-                post_id=post.id,
-                storage_key=post.storage_key,
-                title=post.title,
-                art_url=post.art_url,
-                canvas=post.canvas,
-                width=post.width,
-                height=post.height,
-                frame_count=post.frame_count,
-                has_transparency=post.has_transparency,
-                owner_handle=post.owner.handle,
-                created_at=post.created_at,
-            )
-            for post in posts
-        ]
+        # Build response payload posts
+        payload_posts: list[PlayerPostPayload] = []
+        for post in posts:
+            if post.kind == "artwork":
+                payload_posts.append(_build_artwork_payload(post))
+            elif post.kind == "playlist":
+                payload_posts.append(_build_playlist_payload(post, db, pe))
         
         response = QueryPostsResponse(
             request_id=request.request_id,
-            posts=post_summaries,
+            posts=payload_posts,
             next_cursor=next_cursor,
             has_more=has_more,
         )
         
+        # Enforce payload size limit (128KiB)
+        response_dict = response.model_dump(mode="json")
+        response_dict = _trim_posts_payload_to_limit(response_dict)
+
         # Send response
         response_topic = f"makapix/player/{player.player_key}/response/{request.request_id}"
         publish(
             topic=response_topic,
-            payload=response.model_dump(mode="json"),
+            payload=response_dict,
             qos=1,
             retain=False,
         )
         
-        logger.info(f"Sent query_posts response to player {player.player_key}: {len(post_summaries)} posts")
+        logger.info(f"Sent query_posts response to player {player.player_key}: {len(payload_posts)} posts")
         
     except Exception as e:
         logger.error(f"Error handling query_posts: {e}", exc_info=True)
@@ -347,6 +551,103 @@ def _handle_submit_view(
             "internal_error",
         )
 
+
+def _handle_get_post(
+    player: models.Player,
+    request: GetPostRequest,
+    db: Session,
+) -> None:
+    """Handle get_post request."""
+    try:
+        pe = request.PE if request.PE is not None else 1
+
+        post = (
+            db.query(models.Post)
+            .options(joinedload(models.Post.owner))
+            .filter(models.Post.id == request.post_id)
+            .first()
+        )
+        if not post:
+            _send_error_response(
+                player.player_key,
+                request.request_id,
+                f"Post {request.post_id} not found",
+                "not_found",
+            )
+            return
+
+        # Visibility (same logic as query_posts)
+        is_moderator = "moderator" in player.owner.roles or "owner" in player.owner.roles
+        if not post.visible:
+            _send_error_response(
+                player.player_key,
+                request.request_id,
+                "Post is not visible",
+                "not_visible",
+            )
+            return
+        if post.hidden_by_user:
+            _send_error_response(
+                player.player_key,
+                request.request_id,
+                "Post is not available",
+                "not_available",
+            )
+            return
+        if not is_moderator and (post.hidden_by_mod or post.non_conformant):
+            _send_error_response(
+                player.player_key,
+                request.request_id,
+                "Post is not available",
+                "not_available",
+            )
+            return
+
+        if post.kind == "artwork":
+            payload_post: PlayerPostPayload = _build_artwork_payload(post)
+        elif post.kind == "playlist":
+            payload_post = _build_playlist_payload(post, db, pe)
+        else:
+            _send_error_response(
+                player.player_key,
+                request.request_id,
+                f"Unsupported post kind: {post.kind}",
+                "unsupported_kind",
+            )
+            return
+
+        response = GetPostResponse(
+            request_id=request.request_id,
+            success=True,
+            post=payload_post,
+        )
+
+        response_dict = response.model_dump(mode="json")
+
+        # Enforce payload size limit. For get_post, only playlist artworks can be trimmed.
+        if _payload_size_bytes(response_dict) > MAX_MQTT_PAYLOAD_BYTES and isinstance(response_dict.get("post"), dict):
+            post_dict = response_dict["post"]
+            if post_dict.get("kind") == "playlist":
+                # Reuse the same trimming logic by wrapping in posts list.
+                wrapped = {"posts": [post_dict]}
+                wrapped = _trim_posts_payload_to_limit(wrapped)
+                response_dict["post"] = wrapped["posts"][0]
+
+        response_topic = f"makapix/player/{player.player_key}/response/{request.request_id}"
+        publish(
+            topic=response_topic,
+            payload=response_dict,
+            qos=1,
+            retain=False,
+        )
+    except Exception as e:
+        logger.error(f"Error handling get_post: {e}", exc_info=True)
+        _send_error_response(
+            player.player_key,
+            request.request_id,
+            f"Internal error fetching post: {str(e)}",
+            "internal_error",
+        )
 
 def _handle_submit_reaction(
     player: models.Player,
@@ -686,6 +987,9 @@ def _on_request_message(client: mqtt_client.Client, userdata: Any, msg: mqtt_cli
             if request_type == "query_posts":
                 request_obj = QueryPostsRequest(**payload)
                 _handle_query_posts(player, request_obj, db)
+            elif request_type == "get_post":
+                request_obj = GetPostRequest(**payload)
+                _handle_get_post(player, request_obj, db)
             elif request_type == "submit_view":
                 request_obj = SubmitViewRequest(**payload)
                 _handle_submit_view(player, request_obj, db)

@@ -47,9 +47,37 @@ body {
   font-family: 'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background-color: var(--bg-primary);
   color: var(--text-primary);
+  /* Use dynamic viewport height on mobile (handles browser chrome/keyboard better than 100vh). */
   min-height: 100vh;
+  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+/* Auth (and other opt-in) pages: allow native body scrolling for mobile reliability */
+html.allow-body-scroll,
+body.allow-body-scroll {
+  overflow: auto;
+  height: auto;
+  min-height: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.allow-body-scroll #__next,
+body.allow-body-scroll #__next {
+  height: auto;
+  min-height: 100%;
+}
+
+/* Next.js root - keep layout-managed scrolling */
+#__next {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* Pixel art images - crisp nearest neighbor scaling */

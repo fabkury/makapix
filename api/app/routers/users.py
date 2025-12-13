@@ -5,11 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
 from ..auth import check_ownership, get_current_user, get_current_user_optional, require_moderator, require_ownership
+from ..avatar_vault import ALLOWED_MIME_TYPES as AVATAR_ALLOWED_MIME_TYPES
+from ..avatar_vault import get_avatar_url, save_avatar_image
+from ..avatar_vault import try_delete_avatar_by_public_url
 from ..deps import get_db
 from ..utils.handles import validate_handle, is_handle_taken
 from ..pagination import apply_cursor_filter, create_page_response, decode_cursor, encode_cursor
@@ -291,8 +294,30 @@ def update_user(
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
-    require_ownership(user.id, current_user)
+
+    # Authorization:
+    # - Users can always edit their own profile
+    # - Owners can edit anyone
+    # - Moderators can edit anyone EXCEPT other moderators/owners
+    is_actor_owner = "owner" in (current_user.roles or [])
+    is_actor_moderator = is_actor_owner or ("moderator" in (current_user.roles or []))
+    is_target_moderator = "moderator" in (user.roles or [])
+    is_target_owner = "owner" in (user.roles or [])
+
+    if user.id != current_user.id:
+        if is_actor_owner:
+            pass
+        elif is_actor_moderator:
+            if is_target_owner or is_target_moderator:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Moderators cannot edit other moderators",
+                )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to access this resource",
+            )
     
     # Update handle if provided
     if payload.handle is not None:
@@ -312,7 +337,7 @@ def update_user(
             )
         
         # Check if handle is already taken (excluding current user)
-        if is_handle_taken(db, payload.handle.lower(), exclude_user_id=str(user.id)):
+        if is_handle_taken(db, payload.handle.lower(), exclude_user_id=user.id):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Handle already taken",
@@ -326,7 +351,7 @@ def update_user(
     if payload.website is not None:
         user.website = payload.website
     if payload.avatar_url is not None:
-        user.avatar_url = str(payload.avatar_url)
+        user.avatar_url = payload.avatar_url
     
     # Only allow moderators to update hidden_by_user for other users
     if payload.hidden_by_user is not None:
@@ -341,6 +366,139 @@ def update_user(
     db.commit()
     db.refresh(user)
     
+    return schemas.UserFull.model_validate(user)
+
+
+@router.post("/{id}/avatar", response_model=schemas.UserFull, status_code=status.HTTP_201_CREATED)
+async def upload_user_avatar(
+    request: Request,
+    id: UUID,
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.UserFull:
+    """
+    Upload a user avatar.
+
+    Stores raw bytes as-uploaded (no re-encoding) so animated GIF/WEBP stay animated.
+    """
+    user = db.query(models.User).filter(models.User.user_key == id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    # Authorization (same policy as profile patch):
+    # - Users can edit self
+    # - Owners can edit anyone
+    # - Moderators can edit anyone except other moderators/owners
+    is_actor_owner = "owner" in (current_user.roles or [])
+    is_actor_moderator = is_actor_owner or ("moderator" in (current_user.roles or []))
+    is_target_moderator = "moderator" in (user.roles or [])
+    is_target_owner = "owner" in (user.roles or [])
+
+    if user.id != current_user.id:
+        if is_actor_owner:
+            pass
+        elif is_actor_moderator:
+            if is_target_owner or is_target_moderator:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Moderators cannot edit other moderators",
+                )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to access this resource",
+            )
+
+    file_content = await image.read()
+    if not file_content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file")
+
+    # Determine MIME type
+    mime_type = (image.content_type or "").lower()
+    if mime_type == "image/jpg":
+        mime_type = "image/jpeg"
+
+    if mime_type not in AVATAR_ALLOWED_MIME_TYPES:
+        # Try to detect from file extension
+        filename = image.filename or ""
+        ext = filename.lower().split(".")[-1] if "." in filename else ""
+        ext_to_mime = {
+            "png": "image/png",
+            "gif": "image/gif",
+            "webp": "image/webp",
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+        }
+        mime_type = ext_to_mime.get(ext, "")
+        if mime_type not in AVATAR_ALLOWED_MIME_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid image format. Allowed formats: PNG, JPEG, GIF, WebP",
+            )
+
+    from uuid import uuid4
+
+    avatar_id = uuid4()
+    try:
+        save_avatar_image(avatar_id, file_content, mime_type)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    extension = AVATAR_ALLOWED_MIME_TYPES[mime_type]
+    user.avatar_url = get_avatar_url(avatar_id, extension)
+    db.commit()
+    db.refresh(user)
+
+    return schemas.UserFull.model_validate(user)
+
+
+@router.delete("/{id}/avatar", response_model=schemas.UserFull)
+def delete_user_avatar(
+    request: Request,
+    id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.UserFull:
+    """
+    Remove (clear) a user's avatar without uploading a new one.
+
+    This sets user.avatar_url to NULL. If the previous avatar URL points to our
+    vault avatar path, we also attempt a best-effort file deletion.
+    """
+    user = db.query(models.User).filter(models.User.user_key == id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    # Authorization (same policy as profile patch/upload):
+    is_actor_owner = "owner" in (current_user.roles or [])
+    is_actor_moderator = is_actor_owner or ("moderator" in (current_user.roles or []))
+    is_target_moderator = "moderator" in (user.roles or [])
+    is_target_owner = "owner" in (user.roles or [])
+
+    if user.id != current_user.id:
+        if is_actor_owner:
+            pass
+        elif is_actor_moderator:
+            if is_target_owner or is_target_moderator:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Moderators cannot edit other moderators",
+                )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to access this resource",
+            )
+
+    old_avatar_url = user.avatar_url
+    user.avatar_url = None
+    db.commit()
+    db.refresh(user)
+
+    # Best-effort file cleanup (non-fatal)
+    try_delete_avatar_by_public_url(old_avatar_url)
+
     return schemas.UserFull.model_validate(user)
 
 

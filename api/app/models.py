@@ -220,7 +220,9 @@ class Post(Base):
     public_sqid = Column(
         String(16), unique=True, nullable=True, index=True
     )  # Sqids-encoded public ID (set after insert)
-    kind = Column(String(20), nullable=False, default="art")  # Currently only "art"
+    # "artwork" posts contain an artwork asset; "playlist" posts contain ordered references
+    # to other posts via playlist_items.
+    kind = Column(String(20), nullable=False, default="artwork")
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
     # Content
@@ -229,12 +231,14 @@ class Post(Base):
     hashtags = Column(ARRAY(String), nullable=False, default=list)
 
     # Art metadata
-    art_url = Column(String(1000), nullable=False)
-    canvas = Column(String(50), nullable=False)  # e.g., "64x64", "128x128" - kept for backward compatibility
-    width = Column(Integer, nullable=False, index=True)  # Canvas width in pixels
-    height = Column(Integer, nullable=False, index=True)  # Canvas height in pixels
-    file_kb = Column(Integer, nullable=False)
-    file_bytes = Column(Integer, nullable=False)  # Exact file size in bytes
+    # NOTE: These are nullable to allow kind="playlist" rows in this table.
+    art_url = Column(String(1000), nullable=True)
+    canvas = Column(
+        String(50), nullable=True
+    )  # e.g., "64x64", "128x128" - kept for backward compatibility
+    width = Column(Integer, nullable=True, index=True)  # Canvas width in pixels
+    height = Column(Integer, nullable=True, index=True)  # Canvas height in pixels
+    file_bytes = Column(Integer, nullable=True)  # Exact file size in bytes
     frame_count = Column(
         Integer, nullable=False, default=1
     )  # Number of animation frames
@@ -272,6 +276,23 @@ class Post(Base):
     )
     updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
 
+    # Modified-at timestamps (required by player protocol)
+    metadata_modified_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        index=True,
+    )
+    artwork_modified_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        index=True,
+    )
+
+    # Display timing (milliseconds)
+    dwell_time_ms = Column(Integer, nullable=False, default=30000)
+
     # Relationships
     owner = relationship("User", back_populates="posts", foreign_keys=[owner_id])
     comments = relationship(
@@ -288,6 +309,40 @@ class Post(Base):
         Index("ix_posts_hashtags", "hashtags", postgresql_using="gin"),
         Index("ix_posts_owner_created", owner_id, created_at.desc()),
         Index("ix_posts_non_conformant_created", non_conformant, created_at.desc()),
+    )
+
+
+class PlaylistPost(Base):
+    """Playlist post marker table (1:1 with posts rows where kind='playlist')."""
+
+    __tablename__ = "playlist_posts"
+
+    post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), primary_key=True)
+    legacy_playlist_id = Column(UUID(as_uuid=True), unique=True, nullable=True, index=True)
+
+    # Relationships
+    post = relationship("Post", backref="playlist_post", foreign_keys=[post_id])
+
+
+class PlaylistItem(Base):
+    """Ordered playlist items referencing artwork posts (and optionally dwell overrides)."""
+
+    __tablename__ = "playlist_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    playlist_post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    artwork_post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    position = Column(Integer, nullable=False)
+    dwell_time_ms = Column(Integer, nullable=False, default=30000)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+
+    # Relationships
+    playlist_post = relationship("Post", foreign_keys=[playlist_post_id])
+    artwork_post = relationship("Post", foreign_keys=[artwork_post_id])
+
+    __table_args__ = (
+        UniqueConstraint("playlist_post_id", "position", name="uq_playlist_items_playlist_position"),
+        Index("ix_playlist_items_playlist_position", playlist_post_id, position),
     )
 
 

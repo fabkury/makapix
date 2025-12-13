@@ -33,7 +33,7 @@ def test_post(test_user: User, db: Session) -> Post:
     post = Post(
         storage_key=storage_key,
         owner_id=test_user.id,
-        kind="art",
+        kind="artwork",
         title="Test Art",
         description="A test artwork",
         hashtags=["test", "art"],
@@ -41,7 +41,9 @@ def test_post(test_user: User, db: Session) -> Post:
         canvas="64x64",
         width=64,
         height=64,
-        file_kb=32,
+        file_bytes=32 * 1024,
+        frame_count=1,
+        has_transparency=False,
         promoted=True,  # Make it visible without auth
     )
     db.add(post)
@@ -59,7 +61,7 @@ def test_create_post_requires_auth():
         "title": "Test Post",
         "art_url": "https://example.com/test.png",
         "canvas": "64x64",
-        "file_kb": 32
+        "file_bytes": 32 * 1024
     })
     
     assert response.status_code == 401
@@ -78,14 +80,14 @@ def test_create_post_with_valid_data(test_user: User):
             "hashtags": ["test", "art"],
             "art_url": "https://example.com/test.png",
             "canvas": "64x64",
-            "file_kb": 32
+            "file_bytes": 32 * 1024
         }
     )
     
     assert response.status_code == 201
     data = response.json()
     assert data["title"] == "Test Art"
-    assert data["owner_id"] == str(test_user.id)
+    assert data["owner_id"] == test_user.id
     assert data["canvas"] == "64x64"
     assert data["width"] == 64
     assert data["height"] == 64
@@ -102,7 +104,7 @@ def test_create_post_invalid_canvas(test_user: User):
             "title": "Test Art",
             "art_url": "https://example.com/test.png",
             "canvas": "999x999",  # Invalid canvas size
-            "file_kb": 32
+            "file_bytes": 32 * 1024
         }
     )
     
@@ -121,7 +123,7 @@ def test_create_post_file_too_large(test_user: User):
             "title": "Test Art",
             "art_url": "https://example.com/test.png",
             "canvas": "64x64",
-            "file_kb": 1000  # Too large
+            "file_bytes": 6 * 1024 * 1024  # Too large (global limit is 5 MiB)
         }
     )
     
@@ -201,13 +203,15 @@ def test_update_post_requires_ownership(test_user: User, db: Session):
     post = Post(
         storage_key=storage_key,
         owner_id=other_user.id,
-        kind="art",
+        kind="artwork",
         title="Other's Post",
         art_url="https://example.com/other.png",
         canvas="64x64",
         width=64,
         height=64,
-        file_kb=32,
+        file_bytes=32 * 1024,
+        frame_count=1,
+        has_transparency=False,
         promoted=True,
     )
     db.add(post)
@@ -271,13 +275,15 @@ def test_delete_post_requires_ownership(test_user: User, db: Session):
     post = Post(
         storage_key=storage_key,
         owner_id=other_user.id,
-        kind="art",
+        kind="artwork",
         title="Other's Post",
         art_url="https://example.com/other.png",
         canvas="64x64",
         width=64,
         height=64,
-        file_kb=32,
+        file_bytes=32 * 1024,
+        frame_count=1,
+        has_transparency=False,
         promoted=True,
     )
     db.add(post)
@@ -329,7 +335,7 @@ def test_create_post_with_64_hashtags(test_user: User):
             "hashtags": hashtags,
             "art_url": "https://example.com/test.png",
             "canvas": "64x64",
-            "file_kb": 32
+            "file_bytes": 32 * 1024
         }
     )
     
@@ -354,7 +360,7 @@ def test_create_post_trims_excess_hashtags(test_user: User):
             "hashtags": hashtags,
             "art_url": "https://example.com/test.png",
             "canvas": "64x64",
-            "file_kb": 32
+            "file_bytes": 32 * 1024
         }
     )
     

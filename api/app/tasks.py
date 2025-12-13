@@ -27,7 +27,7 @@ def generate_artwork_html(manifest: dict, artwork_files: List[str], owner: str, 
         filename = artwork.get("filename", artwork_files[idx] if idx < len(artwork_files) else "")
         title = artwork.get("title", "Untitled")
         canvas = artwork.get("canvas", "Unknown")
-        file_kb = artwork.get("file_kb", 0)
+        file_bytes = artwork.get("file_bytes", 0)
         description = artwork.get("description", "")
         hashtags = artwork.get("hashtags", [])
         
@@ -46,7 +46,7 @@ def generate_artwork_html(manifest: dict, artwork_files: List[str], owner: str, 
             </div>
             <div class="artwork-info">
                 <h2>{title}</h2>
-                <p class="metadata">Canvas: {canvas} • Size: {file_kb} KB</p>
+                <p class="metadata">Canvas: {canvas} • Size: {file_bytes} bytes</p>
                 {f'<p class="description">{description}</p>' if description else ''}
                 {f'<p class="hashtags">{"".join(f"#{tag} " for tag in hashtags)}</p>' if hashtags else ''}
             </div>
@@ -711,17 +711,37 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
         manifest = job.manifest_data
         post_ids = []
         for idx, artwork in enumerate(manifest.get("artworks", [])):
+            # Parse canvas "WxH" into width/height (required for artwork posts)
+            try:
+                w_str, h_str = artwork["canvas"].split("x")
+                width = int(w_str)
+                height = int(h_str)
+            except Exception:
+                width = None
+                height = None
+
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc)
+
             post = models.Post(
                 owner_id=job.user_id,
-                kind="art",
+                kind="artwork",
                 title=artwork["title"],
                 description=artwork.get("description"),
                 hashtags=artwork.get("hashtags", []),
                 art_url=f"https://{owner}.github.io/{repo_name}/{artwork['filename']}",
                 canvas=artwork["canvas"],
-                file_kb=artwork["file_kb"],
+                width=width,
+                height=height,
+                file_bytes=int(artwork["file_bytes"]),
+                frame_count=1,
+                min_frame_duration_ms=None,
+                has_transparency=False,
                 expected_hash=artwork.get("sha256"),  # Store hash from manifest
                 mime_type=artwork.get("mime_type"),  # Store MIME type from manifest
+                metadata_modified_at=now,
+                artwork_modified_at=now,
+                dwell_time_ms=30000,
             )
             db.add(post)
             db.flush()  # Flush to get the post ID
@@ -1618,6 +1638,7 @@ def cleanup_expired_player_registrations(self) -> dict[str, Any]:
     devices but never complete registration on the website.
     """
     from datetime import datetime, timezone
+    from . import models
     from .db import get_session
     
     db = next(get_session())

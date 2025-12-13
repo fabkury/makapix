@@ -224,17 +224,29 @@ export default function SiteMetricsPanel() {
       <div className="metrics-section">
         <h3>📈 Page Views (Last 30 Days)</h3>
         <div className="trend-chart">
-          {displayedStats.daily_views.map((day) => {
+          {displayedStats.daily_views.map((day, index) => {
             const height = maxDailyViews > 0 ? (day.count / maxDailyViews) * 100 : 0;
             const date = new Date(day.date);
             const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+            const showLabel =
+              index % 5 === 0 ||
+              index === displayedStats.daily_views.length - 1 ||
+              day.count === maxDailyViews;
             return (
-              <div
-                key={day.date}
-                className={`trend-bar ${isWeekend ? 'weekend' : ''}`}
-                style={{ height: `${Math.max(height, 2)}%` }}
-                title={`${day.date}: ${day.count} views`}
-              />
+              <div key={day.date} className="trend-bar-wrap">
+                {showLabel && (
+                  <span className="trend-bar-label" aria-hidden="true">
+                    {day.count.toLocaleString()}
+                  </span>
+                )}
+                <div
+                  className={`trend-bar ${isWeekend ? 'weekend' : ''}`}
+                  style={{ height: `${Math.max(height, 2)}%` }}
+                  title={`${day.date}: ${day.count} views`}
+                  aria-label={`${day.date}: ${day.count} views`}
+                  role="img"
+                />
+              </div>
             );
           })}
         </div>
@@ -248,17 +260,33 @@ export default function SiteMetricsPanel() {
       <div className="metrics-section">
         <h3>⏰ Page Views (Last 24 Hours - Hourly)</h3>
         <div className="trend-chart hourly">
-          {displayedStats.hourly_views.map((hour) => {
+          {displayedStats.hourly_views.map((hour, index) => {
             const height = maxHourlyViews > 0 ? (hour.count / maxHourlyViews) * 100 : 0;
             const hourDate = new Date(hour.hour);
             const hourLabel = hourDate.getHours();
+            const showLabel =
+              // Show every 3 hours + last bar + peak hour(s)
+              index % 3 === 0 ||
+              index === displayedStats.hourly_views.length - 1 ||
+              hour.count === maxHourlyViews;
             return (
-              <div
-                key={hour.hour}
-                className="trend-bar"
-                style={{ height: `${Math.max(height, 2)}%` }}
-                title={`${hourLabel}:00 - ${hour.count} views`}
-              />
+              <div key={hour.hour} className="trend-bar-wrap">
+                <span className="trend-bar-xlabel" aria-hidden="true">
+                  {hourLabel}
+                </span>
+                {showLabel && (
+                  <span className="trend-bar-label" aria-hidden="true">
+                    {hour.count.toLocaleString()}
+                  </span>
+                )}
+                <div
+                  className="trend-bar"
+                  style={{ height: `${Math.max(height, 2)}%` }}
+                  title={`${hourLabel}:00 - ${hour.count} views`}
+                  aria-label={`${hourLabel}:00 - ${hour.count} views`}
+                  role="img"
+                />
+              </div>
             );
           })}
         </div>
@@ -511,16 +539,51 @@ export default function SiteMetricsPanel() {
         }
 
         .trend-chart.hourly {
-          height: 100px;
+          height: 120px;
+          padding-bottom: 18px; /* room for hour labels */
+        }
+
+        .trend-bar-wrap {
+          flex: 1;
+          position: relative;
+          height: 100%;
+          display: flex;
+          align-items: flex-end;
+          justify-content: center;
+          min-width: 0;
+        }
+
+        .trend-bar-xlabel {
+          position: absolute;
+          bottom: -16px;
+          font-size: 10px;
+          line-height: 1;
+          color: rgba(255, 255, 255, 0.6);
+          width: 100%;
+          text-align: center;
+          pointer-events: none;
+          white-space: nowrap;
         }
 
         .trend-bar {
-          flex: 1;
+          width: 100%;
           background: linear-gradient(to top, var(--accent-purple, #b44eff), var(--accent-cyan, #4ecdc4));
           border-radius: 2px 2px 0 0;
           min-height: 2px;
           cursor: pointer;
           transition: opacity 0.2s;
+        }
+
+        .trend-bar-label {
+          position: absolute;
+          top: -2px;
+          transform: translateY(-100%);
+          font-size: 10px;
+          line-height: 1;
+          color: rgba(255, 255, 255, 0.72);
+          white-space: nowrap;
+          pointer-events: none;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
         }
 
         .trend-bar.weekend {

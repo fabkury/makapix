@@ -17,10 +17,12 @@ import os
 from pathlib import Path
 from uuid import UUID
 
+from .settings import MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES
+
 logger = logging.getLogger(__name__)
 
-# Maximum file size: 5 MB
-MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
+# Maximum file size for artwork assets (bytes)
+MAX_FILE_SIZE_BYTES = MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES
 
 # Maximum canvas dimensions: 256x256
 MAX_CANVAS_SIZE = 256

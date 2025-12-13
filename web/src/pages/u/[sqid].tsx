@@ -63,9 +63,14 @@ export default function UserProfilePage() {
   const [editBio, setEditBio] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [avatarUploadError, setAvatarUploadError] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [isAvatarDragOver, setIsAvatarDragOver] = useState(false);
   const [isOwnProfile, setIsOwnProfile] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [isModerator, setIsModerator] = useState(false);
+  const [isViewerOwner, setIsViewerOwner] = useState(false);
   const [isBlogPostsCollapsed, setIsBlogPostsCollapsed] = useState(false);
   
   const observerTarget = useRef<HTMLDivElement>(null);
@@ -118,6 +123,7 @@ export default function UserProfilePage() {
             const meData = await meResponse.json();
             const roles = meData.roles || [];
             setIsModerator(roles.includes('moderator') || roles.includes('owner'));
+            setIsViewerOwner(roles.includes('owner'));
             
             // Use actual authenticated user ID to determine ownership (not localStorage)
             const authenticatedUserId = meData.user?.id;
@@ -133,11 +139,13 @@ export default function UserProfilePage() {
           } else {
             setIsOwnProfile(false);
             setIsModerator(false);
+            setIsViewerOwner(false);
           }
         } catch (err) {
           console.error('Error checking moderator status:', err);
           setIsOwnProfile(false);
           setIsModerator(false);
+          setIsViewerOwner(false);
         }
       } catch (err) {
         setError('Failed to load profile');
@@ -206,7 +214,10 @@ export default function UserProfilePage() {
     if (!user) return;
     
     try {
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}/blog-post?limit=2`);
+      // Blog posts API expects integer owner_id (users.id), not user_key UUID.
+      const response = await authenticatedFetch(
+        `${API_BASE_URL}/api/blog-post?owner_id=${user.id}&limit=2`
+      );
       
       if (response.ok) {
         const data = await response.json();
@@ -223,6 +234,7 @@ export default function UserProfilePage() {
       setEditHandle(user.handle);
       setEditBio(user.bio || '');
       setSaveError(null);
+      setAvatarUploadError(null);
       setIsEditing(true);
     }
   };
@@ -233,7 +245,75 @@ export default function UserProfilePage() {
       setEditHandle(user.handle);
       setEditBio(user.bio || '');
       setSaveError(null);
+      setAvatarUploadError(null);
       setIsEditing(false);
+    }
+  };
+
+  const uploadAvatarFile = async (file: File) => {
+    if (!user) return;
+    setAvatarUploadError(null);
+    setIsUploadingAvatar(true);
+    try {
+      const form = new FormData();
+      form.append('image', file);
+      const res = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}/avatar`, {
+        method: 'POST',
+        body: form,
+      });
+      if (res.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setAvatarUploadError(err.detail || 'Failed to upload avatar');
+        return;
+      }
+      const updatedUser = await res.json();
+      setUser(updatedUser);
+      window.dispatchEvent(
+        new CustomEvent('makapix:user-updated', { detail: { avatar_url: updatedUser.avatar_url ?? null } })
+      );
+    } catch (e) {
+      console.error('Error uploading avatar:', e);
+      setAvatarUploadError('Failed to upload avatar');
+    } finally {
+      setIsUploadingAvatar(false);
+      setIsAvatarDragOver(false);
+    }
+  };
+
+  const removeAvatar = async () => {
+    if (!user) return;
+    setAvatarUploadError(null);
+    setIsUploadingAvatar(true);
+    try {
+      const res = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}/avatar`, {
+        method: 'DELETE',
+      });
+      if (res.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setAvatarUploadError(err.detail || 'Failed to remove avatar');
+        return;
+      }
+      const updatedUser = await res.json();
+      setUser(updatedUser);
+      window.dispatchEvent(
+        new CustomEvent('makapix:user-updated', { detail: { avatar_url: updatedUser.avatar_url ?? null } })
+      );
+    } catch (e) {
+      console.error('Error removing avatar:', e);
+      setAvatarUploadError('Failed to remove avatar');
+    } finally {
+      setIsUploadingAvatar(false);
+      setIsAvatarDragOver(false);
     }
   };
 
@@ -245,7 +325,7 @@ export default function UserProfilePage() {
     setSaveError(null);
     
     try {
-      const payload: { handle?: string; bio?: string } = {};
+      const payload: { handle?: string; bio?: string; avatar_url?: string | null } = {};
       
       // Only include handle if it changed
       if (editHandle.trim() !== user.handle) {
@@ -256,7 +336,7 @@ export default function UserProfilePage() {
       if (editBio !== (user.bio || '')) {
         payload.bio = editBio;
       }
-      
+
       // If nothing changed, just exit edit mode
       if (Object.keys(payload).length === 0) {
         setIsEditing(false);
@@ -399,13 +479,14 @@ export default function UserProfilePage() {
   useEffect(() => {
     if (!user || posts.length === 0 || !hasMoreRef.current) return;
     
+    const scrollRoot = document.querySelector('.main-content');
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMoreRef.current && !loadingRef.current) {
           loadPosts(nextCursorRef.current);
         }
       },
-      { threshold: 0.1 }
+      { threshold: 0.1, root: scrollRoot instanceof Element ? scrollRoot : null }
     );
 
     const currentTarget = observerTarget.current;
@@ -497,6 +578,62 @@ export default function UserProfilePage() {
                   {user.handle.charAt(0).toUpperCase()}
                 </div>
               )}
+
+              {isEditing && (
+                <>
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void uploadAvatarFile(f);
+                      e.currentTarget.value = '';
+                    }}
+                  />
+                  <div
+                    className={`avatar-dropzone ${isAvatarDragOver ? 'dragover' : ''}`}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsAvatarDragOver(true);
+                    }}
+                    onDragLeave={() => setIsAvatarDragOver(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const f = e.dataTransfer.files?.[0];
+                      if (f) void uploadAvatarFile(f);
+                    }}
+                    onClick={() => avatarInputRef.current?.click()}
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Upload profile picture"
+                    title="Drop an image or click to upload"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        avatarInputRef.current?.click();
+                      }
+                    }}
+                  >
+                    {isUploadingAvatar ? 'Uploading…' : 'Drop image or click'}
+                  </div>
+                  {user.avatar_url && (
+                    <button
+                      type="button"
+                      className="avatar-remove"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        void removeAvatar();
+                      }}
+                      disabled={isUploadingAvatar}
+                    >
+                      Remove picture
+                    </button>
+                  )}
+                </>
+              )}
             </div>
             
             <div className="profile-info">
@@ -523,6 +660,9 @@ export default function UserProfilePage() {
                     maxLength={1000}
                     rows={3}
                   />
+                  {avatarUploadError && (
+                    <p className="save-error">{avatarUploadError}</p>
+                  )}
                   {saveError && (
                     <p className="save-error">{saveError}</p>
                   )}
@@ -588,6 +728,16 @@ export default function UserProfilePage() {
                   <Link href={`/u/${user.public_sqid}/dashboard`} className="dashboard-btn">
                     📊 Dashboard
                   </Link>
+                  {(isViewerOwner || !(user.roles?.includes('moderator') || user.roles?.includes('owner'))) && (
+                    <button
+                      className="edit-profile-btn"
+                      onClick={handleEditClick}
+                      aria-label="Edit profile"
+                      title="Edit profile"
+                    >
+                      ✏️
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -724,6 +874,7 @@ export default function UserProfilePage() {
               {!hasMore && (
                 <div className="end-message">
                   <span>✨</span>
+                  <div className="end-spacer" aria-hidden="true" />
                 </div>
               )}
             </div>
@@ -746,7 +897,8 @@ export default function UserProfilePage() {
           margin-left: -50vw;
           margin-right: -50vw;
           margin-top: 0;
-          margin-bottom: 24px;
+          /* No gap between header and the next full-bleed section */
+          margin-bottom: 0;
           background: var(--bg-secondary);
           border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
@@ -758,7 +910,8 @@ export default function UserProfilePage() {
           justify-content: space-between;
           align-items: flex-start;
           gap: 32px;
-          padding: 24px 24px 32px 24px;
+          /* Avoid visible "empty" band at the bottom of the header section */
+          padding: 24px;
         }
 
         @media (max-width: 600px) {
@@ -785,6 +938,9 @@ export default function UserProfilePage() {
 
         .avatar-container {
           flex-shrink: 0;
+          position: relative;
+          width: 128px;
+          height: 128px;
         }
 
         .avatar {
@@ -793,6 +949,59 @@ export default function UserProfilePage() {
           border-radius: 0;
           object-fit: cover;
           border: 3px solid var(--bg-tertiary);
+        }
+
+        .avatar-dropzone {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(0, 0, 0, 0.45);
+          color: white;
+          font-size: 0.8rem;
+          font-weight: 600;
+          text-align: center;
+          padding: 10px;
+          cursor: pointer;
+          opacity: 0;
+          transition: opacity var(--transition-fast), background var(--transition-fast);
+        }
+
+        .avatar-container:hover .avatar-dropzone {
+          opacity: 1;
+        }
+
+        .avatar-dropzone.dragover {
+          opacity: 1;
+          background: rgba(0, 0, 0, 0.65);
+        }
+
+        .avatar-remove {
+          position: absolute;
+          left: 8px;
+          right: 8px;
+          bottom: 8px;
+          z-index: 2;
+          background: rgba(0, 0, 0, 0.7);
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          color: rgba(255, 255, 255, 0.92);
+          border-radius: 10px;
+          padding: 6px 10px;
+          font-size: 0.8rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background var(--transition-fast), border-color var(--transition-fast);
+        }
+
+        .avatar-remove:hover:enabled {
+          background: rgba(0, 0, 0, 0.82);
+          border-color: rgba(255, 255, 255, 0.28);
+        }
+
+        .avatar-remove:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
 
         .avatar-placeholder {
@@ -1212,7 +1421,8 @@ export default function UserProfilePage() {
 
         .artworks-section {
           min-height: 400px;
-          margin-top: 24px;
+          /* No artificial gap below the header/blog-posts section */
+          margin-top: 0;
         }
 
         .empty-state {
@@ -1232,7 +1442,7 @@ export default function UserProfilePage() {
         }
 
         .load-more-trigger {
-          height: 100px;
+          min-height: 100px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1262,6 +1472,15 @@ export default function UserProfilePage() {
         .end-message {
           color: var(--text-muted);
           font-size: 1.5rem;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding-top: 24px;
+        }
+
+        .end-spacer {
+          height: max(25vh, 200px);
+          width: 1px;
         }
       `}</style>
     </Layout>

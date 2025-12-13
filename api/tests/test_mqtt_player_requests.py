@@ -12,6 +12,7 @@ from app.models import Player, User, Post, Reaction, Comment
 from app.mqtt.player_requests import (
     _authenticate_player,
     _handle_query_posts,
+    _handle_get_post,
     _handle_submit_view,
     _handle_submit_reaction,
     _handle_revoke_reaction,
@@ -19,6 +20,7 @@ from app.mqtt.player_requests import (
 )
 from app.mqtt.schemas import (
     QueryPostsRequest,
+    GetPostRequest,
     SubmitViewRequest,
     SubmitReactionRequest,
     RevokeReactionRequest,
@@ -67,7 +69,7 @@ def test_posts(test_user: User, db: Session) -> list[Post]:
         post = Post(
             storage_key=storage_key,
             owner_id=test_user.id,
-            kind="art",
+            kind="artwork",
             title=f"Test Art {i}",
             description=f"Test artwork {i}",
             hashtags=["test", "art"],
@@ -75,8 +77,9 @@ def test_posts(test_user: User, db: Session) -> list[Post]:
             canvas="64x64",
             width=64,
             height=64,
-            file_kb=32,
             file_bytes=32000,
+            frame_count=1,
+            has_transparency=False,
             visible=True,
             promoted=(i % 2 == 0),  # Every other post is promoted
         )
@@ -109,7 +112,7 @@ def other_user_post(other_user: User, db: Session) -> Post:
     post = Post(
         storage_key=storage_key,
         owner_id=other_user.id,
-        kind="art",
+        kind="artwork",
         title="Other User Art",
         description="Art by other user",
         hashtags=["other"],
@@ -117,8 +120,9 @@ def other_user_post(other_user: User, db: Session) -> Post:
         canvas="64x64",
         width=64,
         height=64,
-        file_kb=32,
         file_bytes=32000,
+        frame_count=1,
+        has_transparency=False,
         visible=True,
     )
     db.add(post)

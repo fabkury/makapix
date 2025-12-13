@@ -6,8 +6,10 @@ import zipfile
 from pathlib import Path
 from typing import Tuple, List
 
+from .settings import MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES
+
 MAX_BUNDLE_SIZE = 50 * 1024 * 1024  # 50 MB
-MAX_FILE_SIZE = 15 * 1024 * 1024  # 15 MB per artwork
+MAX_FILE_SIZE = MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES  # per artwork (bytes)
 
 # Note: Canvas validation now uses validate_image_dimensions from vault.py
 
@@ -135,12 +137,15 @@ def validate_manifest(manifest: dict) -> Tuple[bool, List[str]]:
                     errors.append(f"Missing canvas in artwork {idx}")
                 
                 # File size validation
-                file_kb = art.get("file_kb", 0)
-                if not isinstance(file_kb, (int, float)):
-                    errors.append(f"Invalid file_kb type in artwork {idx}")
+                file_bytes = art.get("file_bytes")
+                if file_bytes is None:
+                    errors.append(f"Missing file_bytes in artwork {idx}")
+                elif not isinstance(file_bytes, int):
+                    errors.append(f"Invalid file_bytes type in artwork {idx} (expected int)")
                 else:
-                    max_file_kb = MAX_FILE_SIZE / 1024
-                    if file_kb > max_file_kb:
-                        errors.append(f"File too large in artwork {idx}: {file_kb}KB exceeds limit of {max_file_kb}KB")
+                    if file_bytes > MAX_FILE_SIZE:
+                        errors.append(
+                            f"File too large in artwork {idx}: {file_bytes} bytes exceeds limit of {MAX_FILE_SIZE} bytes"
+                        )
     
     return len(errors) == 0, errors

@@ -103,6 +103,27 @@ def apply_cursor_filter(query, model_class, cursor: str | None, sort_field: str 
     last_id, sort_value = cursor_data
     sort_column = getattr(model_class, sort_field)
     id_column = model_class.id
+
+    # Coerce cursor id to the model's id Python type (e.g., int for posts.id).
+    # Without this, PostgreSQL may compare mismatched types (e.g., integer < varchar),
+    # causing 500s during pagination.
+    try:
+        id_python_type = id_column.type.python_type  # type: ignore[attr-defined]
+    except Exception:
+        id_python_type = None
+
+    if id_python_type is int and isinstance(last_id, str):
+        try:
+            last_id = int(last_id)
+        except ValueError:
+            # Invalid cursor; ignore it rather than failing the request
+            return query
+    elif id_python_type is not None and isinstance(last_id, str):
+        # Best-effort coercion for other id types (UUID, etc.)
+        try:
+            last_id = id_python_type(last_id)  # type: ignore[misc]
+        except Exception:
+            return query
     
     # Cast sort_value to appropriate type based on sort_field
     if sort_field == "created_at":

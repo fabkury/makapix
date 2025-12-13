@@ -14,6 +14,8 @@ from pydantic import (
     model_validator,
 )
 
+from .settings import MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES
+
 # ============================================================================
 # BASE SCHEMAS
 # ============================================================================
@@ -67,7 +69,8 @@ class Config(BaseModel):
     allowed_canvases: list[str] = ["8x8", "8x16", "16x8", "8x32", "32x8", "16x16", "16x32", "32x16", "32x32", "32x64", "64x32", "64x64", "64x128", "128x64"]
     # Note: Sizes from 128x128 to 256x256 (inclusive) are also allowed but not listed here
     # All 90-degree rotations of the listed sizes are allowed (e.g., 8x16 and 16x8 are both valid)
-    max_art_file_kb_default: int = 15 * 1024  # 15 MB
+    # Artwork size limits are expressed in raw bytes (never KiB).
+    max_art_file_bytes_default: int = MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES
 
 
 # ============================================================================
@@ -95,7 +98,9 @@ class UserPublic(BaseModel):
     handle: str
     bio: str | None = None
     website: str | None = None
-    avatar_url: HttpUrl | None = None
+    # Avatar URL may be an external absolute URL (GitHub) or a site-relative vault URL
+    # (e.g. /api/vault/avatar/...). We store raw strings to support relative URLs.
+    avatar_url: str | None = None
     badges: list[BadgeGrant] = []
     reputation: int
     hidden_by_user: bool
@@ -133,7 +138,7 @@ class UserUpdate(BaseModel):
     handle: str | None = Field(None, min_length=2, max_length=50)
     bio: str | None = Field(None, max_length=1000)
     website: str | None = Field(None, max_length=500)
-    avatar_url: HttpUrl | None = None
+    avatar_url: str | None = None
     hidden_by_user: bool | None = None
 
 
@@ -175,7 +180,7 @@ class Post(BaseModel):
     id: int  # Auto-increment integer primary key
     storage_key: UUID  # UUID used for vault lookup
     public_sqid: str  # Sqids-encoded public ID (max 16 chars)
-    kind: Literal["art"]
+    kind: Literal["artwork"]
     owner_id: int
     title: str
     description: str | None = None
@@ -184,13 +189,16 @@ class Post(BaseModel):
     canvas: str  # Kept for backward compatibility, computed from width x height
     width: int  # Canvas width in pixels
     height: int  # Canvas height in pixels
-    file_kb: int
     file_bytes: int  # Exact file size in bytes
     frame_count: int = 1  # Number of animation frames
     min_frame_duration_ms: int | None = (
         None  # Minimum non-zero frame duration (ms), NULL for static
     )
     has_transparency: bool = False  # Whether image has alpha channel
+    # Required by player protocol (also useful for web clients)
+    metadata_modified_at: datetime
+    artwork_modified_at: datetime
+    dwell_time_ms: int = 30000
     visible: bool
     hidden_by_user: bool
     hidden_by_mod: bool
@@ -213,13 +221,13 @@ class Post(BaseModel):
 class PostCreate(BaseModel):
     """Create post request."""
 
-    kind: Literal["art"] = "art"
+    kind: Literal["artwork"] = "artwork"
     title: str = Field(..., min_length=1, max_length=200)
     description: str | None = Field(None, max_length=5000)
     hashtags: list[str] = Field(default_factory=list, max_length=64)
     art_url: str  # Can be relative URL for vault-hosted images or full URL for external
     canvas: str = Field(..., pattern=r"^\d+x\d+$")
-    file_kb: int = Field(..., gt=0, le=15 * 1024)  # 15 MB max
+    file_bytes: int = Field(..., gt=0, le=MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES)
 
 
 class PostUpdate(BaseModel):

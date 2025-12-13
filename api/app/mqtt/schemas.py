@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, HttpUrl
@@ -41,9 +41,9 @@ class QueryPostsRequest(PlayerRequestBase):
     """Request to query posts with filters and pagination."""
     
     request_type: Literal["query_posts"] = "query_posts"
-    channel: Literal["all", "promoted", "user", "by_user"] = Field(
+    channel: Literal["all", "promoted", "user", "by_user", "artwork"] = Field(
         "all",
-        description="Channel to query: 'all' for recent posts, 'promoted' for promoted posts, 'user' for player owner's posts, 'by_user' for arbitrary user's posts (requires user_handle)"
+        description="Channel to query: 'all', 'promoted', 'user', 'by_user', 'artwork' (device protocol compatibility)"
     )
     user_handle: str | None = Field(
         None,
@@ -67,14 +67,39 @@ class QueryPostsRequest(PlayerRequestBase):
         le=50,
         description="Number of posts to return (1-50)"
     )
+    PE: int | None = Field(
+        None,
+        ge=0,
+        le=1023,
+        description="Playlist Expansion (0 = all). If omitted, server defaults to 1.",
+    )
 
 
-class PostSummary(BaseModel):
-    """Summary of a post for player display."""
-    
+class ArtworkPostPayload(BaseModel):
+    """Artwork post payload for players (firmware protocol)."""
+
     post_id: int
-    storage_key: UUID
-    title: str
+    kind: Literal["artwork"]
+    owner_handle: str
+    created_at: datetime
+    metadata_modified_at: datetime
+
+    storage_key: str
+    art_url: str
+    canvas: str
+    width: int
+    height: int
+    frame_count: int
+    has_transparency: bool
+    artwork_modified_at: datetime
+    dwell_time_ms: int
+
+
+class PlaylistArtworkPayload(BaseModel):
+    """Artwork-like object used inside playlist posts."""
+
+    post_id: int
+    storage_key: str
     art_url: str
     canvas: str
     width: int
@@ -83,6 +108,28 @@ class PostSummary(BaseModel):
     has_transparency: bool
     owner_handle: str
     created_at: datetime
+    metadata_modified_at: datetime
+    artwork_modified_at: datetime
+    dwell_time_ms: int
+
+
+class PlaylistPostPayload(BaseModel):
+    """Playlist post payload for players (firmware protocol)."""
+
+    post_id: int
+    kind: Literal["playlist"]
+    owner_handle: str
+    created_at: datetime
+    metadata_modified_at: datetime
+
+    total_artworks: int
+    dwell_time_ms: int
+    artworks: list[PlaylistArtworkPayload]
+
+
+PlayerPostPayload = Annotated[
+    ArtworkPostPayload | PlaylistPostPayload, Field(discriminator="kind")
+]
 
 
 class QueryPostsResponse(BaseModel):
@@ -90,10 +137,34 @@ class QueryPostsResponse(BaseModel):
     
     request_id: str
     success: bool = True
-    posts: list[PostSummary]
+    posts: list[PlayerPostPayload]
     next_cursor: str | None = None
     has_more: bool = False
     error: str | None = None
+    error_code: str | None = None
+
+
+class GetPostRequest(PlayerRequestBase):
+    """Request to fetch a single post by ID."""
+
+    request_type: Literal["get_post"] = "get_post"
+    post_id: int = Field(..., description="Post ID to fetch")
+    PE: int | None = Field(
+        None,
+        ge=0,
+        le=1023,
+        description="Playlist Expansion (0 = all). If omitted, server defaults to 1.",
+    )
+
+
+class GetPostResponse(BaseModel):
+    """Response with a single post."""
+
+    request_id: str
+    success: bool = True
+    post: PlayerPostPayload | None = None
+    error: str | None = None
+    error_code: str | None = None
 
 
 class SubmitViewRequest(PlayerRequestBase):

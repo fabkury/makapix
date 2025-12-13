@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import Layout from '../components/Layout';
+import { clearLoggedOutMarker } from '../lib/api';
 
 interface AuthTokens {
   token: string;
@@ -35,6 +36,18 @@ export default function AuthPage() {
   const API_BASE_URL = typeof window !== 'undefined' 
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
     : '';
+
+  // Mobile fix: allow native body scrolling on the auth page.
+  // Our app normally locks body scroll and scrolls inside Layout's main-content,
+  // which can be unreliable on some mobile browsers (especially with the keyboard).
+  useEffect(() => {
+    document.documentElement.classList.add('allow-body-scroll');
+    document.body.classList.add('allow-body-scroll');
+    return () => {
+      document.documentElement.classList.remove('allow-body-scroll');
+      document.body.classList.remove('allow-body-scroll');
+    };
+  }, []);
 
   // Check if already logged in
   useEffect(() => {
@@ -173,6 +186,7 @@ export default function AuthPage() {
 
         const data: AuthTokens = await response.json();
         localStorage.setItem('access_token', data.token);
+        clearLoggedOutMarker();
         // refresh_token is now stored in HttpOnly cookie, not in localStorage
         // Do not store refresh_token even if provided in response
         localStorage.setItem('user_id', String(data.user_id));
@@ -306,6 +320,7 @@ export default function AuthPage() {
                 <input
                   id="email"
                   type="email"
+                  autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -330,6 +345,7 @@ export default function AuthPage() {
                     required
                     minLength={1}
                     placeholder="Enter your password"
+                    autoComplete="current-password"
                   />
                   <div className="help-links">
                     <Link href="/forgot-password" className="help-link">
@@ -380,7 +396,8 @@ export default function AuthPage() {
           display: flex;
           align-items: center;
           justify-content: center;
-          min-height: calc(100vh - var(--header-height));
+          /* This page lives inside Layout's scroll container; use 100% rather than viewport math */
+          min-height: 100%;
           padding: 24px;
         }
 

@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
@@ -51,6 +51,8 @@ export default function Layout({ children, title, description }: LayoutProps) {
   const [publicSqid, setPublicSqid] = useState<string | null>(null);
   const [isModerator, setIsModerator] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [isHeaderHidden, setIsHeaderHidden] = useState(false);
+  const mainRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
@@ -90,6 +92,8 @@ export default function Layout({ children, title, description }: LayoutProps) {
             }
             if (data.user.avatar_url) {
               setAvatarUrl(data.user.avatar_url);
+            } else {
+              setAvatarUrl(null);
             }
           }
         })
@@ -97,6 +101,51 @@ export default function Layout({ children, title, description }: LayoutProps) {
           // Silently ignore errors - user just won't see mod icon
         });
     }
+  }, []);
+
+  // Sync header avatar immediately when profile updates within the same tab.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail as { avatar_url?: string | null } | undefined;
+      if (detail && 'avatar_url' in detail) {
+        setAvatarUrl(detail.avatar_url ?? null);
+      }
+    };
+    window.addEventListener('makapix:user-updated', handler as EventListener);
+    return () => window.removeEventListener('makapix:user-updated', handler as EventListener);
+  }, []);
+
+  // Hide the header after scrolling down ~2 rows of artwork tiles.
+  // Scroll happens inside main-content (not window) to keep header behavior consistent.
+  useEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+
+    let rafId: number | null = null;
+
+    const HIDE_AT = 128 * 2; // ~2 rows
+    const SHOW_AT = 64; // hysteresis to avoid flicker near the top
+
+    const onScroll = () => {
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        const y = main.scrollTop;
+        setIsHeaderHidden((prev) => {
+          if (!prev && y >= HIDE_AT) return true;
+          if (prev && y <= SHOW_AT) return false;
+          return prev;
+        });
+      });
+    };
+
+    main.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+
+    return () => {
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+      main.removeEventListener('scroll', onScroll);
+    };
   }, []);
 
   // Listen for OAuth success message from popup
@@ -157,9 +206,17 @@ export default function Layout({ children, title, description }: LayoutProps) {
       </Head>
 
       <div className="app-container">
-        <header className="header">
+        <header className={`header ${isHeaderHidden ? 'header-hidden' : ''}`}>
           <div className="header-left">
-            <Link href={isLoggedIn ? "/" : "/recommended"} className="logo-link" aria-label="Makapix Club Home">
+            <Link
+              href={isLoggedIn ? "/" : "/recommended"}
+              className="logo-link"
+              aria-label="Makapix Club Home"
+              // In dev, some tooling can inject extra attributes into SSR output, triggering
+              // noisy hydration warnings (e.g. "Extra attributes from the server: data-cursor-ref").
+              // Suppress that specific warning for these nav anchors.
+              suppressHydrationWarning
+            >
               <div className="logo-container">
                 <img 
                   src="/logo.png" 
@@ -170,7 +227,12 @@ export default function Layout({ children, title, description }: LayoutProps) {
             </Link>
             
             {isLoggedIn && publicSqid && (
-              <Link href={`/u/${publicSqid}`} className={`user-profile-link ${router.pathname === '/u/[sqid]' && router.query.sqid === publicSqid ? 'active' : ''}`} aria-label="My Profile">
+              <Link
+                href={`/u/${publicSqid}`}
+                className={`user-profile-link ${router.pathname === '/u/[sqid]' && router.query.sqid === publicSqid ? 'active' : ''}`}
+                aria-label="My Profile"
+                suppressHydrationWarning
+              >
                 <div className="user-icon">
                   {avatarUrl ? (
                     <img 
@@ -188,12 +250,22 @@ export default function Layout({ children, title, description }: LayoutProps) {
             )}
 
             {isLoggedIn && isModerator && (
-              <Link href="/mod-dashboard" className={`mod-dashboard-link ${router.pathname === '/mod-dashboard' ? 'active' : ''}`} aria-label="Moderator Dashboard">
+              <Link
+                href="/mod-dashboard"
+                className={`mod-dashboard-link ${router.pathname === '/mod-dashboard' ? 'active' : ''}`}
+                aria-label="Moderator Dashboard"
+                suppressHydrationWarning
+              >
                 <div className="mod-icon">🎛️</div>
               </Link>
             )}
 
-            <Link href="/blog" className={`blog-feed-link ${router.pathname.startsWith('/blog') ? 'active' : ''}`} aria-label="Blog Feed">
+            <Link
+              href="/blog"
+              className={`blog-feed-link ${router.pathname.startsWith('/blog') ? 'active' : ''}`}
+              aria-label="Blog Feed"
+              suppressHydrationWarning
+            >
               <div className="blog-icon">📰</div>
             </Link>
           </div>
@@ -216,6 +288,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
                   className={`nav-item ${active ? 'nav-item-active' : ''}`}
                   aria-label={item.label}
                   aria-current={active ? 'page' : undefined}
+                  suppressHydrationWarning
                 >
                   <span className={`nav-icon ${item.icon === '#' ? 'nav-icon-hash' : ''}`}>
                     {item.icon}
@@ -226,16 +299,23 @@ export default function Layout({ children, title, description }: LayoutProps) {
           </nav>
         </header>
 
-        <main className="main-content">
+        <main className="main-content" ref={mainRef}>
           {children}
         </main>
       </div>
 
       <style jsx>{`
         .app-container {
-          min-height: 100vh;
+          height: 100vh;
+          height: 100dvh;
           display: flex;
           flex-direction: column;
+        }
+
+        /* If a page opts into native body scrolling (e.g. /auth), don't force a fixed viewport container */
+        :global(body.allow-body-scroll) .app-container {
+          height: auto;
+          min-height: 100%;
         }
 
         .header {
@@ -250,6 +330,22 @@ export default function Layout({ children, title, description }: LayoutProps) {
           align-items: center;
           justify-content: space-between;
           padding: 0 16px;
+          overflow: hidden;
+          transition:
+            height 180ms ease,
+            transform 180ms ease,
+            padding 180ms ease,
+            opacity 180ms ease,
+            border-bottom-color 180ms ease;
+        }
+
+        .header.header-hidden {
+          height: 0;
+          padding: 0 16px;
+          border-bottom-color: transparent;
+          transform: translateY(-100%);
+          opacity: 0;
+          pointer-events: none;
         }
 
         .header-left {
@@ -460,6 +556,17 @@ export default function Layout({ children, title, description }: LayoutProps) {
         .main-content {
           flex: 1;
           width: 100%;
+          overflow-y: auto;
+          overflow-x: hidden;
+          -webkit-overflow-scrolling: touch;
+          /* Critical for iOS/mobile: allow the flex child to actually become scrollable */
+          min-height: 0;
+          /* Ensure touch scrolling gestures are treated as vertical panning */
+          touch-action: pan-y;
+        }
+
+        :global(body.allow-body-scroll) .main-content {
+          overflow: visible;
         }
 
         @media (max-width: 480px) {

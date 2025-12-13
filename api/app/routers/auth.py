@@ -22,6 +22,7 @@ from ..auth import (
     clear_refresh_token_cookie,
     create_access_token,
     create_refresh_token,
+    get_cookie_config,
     get_current_user,
     mark_refresh_token_rotated,
     revoke_refresh_token,
@@ -56,6 +57,47 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 GITHUB_CLIENT_ID = os.getenv("GITHUB_OAUTH_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_OAUTH_CLIENT_SECRET")
 GITHUB_REDIRECT_URI = os.getenv("GITHUB_REDIRECT_URI", "http://localhost/auth/github/callback")
+
+# OAuth state cookie configuration (CSRF/replay protection)
+OAUTH_STATE_COOKIE_NAME = "oauth_state"
+OAUTH_STATE_TTL_SECONDS = 10 * 60  # 10 minutes
+
+
+def _b64url_encode(data: bytes) -> str:
+    """Base64-url encode without padding, safe for querystring usage."""
+    import base64
+
+    return base64.urlsafe_b64encode(data).decode().rstrip("=")
+
+
+def _b64url_decode(data: str) -> bytes:
+    """Base64-url decode, accepting missing padding."""
+    import base64
+
+    padding = "=" * (-len(data) % 4)
+    return base64.urlsafe_b64decode((data + padding).encode())
+
+
+def _set_oauth_state_cookie(resp: Response, nonce: str, request: Request) -> None:
+    cookie_config = get_cookie_config(request)
+    cookie_config["max_age"] = OAUTH_STATE_TTL_SECONDS
+    resp.set_cookie(
+        key=OAUTH_STATE_COOKIE_NAME,
+        value=nonce,
+        **cookie_config,
+    )
+
+
+def _clear_oauth_state_cookie(resp: Response, request: Request) -> None:
+    cookie_config = get_cookie_config(request)
+    delete_kwargs = {
+        "key": OAUTH_STATE_COOKIE_NAME,
+        "path": cookie_config.get("path", "/"),
+    }
+    if "domain" in cookie_config:
+        delete_kwargs["domain"] = cookie_config["domain"]
+    resp.delete_cookie(**delete_kwargs)
+
 
 
 # Special characters allowed in passwords (optional)
@@ -477,7 +519,7 @@ def change_handle(
         )
     
     # Check if handle is already taken
-    if is_handle_taken(db, new_handle, exclude_user_id=str(current_user.id)):
+    if is_handle_taken(db, new_handle, exclude_user_id=current_user.id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This handle is already taken",
@@ -781,7 +823,7 @@ def unlink_provider(
 
 
 @router.get("/github/login")
-def github_login(installation_id: int = Query(None)):
+def github_login(request: Request, installation_id: int = Query(None)):
     """
     Redirect to GitHub OAuth authorization.
     If installation_id is provided, it will be preserved through the OAuth flow.
@@ -792,14 +834,16 @@ def github_login(installation_id: int = Query(None)):
             detail="GitHub OAuth not configured"
         )
     
+    # Create and persist a nonce to protect OAuth state (CSRF/replay protection)
+    state_nonce = secrets.token_urlsafe(24)
+
     # Create state parameter that includes installation_id if provided
-    state_data = {"random": "state_string"}
+    state_data = {"nonce": state_nonce}
     if installation_id:
         state_data["installation_id"] = installation_id
     
     import json
-    import base64
-    state = base64.b64encode(json.dumps(state_data).encode()).decode()
+    state = _b64url_encode(json.dumps(state_data).encode())
     
     params = {
         "client_id": GITHUB_CLIENT_ID,
@@ -811,13 +855,14 @@ def github_login(installation_id: int = Query(None)):
     auth_url = f"https://github.com/login/oauth/authorize?{urlencode(params)}"
     
     from fastapi.responses import RedirectResponse
-    return RedirectResponse(url=auth_url)
+    redirect = RedirectResponse(url=auth_url)
+    _set_oauth_state_cookie(redirect, state_nonce, request)
+    return redirect
 
 
 @router.get("/github/callback")
 def github_callback(
     request: Request,
-    response: Response,
     code: str = Query(...),
     state: str = Query(...),
     installation_id: int = Query(None),
@@ -836,18 +881,30 @@ def github_callback(
         )
     
     try:
-        # Decode state parameter to extract installation_id if present
+        # Validate and decode OAuth state BEFORE any outbound calls
+        import json
+        expected_nonce = request.cookies.get(OAUTH_STATE_COOKIE_NAME)
         try:
-            import json
-            import base64
-            state_data = json.loads(base64.b64decode(state).decode())
-            state_installation_id = state_data.get("installation_id")
-            if state_installation_id and not installation_id:
-                installation_id = state_installation_id
-        except (json.JSONDecodeError, base64.binascii.Error, KeyError) as e:
-            logger.warning(f"Failed to decode state parameter: {e}, continuing without installation_id")
-            # If state decoding fails, continue with existing installation_id parameter
-            pass
+            state_data = json.loads(_b64url_decode(state).decode())
+        except Exception as e:
+            logger.warning(f"Failed to decode OAuth state: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid OAuth state. Please try again.",
+            )
+
+        received_nonce = state_data.get("nonce")
+        if not expected_nonce or not received_nonce or expected_nonce != received_nonce:
+            logger.warning("OAuth state verification failed (nonce mismatch or missing)")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid OAuth state. Please try again.",
+            )
+
+        # Extract installation_id from state if present
+        state_installation_id = state_data.get("installation_id")
+        if state_installation_id and not installation_id:
+            installation_id = state_installation_id
         
         # Exchange code for GitHub access token
         token_data = {
@@ -860,13 +917,13 @@ def github_callback(
         logger.info(f"Exchanging GitHub OAuth code for access token")
         try:
             with httpx.Client() as client:
-                response = client.post(
+                token_http_resp = client.post(
                     "https://github.com/login/oauth/access_token",
                     data=token_data,
                     headers={"Accept": "application/json"}
                 )
-                response.raise_for_status()
-                token_response = response.json()
+                token_http_resp.raise_for_status()
+                token_response = token_http_resp.json()
                 
                 if "error" in token_response:
                     error_msg = f"GitHub OAuth error: {token_response.get('error_description', token_response.get('error', 'Unknown error'))}"
@@ -1111,14 +1168,15 @@ def github_callback(
                 detail="Failed to generate authentication tokens. Please try again."
             )
 
-        # Set refresh token as HttpOnly cookie
-        set_refresh_token_cookie(response, makapix_refresh_token, request)
-
-        # Determine the base URL from the request
-        base_url = str(request.base_url).rstrip('/')
-        # Handle both http and https
-        if request.headers.get("x-forwarded-proto") == "https":
-            base_url = base_url.replace("http://", "https://")
+        # Determine the site origin from the request.
+        #
+        # IMPORTANT: request.base_url may include a proxy path prefix (e.g. "/api/"),
+        # which is NOT a valid postMessage targetOrigin and can cause runtime errors
+        # in some browsers / proxy setups. We want an origin like "https://dev.makapix.club".
+        forwarded_proto = request.headers.get("x-forwarded-proto")
+        proto = forwarded_proto or request.url.scheme
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+        site_origin = f"{proto}://{host}"
 
         # Create a simple HTML page that shows success and stores tokens
         from fastapi.responses import HTMLResponse
@@ -1127,7 +1185,7 @@ def github_callback(
         # Escape user-provided data to prevent XSS
         safe_handle = html.escape(user.handle)
         safe_user_id = html.escape(str(user.id))
-        safe_base_url = html.escape(base_url)
+        safe_site_origin = html.escape(site_origin)
 
         html_content = f"""
         <!DOCTYPE html>
@@ -1158,8 +1216,8 @@ def github_callback(
             <div class="success">✅ Authentication Successful!</div>
             <div class="info">Welcome to Makapix, {safe_handle}!</div>
             <div class="info">You can now close this window and return to the main application.</div>
-            <a href="{safe_base_url}" class="button">Go to Makapix</a>
-            <a href="{safe_base_url}/publish" class="button">Publish Artwork</a>
+            <a href="{safe_site_origin}" class="button">Go to Makapix</a>
+            <a href="{safe_site_origin}/publish" class="button">Publish Artwork</a>
             
             <div class="debug">
                 <p>Debug Info:</p>
@@ -1186,29 +1244,36 @@ def github_callback(
                     localStorage.setItem('access_token', authData.access_token);
                     localStorage.setItem('user_id', authData.user_id);
                     localStorage.setItem('user_handle', authData.user_handle);
-                    
-                    // Close popup and notify parent window
+                }} catch (error) {{
+                    console.error('Error storing tokens:', error);
+                }}
+
+                // Close popup and notify parent window (fallback to redirect)
+                try {{
                     if (window.opener) {{
                         window.opener.postMessage({{
                             type: 'OAUTH_SUCCESS',
                             tokens: authData
-                        }}, {json.dumps(base_url)});
+                        }}, {json.dumps(site_origin)});
                         window.close();
                     }} else {{
-                        // If not in popup, redirect to home
-                        window.location.href = {json.dumps(base_url)};
+                        window.location.href = {json.dumps(site_origin)};
                     }}
-                    
-                    console.log('Tokens stored successfully!');
                 }} catch (error) {{
-                    console.error('Error storing tokens:', error);
+                    console.error('Error finalizing OAuth flow:', error);
+                    window.location.href = {json.dumps(site_origin)};
                 }}
             </script>
         </body>
         </html>
         """
         
-        return HTMLResponse(content=html_content)
+        html_response = HTMLResponse(content=html_content)
+        # Set refresh token as HttpOnly cookie on the ACTUAL returned response
+        set_refresh_token_cookie(html_response, makapix_refresh_token, request)
+        # Clear OAuth state cookie now that the flow is complete
+        _clear_oauth_state_cookie(html_response, request)
+        return html_response
         
     except HTTPException:
         # Re-raise HTTP exceptions as-is
@@ -1252,13 +1317,13 @@ def exchange_github_code(
     
     try:
         with httpx.Client() as client:
-            response = client.post(
+            token_http_resp = client.post(
                 "https://github.com/login/oauth/access_token",
                 data=token_data,
                 headers={"Accept": "application/json"}
             )
-            response.raise_for_status()
-            token_response = response.json()
+            token_http_resp.raise_for_status()
+            token_response = token_http_resp.json()
             
             if "error" in token_response:
                 raise HTTPException(

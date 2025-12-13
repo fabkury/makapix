@@ -1,11 +1,53 @@
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-const publicBaseUrl =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost/api";
+function normalizeBaseUrl(url: string): string {
+  // Remove trailing slashes for consistent URL joining.
+  return url.replace(/\/+$/, "");
+}
+
+const publicBaseUrl = normalizeBaseUrl(
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+    (typeof window !== "undefined" ? window.location.origin : "http://localhost")
+);
+
+const LOGOUT_MARKER_KEY = "makapix_logged_out_at_ms";
+
+export function markLoggedOut(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(LOGOUT_MARKER_KEY, String(Date.now()));
+  } catch {
+    // ignore
+  }
+}
+
+export function clearLoggedOutMarker(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(LOGOUT_MARKER_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+export function wasRecentlyLoggedOut(withinMs = 10 * 60 * 1000): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const v = localStorage.getItem(LOGOUT_MARKER_KEY);
+    if (!v) return false;
+    const t = Number(v);
+    if (!isFinite(t)) return false;
+    return Date.now() - t < withinMs;
+  } catch {
+    return false;
+  }
+}
 
 // Token refresh state to prevent multiple simultaneous refresh attempts
 let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
+let refreshDisabledUntilMs = 0;
+let lastRefreshFailureKind: "auth" | "transient" | null = null;
 
 /**
  * Decode a JWT token and extract its payload
@@ -60,6 +102,9 @@ export function getRefreshToken(): string | null {
 export function storeTokens(accessToken: string, refreshToken?: string | null): void {
   if (typeof window === "undefined") return;
   localStorage.setItem("access_token", accessToken);
+  // Successful token storage should re-enable refresh attempts immediately.
+  refreshDisabledUntilMs = 0;
+  clearLoggedOutMarker();
   // Refresh token is now stored in HttpOnly cookie, not in localStorage
   // Clean up old refresh token if it exists (migration from old system)
   localStorage.removeItem("refresh_token");
@@ -86,6 +131,12 @@ export function clearTokens(): void {
  * This prevents session loss due to temporary connectivity problems.
  */
 export async function refreshAccessToken(): Promise<boolean> {
+  const nowMs = Date.now();
+  if (nowMs < refreshDisabledUntilMs) {
+    // Avoid hammering the server / spamming logs when refresh is definitively failing.
+    return false;
+  }
+
   // If already refreshing, wait for the existing refresh to complete
   if (isRefreshing && refreshPromise) {
     console.log("[Auth] Refresh already in progress, waiting...");
@@ -117,10 +168,16 @@ export async function refreshAccessToken(): Promise<boolean> {
         // 403 = User banned/deactivated
         // Do NOT clear on 5xx errors - those are server issues, token might still be valid
         if (response.status === 401 || response.status === 403) {
+          lastRefreshFailureKind = "auth";
           console.log("[Auth] Definitive auth failure, clearing tokens");
           clearTokens();
+          // Stop repeated attempts until user action (login) or a short cooldown.
+          refreshDisabledUntilMs = Date.now() + 5 * 60 * 1000; // 5 minutes
         } else {
+          lastRefreshFailureKind = "transient";
           console.log("[Auth] Server error, keeping tokens for retry");
+          // Brief cooldown to prevent tight refresh loops during transient failures.
+          refreshDisabledUntilMs = Date.now() + 10 * 1000; // 10 seconds
         }
         return false;
       }
@@ -137,6 +194,7 @@ export async function refreshAccessToken(): Promise<boolean> {
       
       // Store the new access token (refresh token is automatically updated in cookie by server)
       storeTokens(data.token);
+      lastRefreshFailureKind = null;
       console.log("[Auth] Tokens refreshed successfully");
       
       // Update all user data from response
@@ -157,8 +215,10 @@ export async function refreshAccessToken(): Promise<boolean> {
     } catch (error) {
       // Network errors, timeouts, etc. - don't clear tokens!
       // The refresh token might still be valid, and the server has a grace period
+      lastRefreshFailureKind = "transient";
       console.error("[Auth] Failed to refresh token (network/transient error):", error);
       console.log("[Auth] Keeping tokens - error may be transient, will retry later");
+      refreshDisabledUntilMs = Date.now() + 10 * 1000; // 10 seconds
       return false;
     } finally {
       isRefreshing = false;
@@ -187,9 +247,16 @@ export async function authenticatedFetch(
     if (refreshed) {
       accessToken = getAccessToken();
     } else {
-      // Refresh failed - refresh token may have been revoked or expired
-      // Refresh token is in cookie, so we can't check it directly
-      console.log("[Auth] Refresh failed, returning 401");
+      // IMPORTANT:
+      // - If refresh failed due to transient issues (5xx/network), do NOT force a logout by
+      //   synthesizing a 401. Return a retryable error so callers can show a message and retry.
+      // - If refresh failed definitively (401/403), return 401.
+      if (lastRefreshFailureKind === "transient") {
+        return new Response(null, {
+          status: 503,
+          statusText: "Auth refresh temporarily unavailable",
+        });
+      }
       return new Response(null, { status: 401, statusText: "Token refresh failed" });
     }
   }
@@ -278,6 +345,8 @@ export async function authenticatedPostJson<TResponse>(
  * Even if the API call fails (e.g., expired access token), we still clear local storage.
  */
 export async function logout(): Promise<void> {
+  // Mark explicit logout so the app doesn't immediately try "refresh from cookie" on navigation.
+  markLoggedOut();
   try {
     // Try to call logout API with authentication
     // This will revoke the refresh token in the database and clear the cookie

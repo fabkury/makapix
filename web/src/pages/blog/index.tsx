@@ -109,13 +109,14 @@ export default function BlogFeedPage() {
   useEffect(() => {
     if (posts.length === 0 || !hasMoreRef.current) return;
     
+    const scrollRoot = document.querySelector('.main-content');
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMoreRef.current && !loadingRef.current) {
           loadPosts(nextCursorRef.current, sort);
         }
       },
-      { threshold: 0.1 }
+      { threshold: 0.1, root: scrollRoot instanceof Element ? scrollRoot : null }
     );
 
     const currentTarget = observerTarget.current;
@@ -231,6 +232,7 @@ export default function BlogFeedPage() {
             {!hasMore && (
               <div className="end-message">
                 <span>✨</span>
+                <div className="end-spacer" aria-hidden="true" />
               </div>
             )}
           </div>
@@ -464,7 +466,7 @@ export default function BlogFeedPage() {
         }
 
         .load-more-trigger {
-          height: 100px;
+          min-height: 100px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -494,6 +496,15 @@ export default function BlogFeedPage() {
         .end-message {
           color: var(--text-muted);
           font-size: 1.5rem;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding-top: 24px;
+        }
+
+        .end-spacer {
+          height: max(25vh, 200px);
+          width: 1px;
         }
 
         @media (max-width: 600px) {

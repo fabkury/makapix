@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { setNavigationContext, NavigationSource } from '../lib/navigation-context';
+import { setNavigationContext } from '../lib/navigation-context';
 import { authenticatedFetch, clearTokens } from '../lib/api';
 
 interface PostOwner {
@@ -21,9 +21,6 @@ interface Post {
   owner_id: string;
   created_at: string;
   owner?: PostOwner;
-  reaction_count?: number;
-  comment_count?: number;
-  user_has_liked?: boolean;
 }
 
 interface HashtagStats {
@@ -43,12 +40,6 @@ interface CardRollerProps {
 // Configuration constants
 const POSTS_PER_LOAD = 20; // Number of posts to fetch per horizontal scroll
 
-// Local state for optimistic like updates
-interface LikeState {
-  liked: boolean;
-  reactionCount: number;
-}
-
 export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts = [] }: CardRollerProps) {
   const router = useRouter();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -58,8 +49,6 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const [likeOverrides, setLikeOverrides] = useState<Record<number, LikeState>>({});
-  const [loadingLikes, setLoadingLikes] = useState<Record<number, boolean>>({});
 
   const loadingRef = useRef(false);
   const hasMoreRef = useRef(true);
@@ -141,69 +130,6 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
     setNavigationContext(contextPosts, postIndex, { type: 'hashtag', id: hashtag }, nextCursor, null);
   };
 
-  // Handle like/unlike with optimistic update
-  const handleLike = async (postId: number, currentlyLiked: boolean, currentReactionCount: number) => {
-    setLoadingLikes(prev => ({ ...prev, [postId]: true }));
-
-    // Optimistic update
-    setLikeOverrides(prev => ({
-      ...prev,
-      [postId]: {
-        liked: !currentlyLiked,
-        reactionCount: currentReactionCount + (currentlyLiked ? -1 : 1)
-      }
-    }));
-
-    try {
-      const url = `${API_BASE_URL}/api/post/${postId}/reactions/👍`;
-      const method = currentlyLiked ? 'DELETE' : 'PUT';
-      
-      const response = await authenticatedFetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.status === 401) {
-        // Token refresh failed - revert optimistic update, clear tokens and redirect
-        setLikeOverrides(prev => ({
-          ...prev,
-          [postId]: {
-            liked: currentlyLiked,
-            reactionCount: currentReactionCount
-          }
-        }));
-        clearTokens();
-        router.push('/auth');
-        return;
-      }
-
-      if (!response.ok && response.status !== 204) {
-        // Revert optimistic update on failure
-        setLikeOverrides(prev => ({
-          ...prev,
-          [postId]: {
-            liked: currentlyLiked,
-            reactionCount: currentReactionCount
-          }
-        }));
-      }
-    } catch (err) {
-      console.error(`Error ${currentlyLiked ? 'unliking' : 'liking'} post:`, err);
-      // Revert optimistic update on error
-      setLikeOverrides(prev => ({
-        ...prev,
-        [postId]: {
-          liked: currentlyLiked,
-          reactionCount: currentReactionCount
-        }
-      }));
-    } finally {
-      setLoadingLikes(prev => ({ ...prev, [postId]: false }));
-    }
-  };
-
   // Apply crisp scaling to artworks
   useLayoutEffect(() => {
     const container = scrollContainerRef.current;
@@ -225,23 +151,23 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
 
         if (!nativeWidth || !nativeHeight || isNaN(nativeWidth) || isNaN(nativeHeight)) return;
 
-        // Use the larger dimension to calculate scale
-        const nativeSize = Math.max(nativeWidth, nativeHeight);
-        
-        // Calculate maximum integer scale that fits in 128px
-        const scale = Math.floor(128 / nativeSize);
-        const finalScale = Math.max(1, scale);
+        const TILE_SIZE = 128;
+        const isLarge = nativeWidth > TILE_SIZE || nativeHeight > TILE_SIZE;
 
-        // Calculate display size at integer multiple
-        const displayWidth = nativeWidth * finalScale;
-        const displayHeight = nativeHeight * finalScale;
+        // <= 128px: integer scale to cover (then crop)
+        // > 128px in either dimension: non-integer cover scale based on the smaller side
+        const scale = isLarge
+          ? TILE_SIZE / Math.min(nativeWidth, nativeHeight)
+          : Math.max(1, Math.ceil(Math.max(TILE_SIZE / nativeWidth, TILE_SIZE / nativeHeight)));
+
+        const displayWidth = nativeWidth * scale;
+        const displayHeight = nativeHeight * scale;
 
         // Apply size to image
         image.style.width = `${displayWidth}px`;
         image.style.height = `${displayHeight}px`;
         image.style.maxWidth = 'none';
         image.style.maxHeight = 'none';
-        image.style.objectFit = 'contain';
       });
     };
 
@@ -256,11 +182,6 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
     return () => {
       resizeObserver.disconnect();
     };
-  }, [posts]);
-
-  // Reset overrides when posts change
-  useEffect(() => {
-    setLikeOverrides({});
   }, [posts]);
 
   return (
@@ -290,67 +211,25 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
       
       <div className="card-roller-body" ref={scrollContainerRef}>
         <div className="artwork-cards-horizontal">
-          {posts.map((post, index) => {
-            const override = likeOverrides[post.id];
-            const reactionCount = override?.reactionCount ?? post.reaction_count ?? 0;
-            const commentCount = post.comment_count ?? 0;
-            const isLiked = override?.liked ?? post.user_has_liked ?? false;
-            const isLoading = loadingLikes[post.id] || false;
-
-            return (
-              <div key={post.id} className="artwork-card">
-                <div className="card-top">
-                  <div className="artwork-area">
-                    <Link href={`/p/${post.public_sqid}`} onClick={() => handlePostClick(index)}>
-                      <img
-                        src={post.art_url}
-                        alt={post.title}
-                        className="artwork-image pixel-art"
-                        data-canvas={post.canvas}
-                        loading="lazy"
-                      />
-                    </Link>
-                  </div>
-                  <div className="stats-panel">
-                    <div className="stat-item">
-                      <span className="stat-emoji">⚡</span>
-                      <span className="stat-count">{reactionCount}</span>
-                    </div>
-                    <div className="stat-item">
-                      <span className="stat-emoji">💬</span>
-                      <span className="stat-count">{commentCount}</span>
-                    </div>
-                    <button
-                      className={`like-button ${isLiked ? 'liked' : ''}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        handleLike(post.id, isLiked, reactionCount);
-                      }}
-                      disabled={isLoading}
-                      aria-label={isLiked ? 'Unlike' : 'Like'}
-                    >
-                      👍
-                    </button>
-                  </div>
-                </div>
-                <div className="author-bar">
-                  <div className="author-line">
-                    <Link href={`/u/${post.owner?.handle}`} className="author-handle">
-                      {post.owner?.avatar_url && (
-                        <img src={post.owner.avatar_url} alt="" className="author-avatar" />
-                      )}
-                      <span>{post.owner?.handle || 'Unknown'}</span>
-                    </Link>
-                  </div>
-                  <div className="title-line">
-                    <Link href={`/p/${post.public_sqid}`} className="post-title" onClick={() => handlePostClick(index)}>
-                      {post.title}
-                    </Link>
-                  </div>
-                </div>
+          {posts.map((post, index) => (
+            <Link
+              key={post.id}
+              href={`/p/${post.public_sqid}`}
+              className="artwork-card"
+              onClick={() => handlePostClick(index)}
+              aria-label={post.title}
+            >
+              <div className="artwork-area">
+                <img
+                  src={post.art_url}
+                  alt={post.title}
+                  className="artwork-image pixel-art"
+                  data-canvas={post.canvas}
+                  loading="lazy"
+                />
               </div>
-            );
-          })}
+            </Link>
+          ))}
           
           {/* Sentinel for infinite scroll */}
           {hasMore && (
@@ -459,213 +338,39 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
 
         .artwork-cards-horizontal {
           display: flex;
-          gap: 16px;
-          padding: 16px 24px;
-          min-height: 210px;
+          gap: 0;
+          padding: 0;
+          min-height: 128px;
         }
 
-        .artwork-card {
-          display: flex;
-          flex-direction: column;
-          width: 178px;
-          height: 178px;
-          background: var(--bg-secondary);
-          flex-shrink: 0;
-          transition: box-shadow var(--transition-fast);
-          border: 1px solid transparent;
-        }
-
-        .artwork-card:hover {
-          box-shadow: 0 0 20px rgba(0, 212, 255, 0.2);
-          z-index: 1;
-        }
-
-        .card-top {
-          display: flex;
-          flex-direction: row;
-          width: 100%;
+        :global(a.artwork-card) {
+          display: block;
+          width: 128px;
           height: 128px;
-          gap: 1px;
+          flex-shrink: 0;
+          line-height: 0;
+        }
+
+        :global(a.artwork-card:focus-visible) {
+          outline: none;
         }
 
         .artwork-area {
           width: 128px;
           height: 128px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: var(--bg-tertiary);
-          flex-shrink: 0;
-        }
-
-        .artwork-area a {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 100%;
-          height: 100%;
-          line-height: 0;
+          position: relative;
+          overflow: hidden;
         }
 
         .artwork-image {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          transform: translate(-50%, -50%);
           display: block;
-          image-rendering: -webkit-optimize-contrast !important;
-          image-rendering: -moz-crisp-edges !important;
-          image-rendering: crisp-edges !important;
-          image-rendering: pixelated !important;
-          -ms-interpolation-mode: nearest-neighbor !important;
         }
 
-        .stats-panel {
-          width: 49px;
-          height: 128px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          background: var(--bg-secondary);
-          flex-shrink: 0;
-          padding: 8px 4px;
-        }
-
-        .stat-item {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 2px;
-          font-size: 0.75rem;
-          color: var(--text-secondary);
-        }
-
-        .stat-emoji {
-          font-size: 1rem;
-        }
-
-        .stat-count {
-          font-weight: 600;
-          font-size: 0.7rem;
-        }
-
-        .like-button {
-          width: 28px;
-          height: 28px;
-          border-radius: 50%;
-          border: 2px solid var(--bg-tertiary);
-          background: var(--bg-secondary);
-          font-size: 0.9rem;
-          cursor: pointer;
-          transition: all var(--transition-fast);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-          margin-top: 4px;
-        }
-
-        .like-button:hover:not(:disabled) {
-          background: var(--bg-tertiary);
-          border-color: var(--accent-pink);
-          transform: scale(1.1);
-        }
-
-        .like-button:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-
-        .like-button.liked {
-          background: var(--accent-pink);
-          border-color: var(--accent-pink);
-        }
-
-        .like-button.liked:hover:not(:disabled) {
-          background: var(--accent-cyan);
-          border-color: var(--accent-cyan);
-        }
-
-        .author-bar {
-          width: 168px;
-          height: 49px;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          gap: 4px;
-          background: var(--bg-secondary);
-          padding: 4px 6px;
-          margin-top: 1px;
-        }
-
-        .author-line {
-          display: block;
-          width: 100%;
-          height: 18px;
-          line-height: 18px;
-          overflow: hidden;
-          white-space: nowrap;
-          text-overflow: ellipsis;
-        }
-
-        .title-line {
-          display: block;
-          width: 100%;
-          height: 18px;
-          line-height: 18px;
-          overflow: hidden;
-          white-space: nowrap;
-          text-overflow: ellipsis;
-        }
-
-        .author-handle {
-          display: inline-flex;
-          flex-direction: row;
-          align-items: center;
-          gap: 3px;
-          font-size: 0.7rem;
-          font-weight: 600;
-          color: white;
-          text-decoration: none;
-          transition: color var(--transition-fast);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          max-width: 100%;
-        }
-
-        .author-handle span {
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        .author-handle:hover {
-          color: var(--accent-cyan);
-        }
-
-        .author-avatar {
-          width: 12px;
-          height: 12px;
-          border-radius: 50%;
-          object-fit: cover;
-          flex-shrink: 0;
-        }
-
-        .post-title {
-          display: inline-block;
-          font-size: 0.7rem;
-          font-weight: 600;
-          color: var(--accent-cyan);
-          text-decoration: none;
-          transition: color var(--transition-fast);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          max-width: 100%;
-        }
-
-        .post-title:hover {
-          color: var(--accent-pink);
-        }
+        /* artwork tiles only (stats / author / title removed) */
 
         .scroll-sentinel {
           display: flex;

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { authenticatedFetch, clearTokens } from '../lib/api';
 
@@ -127,9 +128,9 @@ export default function GitHubAppSetupPage() {
               <h2>Success!</h2>
               <p>{message}</p>
               <p>Redirecting to submit page...</p>
-              <a href="/submit" className="button primary">
+              <Link href="/submit" className="button primary">
                 Go to Submit Page
-              </a>
+              </Link>
             </>
           )}
           
@@ -142,22 +143,22 @@ export default function GitHubAppSetupPage() {
                 <button onClick={() => window.location.reload()} className="button">
                   Try Again
                 </button>
-                <a href="/submit" className="button secondary">
+                <Link href="/submit" className="button secondary">
                   Back to Submit Page
-                </a>
+                </Link>
               </div>
             </>
           )}
         </div>
         
         <div className="help">
-          <h3>What's happening?</h3>
+          <h3>What&apos;s happening?</h3>
           <p>
             This page handles the completion of your GitHub App installation. 
             The app needs to be linked to your Makapix account to enable certain features.
           </p>
           <p>
-            If you're not already logged in, you'll be redirected to GitHub to authenticate first.
+            If you&apos;re not already logged in, you&apos;ll be redirected to GitHub to authenticate first.
           </p>
         </div>
       </main>

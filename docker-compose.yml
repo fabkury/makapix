@@ -69,6 +69,7 @@ services:
       context: .
       dockerfile: api/Dockerfile
     restart: unless-stopped
+    working_dir: /workspace/api
     env_file:
       - .env
     environment:
@@ -109,14 +110,18 @@ services:
       retries: 5
       start_period: 60s
     networks:
-      - internal
-      - proxy
+      internal: {}
+      proxy: {}
+      caddy_net:
+        aliases:
+          - api
 
   api-test:
     profiles: ["test"]
     build:
       context: .
       dockerfile: api/Dockerfile
+    working_dir: /workspace/api
     env_file:
       - .env
     environment:
@@ -177,6 +182,15 @@ services:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost}
       API_INTERNAL_URL: http://api:8000
       NEXT_PUBLIC_MQTT_WS_URL: ${NEXT_PUBLIC_MQTT_WS_URL:-wss://makapix.club:9001}
+    labels:
+      # Expose dev site via the host-level caddy-docker-proxy (container name: caddy)
+      caddy: dev.makapix.club
+      caddy.header.X-Robots-Tag: "noindex, nofollow, noarchive"
+      # Route API calls to the backend service
+      caddy.handle_path: /api/*
+      caddy.handle_path.reverse_proxy: api:8000
+      # Everything else goes to Next.js
+      caddy.reverse_proxy: web:3000
     command: sh -c "npm install && npm run dev"
     volumes:
       - ./web:/app
@@ -194,8 +208,11 @@ services:
       retries: 5
       start_period: 35s
     networks:
-      - internal
-      - proxy
+      internal: {}
+      proxy: {}
+      caddy_net:
+        aliases:
+          - web
 
   proxy:
     image: caddy:2
@@ -229,6 +246,8 @@ networks:
     driver: bridge
   proxy:
     driver: bridge
+  caddy_net:
+    external: true
 
 volumes:
   pg_data:

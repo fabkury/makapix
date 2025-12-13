@@ -19,7 +19,19 @@ interface ValidationError {
   message: string;
 }
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+const MAX_FILE_SIZE_BYTES = (() => {
+  const raw = process.env.NEXT_PUBLIC_MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES || '5242880';
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 5242880;
+})();
+
+function formatMiB(bytes: number): string {
+  const mib = bytes / (1024 * 1024);
+  // If it’s effectively an integer, render without decimals.
+  if (Math.abs(mib - Math.round(mib)) < 1e-9) return `${Math.round(mib)} MiB`;
+  return `${mib.toFixed(2)} MiB`;
+}
+
 const MAX_CANVAS_SIZE = 256;
 const ALLOWED_TYPES = ['image/png', 'image/gif', 'image/webp'];
 
@@ -58,11 +70,11 @@ export default function SubmitPage() {
     const errors: ValidationError[] = [];
     
     // Check file size
-    if (file.size > MAX_FILE_SIZE) {
-      const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      const sizeMiB = formatMiB(file.size);
       errors.push({
         type: 'size',
-        message: `File size (${sizeMB} MB) exceeds maximum of 5 MB`,
+        message: `File size (${sizeMiB}) exceeds maximum of ${formatMiB(MAX_FILE_SIZE_BYTES)}`,
       });
     }
     
@@ -351,7 +363,7 @@ export default function SubmitPage() {
                 <label htmlFor="file-upload" className="upload-label">
                   <span className="upload-icon">📁</span>
                   <span className="upload-text">Drop image here or click to select</span>
-                  <span className="upload-hint">PNG, GIF, or WebP • Max 5 MB • See size rules below</span>
+                  <span className="upload-hint">PNG, GIF, or WebP • Max {formatMiB(MAX_FILE_SIZE_BYTES)} • See size rules below</span>
                 </label>
               )}
             </div>

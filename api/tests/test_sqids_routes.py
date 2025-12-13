@@ -52,13 +52,17 @@ def test_post(test_user: User, db: Session) -> Post:
     post = Post(
         storage_key=storage_key,
         owner_id=test_user.id,
-        kind="art",
+        kind="artwork",
         title="Test Art",
         description="A test artwork",
         hashtags=["test", "art"],
         art_url="/api/vault/test.png",
         canvas="64x64",
-        file_kb=32,
+        file_bytes=32 * 1024,
+        width=64,
+        height=64,
+        frame_count=1,
+        has_transparency=False,
         promoted=True,  # Make it promoted so it's accessible without auth
         visible=True,
         hidden_by_user=False,
@@ -83,13 +87,17 @@ def test_hidden_post(test_user: User, db: Session) -> Post:
     post = Post(
         storage_key=storage_key,
         owner_id=test_user.id,
-        kind="art",
+        kind="artwork",
         title="Hidden Art",
         description="A hidden artwork",
         hashtags=[],
         art_url="/api/vault/hidden.png",
         canvas="64x64",
-        file_kb=32,
+        file_bytes=32 * 1024,
+        width=64,
+        height=64,
+        frame_count=1,
+        has_transparency=False,
         promoted=False,
         visible=True,
         hidden_by_user=True,  # Hidden by user
@@ -201,7 +209,7 @@ def test_create_post_generates_sqid(test_user: User, db: Session):
             "title": "New Art",
             "art_url": "https://example.com/test.png",
             "canvas": "64x64",
-            "file_kb": 32,
+            "file_bytes": 32 * 1024,
         }
     )
     

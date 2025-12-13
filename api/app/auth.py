@@ -38,6 +38,21 @@ JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 JWT_REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "30"))
 
+def _utcnow() -> datetime:
+    # Use timezone-aware UTC consistently for DB timestamps and comparisons.
+    from datetime import timezone
+    return datetime.now(timezone.utc)
+
+def _as_utc_aware(dt: datetime) -> datetime:
+    """
+    Normalize datetimes to timezone-aware UTC for safe comparisons.
+    Some older rows may be stored as naive values; treat those as UTC.
+    """
+    from datetime import timezone
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
 
 def check_user_can_authenticate(user: "models.User") -> None:
     """
@@ -105,8 +120,7 @@ def create_refresh_token(user_key: uuid.UUID, db: Session, expires_in_days: int 
     # Hash the token for secure database storage
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     
-    from datetime import timezone
-    expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=expires_in_days)
+    expires_at = _utcnow() + timedelta(days=expires_in_days)
     
     # Store in database
     refresh_token = models.RefreshToken(
@@ -129,10 +143,9 @@ def verify_refresh_token(token: str, db: Session) -> models.User | None:
     # Hash the incoming token to compare with stored hash
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     
-    from datetime import timezone
     refresh_token = db.query(models.RefreshToken).filter(
         models.RefreshToken.token_hash == token_hash,
-        models.RefreshToken.expires_at > datetime.now(timezone.utc).replace(tzinfo=None),
+        models.RefreshToken.expires_at > _utcnow(),
         models.RefreshToken.revoked == False
     ).first()
     
@@ -182,8 +195,6 @@ def mark_refresh_token_rotated(token: str, db: Session, grace_seconds: int = 60)
         grace_seconds: How long the old token remains valid (default 60s)
     """
     from . import models
-    from datetime import timezone
-    
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     
     refresh_token = db.query(models.RefreshToken).filter(
@@ -192,9 +203,11 @@ def mark_refresh_token_rotated(token: str, db: Session, grace_seconds: int = 60)
     
     if refresh_token and not refresh_token.revoked:
         # Set a grace period - token will be invalid after this time
-        grace_expiry = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=grace_seconds)
+        grace_expiry = _utcnow() + timedelta(seconds=grace_seconds)
         # Use the earlier of existing expiry or grace expiry
-        if refresh_token.expires_at > grace_expiry:
+        current_expiry = _as_utc_aware(refresh_token.expires_at)
+        grace_expiry = _as_utc_aware(grace_expiry)
+        if current_expiry > grace_expiry:
             refresh_token.expires_at = grace_expiry
         db.commit()
 

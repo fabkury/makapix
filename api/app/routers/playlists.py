@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -36,10 +38,66 @@ def validate_post_visibility(post_ids: list[int], db: Session) -> list[int]:
             )
         
         # Only include visible, non-hidden posts
-        if post.visible and not post.hidden_by_mod and not post.non_conformant:
+        if (
+            post.kind == "artwork"
+            and post.visible
+            and not post.hidden_by_mod
+            and not post.non_conformant
+        ):
             valid_post_ids.append(post_id)
     
     return valid_post_ids
+
+
+def _get_playlist_post_by_legacy_id(id: UUID, db: Session) -> models.Post:
+    """Resolve legacy playlist UUID to the underlying playlist post row."""
+    pp = (
+        db.query(models.PlaylistPost)
+        .filter(models.PlaylistPost.legacy_playlist_id == id)
+        .first()
+    )
+    if not pp:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Playlist not found"
+        )
+    post = db.query(models.Post).filter(models.Post.id == pp.post_id).first()
+    if not post or post.kind != "playlist":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Playlist not found"
+        )
+    return post
+
+
+def _playlist_schema_from_post(post: models.Post, db: Session) -> schemas.Playlist:
+    legacy_id = (
+        db.query(models.PlaylistPost.legacy_playlist_id)
+        .filter(models.PlaylistPost.post_id == post.id)
+        .scalar()
+    )
+    if legacy_id is None:
+        # Should not happen, but keep API stable.
+        legacy_id = uuid.uuid4()
+
+    item_ids = (
+        db.query(models.PlaylistItem.artwork_post_id)
+        .filter(models.PlaylistItem.playlist_post_id == post.id)
+        .order_by(models.PlaylistItem.position.asc())
+        .all()
+    )
+    post_ids = [pid for (pid,) in item_ids]
+
+    return schemas.Playlist(
+        id=legacy_id,
+        owner_id=post.owner_id,
+        title=post.title,
+        description=post.description,
+        post_ids=post_ids,
+        visible=post.visible,
+        hidden_by_user=post.hidden_by_user,
+        hidden_by_mod=post.hidden_by_mod,
+        created_at=post.created_at,
+        updated_at=post.updated_at,
+    )
 
 
 @router.get("", response_model=schemas.Page[schemas.Playlist])
@@ -59,19 +117,26 @@ def list_playlists(
     TODO: Implement cursor pagination
     TODO: Apply visibility filters
     """
-    query = db.query(models.Playlist).filter(
-        models.Playlist.visible == True,
-        models.Playlist.hidden_by_mod == False,
+    # Playlists are represented as posts(kind="playlist") + playlist_items.
+    query = db.query(models.Post).filter(
+        models.Post.kind == "playlist",
+        models.Post.visible == True,
+        models.Post.hidden_by_mod == False,
     )
     
     if owner_id:
-        query = query.filter(models.Playlist.owner_id == owner_id)
+        # owner_id is a legacy user_key UUID in API; map to integer users.id
+        owner = db.query(models.User).filter(models.User.user_key == owner_id).first()
+        if not owner:
+            return schemas.Page(items=[], next_cursor=None)
+        query = query.filter(models.Post.owner_id == owner.id)
     
-    query = query.order_by(models.Playlist.created_at.desc()).limit(limit)
-    playlists = query.all()
+    # TODO: Implement q/cursor/sort/order for playlists in a future iteration.
+    query = query.order_by(models.Post.created_at.desc()).limit(limit)
+    playlist_posts = query.all()
     
     return schemas.Page(
-        items=[schemas.Playlist.model_validate(p) for p in playlists],
+        items=[_playlist_schema_from_post(p, db) for p in playlist_posts],
         next_cursor=None,
     )
 
@@ -94,27 +159,68 @@ def create_playlist(
     # Validate all posts exist and filter to visible ones
     valid_post_ids = validate_post_visibility(payload.post_ids, db)
     
-    playlist = models.Playlist(
+    now = datetime.now(timezone.utc)
+
+    # Create an underlying post(kind="playlist")
+    playlist_post = models.Post(
+        storage_key=uuid.uuid4(),
         owner_id=current_user.id,
+        kind="playlist",
         title=payload.title,
         description=payload.description,
-        post_ids=valid_post_ids,
+        hashtags=[],
+        art_url=None,
+        canvas=None,
+        width=None,
+        height=None,
+        file_bytes=None,
+        frame_count=1,
+        min_frame_duration_ms=None,
+        has_transparency=False,
+        expected_hash=None,
+        mime_type=None,
+        visible=True,
+        hidden_by_user=False,
+        hidden_by_mod=False,
+        non_conformant=False,
+        public_visibility=False,
+        promoted=False,
+        promoted_category=None,
+        metadata_modified_at=now,
+        artwork_modified_at=now,
+        dwell_time_ms=30000,
     )
-    db.add(playlist)
+    db.add(playlist_post)
+    db.flush()  # get playlist_post.id
+
+    from ..sqids_config import encode_id
+
+    playlist_post.public_sqid = encode_id(playlist_post.id)
+
+    legacy_id = uuid.uuid4()
+    db.add(models.PlaylistPost(post_id=playlist_post.id, legacy_playlist_id=legacy_id))
+
+    for idx, post_id in enumerate(valid_post_ids):
+        db.add(
+            models.PlaylistItem(
+                playlist_post_id=playlist_post.id,
+                artwork_post_id=post_id,
+                position=idx,
+                dwell_time_ms=30000,
+            )
+        )
+
     db.commit()
-    db.refresh(playlist)
-    
-    return schemas.Playlist.model_validate(playlist)
+    db.refresh(playlist_post)
+
+    return _playlist_schema_from_post(playlist_post, db)
 
 
 @router.get("/{id}", response_model=schemas.Playlist)
 def get_playlist(id: UUID, db: Session = Depends(get_db)) -> schemas.Playlist:
     """Get playlist by ID."""
-    playlist = db.query(models.Playlist).filter(models.Playlist.id == id).first()
-    if not playlist:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Playlist not found")
-    
-    return schemas.Playlist.model_validate(playlist)
+    playlist_post = _get_playlist_post_by_legacy_id(id, db)
+    return _playlist_schema_from_post(playlist_post, db)
 
 
 @router.patch("/{id}", response_model=schemas.Playlist)
@@ -129,29 +235,40 @@ def update_playlist(
     
     Validates ownership and post visibility.
     """
-    playlist = db.query(models.Playlist).filter(models.Playlist.id == id).first()
-    if not playlist:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Playlist not found")
-    
-    require_ownership(playlist.owner_id, current_user)
+    playlist_post = _get_playlist_post_by_legacy_id(id, db)
+    require_ownership(playlist_post.owner_id, current_user)
     
     if payload.title is not None:
-        playlist.title = payload.title
+        playlist_post.title = payload.title
     if payload.description is not None:
-        playlist.description = payload.description
+        playlist_post.description = payload.description
     if payload.post_ids is not None:
         # Validate all posts exist and filter to visible ones
         valid_post_ids = validate_post_visibility(payload.post_ids, db)
-        playlist.post_ids = valid_post_ids
+        # Replace items (preserve order)
+        db.query(models.PlaylistItem).filter(
+            models.PlaylistItem.playlist_post_id == playlist_post.id
+        ).delete()
+        for idx, post_id in enumerate(valid_post_ids):
+            db.add(
+                models.PlaylistItem(
+                    playlist_post_id=playlist_post.id,
+                    artwork_post_id=post_id,
+                    position=idx,
+                    dwell_time_ms=30000,
+                )
+            )
     if payload.hidden_by_user is not None:
-        playlist.hidden_by_user = payload.hidden_by_user
+        playlist_post.hidden_by_user = payload.hidden_by_user
     if payload.hidden_by_mod is not None:
-        playlist.hidden_by_mod = payload.hidden_by_mod
+        playlist_post.hidden_by_mod = payload.hidden_by_mod
+
+    playlist_post.metadata_modified_at = datetime.now(timezone.utc)
     
     db.commit()
-    db.refresh(playlist)
+    db.refresh(playlist_post)
     
-    return schemas.Playlist.model_validate(playlist)
+    return _playlist_schema_from_post(playlist_post, db)
 
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -161,14 +278,12 @@ def delete_playlist(
     current_user: models.User = Depends(get_current_user),
 ) -> None:
     """Delete playlist (soft delete)."""
-    playlist = db.query(models.Playlist).filter(models.Playlist.id == id).first()
-    if not playlist:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Playlist not found")
-    
-    require_ownership(playlist.owner_id, current_user)
-    
-    playlist.visible = False
-    playlist.hidden_by_user = True
+    playlist_post = _get_playlist_post_by_legacy_id(id, db)
+    require_ownership(playlist_post.owner_id, current_user)
+
+    playlist_post.visible = False
+    playlist_post.hidden_by_user = True
+    playlist_post.metadata_modified_at = datetime.now(timezone.utc)
     db.commit()
 
 
@@ -183,13 +298,12 @@ def undelete_playlist(
     _moderator: models.User = Depends(require_moderator),
 ) -> None:
     """Undelete playlist (moderator only)."""
-    playlist = db.query(models.Playlist).filter(models.Playlist.id == id).first()
-    if not playlist:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Playlist not found")
-    
-    playlist.visible = True
-    playlist.hidden_by_user = False
-    playlist.hidden_by_mod = False
+    playlist_post = _get_playlist_post_by_legacy_id(id, db)
+
+    playlist_post.visible = True
+    playlist_post.hidden_by_user = False
+    playlist_post.hidden_by_mod = False
+    playlist_post.metadata_modified_at = datetime.now(timezone.utc)
     db.commit()
 
 
@@ -200,12 +314,10 @@ def hide_playlist(
     current_user: models.User = Depends(get_current_user),
 ) -> None:
     """Hide playlist."""
-    playlist = db.query(models.Playlist).filter(models.Playlist.id == id).first()
-    if not playlist:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Playlist not found")
-    
-    require_ownership(playlist.owner_id, current_user)
-    playlist.hidden_by_user = True
+    playlist_post = _get_playlist_post_by_legacy_id(id, db)
+    require_ownership(playlist_post.owner_id, current_user)
+    playlist_post.hidden_by_user = True
+    playlist_post.metadata_modified_at = datetime.now(timezone.utc)
     db.commit()
 
 
@@ -216,10 +328,8 @@ def unhide_playlist(
     current_user: models.User = Depends(get_current_user),
 ) -> None:
     """Unhide playlist."""
-    playlist = db.query(models.Playlist).filter(models.Playlist.id == id).first()
-    if not playlist:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Playlist not found")
-    
-    require_ownership(playlist.owner_id, current_user)
-    playlist.hidden_by_user = False
+    playlist_post = _get_playlist_post_by_legacy_id(id, db)
+    require_ownership(playlist_post.owner_id, current_user)
+    playlist_post.hidden_by_user = False
+    playlist_post.metadata_modified_at = datetime.now(timezone.utc)
     db.commit()

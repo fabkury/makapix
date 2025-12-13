@@ -73,7 +73,13 @@ def list_posts(
     """
     List posts with filters.
     """
-    query = db.query(models.Post).options(joinedload(models.Post.owner))
+    # The web/UI post endpoints currently serve artwork posts only.
+    # Playlist posts are used primarily for players (MQTT) and have a different shape.
+    query = (
+        db.query(models.Post)
+        .options(joinedload(models.Post.owner))
+        .filter(models.Post.kind == "artwork")
+    )
 
     is_moderator = "moderator" in current_user.roles or "owner" in current_user.roles
 
@@ -185,11 +191,10 @@ def create_post(
         )
 
     # Validate file size (basic check)
-    max_file_kb = 5 * 1024  # 15 MB limit
-    if payload.file_kb > max_file_kb:
+    if payload.file_bytes > MAX_FILE_SIZE_BYTES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File size {payload.file_kb}KB exceeds limit of {max_file_kb}KB",
+            detail=f"File size {payload.file_bytes} bytes exceeds limit of {MAX_FILE_SIZE_BYTES} bytes",
         )
 
     # Normalize hashtags (lowercase, strip whitespace)
@@ -205,6 +210,9 @@ def create_post(
     # Generate UUID for storage_key
     storage_key = uuid.uuid4()
 
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+
     post = models.Post(
         storage_key=storage_key,
         owner_id=current_user.id,
@@ -216,7 +224,13 @@ def create_post(
         canvas=payload.canvas,
         width=width,
         height=height,
-        file_kb=payload.file_kb,
+        file_bytes=payload.file_bytes,
+        frame_count=1,
+        min_frame_duration_ms=None,
+        has_transparency=False,
+        metadata_modified_at=now,
+        artwork_modified_at=now,
+        dwell_time_ms=30000,
     )
     db.add(post)
     db.flush()  # Get the post ID without committing
@@ -382,10 +396,12 @@ async def upload_artwork(
     storage_key = uuid.uuid4()
 
     # Create the post record first to get the ID
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
     post = models.Post(
         storage_key=storage_key,
         owner_id=current_user.id,
-        kind="art",
+        kind="artwork",
         title=title,
         description=description,
         hashtags=parsed_hashtags,
@@ -393,7 +409,6 @@ async def upload_artwork(
         canvas=f"{width}x{height}",
         width=width,
         height=height,
-        file_kb=file_size // 1024,
         file_bytes=file_size,
         frame_count=frame_count,
         min_frame_duration_ms=min_frame_duration_ms,
@@ -401,6 +416,9 @@ async def upload_artwork(
         expected_hash=file_hash,
         mime_type=mime_type,
         public_visibility=public_visibility,
+        metadata_modified_at=now,
+        artwork_modified_at=now,
+        dwell_time_ms=30000,
     )
     db.add(post)
     db.flush()  # Get the post ID without committing
@@ -495,6 +513,7 @@ def list_recent_posts(
         db.query(models.Post)
         .options(joinedload(models.Post.owner))
         .filter(
+            models.Post.kind == "artwork",
             models.Post.visible == True,
             models.Post.hidden_by_mod == False,
             models.Post.hidden_by_user == False,
@@ -557,7 +576,7 @@ def get_post_by_storage_key(
     post = (
         db.query(models.Post)
         .options(joinedload(models.Post.owner))
-        .filter(models.Post.storage_key == storage_key)
+        .filter(models.Post.storage_key == storage_key, models.Post.kind == "artwork")
         .first()
     )
 
@@ -625,6 +644,9 @@ def update_post(
     if payload.hidden_by_mod is not None:
         # TODO: Only allow moderators to set this
         post.hidden_by_mod = payload.hidden_by_mod
+
+    from datetime import datetime, timezone
+    post.metadata_modified_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(post)
