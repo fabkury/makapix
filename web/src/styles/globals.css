@@ -83,7 +83,13 @@ body.allow-body-scroll #__next {
 /* Pixel art images - crisp nearest neighbor scaling */
 .pixel-art,
 img[data-pixel-art="true"],
-.artwork-image {
+.artwork-image,
+/* Avatars: always render with crisp nearest-neighbor (pixelated) interpolation */
+img.avatar,
+img.user-avatar,
+img.avatar-image,
+img.profile-avatar,
+img.author-avatar-small {
   image-rendering: -webkit-optimize-contrast !important;
   image-rendering: -moz-crisp-edges !important;
   image-rendering: crisp-edges !important;

@@ -390,7 +390,8 @@ export default function Layout({ children, title, description }: LayoutProps) {
         .user-icon {
           width: 32px;
           height: 32px;
-          border-radius: 50%;
+          /* Profile picture in the top header should be a square */
+          border-radius: 0;
           background: var(--bg-tertiary);
           display: flex;
           align-items: center;
@@ -404,7 +405,8 @@ export default function Layout({ children, title, description }: LayoutProps) {
           width: 100%;
           height: 100%;
           object-fit: cover;
-          border-radius: 50%;
+          /* Profile picture in the top header should be a square */
+          border-radius: 0;
         }
 
         .header-left :global(a.user-profile-link:hover) .user-icon {
