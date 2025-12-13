@@ -119,6 +119,7 @@ export function clearTokens(): void {
   localStorage.removeItem("refresh_token");
   localStorage.removeItem("user_id");
   localStorage.removeItem("user_handle");
+  localStorage.removeItem("avatar_url");
 }
 
 /**

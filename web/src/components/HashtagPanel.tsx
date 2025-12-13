@@ -294,7 +294,7 @@ export default function HashtagPanel({ API_BASE_URL, searchQuery = '', sortBy = 
       <style jsx>{`
         .hashtag-panel {
           width: 100%;
-          min-height: calc(100vh - var(--header-height) - 60px);
+          min-height: calc(100vh - var(--header-offset) - 60px);
         }
 
         .load-more-trigger {

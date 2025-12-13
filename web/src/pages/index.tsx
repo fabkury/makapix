@@ -139,7 +139,6 @@ export default function HomePage() {
     if (!initialLoadRef.current) return;
     if (posts.length === 0 || !hasMoreRef.current) return;
     
-    const scrollRoot = document.querySelector('.main-content');
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && 
@@ -149,7 +148,8 @@ export default function HomePage() {
           loadPosts(nextCursorRef.current);
         }
       },
-      { threshold: 0.1, root: scrollRoot instanceof Element ? scrollRoot : null }
+      // Document scrolling: observe relative to viewport
+      { threshold: 0.1, root: null }
     );
 
     const currentTarget = observerTarget.current;
@@ -223,7 +223,7 @@ export default function HomePage() {
       <style jsx>{`
         .feed-container {
           width: 100%;
-          min-height: calc(100vh - var(--header-height));
+          min-height: calc(100vh - var(--header-offset));
         }
 
         .error-message {

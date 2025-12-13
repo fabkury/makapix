@@ -37,17 +37,7 @@ export default function AuthPage() {
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
     : '';
 
-  // Mobile fix: allow native body scrolling on the auth page.
-  // Our app normally locks body scroll and scrolls inside Layout's main-content,
-  // which can be unreliable on some mobile browsers (especially with the keyboard).
-  useEffect(() => {
-    document.documentElement.classList.add('allow-body-scroll');
-    document.body.classList.add('allow-body-scroll');
-    return () => {
-      document.documentElement.classList.remove('allow-body-scroll');
-      document.body.classList.remove('allow-body-scroll');
-    };
-  }, []);
+  // No special scroll handling needed: the app uses document scrolling sitewide.
 
   // Check if already logged in
   useEffect(() => {

@@ -125,7 +125,7 @@ export default function PlayersPage() {
             display: flex;
             align-items: center;
             justify-content: center;
-            min-height: calc(100vh - var(--header-height));
+            min-height: calc(100vh - var(--header-offset));
           }
           .loading-spinner {
             width: 40px;
@@ -158,7 +158,7 @@ export default function PlayersPage() {
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            min-height: calc(100vh - var(--header-height));
+            min-height: calc(100vh - var(--header-offset));
             padding: 2rem;
             text-align: center;
           }

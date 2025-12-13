@@ -50,9 +50,27 @@ export default function Layout({ children, title, description }: LayoutProps) {
   const [userId, setUserId] = useState<string | null>(null);
   const [publicSqid, setPublicSqid] = useState<string | null>(null);
   const [isModerator, setIsModerator] = useState(false);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  // Prevent header avatar "flashing" on navigation: Layout is mounted per-page in this app,
+  // so without a synchronous initial value, the avatar briefly renders as the placeholder
+  // until `/api/auth/me` completes. Cache it in localStorage and hydrate immediately.
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('avatar_url');
+  });
   const [isHeaderHidden, setIsHeaderHidden] = useState(false);
-  const mainRef = useRef<HTMLElement | null>(null);
+  // Keep a CSS variable in sync so pages can position sticky elements below the header
+  // while still allowing the header to hide without leaving a blank band.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.documentElement.style.setProperty(
+      '--header-offset',
+      isHeaderHidden ? '0px' : 'var(--header-height)'
+    );
+    return () => {
+      // On unmount, reset to default so static pages (or SSR) don't inherit a stale value.
+      document.documentElement.style.setProperty('--header-offset', 'var(--header-height)');
+    };
+  }, [isHeaderHidden]);
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
@@ -92,8 +110,18 @@ export default function Layout({ children, title, description }: LayoutProps) {
             }
             if (data.user.avatar_url) {
               setAvatarUrl(data.user.avatar_url);
+              try {
+                localStorage.setItem('avatar_url', data.user.avatar_url);
+              } catch {
+                // ignore
+              }
             } else {
               setAvatarUrl(null);
+              try {
+                localStorage.removeItem('avatar_url');
+              } catch {
+                // ignore
+              }
             }
           }
         })
@@ -109,6 +137,12 @@ export default function Layout({ children, title, description }: LayoutProps) {
       const detail = (event as CustomEvent).detail as { avatar_url?: string | null } | undefined;
       if (detail && 'avatar_url' in detail) {
         setAvatarUrl(detail.avatar_url ?? null);
+        try {
+          if (detail.avatar_url) localStorage.setItem('avatar_url', detail.avatar_url);
+          else localStorage.removeItem('avatar_url');
+        } catch {
+          // ignore
+        }
       }
     };
     window.addEventListener('makapix:user-updated', handler as EventListener);
@@ -116,11 +150,8 @@ export default function Layout({ children, title, description }: LayoutProps) {
   }, []);
 
   // Hide the header after scrolling down ~2 rows of artwork tiles.
-  // Scroll happens inside main-content (not window) to keep header behavior consistent.
+  // Scrolling is document-based (window), enabling native pull-to-refresh on mobile.
   useEffect(() => {
-    const main = mainRef.current;
-    if (!main) return;
-
     let rafId: number | null = null;
 
     const HIDE_AT = 128 * 2; // ~2 rows
@@ -130,7 +161,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
       if (rafId !== null) return;
       rafId = window.requestAnimationFrame(() => {
         rafId = null;
-        const y = main.scrollTop;
+        const y = window.scrollY || 0;
         setIsHeaderHidden((prev) => {
           if (!prev && y >= HIDE_AT) return true;
           if (prev && y <= SHOW_AT) return false;
@@ -139,12 +170,12 @@ export default function Layout({ children, title, description }: LayoutProps) {
       });
     };
 
-    main.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
 
     return () => {
       if (rafId !== null) window.cancelAnimationFrame(rafId);
-      main.removeEventListener('scroll', onScroll);
+      window.removeEventListener('scroll', onScroll);
     };
   }, []);
 
@@ -299,28 +330,22 @@ export default function Layout({ children, title, description }: LayoutProps) {
           </nav>
         </header>
 
-        <main className="main-content" ref={mainRef}>
+        <main className="main-content">
           {children}
         </main>
       </div>
 
       <style jsx>{`
         .app-container {
-          height: 100vh;
-          height: 100dvh;
           display: flex;
           flex-direction: column;
         }
 
-        /* If a page opts into native body scrolling (e.g. /auth), don't force a fixed viewport container */
-        :global(body.allow-body-scroll) .app-container {
-          height: auto;
-          min-height: 100%;
-        }
-
         .header {
-          position: sticky;
+          position: fixed;
           top: 0;
+          left: 0;
+          right: 0;
           z-index: 100;
           height: var(--header-height);
           background: linear-gradient(180deg, var(--bg-secondary) 0%, rgba(18, 18, 26, 0.95) 100%);
@@ -558,19 +583,10 @@ export default function Layout({ children, title, description }: LayoutProps) {
         }
 
         .main-content {
-          flex: 1;
           width: 100%;
-          overflow-y: auto;
-          overflow-x: hidden;
-          -webkit-overflow-scrolling: touch;
-          /* Critical for iOS/mobile: allow the flex child to actually become scrollable */
-          min-height: 0;
-          /* Ensure touch scrolling gestures are treated as vertical panning */
-          touch-action: pan-y;
-        }
-
-        :global(body.allow-body-scroll) .main-content {
-          overflow: visible;
+          /* Document scrolling: keep main in normal flow and reserve space for header.
+             Use --header-offset so the spacer collapses when the header hides. */
+          padding-top: var(--header-offset);
         }
 
         @media (max-width: 480px) {

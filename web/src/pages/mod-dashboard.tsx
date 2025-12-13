@@ -481,7 +481,7 @@ export default function ModDashboardPage() {
             display: flex;
             align-items: center;
             justify-content: center;
-            min-height: calc(100vh - var(--header-height));
+            min-height: calc(100vh - var(--header-offset));
           }
           .loading-spinner {
             width: 40px;

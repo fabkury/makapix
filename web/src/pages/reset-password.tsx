@@ -151,7 +151,7 @@ const API_BASE_URL = typeof window !== 'undefined'
           display: flex;
           align-items: center;
           justify-content: center;
-          min-height: calc(100vh - var(--header-height));
+          min-height: calc(100vh - var(--header-offset));
           padding: 24px;
         }
 

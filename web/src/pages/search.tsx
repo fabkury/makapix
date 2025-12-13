@@ -169,12 +169,12 @@ export default function SearchPage() {
       <style jsx>{`
         .search-container {
           width: 100%;
-          min-height: calc(100vh - var(--header-height));
+          min-height: calc(100vh - var(--header-offset));
         }
 
         .tabs-header {
           position: sticky;
-          top: var(--header-height);
+          top: var(--header-offset);
           z-index: 50;
           background: var(--bg-primary);
           border-bottom: 1px solid rgba(255, 255, 255, 0.05);
@@ -675,7 +675,7 @@ function HashtagsTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: a
       <style jsx>{`
         .hashtags-content {
           width: 100%;
-          min-height: calc(100vh - var(--header-height) - 60px);
+          min-height: calc(100vh - var(--header-offset) - 60px);
         }
 
         .controls {
@@ -1069,7 +1069,7 @@ function UsersTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any 
       <style jsx>{`
         .users-content {
           width: 100%;
-          min-height: calc(100vh - var(--header-height) - 60px);
+          min-height: calc(100vh - var(--header-offset) - 60px);
           padding: 24px;
           max-width: 1200px;
           margin: 0 auto;

@@ -89,13 +89,13 @@ export default function LegacyPostRedirect() {
         </div>
         <style jsx>{`
         .redirect-container {
-            display: flex;
+          display: flex;
           flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: calc(100vh - var(--header-height));
+          align-items: center;
+          justify-content: center;
+          min-height: calc(100vh - var(--header-offset));
           gap: 16px;
-          }
+        }
           .loading-spinner {
             width: 40px;
             height: 40px;

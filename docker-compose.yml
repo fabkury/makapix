@@ -191,7 +191,10 @@ services:
       caddy.handle_path.reverse_proxy: api:8000
       # Everything else goes to Next.js
       caddy.reverse_proxy: web:3000
-    command: sh -c "npm install && npm run dev"
+    # NOTE: `.next` is persisted via a named volume for speed, but it can occasionally
+    # end up serving stale compiled output after refactors. Clearing it on startup
+    # prevents the dev site from getting stuck returning 404s for every route.
+    command: sh -c "npm install && (test -d .next && find .next -mindepth 1 -maxdepth 1 -exec rm -rf {} + || true) && npm run dev"
     volumes:
       - ./web:/app
       - web_node_modules:/app/node_modules

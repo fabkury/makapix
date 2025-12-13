@@ -110,14 +110,14 @@ export default function BlogFeedPage() {
   useEffect(() => {
     if (posts.length === 0 || !hasMoreRef.current) return;
     
-    const scrollRoot = document.querySelector('.main-content');
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMoreRef.current && !loadingRef.current) {
           loadPosts(nextCursorRef.current, sort);
         }
       },
-      { threshold: 0.1, root: scrollRoot instanceof Element ? scrollRoot : null }
+      // Document scrolling: observe relative to viewport
+      { threshold: 0.1, root: null }
     );
 
     const currentTarget = observerTarget.current;
