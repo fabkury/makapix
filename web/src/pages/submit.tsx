@@ -290,6 +290,16 @@ export default function SubmitPage() {
     <Layout title="Submit Artwork" description="Upload your pixel art">
       <div className="submit-container">
         <h1 className="page-title">Submit Artwork</h1>
+
+        <div className="import-row">
+          <button
+            type="button"
+            className="import-btn"
+            onClick={() => router.push('/divoom-import')}
+          >
+            ⬇️ Import from my Divoom account
+          </button>
+        </div>
         
         {uploadedArtwork ? (
           <div className="success-state">
@@ -455,6 +465,29 @@ export default function SubmitPage() {
           color: var(--text-primary);
           margin-bottom: 24px;
           text-align: center;
+        }
+
+        .import-row {
+          display: flex;
+          justify-content: center;
+          margin-bottom: 20px;
+        }
+
+        .import-btn {
+          padding: 12px 16px;
+          border-radius: 12px;
+          background: rgba(0, 212, 255, 0.1);
+          border: 1px solid rgba(0, 212, 255, 0.25);
+          color: var(--text-secondary);
+          font-weight: 600;
+          transition: all var(--transition-fast);
+        }
+
+        .import-btn:hover {
+          background: rgba(0, 212, 255, 0.18);
+          border-color: rgba(0, 212, 255, 0.4);
+          box-shadow: var(--glow-cyan);
+          transform: translateY(-1px);
         }
 
         .loading-state {

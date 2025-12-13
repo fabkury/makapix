@@ -39,12 +39,13 @@ export default function Document() {
           }}
         />
         {/* Preconnect to Google Fonts for faster loading */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" crossOrigin="anonymous" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         {/* Load fonts via link tag instead of CSS @import for better performance */}
         <link
           href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
           rel="stylesheet"
+          crossOrigin="anonymous"
         />
       </Head>
       <body style={{ backgroundColor: '#0a0a0f' }} suppressHydrationWarning>

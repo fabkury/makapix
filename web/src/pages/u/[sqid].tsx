@@ -202,26 +202,21 @@ export default function UserProfilePage() {
     }
   }, [user, loadPosts]);
 
-  // Load blog posts when user is loaded
+  // Load blog posts when user is loaded (stats are returned by the API)
   useEffect(() => {
-    if (user) {
+    if (user && user.user_key) {
       loadBlogPosts();
     }
   }, [user, API_BASE_URL]);
 
-  // Load user's blog posts (stats are returned by the API)
   const loadBlogPosts = async () => {
-    if (!user) return;
-    
+    if (!user?.user_key) return;
     try {
-      // Blog posts API expects integer owner_id (users.id), not user_key UUID.
-      const response = await authenticatedFetch(
-        `${API_BASE_URL}/api/blog-post?owner_id=${user.id}&limit=2`
-      );
-      
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}/blog-posts/recent`);
       if (response.ok) {
         const data = await response.json();
-        setBlogPosts(data.items || []);
+        // Endpoint returns a plain list
+        setBlogPosts(Array.isArray(data) ? data : []);
       }
     } catch (err) {
       console.error('Error loading blog posts:', err);
@@ -810,7 +805,7 @@ export default function UserProfilePage() {
             <div className="blog-posts-content">
               <div className="blog-posts-header">
                 <h2 className="section-title">Recent Blog Posts</h2>
-                <button 
+                <button
                   className="blog-posts-toggle"
                   onClick={() => setIsBlogPostsCollapsed(!isBlogPostsCollapsed)}
                   aria-label={isBlogPostsCollapsed ? 'Expand blog posts' : 'Collapse blog posts'}
@@ -822,17 +817,13 @@ export default function UserProfilePage() {
                 <div className="blog-posts-list">
                   {blogPosts.map((blogPost) => {
                     const displayDate = blogPost.updated_at || blogPost.created_at;
-                    // Use counts from API response (batch-fetched on backend)
                     const reactionCount = blogPost.reaction_count ?? 0;
                     const commentCount = blogPost.comment_count ?? 0;
-                    
                     return (
                       <Link key={blogPost.id} href={`/b/${blogPost.public_sqid}`} className="blog-post-item">
                         <h3 className="blog-post-item-title">{blogPost.title}</h3>
                         <div className="blog-post-item-meta">
-                          <span className="blog-post-item-date">
-                            {new Date(displayDate).toLocaleDateString()}
-                          </span>
+                          <span className="blog-post-item-date">{new Date(displayDate).toLocaleDateString()}</span>
                           <span className="meta-separator">•</span>
                           <span className="blog-post-item-reactions">⚡ {reactionCount}</span>
                           <span className="meta-separator">•</span>
@@ -1320,10 +1311,12 @@ export default function UserProfilePage() {
           margin-left: -50vw;
           margin-right: -50vw;
           background: var(--bg-secondary);
-          margin-bottom: 24px;
+          margin-bottom: 0;
           border-bottom: 1px solid rgba(255, 255, 255, 0.1);
           transition: all var(--transition-normal);
           overflow: hidden;
+          /* Ensure this panel paints above the CardGrid glow below. */
+          z-index: 2;
         }
 
         .blog-posts-content {
@@ -1423,6 +1416,9 @@ export default function UserProfilePage() {
           min-height: 400px;
           /* No artificial gap below the header/blog-posts section */
           margin-top: 0;
+          /* Keep CardGrid glow under the blog posts panel */
+          position: relative;
+          z-index: 1;
         }
 
         .empty-state {

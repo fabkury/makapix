@@ -207,11 +207,12 @@ export default function UserProfilePage() {
     if (!id || typeof id !== 'string') return;
     
     try {
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${id}/blog-post?limit=2`);
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${id}/blog-posts/recent`);
       
       if (response.ok) {
         const data = await response.json();
-        setBlogPosts(data.items || []);
+        // Endpoint returns a plain list
+        setBlogPosts(Array.isArray(data) ? data : []);
       }
     } catch (err) {
       console.error('Error loading blog posts:', err);
@@ -1246,10 +1247,12 @@ export default function UserProfilePage() {
           margin-left: -50vw;
           margin-right: -50vw;
           background: var(--bg-secondary);
-          margin-bottom: 24px;
+          margin-bottom: 0;
           border-bottom: 1px solid rgba(255, 255, 255, 0.1);
           transition: all var(--transition-normal);
           overflow: hidden;
+          /* Ensure this panel paints above the CardGrid glow below. */
+          z-index: 2;
         }
 
         .blog-posts-content {
@@ -1349,6 +1352,9 @@ export default function UserProfilePage() {
           min-height: 400px;
           /* No artificial gap below the header/blog-posts section */
           margin-top: 0;
+          /* Keep CardGrid glow under the blog posts panel */
+          position: relative;
+          z-index: 1;
         }
 
         .empty-state {
