@@ -31,6 +31,7 @@ interface User {
   id: string;
   handle: string;
   display_name: string;
+  public_sqid: string;
   avatar_url?: string;
   reputation: number;
 }
@@ -66,6 +67,7 @@ interface HashtagListResponse {
 // Users Tab Interfaces
 interface UserDirectory {
   id: string;
+  public_sqid: string;
   handle: string;
   bio: string | null;
   avatar_url: string | null;
@@ -242,7 +244,7 @@ export default function SearchPage() {
 
 // Artwork Grid Component
 function SearchArtworkGrid({ posts, API_BASE_URL }: { posts: Post[]; API_BASE_URL: string }) {
-  return <CardGrid posts={posts} API_BASE_URL={API_BASE_URL} />;
+  return <CardGrid posts={posts} API_BASE_URL={API_BASE_URL} source={{ type: 'search' }} />;
 }
 
 // Search Tab Component

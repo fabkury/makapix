@@ -41,6 +41,7 @@ interface Post {
     id: string;
     handle: string;
     display_name: string;
+    public_sqid: string;
   };
 }
 

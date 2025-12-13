@@ -261,7 +261,7 @@ export default function BlogPostPage() {
           contentType="blog"
           contentId={post.id}
           API_BASE_URL={API_BASE_URL}
-          currentUserId={currentUser?.id || null}
+          currentUserId={currentUser?.id != null ? String(currentUser.id) : null}
           isModerator={isModerator}
         />
         </div>

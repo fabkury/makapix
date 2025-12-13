@@ -150,6 +150,10 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
         total_reactions: stats.total_reactions,
         reactions_by_emoji: stats.reactions_by_emoji,
         total_comments: stats.total_comments,
+        // Timestamps (independent of toggle)
+        first_view_at: stats.first_view_at,
+        last_view_at: stats.last_view_at,
+        computed_at: stats.computed_at,
       };
     } else {
       // Show authenticated-only statistics
@@ -163,6 +167,10 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
         total_reactions: stats.total_reactions_authenticated,
         reactions_by_emoji: stats.reactions_by_emoji_authenticated,
         total_comments: stats.total_comments_authenticated,
+        // Timestamps (independent of toggle)
+        first_view_at: stats.first_view_at,
+        last_view_at: stats.last_view_at,
+        computed_at: stats.computed_at,
       };
     }
   }, [stats, includeUnauthenticated]);
@@ -368,9 +376,9 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
 
             {/* Footer */}
             <div className="stats-footer">
-              <span>Last updated: {new Date(stats.computed_at).toLocaleString()}</span>
-              {stats.first_view_at && (
-                <span>First view: {new Date(stats.first_view_at).toLocaleString()}</span>
+              <span>Last updated: {new Date(displayedStats.computed_at).toLocaleString()}</span>
+              {displayedStats.first_view_at && (
+                <span>First view: {new Date(displayedStats.first_view_at).toLocaleString()}</span>
               )}
             </div>
           </div>

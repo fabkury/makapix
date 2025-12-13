@@ -8,6 +8,7 @@ import { authenticatedFetch } from '../../lib/api';
 
 interface BlogPost {
   id: string;
+  public_sqid: string;
   title: string;
   body: string;
   image_urls: string[];

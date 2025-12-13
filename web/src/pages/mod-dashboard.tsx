@@ -9,12 +9,14 @@ import { authenticatedFetch, clearTokens } from '../lib/api';
 interface PostOwner {
   id: string;
   handle: string;
+  public_sqid?: string;
   avatar_url?: string | null;
 }
 
 interface User {
   id: string;
   handle: string;
+  public_sqid?: string;
   display_name: string;
   email?: string;
   roles: string[];
@@ -109,7 +111,7 @@ export default function ModDashboardPage() {
   const [addingNote, setAddingNote] = useState(false);
   
   // Stats panel state
-  const [statsPostId, setStatsPostId] = useState<string | null>(null);
+  const [statsPostId, setStatsPostId] = useState<number | null>(null);
   const [showStats, setShowStats] = useState(false);
 
   const API_BASE_URL = typeof window !== 'undefined' 
@@ -201,7 +203,7 @@ export default function ModDashboardPage() {
     }
   };
 
-  const approvePublicVisibility = async (postId: string) => {
+  const approvePublicVisibility = async (postId: number) => {
     try {
       const response = await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/approve-public`, {
         method: 'POST',
@@ -215,7 +217,7 @@ export default function ModDashboardPage() {
     }
   };
 
-  const rejectPublicVisibility = async (postId: string) => {
+  const rejectPublicVisibility = async (postId: number) => {
     try {
       const response = await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/approve-public`, {
         method: 'DELETE',
@@ -349,7 +351,7 @@ export default function ModDashboardPage() {
     }
   };
 
-  const promotePost = async (postId: string) => {
+  const promotePost = async (postId: number) => {
     try {
       await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/promote`, {
         method: 'POST',
@@ -362,7 +364,7 @@ export default function ModDashboardPage() {
     }
   };
 
-  const hidePost = async (postId: string) => {
+  const hidePost = async (postId: number) => {
     try {
       await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/hide`, {
         method: 'POST',
@@ -375,7 +377,7 @@ export default function ModDashboardPage() {
     }
   };
 
-  const unhidePost = async (postId: string) => {
+  const unhidePost = async (postId: number) => {
     try {
       await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/unhide`, {
         method: 'POST',
@@ -388,7 +390,7 @@ export default function ModDashboardPage() {
     }
   };
 
-  const demotePost = async (postId: string) => {
+  const demotePost = async (postId: number) => {
     try {
       await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/demote`, {
         method: 'POST',
@@ -399,7 +401,7 @@ export default function ModDashboardPage() {
     }
   };
 
-  const deletePostPermanently = async (postId: string) => {
+  const deletePostPermanently = async (postId: number) => {
     if (!confirm('Are you sure you want to permanently delete this post? This action cannot be undone.')) {
       return;
     }
@@ -572,7 +574,7 @@ export default function ModDashboardPage() {
                     </div>
                   ))}
                   {pendingCursor && (
-                    <button onClick={loadPendingApproval} disabled={pendingLoading} className="load-more">
+                    <button onClick={() => loadPendingApproval(false)} disabled={pendingLoading} className="load-more">
                       {pendingLoading ? 'Loading...' : 'Load More'}
                     </button>
                   )}
@@ -603,7 +605,7 @@ export default function ModDashboardPage() {
                     </div>
                   ))}
                   {reportsCursor && (
-                    <button onClick={loadReports} disabled={reportsLoading} className="load-more">
+                    <button onClick={() => loadReports(false)} disabled={reportsLoading} className="load-more">
                       {reportsLoading ? 'Loading...' : 'Load More'}
                     </button>
                   )}
@@ -656,7 +658,7 @@ export default function ModDashboardPage() {
                     </div>
                   ))}
                   {postsCursor && (
-                    <button onClick={loadRecentPosts} disabled={postsLoading} className="load-more">
+                    <button onClick={() => loadRecentPosts(false)} disabled={postsLoading} className="load-more">
                       {postsLoading ? 'Loading...' : 'Load More'}
                     </button>
                   )}
@@ -697,7 +699,7 @@ export default function ModDashboardPage() {
                     </div>
                   ))}
                   {profilesCursor && (
-                    <button onClick={loadRecentProfiles} disabled={profilesLoading} className="load-more">
+                    <button onClick={() => loadRecentProfiles(false)} disabled={profilesLoading} className="load-more">
                       {profilesLoading ? 'Loading...' : 'Load More'}
                     </button>
                   )}
@@ -724,7 +726,7 @@ export default function ModDashboardPage() {
                     </div>
                   ))}
                   {auditCursor && (
-                    <button onClick={loadAuditLog} disabled={auditLoading} className="load-more">
+                    <button onClick={() => loadAuditLog(false)} disabled={auditLoading} className="load-more">
                       {auditLoading ? 'Loading...' : 'Load More'}
                     </button>
                   )}

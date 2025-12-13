@@ -12,7 +12,8 @@ export default function PlayerCard({ player, sqid, onDelete, onRefresh }: Player
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleCommand = async (commandType: 'swap_next' | 'swap_back') => {
+  // Keep command types aligned with `PlayerCommandRequest` in `src/lib/api.ts`
+  const handleCommand = async (commandType: 'swap_next' | 'swap_prev') => {
     setIsLoading(true);
     setError(null);
     try {
@@ -109,7 +110,7 @@ export default function PlayerCard({ player, sqid, onDelete, onRefresh }: Player
         <div className="player-actions">
           <button
             className="control-btn prev-btn"
-            onClick={() => handleCommand('swap_back')}
+            onClick={() => handleCommand('swap_prev')}
             disabled={isLoading || !isOnline}
             title="Previous artwork"
           >

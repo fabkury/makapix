@@ -388,6 +388,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
         }
 
         .user-icon {
+          /* Top-header avatar MUST be exactly 32x32 CSS pixels. Keep this fixed for layout stability. */
           width: 32px;
           height: 32px;
           /* Profile picture in the top header should be a square */
@@ -402,6 +403,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
         }
 
         .user-avatar {
+          /* The image fills the 32x32 container above. Do not change sizing here; change .user-icon instead. */
           width: 100%;
           height: 100%;
           object-fit: cover;
