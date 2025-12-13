@@ -648,6 +648,11 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
           border-radius: 50%;
           object-fit: cover;
           flex-shrink: 0;
+          image-rendering: -webkit-optimize-contrast !important;
+          image-rendering: -moz-crisp-edges !important;
+          image-rendering: crisp-edges !important;
+          image-rendering: pixelated !important;
+          -ms-interpolation-mode: nearest-neighbor !important;
         }
 
         .post-title {

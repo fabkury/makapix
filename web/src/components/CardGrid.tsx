@@ -529,6 +529,11 @@ export default function CardGrid({ posts, API_BASE_URL, source, cursor = null, p
           border-radius: 50%;
           object-fit: cover;
           flex-shrink: 0;
+          image-rendering: -webkit-optimize-contrast !important;
+          image-rendering: -moz-crisp-edges !important;
+          image-rendering: crisp-edges !important;
+          image-rendering: pixelated !important;
+          -ms-interpolation-mode: nearest-neighbor !important;
         }
 
         .post-title {

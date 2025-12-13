@@ -542,6 +542,11 @@ function SearchTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any
           width: 100%;
           height: 100%;
           object-fit: cover;
+          image-rendering: -webkit-optimize-contrast !important;
+          image-rendering: -moz-crisp-edges !important;
+          image-rendering: crisp-edges !important;
+          image-rendering: pixelated !important;
+          -ms-interpolation-mode: nearest-neighbor !important;
         }
 
         .avatar-placeholder {
@@ -1325,6 +1330,11 @@ function UsersTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any 
           height: 100%;
           object-fit: cover;
           border-radius: 50%;
+          image-rendering: -webkit-optimize-contrast !important;
+          image-rendering: -moz-crisp-edges !important;
+          image-rendering: crisp-edges !important;
+          image-rendering: pixelated !important;
+          -ms-interpolation-mode: nearest-neighbor !important;
         }
 
         .user-avatar-icon {

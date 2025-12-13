@@ -793,6 +793,11 @@ export default function UserProfilePage() {
           border-radius: 0;
           object-fit: cover;
           border: 3px solid var(--bg-tertiary);
+          image-rendering: -webkit-optimize-contrast !important;
+          image-rendering: -moz-crisp-edges !important;
+          image-rendering: crisp-edges !important;
+          image-rendering: pixelated !important;
+          -ms-interpolation-mode: nearest-neighbor !important;
         }
 
         .avatar-placeholder {
