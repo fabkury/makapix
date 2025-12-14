@@ -51,12 +51,12 @@ export default function HomePage() {
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
     : '';
 
-  // Redirect non-logged-in users to Recommended page (landing page)
+  // Redirect non-logged-in users to Welcome page (landing page)
   // Note: Click handler in Layout.tsx intercepts Recent artworks clicks for unauthenticated users
   useEffect(() => {
     const token = localStorage.getItem('access_token');
     if (!token) {
-      router.replace('/recommended');
+      router.replace('/welcome');
     } else {
       setIsAuthenticated(true);
     }

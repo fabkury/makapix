@@ -2,7 +2,7 @@ import { ReactNode, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import { authenticatedFetch, clearTokens } from '../lib/api';
+import { authenticatedFetch, clearLoggedOutMarker, clearTokens } from '../lib/api';
 
 interface LayoutProps {
   children: ReactNode;
@@ -187,15 +187,16 @@ export default function Layout({ children, title, description }: LayoutProps) {
         const { tokens } = event.data;
         if (tokens) {
           localStorage.setItem('access_token', tokens.access_token || tokens.token);
+          clearLoggedOutMarker();
           // refresh_token is now stored in HttpOnly cookie, not in localStorage
           // Do not store refresh_token even if provided
           localStorage.setItem('user_id', String(tokens.user_id));
           localStorage.setItem('user_key', tokens.user_key || '');
           localStorage.setItem('public_sqid', tokens.public_sqid || '');
           localStorage.setItem('user_handle', tokens.user_handle || '');
-          
-          // Reload the page to update authentication state
-          window.location.reload();
+
+          // Post-login destination: Recent Artworks
+          router.push('/');
         }
       }
     };
@@ -204,7 +205,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
     return () => {
       window.removeEventListener('message', handleMessage);
     };
-  }, []);
+  }, [router]);
 
   const isActive = (item: NavItem): boolean => {
     const currentPath = router.pathname;
@@ -227,6 +228,15 @@ export default function Layout({ children, title, description }: LayoutProps) {
 
   const pageTitle = title ? `${title} - Makapix Club` : 'Makapix Club';
 
+  const markWelcomeAsInternalNav = () => {
+    try {
+      // Used by /welcome to skip intro animations when user was redirected from within the app.
+      sessionStorage.setItem('makapix_welcome_instant', '1');
+    } catch {
+      // ignore
+    }
+  };
+
   return (
     <>
       <Head>
@@ -240,9 +250,12 @@ export default function Layout({ children, title, description }: LayoutProps) {
         <header className={`header ${isHeaderHidden ? 'header-hidden' : ''}`}>
           <div className="header-left">
             <Link
-              href={isLoggedIn ? "/" : "/recommended"}
+              href={isLoggedIn ? "/" : "/welcome"}
               className="logo-link"
               aria-label="Makapix Club Home"
+              onClick={() => {
+                if (!isLoggedIn) markWelcomeAsInternalNav();
+              }}
               // In dev, some tooling can inject extra attributes into SSR output, triggering
               // noisy hydration warnings (e.g. "Extra attributes from the server: data-cursor-ref").
               // Suppress that specific warning for these nav anchors.
@@ -250,7 +263,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
             >
               <div className="logo-container">
                 <img 
-                  src="/logo.png" 
+                  src="/brand/logo-32p.webp" 
                   alt="Makapix Club" 
                   className="logo"
                 />
@@ -304,11 +317,12 @@ export default function Layout({ children, title, description }: LayoutProps) {
           <nav className="nav" aria-label="Main navigation">
             {navItems.map((item) => {
               const active = isActive(item);
-              // For Recent artworks (/), redirect unauthenticated users to /auth
+              // For Recent artworks (/), redirect unauthenticated users to /welcome
               const handleClick = (e: React.MouseEvent) => {
                 if (item.href === '/' && !isLoggedIn) {
                   e.preventDefault();
-                  router.push('/auth');
+                  markWelcomeAsInternalNav();
+                  router.push('/welcome');
                 }
               };
               return (
@@ -348,9 +362,9 @@ export default function Layout({ children, title, description }: LayoutProps) {
           right: 0;
           z-index: 100;
           height: var(--header-height);
-          background: linear-gradient(180deg, var(--bg-secondary) 0%, rgba(18, 18, 26, 0.95) 100%);
-          backdrop-filter: blur(12px);
-          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+          background: #000;
+          backdrop-filter: none;
+          border-bottom: 1px solid #fff;
           display: flex;
           align-items: center;
           justify-content: space-between;
