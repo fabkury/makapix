@@ -79,7 +79,8 @@ def test_posts(test_user: User, db: Session) -> list[Post]:
             height=64,
             file_bytes=32000,
             frame_count=1,
-            has_transparency=False,
+            uses_transparency=False,
+            uses_alpha=False,
             visible=True,
             promoted=(i % 2 == 0),  # Every other post is promoted
         )
@@ -122,7 +123,8 @@ def other_user_post(other_user: User, db: Session) -> Post:
         height=64,
         file_bytes=32000,
         frame_count=1,
-        has_transparency=False,
+        uses_transparency=False,
+        uses_alpha=False,
         visible=True,
     )
     db.add(post)

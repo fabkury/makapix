@@ -131,7 +131,9 @@ def _build_artwork_payload(post: models.Post) -> ArtworkPostPayload:
         width=int(post.width or 0),
         height=int(post.height or 0),
         frame_count=int(post.frame_count or 1),
-        has_transparency=bool(post.has_transparency),
+        # NOTE: Player firmware protocol currently expects `has_transparency`.
+        # We map it from the new backend metadata field for backward compatibility.
+        has_transparency=bool(getattr(post, "uses_transparency", False)),
         artwork_modified_at=post.artwork_modified_at,
         dwell_time_ms=int(getattr(post, "dwell_time_ms", DEFAULT_DWELL_MS) or DEFAULT_DWELL_MS),
     )
@@ -197,7 +199,9 @@ def _build_playlist_payload(
                     width=int(p.width or 0),
                     height=int(p.height or 0),
                     frame_count=int(p.frame_count or 1),
-                    has_transparency=bool(p.has_transparency),
+                    # NOTE: Player firmware protocol currently expects `has_transparency`.
+                    # We map it from the new backend metadata field for backward compatibility.
+                    has_transparency=bool(getattr(p, "uses_transparency", False)),
                     owner_handle=p.owner.handle,
                     created_at=p.created_at,
                     metadata_modified_at=p.metadata_modified_at,

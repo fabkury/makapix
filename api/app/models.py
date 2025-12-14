@@ -245,9 +245,12 @@ class Post(Base):
     min_frame_duration_ms = Column(
         Integer, nullable=True
     )  # Minimum non-zero frame duration (ms), NULL for static
-    has_transparency = Column(
+    uses_transparency = Column(
         Boolean, nullable=False, default=False
-    )  # Whether image has alpha channel
+    )  # True if any pixel anywhere has alpha != 255
+    uses_alpha = Column(
+        Boolean, nullable=False, default=False
+    )  # True if any pixel anywhere has alpha not in {0, 255}
     expected_hash = Column(
         String(64), nullable=True, index=True
     )  # SHA256 hash for mismatch detection

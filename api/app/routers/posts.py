@@ -50,6 +50,7 @@ from ..vault import (
     validate_file_size,
     validate_image_dimensions,
 )
+from ..utils.transparency import compute_transparency_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -227,7 +228,8 @@ def create_post(
         file_bytes=payload.file_bytes,
         frame_count=1,
         min_frame_duration_ms=None,
-        has_transparency=False,
+        uses_transparency=False,
+        uses_alpha=False,
         metadata_modified_at=now,
         artwork_modified_at=now,
         dwell_time_ms=30000,
@@ -352,17 +354,19 @@ async def upload_artwork(
         except Exception as e:
             logger.warning(f"Failed to extract frame durations: {e}")
 
-    # 3. Detect transparency
-    has_transparency = False
+    # 3. Transparency metadata (pixel-scanned; metadata may short-circuit negative case)
+    # NOTE: If this fails, we currently fail the upload. Later we may use this error
+    # to label uploads as unhealthy or refuse specific files with a clearer reason.
     try:
-        # Check if image mode has alpha channel
-        if img.mode in ("RGBA", "LA", "PA"):
-            has_transparency = True
-        # For palette images (including GIFs), check for transparency info
-        elif img.mode == "P" and "transparency" in img.info:
-            has_transparency = True
+        tmeta = compute_transparency_metadata(img)
+        uses_transparency = bool(tmeta.uses_transparency)
+        uses_alpha = bool(tmeta.uses_alpha)
     except Exception as e:
-        logger.warning(f"Failed to detect transparency: {e}")
+        logger.error(f"Failed to compute transparency metadata: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to process image transparency metadata. Please try again.",
+        )
 
     # Validate dimensions according to Makapix Club size rules
     is_valid, error = validate_image_dimensions(width, height)
@@ -412,7 +416,8 @@ async def upload_artwork(
         file_bytes=file_size,
         frame_count=frame_count,
         min_frame_duration_ms=min_frame_duration_ms,
-        has_transparency=has_transparency,
+        uses_transparency=uses_transparency,
+        uses_alpha=uses_alpha,
         expected_hash=file_hash,
         mime_type=mime_type,
         public_visibility=public_visibility,

@@ -194,7 +194,8 @@ class Post(BaseModel):
     min_frame_duration_ms: int | None = (
         None  # Minimum non-zero frame duration (ms), NULL for static
     )
-    has_transparency: bool = False  # Whether image has alpha channel
+    uses_transparency: bool = False  # True if any pixel anywhere has alpha != 255
+    uses_alpha: bool = False  # True if any pixel anywhere has alpha not in {0, 255}
     # Required by player protocol (also useful for web clients)
     metadata_modified_at: datetime
     artwork_modified_at: datetime

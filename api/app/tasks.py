@@ -736,7 +736,8 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
                 file_bytes=int(artwork["file_bytes"]),
                 frame_count=1,
                 min_frame_duration_ms=None,
-                has_transparency=False,
+                uses_transparency=False,
+                uses_alpha=False,
                 expected_hash=artwork.get("sha256"),  # Store hash from manifest
                 mime_type=artwork.get("mime_type"),  # Store MIME type from manifest
                 metadata_modified_at=now,

@@ -62,7 +62,8 @@ def test_post(test_user: User, db: Session) -> Post:
         width=64,
         height=64,
         frame_count=1,
-        has_transparency=False,
+        uses_transparency=False,
+        uses_alpha=False,
         promoted=True,  # Make it promoted so it's accessible without auth
         visible=True,
         hidden_by_user=False,
@@ -97,7 +98,8 @@ def test_hidden_post(test_user: User, db: Session) -> Post:
         width=64,
         height=64,
         frame_count=1,
-        has_transparency=False,
+        uses_transparency=False,
+        uses_alpha=False,
         promoted=False,
         visible=True,
         hidden_by_user=True,  # Hidden by user

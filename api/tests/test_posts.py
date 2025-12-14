@@ -43,7 +43,8 @@ def test_post(test_user: User, db: Session) -> Post:
         height=64,
         file_bytes=32 * 1024,
         frame_count=1,
-        has_transparency=False,
+        uses_transparency=False,
+        uses_alpha=False,
         promoted=True,  # Make it visible without auth
     )
     db.add(post)
@@ -211,7 +212,8 @@ def test_update_post_requires_ownership(test_user: User, db: Session):
         height=64,
         file_bytes=32 * 1024,
         frame_count=1,
-        has_transparency=False,
+        uses_transparency=False,
+        uses_alpha=False,
         promoted=True,
     )
     db.add(post)
@@ -283,7 +285,8 @@ def test_delete_post_requires_ownership(test_user: User, db: Session):
         height=64,
         file_bytes=32 * 1024,
         frame_count=1,
-        has_transparency=False,
+        uses_transparency=False,
+        uses_alpha=False,
         promoted=True,
     )
     db.add(post)
