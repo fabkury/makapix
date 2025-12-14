@@ -16,7 +16,7 @@ import {
   NavigationContextPost 
 } from '../../lib/navigation-context';
 import { useSwipeNavigation } from '../../hooks/useSwipeNavigation';
-import { listPlayers, Player } from '../../lib/api';
+import { listPlayers, Player, sendPlayerCommand } from '../../lib/api';
 
 interface Post {
   id: number;
@@ -69,6 +69,7 @@ export default function PostPage() {
   // Player state
   const [players, setPlayers] = useState<Player[]>([]);
   const [showSendModal, setShowSendModal] = useState(false);
+  const [isQuickSendingToPlayer, setIsQuickSendingToPlayer] = useState(false);
   
   // Image error state
   const [imageError, setImageError] = useState(false);
@@ -151,6 +152,36 @@ export default function PostPage() {
 
     fetchPost();
   }, [sqid, API_BASE_URL]);
+
+  const handleSendToPlayerClick = async () => {
+    if (!currentUser || !post) return;
+
+    // If user has exactly one registered player, bypass the selection modal and send directly.
+    if (players.length === 1) {
+      const onlyPlayer = players[0];
+
+      if (onlyPlayer.connection_status !== 'online') {
+        alert('Your player is offline. Connect it to send artwork.');
+        return;
+      }
+
+      setIsQuickSendingToPlayer(true);
+      try {
+        await sendPlayerCommand(currentUser.public_sqid, onlyPlayer.id, {
+          command_type: 'show_artwork',
+          post_id: post.id,
+        });
+      } catch (err: any) {
+        alert(err?.message || 'Failed to send artwork to player.');
+      } finally {
+        setIsQuickSendingToPlayer(false);
+      }
+      return;
+    }
+
+    // 2+ players: keep existing behavior (let the user choose).
+    setShowSendModal(true);
+  };
 
   // Check if device is mobile
   useEffect(() => {
@@ -941,11 +972,12 @@ export default function PostPage() {
           {currentUser && players.length > 0 && (
             <div className="player-action">
               <button
-                onClick={() => setShowSendModal(true)}
+                onClick={handleSendToPlayerClick}
                 className="action-button player"
                 title="Send to Player"
+                disabled={isQuickSendingToPlayer}
               >
-                🖼️ Send to Player
+                {isQuickSendingToPlayer ? 'Sending...' : '🖼️ Send to Player'}
               </button>
             </div>
           )}

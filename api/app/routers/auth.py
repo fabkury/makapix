@@ -1024,10 +1024,9 @@ def github_callback(
             }
             if github_email:
                 identity.email = github_email
-            
-            # Update user profile (bio and avatar from GitHub)
-            user.bio = github_user.get("bio") or user.bio
-            user.avatar_url = github_user.get("avatar_url") or user.avatar_url
+            # IMPORTANT:
+            # Do NOT overwrite user profile fields (bio/avatar) on every login.
+            # These should be set only once at registration time.
             if github_email:
                 user.email = github_email
             

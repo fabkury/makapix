@@ -15,10 +15,16 @@ def can_access_post(post: "models.Post", user: "models.User" | None) -> bool:
     Access is allowed if:
     - User is a moderator/owner, OR
     - User is the post owner, OR
-    - Post is promoted (base_visible for anonymous users)
+    - Post is publicly visible (approved for public visibility) and not hidden, OR
+    - Post is promoted and not hidden
     
-    Note: "Public post" means "promoted post" - promoted posts are the only ones
-    accessible without authentication.
+    Notes:
+    - `public_visibility` is the primary "unlisted vs public" gate used across the API
+      (feeds/search only show `public_visibility == True`). The canonical permalink
+      endpoint `/api/p/{public_sqid}` should therefore allow access when
+      `public_visibility` is True.
+    - Hidden posts (`hidden_by_user` or `hidden_by_mod`) remain accessible only to the
+      owner and moderators/owners.
     
     Args:
         post: The post to check access for
@@ -37,14 +43,15 @@ def can_access_post(post: "models.Post", user: "models.User" | None) -> bool:
         if user.id == post.owner_id:
             return True
     
-    # Check base visibility (promoted posts are public)
-    # base_visible = promoted AND not hidden_by_mod AND not hidden_by_user AND visible
-    base_visible = (
-        post.promoted
-        and not post.hidden_by_mod
-        and not post.hidden_by_user
-        and post.visible
-    )
-    
-    return base_visible
+    # Public visibility:
+    # - must be visible
+    # - must not be hidden (either by user or moderator)
+    # - must be approved for public visibility OR promoted
+    if not post.visible:
+        return False
+
+    if post.hidden_by_mod or post.hidden_by_user:
+        return False
+
+    return bool(post.public_visibility or post.promoted)
 

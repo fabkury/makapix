@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.auth import create_access_token, create_refresh_token
 from app.routers import auth as auth_router
 from app.models import User
+from app.services.auth_identities import create_oauth_identity
 
 
 @pytest.fixture
@@ -94,6 +95,98 @@ def test_github_callback_rejects_invalid_state_before_network_call():
     resp = client.get(f"/auth/github/callback?code=test_code&state={state}", follow_redirects=False)
     assert resp.status_code == 400
     assert resp.json().get("detail") == "Invalid OAuth state. Please try again."
+
+
+def test_github_callback_does_not_overwrite_profile_on_login(
+    db: Session, test_user: User, monkeypatch: pytest.MonkeyPatch
+):
+    """
+    Returning GitHub users should NOT have profile fields (bio/avatar) overwritten on login.
+    Those fields are only set once at registration.
+    """
+    # Configure dummy credentials so the handler doesn't exit early
+    auth_router.GITHUB_CLIENT_ID = "test_client_id"
+    auth_router.GITHUB_CLIENT_SECRET = "test_client_secret"
+    auth_router.GITHUB_REDIRECT_URI = "http://localhost/auth/github/callback"
+
+    # Seed a user with custom profile fields (simulates user-edited values)
+    test_user.bio = "my custom bio"
+    test_user.avatar_url = "https://cdn.example.com/my-avatar.png"
+    db.commit()
+    db.refresh(test_user)
+
+    # Link an existing GitHub identity to that user
+    github_user_id = "12345"
+    create_oauth_identity(
+        db=db,
+        user_id=test_user.id,
+        provider="github",
+        provider_user_id=github_user_id,
+        email="test@example.com",
+        provider_metadata={"username": "oldname", "avatar_url": "https://old.example/a.png"},
+    )
+
+    # Stub httpx.Client used inside the router so we don't hit the network
+    class _FakeResponse:
+        def __init__(self, payload: object, status_code: int = 200):
+            self._payload = payload
+            self.status_code = status_code
+
+        def json(self):
+            return self._payload
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                # Not expected in this test path; keep it simple.
+                raise RuntimeError("HTTP error")
+
+    class _FakeHttpxClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def post(self, url: str, data=None, headers=None):
+            assert "github.com/login/oauth/access_token" in url
+            return _FakeResponse({"access_token": "gh_access_token"})
+
+        def get(self, url: str, headers=None):
+            if url == "https://api.github.com/user":
+                return _FakeResponse(
+                    {
+                        "id": int(github_user_id),
+                        "login": "newname",
+                        "bio": "github bio that should not overwrite",
+                        "avatar_url": "https://avatars.githubusercontent.com/u/12345?v=4",
+                        "email": "test@example.com",
+                    }
+                )
+            if url == "https://api.github.com/user/emails":
+                return _FakeResponse(
+                    [{"email": "test@example.com", "primary": True, "verified": True}]
+                )
+            raise AssertionError(f"Unexpected URL: {url}")
+
+    monkeypatch.setattr(auth_router.httpx, "Client", _FakeHttpxClient)
+
+    from app.main import app
+    from fastapi.testclient import TestClient
+
+    client = TestClient(app)
+
+    # Build a valid state + matching cookie nonce
+    nonce = "abc"
+    state = base64.urlsafe_b64encode(json.dumps({"nonce": nonce}).encode()).decode().rstrip("=")
+    client.cookies.set("oauth_state", nonce)
+
+    resp = client.get(f"/auth/github/callback?code=test_code&state={state}", follow_redirects=False)
+    assert resp.status_code == 200
+
+    # Reload user and verify profile fields were NOT overwritten by GitHub values
+    db.refresh(test_user)
+    assert test_user.bio == "my custom bio"
+    assert test_user.avatar_url == "https://cdn.example.com/my-avatar.png"
 
 
 def test_me_endpoint_requires_auth():
