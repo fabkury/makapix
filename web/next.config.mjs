@@ -1,5 +1,6 @@
 const nextConfig = {
   reactStrictMode: true,
+  output: 'standalone',
   eslint: {
     dirs: ["src"],
   },

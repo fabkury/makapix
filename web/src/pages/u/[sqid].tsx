@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
 import CardGrid from '../../components/CardGrid';
+import PlayerBar from '../../components/PlayerBarDynamic';
 import { authenticatedFetch, authenticatedRequestJson, authenticatedPostJson, clearTokens, logout } from '../../lib/api';
 
 interface User {
@@ -1479,6 +1480,8 @@ export default function UserProfilePage() {
           width: 1px;
         }
       `}</style>
+
+      <PlayerBar />
     </Layout>
   );
 }

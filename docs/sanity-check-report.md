@@ -2,7 +2,7 @@
 
 **Date**: December 2024  
 **Repository**: fabkury/makapix  
-**Live Site**: https://dev.makapix.club/
+**Web (Live Preview)**: https://dev.makapix.club/
 
 ---
 

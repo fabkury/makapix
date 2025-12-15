@@ -514,7 +514,7 @@ make logs      # View logs
 VPS (makapix.club)
 ├── Caddy (reverse proxy)
 │   ├── makapix.club → CTA site (static)
-│   └── dev.makapix.club → Full app (Next.js)
+│   └── dev.makapix.club → Web (live preview) (Next.js)
 ├── Docker Containers
 │   ├── web (Next.js)
 │   ├── api (FastAPI)

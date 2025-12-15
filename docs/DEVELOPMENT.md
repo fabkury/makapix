@@ -47,10 +47,10 @@ cd makapix
 2. **Set up environment**
 
 ```bash
-# Copy environment template
-cp .env.example .env
+# Create per-environment env files from templates (first time only)
+./scripts/setup-dev.sh
 
-# Or use the make command which copies the local template
+# Select which one is active (copies .env.local or .env.remote -> .env)
 make local
 ```
 
@@ -84,9 +84,9 @@ make logs
 
 The project uses environment templates for different contexts:
 
-- **`.env.example`**: Default values for local development
-- **`env.local.template`**: Template for local development
-- **`env.remote.template`**: Template for remote/staging deployment
+- **`env.local.template`** → `.env.local`: Template for local development (localhost)
+- **`env.remote.template`** → `.env.remote`: Template for remote development (dev.makapix.club)
+- **`.env`**: The currently active environment file (copied from `.env.local` or `.env.remote`)
 
 #### Key Environment Variables
 

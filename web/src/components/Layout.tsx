@@ -58,19 +58,9 @@ export default function Layout({ children, title, description }: LayoutProps) {
     return localStorage.getItem('avatar_url');
   });
   const [isHeaderHidden, setIsHeaderHidden] = useState(false);
-  // Keep a CSS variable in sync so pages can position sticky elements below the header
-  // while still allowing the header to hide without leaving a blank band.
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    document.documentElement.style.setProperty(
-      '--header-offset',
-      isHeaderHidden ? '0px' : 'var(--header-height)'
-    );
-    return () => {
-      // On unmount, reset to default so static pages (or SSR) don't inherit a stale value.
-      document.documentElement.style.setProperty('--header-offset', 'var(--header-height)');
-    };
-  }, [isHeaderHidden]);
+  // Note: We intentionally do NOT change --header-offset when the header hides.
+  // The header uses transform to slide out, but the page layout stays fixed.
+  // This prevents scroll jumps when the header shows/hides.
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
@@ -194,6 +184,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
           localStorage.setItem('user_key', tokens.user_key || '');
           localStorage.setItem('public_sqid', tokens.public_sqid || '');
           localStorage.setItem('user_handle', tokens.user_handle || '');
+
 
           // Post-login destination: Recent Artworks
           router.push('/');
@@ -369,19 +360,11 @@ export default function Layout({ children, title, description }: LayoutProps) {
           align-items: center;
           justify-content: space-between;
           padding: 0 16px;
-          overflow: hidden;
-          transition:
-            height 180ms ease,
-            transform 180ms ease,
-            padding 180ms ease,
-            opacity 180ms ease,
-            border-bottom-color 180ms ease;
+          /* Only animate transform for show/hide - no height/padding changes that cause reflow */
+          transition: transform 200ms ease-out, opacity 200ms ease-out;
         }
 
         .header.header-hidden {
-          height: 0;
-          padding: 0 16px;
-          border-bottom-color: transparent;
           transform: translateY(-100%);
           opacity: 0;
           pointer-events: none;
@@ -599,8 +582,9 @@ export default function Layout({ children, title, description }: LayoutProps) {
         .main-content {
           width: 100%;
           /* Document scrolling: keep main in normal flow and reserve space for header.
-             Use --header-offset so the spacer collapses when the header hides. */
-          padding-top: var(--header-offset);
+             Always use --header-height (not a dynamic offset) so the layout never shifts
+             when the header hides/shows. The header slides out via transform, not height. */
+          padding-top: var(--header-height);
         }
 
         @media (max-width: 480px) {

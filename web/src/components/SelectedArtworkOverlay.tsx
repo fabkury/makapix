@@ -1,0 +1,665 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { motion, useAnimationControls, useReducedMotion } from 'framer-motion';
+import { authenticatedFetch, getAccessToken } from '../lib/api';
+
+type Rect = { left: number; top: number; width: number; height: number };
+
+export interface SelectedArtworkOverlayPost {
+  id: number;
+  public_sqid: string;
+  title: string;
+  art_url: string;
+  canvas: string; // e.g. "64x64"
+}
+
+export interface SelectedArtworkOverlayProps {
+  posts: SelectedArtworkOverlayPost[];
+  selectedIndex: number;
+  setSelectedIndex: (idx: number) => void;
+  onClose: () => void; // parent should set selectedIndex = null
+  onNavigateToPost: (idx: number) => void; // parent should set nav context + router.push
+  getOriginRectForIndex: (idx: number) => Rect | null;
+}
+
+function getVisualViewportBox(): { x: number; y: number; width: number; height: number } {
+  if (typeof window === 'undefined') return { x: 0, y: 0, width: 0, height: 0 };
+  const vv = window.visualViewport;
+  if (!vv) return { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight };
+  return {
+    x: vv.offsetLeft ?? 0,
+    y: vv.offsetTop ?? 0,
+    width: vv.width ?? window.innerWidth,
+    height: vv.height ?? window.innerHeight,
+  };
+}
+
+function computeSelectedTargetRect(): { x: number; y: number; width: number; height: number } {
+  const vv = getVisualViewportBox();
+  const size = 384;
+  return {
+    x: vv.x + (vv.width - size) / 2,
+    y: vv.y,
+    width: size,
+    height: size,
+  };
+}
+
+async function fetchReactionMine(postId: number): Promise<Set<string>> {
+  const url = `/api/post/${postId}/reactions`;
+  const hasToken = !!getAccessToken();
+  const resp = hasToken
+    ? await authenticatedFetch(url.startsWith('http') ? url : `${window.location.origin}${url}`)
+    : await fetch(url, { credentials: 'include' });
+  if (!resp.ok) return new Set();
+  const data = await resp.json().catch(() => null);
+  const mine = Array.isArray(data?.mine) ? data.mine : [];
+  return new Set(mine);
+}
+
+async function setThumbsUp(postId: number, shouldLike: boolean): Promise<void> {
+  const emoji = '👍';
+  const encoded = encodeURIComponent(emoji);
+  const url = `/api/post/${postId}/reactions/${encoded}`;
+  const method = shouldLike ? 'PUT' : 'DELETE';
+  const hasToken = !!getAccessToken();
+  const resp = hasToken
+    ? await authenticatedFetch(url.startsWith('http') ? url : `${window.location.origin}${url}`, { method })
+    : await fetch(url, { method, credentials: 'include' });
+  void resp;
+}
+
+// Inline styles to ensure they work inside the portal
+const overlayStyles: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  zIndex: 9999,
+  pointerEvents: 'auto',
+};
+
+const backdropStyles: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(0, 0, 0, 0.85)',
+  backdropFilter: 'blur(16px)',
+  WebkitBackdropFilter: 'blur(16px)',
+};
+
+const artworkShellStyles: React.CSSProperties = {
+  position: 'fixed',
+  // CRITICAL: Must set left/top to 0 so Framer Motion's x/y transforms 
+  // become actual viewport coordinates. Without this, x/y offset from
+  // an unpredictable "static" position in the document flow.
+  left: 0,
+  top: 0,
+  overflow: 'hidden',
+  touchAction: 'none',
+  willChange: 'transform, width, height',
+  background: 'rgba(0, 0, 0, 0.18)',
+  cursor: 'pointer',
+};
+
+const artworkClipStyles: React.CSSProperties = {
+  width: '100%',
+  height: '100%',
+  position: 'relative',
+  overflow: 'hidden',
+};
+
+const artworkImageStyles: React.CSSProperties = {
+  display: 'block',
+  width: '100%',
+  height: '100%',
+  objectFit: 'cover',
+  objectPosition: 'center',
+  userSelect: 'none',
+  WebkitUserSelect: 'none',
+  pointerEvents: 'none',
+  imageRendering: 'pixelated',
+};
+
+const likeBurstStyles: React.CSSProperties = {
+  position: 'absolute',
+  left: '50%',
+  top: '50%',
+  transform: 'translate(-50%, -50%)',
+  fontSize: '56px',
+  textShadow: '0 10px 24px rgba(0, 0, 0, 0.45)',
+  pointerEvents: 'none',
+};
+
+type AnimationPhase = 'mounting' | 'flying-in' | 'selected' | 'flying-out' | 'swiping';
+
+export default function SelectedArtworkOverlay({
+  posts,
+  selectedIndex,
+  setSelectedIndex,
+  onClose,
+  onNavigateToPost,
+  getOriginRectForIndex,
+}: SelectedArtworkOverlayProps) {
+  const reduceMotion = useReducedMotion();
+  const controls = useAnimationControls();
+  const outgoingControls = useAnimationControls();
+  const backdropControls = useAnimationControls();
+  const [portalEl, setPortalEl] = useState<HTMLElement | null>(null);
+  const [phase, setPhase] = useState<AnimationPhase>('mounting');
+  const [pressing, setPressing] = useState(false);
+  const [liked, setLiked] = useState(false);
+  const [likeBurstKey, setLikeBurstKey] = useState(0);
+  const [targetRect, setTargetRect] = useState(() => computeSelectedTargetRect());
+  
+  // Store the initial origin rect SYNCHRONOUSLY on first render to avoid timing issues
+  // Using a ref to capture it immediately, then a state for re-renders
+  const initialOriginRectRef = useRef<Rect | null>(null);
+  if (initialOriginRectRef.current === null) {
+    initialOriginRectRef.current = getOriginRectForIndex(selectedIndex);
+  }
+  const [initialOriginRect] = useState<Rect | null>(() => initialOriginRectRef.current);
+  
+  // Track outgoing artwork during swipe transitions for simultaneous animation
+  // Store full animation state including initial position to prevent flash at 0,0
+  const [outgoingPost, setOutgoingPost] = useState<{ 
+    post: SelectedArtworkOverlayPost; 
+    rect: Rect;
+    startX: number;
+    startY: number;
+    startWidth: number;
+    startHeight: number;
+  } | null>(null);
+
+  const pressTimerRef = useRef<number | null>(null);
+  const pressStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const likeInFlightRef = useRef(false);
+
+  const post = posts[selectedIndex];
+
+  // Get current origin rect fresh from DOM (can change when scrolling/resizing)
+  const getCurrentOriginRect = useCallback(() => getOriginRectForIndex(selectedIndex), [getOriginRectForIndex, selectedIndex]);
+
+  const clearPressTimer = useCallback(() => {
+    if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current);
+    pressTimerRef.current = null;
+    pressStartRef.current = null;
+    setPressing(false);
+  }, []);
+
+  // Create portal root and lock scroll
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const el = document.createElement('div');
+    el.setAttribute('data-selected-artwork-overlay', 'true');
+    document.body.appendChild(el);
+    setPortalEl(el);
+
+    const prevOverflow = document.body.style.overflow;
+    const prevTouchAction = document.body.style.touchAction as string;
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.body.style.touchAction = prevTouchAction ?? '';
+      el.remove();
+    };
+  }, []);
+
+  // Keep target position aligned to the visual viewport (browser bar show/hide)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const vv = window.visualViewport;
+    const handler = () => {
+      const next = computeSelectedTargetRect();
+      setTargetRect(next);
+      if (phase !== 'selected') return;
+      controls.start({
+        x: next.x,
+        y: next.y,
+        transition: reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 520, damping: 44 },
+      });
+    };
+
+    handler();
+
+    if (vv) {
+      vv.addEventListener('resize', handler);
+      vv.addEventListener('scroll', handler);
+      return () => {
+        vv.removeEventListener('resize', handler);
+        vv.removeEventListener('scroll', handler);
+      };
+    }
+
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, [controls, phase, reduceMotion]);
+
+  // Fetch like state (auth or anonymous)
+  useEffect(() => {
+    const postId = post?.id;
+    if (!postId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const mine = await fetchReactionMine(postId);
+        if (cancelled) return;
+        setLiked(mine.has('👍'));
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [post?.id]);
+
+  // Animate in: wait for portal, then animate from grid position to center
+  useEffect(() => {
+    if (!portalEl || !post || phase !== 'mounting') return;
+    
+    // Use a small delay to ensure the initial position is rendered
+    const timer = requestAnimationFrame(() => {
+      setPhase('flying-in');
+
+      // Fade backdrop in concurrently with fly-in
+      void backdropControls.start({
+        opacity: 0.62,
+        transition: reduceMotion ? { duration: 0 } : { duration: 0.38, ease: [0.22, 1, 0.36, 1] },
+      });
+      
+      const origin = initialOriginRect;
+      if (!origin) {
+        // Fallback: appear directly in selected position
+        controls.set({
+          x: targetRect.x,
+          y: targetRect.y,
+          width: targetRect.width,
+          height: targetRect.height,
+          scale: 1,
+        });
+        setPhase('selected');
+        return;
+      }
+
+      // Explicitly set starting position at the origin (grid card position)
+      // This ensures the animation starts from exactly where the card is
+      controls.set({
+        x: origin.left,
+        y: origin.top,
+        width: origin.width,
+        height: origin.height,
+        scale: 1,
+      });
+
+      // Animate from origin to target
+      controls
+        .start({
+          x: targetRect.x,
+          y: targetRect.y,
+          width: targetRect.width,
+          height: targetRect.height,
+          transition: reduceMotion
+            ? { duration: 0 }
+            : { type: 'spring', stiffness: 400, damping: 35, mass: 0.8 },
+        })
+        .then(() => setPhase('selected'));
+    });
+
+    return () => cancelAnimationFrame(timer);
+  }, [backdropControls, controls, portalEl, post, phase, initialOriginRect, reduceMotion, targetRect]);
+
+  const triggerLikeToggle = useCallback(async () => {
+    if (!post) return;
+    if (likeInFlightRef.current) return;
+    likeInFlightRef.current = true;
+    try {
+      const next = !liked;
+      setLiked(next);
+      setLikeBurstKey((k) => k + 1);
+      if (navigator?.vibrate) navigator.vibrate(18);
+      await setThumbsUp(post.id, next);
+    } finally {
+      likeInFlightRef.current = false;
+    }
+  }, [liked, post]);
+
+  const dismissToOriginAndClose = useCallback(async () => {
+    // Get fresh origin rect from DOM to ensure precision after any scroll/resize
+    const origin = getCurrentOriginRect() ?? initialOriginRect;
+    if (!origin) {
+      // Still fade the backdrop out to avoid a hard cut
+      await backdropControls.start({
+        opacity: 0,
+        transition: reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.4, 0, 1, 1] },
+      });
+      onClose();
+      return;
+    }
+    setPhase('flying-out');
+    clearPressTimer();
+    const flyBack = controls.start({
+      x: origin.left,
+      y: origin.top,
+      width: origin.width,
+      height: origin.height,
+      transition: reduceMotion
+        ? { duration: 0 }
+        : { type: 'spring', stiffness: 500, damping: 40, mass: 0.8 },
+    });
+    const fadeOut = backdropControls.start({
+      opacity: 0,
+      transition: reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.4, 0, 1, 1] },
+    });
+    await Promise.all([flyBack, fadeOut]);
+    onClose();
+  }, [backdropControls, clearPressTimer, controls, getCurrentOriginRect, initialOriginRect, onClose, reduceMotion]);
+
+  const snapBackToTarget = useCallback(async () => {
+    setPhase('flying-in');
+    clearPressTimer();
+    await controls.start({
+      x: targetRect.x,
+      y: targetRect.y,
+      width: targetRect.width,
+      height: targetRect.height,
+      scale: 1,
+      transition: reduceMotion
+        ? { duration: 0 }
+        : { type: 'spring', stiffness: 650, damping: 48, mass: 0.7 },
+    });
+    setPhase('selected');
+  }, [clearPressTimer, controls, reduceMotion, targetRect]);
+
+  const bounceX = useCallback(
+    async (dir: 'left' | 'right') => {
+      setPhase('swiping');
+      clearPressTimer();
+      const dx = dir === 'left' ? -24 : 24;
+      await controls.start({
+        x: targetRect.x + dx,
+        transition: reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 700, damping: 24, mass: 0.35 },
+      });
+      await controls.start({
+        x: targetRect.x,
+        transition: reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 650, damping: 36, mass: 0.45 },
+      });
+      setPhase('selected');
+    },
+    [clearPressTimer, controls, reduceMotion, targetRect.x]
+  );
+
+  const swipeToIndex = useCallback(
+    async (nextIndex: number) => {
+      if (nextIndex < 0 || nextIndex >= posts.length) return;
+      // Get fresh origin rects from DOM
+      const outRect = getCurrentOriginRect() ?? initialOriginRect;
+      const inRect = getOriginRectForIndex(nextIndex);
+      if (!outRect || !inRect) {
+        // Fallback: just swap and snap
+        setSelectedIndex(nextIndex);
+        await snapBackToTarget();
+        return;
+      }
+
+      setPhase('swiping');
+      clearPressTimer();
+
+      // Capture the current post for the outgoing animation
+      const currentPost = posts[selectedIndex];
+
+      // Set up the outgoing element at the current selected position
+      // Include start position to prevent flash at 0,0
+      setOutgoingPost({ 
+        post: currentPost, 
+        rect: outRect,
+        startX: targetRect.x,
+        startY: targetRect.y,
+        startWidth: targetRect.width,
+        startHeight: targetRect.height,
+      });
+      outgoingControls.set({
+        x: targetRect.x,
+        y: targetRect.y,
+        width: targetRect.width,
+        height: targetRect.height,
+        scale: 1,
+        opacity: 1,
+      });
+
+      // Switch to the new post immediately and position at its card
+      setSelectedIndex(nextIndex);
+      controls.set({
+        x: inRect.left,
+        y: inRect.top,
+        width: inRect.width,
+        height: inRect.height,
+        scale: 1,
+      });
+
+      // Run animations sequentially (simpler / previous behavior)
+      await outgoingControls.start({
+        x: outRect.left,
+        y: outRect.top,
+        width: outRect.width,
+        height: outRect.height,
+        transition: reduceMotion
+          ? { duration: 0 }
+          : { type: 'spring', stiffness: 500, damping: 40, mass: 0.7 },
+      });
+
+      await controls.start({
+        x: targetRect.x,
+        y: targetRect.y,
+        width: targetRect.width,
+        height: targetRect.height,
+        transition: reduceMotion
+          ? { duration: 0 }
+          : { type: 'spring', stiffness: 400, damping: 35, mass: 0.8 },
+      });
+
+      // Clear the outgoing element after animation completes
+      setOutgoingPost(null);
+      setPhase('selected');
+    },
+    [
+      clearPressTimer,
+      controls,
+      outgoingControls,
+      getCurrentOriginRect,
+      getOriginRectForIndex,
+      initialOriginRect,
+      posts,
+      selectedIndex,
+      reduceMotion,
+      setSelectedIndex,
+      snapBackToTarget,
+      targetRect,
+    ]
+  );
+
+  // ESC to close
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') void dismissToOriginAndClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [dismissToOriginAndClose]);
+
+  if (!portalEl || !post) return null;
+  
+  // Compute initial position for the motion.div
+  const origin = initialOriginRect;
+  const initialX = origin?.left ?? targetRect.x;
+  const initialY = origin?.top ?? targetRect.y;
+  const initialW = origin?.width ?? targetRect.width;
+  const initialH = origin?.height ?? targetRect.height;
+
+  const isInteractive = phase === 'selected';
+
+  return createPortal(
+    <div style={overlayStyles} role="dialog" aria-modal="true">
+      <motion.div
+        style={backdropStyles}
+        initial={{ opacity: 0 }}
+        animate={backdropControls}
+        onMouseDown={(e) => {
+          if (!isInteractive) return;
+          e.preventDefault();
+          void dismissToOriginAndClose();
+        }}
+        onTouchStart={(e) => {
+          if (!isInteractive) return;
+          e.preventDefault();
+          void dismissToOriginAndClose();
+        }}
+      />
+
+      {/* Outgoing artwork during swipe transition (flies back to grid) */}
+      {outgoingPost && (
+        <motion.div
+          style={{
+            ...artworkShellStyles,
+            boxShadow: '0 18px 48px rgba(0,0,0,0.35)',
+            pointerEvents: 'none',
+          }}
+          initial={{
+            x: outgoingPost.startX,
+            y: outgoingPost.startY,
+            width: outgoingPost.startWidth,
+            height: outgoingPost.startHeight,
+            scale: 1,
+            opacity: 1,
+          }}
+          animate={outgoingControls}
+        >
+          <div style={artworkClipStyles}>
+            <img
+              src={outgoingPost.post.art_url}
+              alt={outgoingPost.post.title}
+              draggable={false}
+              style={artworkImageStyles}
+            />
+          </div>
+        </motion.div>
+      )}
+
+      {/* Main artwork (current selection) */}
+      <motion.div
+        style={{
+          ...artworkShellStyles,
+          scale: pressing ? 0.985 : 1,
+          boxShadow: '0 18px 48px rgba(0,0,0,0.35)',
+        }}
+        initial={{
+          x: initialX,
+          y: initialY,
+          width: initialW,
+          height: initialH,
+          scale: 1,
+        }}
+        animate={controls}
+        drag={isInteractive}
+        dragMomentum={false}
+        dragElastic={0.12}
+        onPointerDown={(e) => {
+          if (!isInteractive) return;
+          pressStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
+          setPressing(true);
+          pressTimerRef.current = window.setTimeout(() => {
+            pressTimerRef.current = null;
+            void triggerLikeToggle();
+          }, 420);
+        }}
+        onPointerMove={(e) => {
+          const start = pressStartRef.current;
+          if (!start) return;
+          const dx = e.clientX - start.x;
+          const dy = e.clientY - start.y;
+          if (Math.hypot(dx, dy) > 10) clearPressTimer();
+        }}
+        onPointerUp={() => {
+          clearPressTimer();
+        }}
+        onPointerCancel={() => {
+          clearPressTimer();
+        }}
+        onDragStart={() => {
+          clearPressTimer();
+        }}
+        onDragEnd={async (_e, info) => {
+          if (!isInteractive) return;
+          clearPressTimer();
+          const dx = info.offset.x;
+          const dy = info.offset.y;
+          const vx = info.velocity.x;
+          const vy = info.velocity.y;
+
+          const absX = Math.abs(dx);
+          const absY = Math.abs(dy);
+
+          const isHorizontal = absX > absY * 1.25 && absX > 70;
+          const isUp = dy < -90 || (vy < -650 && dy < -35);
+
+          if (isHorizontal) {
+            if (dx < 0) {
+              if (selectedIndex >= posts.length - 1) {
+                await bounceX('left');
+              } else {
+                await swipeToIndex(selectedIndex + 1);
+              }
+              return;
+            }
+            if (selectedIndex <= 0) {
+              await bounceX('right');
+            } else {
+              await swipeToIndex(selectedIndex - 1);
+            }
+            return;
+          }
+
+          if (isUp) {
+            await dismissToOriginAndClose();
+            return;
+          }
+
+          await snapBackToTarget();
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!isInteractive) return;
+          onNavigateToPost(selectedIndex);
+        }}
+      >
+        <div style={artworkClipStyles}>
+          <img
+            src={post.art_url}
+            alt={post.title}
+            draggable={false}
+            style={artworkImageStyles}
+          />
+
+          {likeBurstKey > 0 && (
+            <motion.div
+              key={likeBurstKey}
+              style={likeBurstStyles}
+              initial={{ opacity: 0, scale: 0.6, y: 16 }}
+              animate={{
+                opacity: 1,
+                scale: 1,
+                y: -8,
+                transition: reduceMotion
+                  ? { duration: 0 }
+                  : { type: 'spring', stiffness: 640, damping: 32, mass: 0.35 },
+              }}
+              exit={{ opacity: 0 }}
+            >
+              👍
+            </motion.div>
+          )}
+        </div>
+      </motion.div>
+    </div>,
+    portalEl
+  );
+}

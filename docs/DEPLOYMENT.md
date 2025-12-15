@@ -171,7 +171,7 @@ cd /opt/makapix/deploy/stack
 Copy and configure environment:
 
 ```bash
-cp .env.example .env
+cp env.example .env
 nano .env
 ```
 
@@ -179,8 +179,11 @@ Update the following values:
 
 ```bash
 # Domain configuration
-DOMAIN=makapix.club
-DEV_DOMAIN=dev.makapix.club
+ROOT_DOMAIN=makapix.club
+WEB_DOMAIN=dev.makapix.club
+
+# Web app port (reverse-proxied by Caddy)
+WEB_APP_PORT=3000
 
 # Database credentials (use strong passwords!)
 POSTGRES_PASSWORD=your-strong-password-here
@@ -237,7 +240,7 @@ docker compose logs web
 Access the application:
 
 - CTA site: https://makapix.club
-- Dev app: https://dev.makapix.club
+- Web (live preview): https://dev.makapix.club
 
 ---
 
@@ -251,8 +254,11 @@ Key environment variables in `/opt/makapix/deploy/stack/.env`:
 
 ```bash
 # Domains
-DOMAIN=makapix.club
-DEV_DOMAIN=dev.makapix.club
+ROOT_DOMAIN=makapix.club
+WEB_DOMAIN=dev.makapix.club
+
+# Web app port
+WEB_APP_PORT=3000
 
 # Database
 POSTGRES_USER=appuser

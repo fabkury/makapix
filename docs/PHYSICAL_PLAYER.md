@@ -453,12 +453,12 @@ def report_status(status):
 ### Test Endpoints
 
 - **Production:** `https://makapix.club/api/`
-- **Development:** `https://dev.makapix.club/api/`
+- **Web (live preview):** `https://dev.makapix.club/api/`
 
 ### MQTT Brokers
 
 - **Production:** `makapix.club:8883` (TLS)
-- **Development:** `dev.makapix.club:8883` (TLS)
+- **Web (live preview):** `dev.makapix.club:8883` (TLS)
 
 ### Manual Testing Flow
 

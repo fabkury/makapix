@@ -1,6 +1,14 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import { setNavigationContext, NavigationSource } from '../lib/navigation-context';
+import SelectedArtworkOverlay from './SelectedArtworkOverlay';
+import { usePlayerBarOptional } from '../contexts/PlayerBarContext';
+
+// Global timestamp for synchronized glow animations across all CardGrid instances.
+// All glow animations use this as their reference point so they stay in phase.
+const GLOW_ANIMATION_DURATION_MS = 16000; // 16s animation cycle
+const glowAnimationStartTime = typeof performance !== 'undefined' ? performance.now() : 0;
 
 interface PostOwner {
   id: string;
@@ -33,14 +41,44 @@ interface CardGridProps {
 }
 
 export default function CardGrid({ posts, API_BASE_URL: _API_BASE_URL, source, cursor = null, prevCursor }: CardGridProps) {
+  const router = useRouter();
+  const playerBarContext = usePlayerBarOptional();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const packRef = useRef<HTMLDivElement>(null);
+  const artworkAreaRefs = useRef<Map<number, HTMLDivElement | null>>(new Map());
 
   const TILE_SIZE = 128;
   const MAX_COLUMNS = 8;
   const [columnCount, setColumnCount] = useState(1);
   const [superPostId, setSuperPostId] = useState<number | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  
+  // Calculate synchronized animation delay so all glows stay in phase.
+  // This negative delay "jumps" the animation to the correct position in the cycle.
+  const [glowAnimationDelay, setGlowAnimationDelay] = useState('0s');
+  useEffect(() => {
+    const elapsed = performance.now() - glowAnimationStartTime;
+    const delayMs = -(elapsed % GLOW_ANIMATION_DURATION_MS);
+    setGlowAnimationDelay(`${delayMs}ms`);
+  }, []);
+
+  // Sync selected artwork with PlayerBarContext
+  useEffect(() => {
+    if (!playerBarContext) return;
+    
+    if (selectedIndex !== null && selectedIndex >= 0 && selectedIndex < posts.length) {
+      const post = posts[selectedIndex];
+      playerBarContext.setSelectedArtwork({
+        id: post.id,
+        public_sqid: post.public_sqid,
+        title: post.title,
+        art_url: post.art_url,
+      });
+    } else {
+      playerBarContext.setSelectedArtwork(null);
+    }
+  }, [selectedIndex, posts, playerBarContext]);
 
   // Choose one "super post" per component mount (surrogate for backend flag).
   useEffect(() => {
@@ -61,6 +99,27 @@ export default function CardGrid({ posts, API_BASE_URL: _API_BASE_URL, source, c
 
     // Store context in sessionStorage
     setNavigationContext(contextPosts, postIndex, source, cursor, prevCursor);
+  };
+
+  const selectedOverlayPosts = useMemo(
+    () =>
+      posts.map((p) => ({
+        id: p.id,
+        public_sqid: p.public_sqid,
+        title: p.title,
+        art_url: p.art_url,
+        canvas: p.canvas,
+      })),
+    [posts]
+  );
+
+  const getOriginRectForIndex = (idx: number) => {
+    const post = posts[idx];
+    if (!post) return null;
+    const el = artworkAreaRefs.current.get(post.id);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { left: r.left, top: r.top, width: r.width, height: r.height };
   };
 
   useLayoutEffect(() => {
@@ -198,7 +257,11 @@ export default function CardGrid({ posts, API_BASE_URL: _API_BASE_URL, source, c
   }, [posts, columnCount, superPostId]);
 
   return (
-    <div className="card-grid-scroll-container" ref={scrollContainerRef}>
+    <div 
+      className="card-grid-scroll-container" 
+      ref={scrollContainerRef}
+      style={{ '--glow-sync-delay': glowAnimationDelay } as React.CSSProperties}
+    >
       <div className="card-grid-pack" ref={packRef}>
         <div className="edge-glow edge-glow-left" />
         <div className="edge-glow edge-glow-right" />
@@ -208,27 +271,55 @@ export default function CardGrid({ posts, API_BASE_URL: _API_BASE_URL, source, c
           {posts.map((post, index) => {
             const postIndex = index;
             const isSuper = columnCount >= 2 && superPostId !== null && post.id === superPostId;
+            const isSelected = selectedIndex === postIndex;
             return (
               <Link
                 key={post.id}
                 href={`/p/${post.public_sqid}`}
-                className={`artwork-card${isSuper ? ' super-post' : ''}`}
-                onClick={() => handlePostClick(postIndex)}
+                className={`artwork-card${isSuper ? ' super-post' : ''}${isSelected ? ' artwork-selected' : ''}`}
+                onClick={(e) => {
+                  // First tap selects (no navigation). Second tap happens on overlay.
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSelectedIndex(postIndex);
+                }}
                 aria-label={post.title}
               >
-                <div className="artwork-area">
+                <div
+                  className="artwork-area"
+                  ref={(el) => {
+                    artworkAreaRefs.current.set(post.id, el);
+                  }}
+                >
                   <img
                     src={post.art_url}
                     alt={post.title}
                     className="artwork-image pixel-art"
                     data-canvas={post.canvas}
                     loading="lazy"
+                    style={{ visibility: isSelected ? 'hidden' : 'visible' }}
                   />
                 </div>
               </Link>
             );
           })}
         </div>
+
+        {selectedIndex !== null && selectedIndex >= 0 && selectedIndex < posts.length && (
+          <SelectedArtworkOverlay
+            posts={selectedOverlayPosts}
+            selectedIndex={selectedIndex}
+            setSelectedIndex={setSelectedIndex}
+            getOriginRectForIndex={getOriginRectForIndex}
+            onClose={() => setSelectedIndex(null)}
+            onNavigateToPost={(idx) => {
+              handlePostClick(idx);
+              const sqid = posts[idx]?.public_sqid;
+              if (!sqid) return;
+              router.push(`/p/${sqid}`);
+            }}
+          />
+        )}
 
       <style jsx>{`
         .card-grid-scroll-container {
@@ -255,6 +346,7 @@ export default function CardGrid({ posts, API_BASE_URL: _API_BASE_URL, source, c
           filter: blur(10px) hue-rotate(0deg);
           opacity: 0.9;
           animation: sinebow-hue 16s linear infinite;
+          animation-delay: var(--glow-sync-delay, 0s);
         }
 
         .edge-glow-left {
@@ -336,6 +428,14 @@ export default function CardGrid({ posts, API_BASE_URL: _API_BASE_URL, source, c
           line-height: 0;
           position: relative;
           overflow: visible;
+          -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+          tap-highlight-color: rgba(0, 0, 0, 0);
+          background: transparent;
+        }
+
+        /* Prevent brief mobile "selected"/highlight flash on tap */
+        :global(a.artwork-card:active) {
+          background: transparent;
         }
 
         :global(a.artwork-card.super-post) {
@@ -377,6 +477,7 @@ export default function CardGrid({ posts, API_BASE_URL: _API_BASE_URL, source, c
           filter: blur(10px) hue-rotate(0deg);
           opacity: 0.9;
           animation: sinebow-hue 16s linear infinite;
+          animation-delay: var(--glow-sync-delay, 0s);
         }
 
         @keyframes sinebow-hue {

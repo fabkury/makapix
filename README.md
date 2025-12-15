@@ -77,6 +77,7 @@ make down
 - **[Development Guide](docs/DEVELOPMENT.md)** - Complete local setup, workflows, and testing
 - **[Architecture Documentation](docs/ARCHITECTURE.md)** - System design, components, and data flows
 - **[API Documentation](http://localhost:8000/docs)** - Interactive API reference (when running locally)
+- **[Naming Conventions](docs/NAMING_CONVENTIONS.md)** - Clear definitions for CTA vs web preview, compose files, and service names
 
 ### For Deployers
 
@@ -160,7 +161,7 @@ make api.test       # Run API tests
 ## 📊 Current Status
 
 - **CTA Site**: ✅ Live at https://makapix.club (marketing/landing page)
-- **Dev Preview**: 🚧 Testing at https://dev.makapix.club (full application)
+- **Web (Live Preview)**: 🚧 Testing at https://dev.makapix.club (full application)
 - **Production**: 🔜 Full application launch planned
 
 ## 🤝 Contributing
@@ -179,7 +180,7 @@ Contributions are welcome! Please ensure your changes:
 ## 🔗 Links
 
 - **Website**: https://makapix.club
-- **Dev Environment**: https://dev.makapix.club
+- **Web (Live Preview)**: https://dev.makapix.club
 - **Repository**: https://github.com/fabkury/makapix
 
 ---

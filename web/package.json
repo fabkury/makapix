@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3000",
+    "dev": "node scripts/clean-next-cache.js && next dev -p 3000",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "aes-js": "^3.1.2",
+    "framer-motion": "^11.11.17",
     "jszip": "^3.10.1",
     "lzo-wasm": "^0.0.4",
     "mqtt": "^5.3.0",

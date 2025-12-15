@@ -1,4 +1,28 @@
+# =============================================================================
+# Makapix Stack - VPS Deployment
+# =============================================================================
+#
+# This compose file is for VPS DEPLOYMENT ONLY (dev.makapix.club staging).
+# For local development, use the root docker-compose.yml instead.
+#
+# IMPORTANT: The web service runs in PRODUCTION MODE (not dev mode).
+# This is intentional — dev mode causes styled-jsx errors on mobile browsers.
+#
+# Before deploying, always check for orphan containers:
+#   docker ps | grep makapix
+#
+# Common commands (run from deploy/stack/):
+#   docker compose up -d                        # Start all services
+#   docker compose build --no-cache web         # Rebuild after changes
+#   docker compose down web && docker compose up -d web  # Restart web
+#   docker compose logs -f web                  # View web logs
+#
+# =============================================================================
+
 services:
+  # ---------------------------------------------------------------------------
+  # Caddy Reverse Proxy (auto-discovers containers via Docker labels)
+  # ---------------------------------------------------------------------------
   caddy:
     image: lucaslorentz/caddy-docker-proxy:${CADDY_DOCKER_PROXY_TAG}
     container_name: caddy
@@ -25,6 +49,9 @@ services:
     networks:
       - caddy_net
 
+  # ---------------------------------------------------------------------------
+  # CTA (Call-To-Action) - Static marketing site at makapix.club
+  # ---------------------------------------------------------------------------
   cta:
     image: caddy:${CADDY_TAG}
     container_name: makapix-cta
@@ -45,25 +72,44 @@ services:
     networks:
       - caddy_net
 
-  dev:
-    profiles: ["dev"]
+  # ---------------------------------------------------------------------------
+  # Web Application (Next.js) - Staging at dev.makapix.club
+  # ---------------------------------------------------------------------------
+  # ⚠️  PRODUCTION MODE: Uses optimized build (not hot reload)
+  #
+  # The Dockerfile runs `npm run build` and serves via standalone server.
+  # This avoids styled-jsx runtime errors on mobile browsers that occur in dev mode.
+  #
+  # Container name: makapix-web (NOT makapix-web-1)
+  # If you see makapix-web-1, that's from the root docker-compose.yml — stop it!
+  # ---------------------------------------------------------------------------
+  web:
+    # Profile "web" is preferred; "dev" kept for backwards compatibility
+    profiles: ["web", "dev"]
     build:
       context: ../..
       dockerfile: web/Dockerfile
-    container_name: makapix-dev
+      args:
+        # These are baked into the JS bundle at build time
+        - NEXT_PUBLIC_API_BASE_URL=https://dev.makapix.club
+        - NEXT_PUBLIC_MQTT_WS_URL=wss://dev.makapix.club:9001
+    container_name: makapix-web
     restart: unless-stopped
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
       - HOST=0.0.0.0
-      - PORT=${DEV_APP_PORT}
+      - PORT=${WEB_APP_PORT:-${DEV_APP_PORT:-3000}}
       - NEXT_TELEMETRY_DISABLED=1
-      - NEXT_PUBLIC_API_BASE_URL=https://makapix.club
-      - NEXT_PUBLIC_MQTT_WS_URL=wss://makapix.club:9001
+      # Runtime env vars (for server-side code)
+      - NEXT_PUBLIC_API_BASE_URL=https://dev.makapix.club
+      - NEXT_PUBLIC_MQTT_WS_URL=wss://dev.makapix.club:9001
     labels:
-      caddy: ${DEV_DOMAIN}
+      # Caddy auto-routing via label
+      caddy: ${WEB_DOMAIN:-${DEV_DOMAIN}}
       caddy.header.X-Robots-Tag: "noindex, nofollow, noarchive"
-      # caddy.basicauth./: "devuser {bcrypt}$2y$10$u6Uc0zq/5xK6aK7n2uRrIeq5a5lqFA0QDqp2nYdSyxvN.6B3OaY3."
-      caddy.reverse_proxy: "{{upstreams ${DEV_APP_PORT}}}"
+      # Uncomment for basic auth protection:
+      # caddy.basicauth./: "devuser {bcrypt}$2y$10$..."
+      caddy.reverse_proxy: "{{upstreams ${WEB_APP_PORT:-${DEV_APP_PORT:-3000}}}}"
     networks:
       - caddy_net
 

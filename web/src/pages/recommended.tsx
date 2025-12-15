@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import CardGrid from '../components/CardGrid';
+import PlayerBar from '../components/PlayerBarDynamic';
 import { authenticatedFetch, clearTokens } from '../lib/api';
 
 interface PostOwner {
@@ -187,6 +188,8 @@ export default function RecommendedPage() {
           </div>
         )}
       </div>
+
+      <PlayerBar />
 
       <style jsx>{`
         .feed-container {
