@@ -141,6 +141,7 @@ export default function SelectedArtworkOverlay({
   const reduceMotion = useReducedMotion();
   const controls = useAnimationControls();
   const outgoingControls = useAnimationControls();
+  const incomingControls = useAnimationControls();
   const backdropControls = useAnimationControls();
   const [portalEl, setPortalEl] = useState<HTMLElement | null>(null);
   const [phase, setPhase] = useState<AnimationPhase>('mounting');
@@ -157,9 +158,18 @@ export default function SelectedArtworkOverlay({
   }
   const [initialOriginRect] = useState<Rect | null>(() => initialOriginRectRef.current);
   
-  // Track outgoing artwork during swipe transitions for simultaneous animation
-  // Store full animation state including initial position to prevent flash at 0,0
+  // Track outgoing artwork during swipe transitions
   const [outgoingPost, setOutgoingPost] = useState<{ 
+    post: SelectedArtworkOverlayPost; 
+    rect: Rect;
+    startX: number;
+    startY: number;
+    startWidth: number;
+    startHeight: number;
+  } | null>(null);
+  
+  // Track incoming artwork during swipe transitions (separate from main to avoid React re-render issues)
+  const [incomingPost, setIncomingPost] = useState<{ 
     post: SelectedArtworkOverlayPost; 
     rect: Rect;
     startX: number;
@@ -404,11 +414,11 @@ export default function SelectedArtworkOverlay({
       setPhase('swiping');
       clearPressTimer();
 
-      // Capture the current post for the outgoing animation
+      // Capture both posts for the transition
       const currentPost = posts[selectedIndex];
+      const nextPost = posts[nextIndex];
 
-      // Set up the outgoing element at the current selected position
-      // Include start position to prevent flash at 0,0
+      // Set up the OUTGOING element at center (where it currently is)
       setOutgoingPost({ 
         post: currentPost, 
         rect: outRect,
@@ -426,45 +436,68 @@ export default function SelectedArtworkOverlay({
         opacity: 1,
       });
 
-      // Switch to the new post immediately and position at its card
-      setSelectedIndex(nextIndex);
-      controls.set({
+      // Set up the INCOMING element at its grid card position
+      setIncomingPost({
+        post: nextPost,
+        rect: inRect,
+        startX: inRect.left,
+        startY: inRect.top,
+        startWidth: inRect.width,
+        startHeight: inRect.height,
+      });
+      incomingControls.set({
         x: inRect.left,
         y: inRect.top,
         width: inRect.width,
         height: inRect.height,
         scale: 1,
+        opacity: 1,
       });
 
-      // Run animations sequentially (simpler / previous behavior)
-      await outgoingControls.start({
-        x: outRect.left,
-        y: outRect.top,
-        width: outRect.width,
-        height: outRect.height,
-        transition: reduceMotion
-          ? { duration: 0 }
-          : { type: 'spring', stiffness: 500, damping: 40, mass: 0.7 },
-      });
+      // Run BOTH animations simultaneously:
+      // - Outgoing flies from center back to its grid position
+      // - Incoming flies from its grid position to center
+      await Promise.all([
+        outgoingControls.start({
+          x: outRect.left,
+          y: outRect.top,
+          width: outRect.width,
+          height: outRect.height,
+          transition: reduceMotion
+            ? { duration: 0 }
+            : { type: 'spring', stiffness: 450, damping: 38, mass: 0.7 },
+        }),
+        incomingControls.start({
+          x: targetRect.x,
+          y: targetRect.y,
+          width: targetRect.width,
+          height: targetRect.height,
+          transition: reduceMotion
+            ? { duration: 0 }
+            : { type: 'spring', stiffness: 450, damping: 38, mass: 0.7 },
+        }),
+      ]);
 
-      await controls.start({
+      // Animation complete - now update state and position main element at center
+      setSelectedIndex(nextIndex);
+      controls.set({
         x: targetRect.x,
         y: targetRect.y,
         width: targetRect.width,
         height: targetRect.height,
-        transition: reduceMotion
-          ? { duration: 0 }
-          : { type: 'spring', stiffness: 400, damping: 35, mass: 0.8 },
+        scale: 1,
       });
-
-      // Clear the outgoing element after animation completes
+      
+      // Clear transition elements
       setOutgoingPost(null);
+      setIncomingPost(null);
       setPhase('selected');
     },
     [
       clearPressTimer,
       controls,
       outgoingControls,
+      incomingControls,
       getCurrentOriginRect,
       getOriginRectForIndex,
       initialOriginRect,
@@ -544,12 +577,44 @@ export default function SelectedArtworkOverlay({
         </motion.div>
       )}
 
-      {/* Main artwork (current selection) */}
+      {/* Incoming artwork during swipe transition (flies from grid to center) */}
+      {incomingPost && (
+        <motion.div
+          style={{
+            ...artworkShellStyles,
+            boxShadow: '0 18px 48px rgba(0,0,0,0.35)',
+            pointerEvents: 'none',
+          }}
+          initial={{
+            x: incomingPost.startX,
+            y: incomingPost.startY,
+            width: incomingPost.startWidth,
+            height: incomingPost.startHeight,
+            scale: 1,
+            opacity: 1,
+          }}
+          animate={incomingControls}
+        >
+          <div style={artworkClipStyles}>
+            <img
+              src={incomingPost.post.art_url}
+              alt={incomingPost.post.title}
+              draggable={false}
+              style={artworkImageStyles}
+            />
+          </div>
+        </motion.div>
+      )}
+
+      {/* Main artwork (current selection) - hidden during swipe transitions */}
       <motion.div
         style={{
           ...artworkShellStyles,
           scale: pressing ? 0.985 : 1,
           boxShadow: '0 18px 48px rgba(0,0,0,0.35)',
+          // Hide during swipe transitions when outgoing/incoming are visible
+          opacity: (outgoingPost || incomingPost) ? 0 : 1,
+          pointerEvents: (outgoingPost || incomingPost) ? 'none' : 'auto',
         }}
         initial={{
           x: initialX,
@@ -589,6 +654,8 @@ export default function SelectedArtworkOverlay({
         }}
         onDragEnd={async (_e, info) => {
           if (!isInteractive) return;
+          // Capture press start time before clearing (clearPressTimer nulls it)
+          const pressStart = pressStartRef.current;
           clearPressTimer();
           const dx = info.offset.x;
           const dy = info.offset.y;
@@ -597,6 +664,15 @@ export default function SelectedArtworkOverlay({
 
           const absX = Math.abs(dx);
           const absY = Math.abs(dy);
+
+          // Detect tap: minimal movement and short duration
+          const duration = pressStart ? Date.now() - pressStart.time : Infinity;
+          const isTap = absX < 10 && absY < 10 && duration < 300;
+          if (isTap) {
+            onNavigateToPost(selectedIndex);
+            onClose(); // Immediately unmount overlay so page can render
+            return;
+          }
 
           const isHorizontal = absX > absY * 1.25 && absX > 70;
           const isUp = dy < -90 || (vy < -650 && dy < -35);
@@ -629,6 +705,7 @@ export default function SelectedArtworkOverlay({
           e.stopPropagation();
           if (!isInteractive) return;
           onNavigateToPost(selectedIndex);
+          onClose(); // Immediately unmount overlay so page can render
         }}
       >
         <div style={artworkClipStyles}>
