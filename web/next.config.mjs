@@ -7,17 +7,27 @@ const nextConfig = {
   async headers() {
     // SharedArrayBuffer is required by parts of the client-side decode stack (WASM modules / Pyodide).
     // Browsers only expose SharedArrayBuffer in cross-origin isolated contexts, which requires COOP+COEP.
-    // Limit the headers to the Divoom import page to avoid impacting the rest of the app.
+    //
+    // IMPORTANT: When COEP is set to `require-corp`, ALL subresources (JS, CSS, images, etc.)
+    // must have `Cross-Origin-Resource-Policy` headers. We set CORP on all routes to ensure
+    // static assets under /_next/* are also covered.
     return [
+      // CORP header on ALL responses - safe for same-origin resources and required for COEP
       {
-        source: "/divoom-import/:path*",
+        source: "/:path*",
+        headers: [
+          { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+        ],
+      },
+      // COOP + COEP only on the divoom-import page (enables SharedArrayBuffer)
+      {
+        source: "/divoom-import",
         headers: [
           { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
           // Use `require-corp` for broad browser support (notably iOS Safari).
           // This matches the working servoom deployment and enables SharedArrayBuffer when
           // combined with COOP + CORS/CORP-compliant subresources.
           { key: "Cross-Origin-Embedder-Policy", value: "require-corp" },
-          { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
         ],
       },
     ];

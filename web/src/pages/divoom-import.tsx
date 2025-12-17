@@ -21,6 +21,19 @@ interface UploadedArtwork {
 const PAGE_SIZE = 20;
 const MAX_TITLE_LEN = 200;
 const MAX_DESC_LEN = 5000;
+const MAX_REFRESH_BLOCKS = 200; // safety guard against infinite loops
+const SHORT_PAGE_RETRIES = 2;
+const MAX_CONSECUTIVE_NO_NEW_PAGES = 5; // stop if API keeps returning duplicates
+const STALL_ABORT_MS = 4000;
+
+function yieldToBrowser(): Promise<void> {
+  // Allow React to paint during long fetch loops
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+type SortField = 'name' | 'size' | 'uploaded' | 'likes';
+type SortDir = 'asc' | 'desc';
+type SortCriterion = { field: SortField; dir: SortDir };
 
 const MAX_FILE_SIZE_BYTES = (() => {
   const raw = process.env.NEXT_PUBLIC_MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES || '5242880';
@@ -50,6 +63,70 @@ function safeTitleFromItem(item: DivoomGalleryInfo | null): string {
   return 'Divoom import';
 }
 
+function formatUploadedDateOnly(epochSeconds: number | undefined): string {
+  if (!epochSeconds) return '—';
+  return new Date(epochSeconds * 1000).toLocaleDateString();
+}
+
+function mapDivoomFileSizeLabel(fileSize: unknown): string {
+  const n = typeof fileSize === 'number' ? fileSize : Number(fileSize);
+  switch (n) {
+    case 1:
+      return '16 px';
+    case 2:
+      return '32 px';
+    case 4:
+      return '64 px';
+    case 16:
+      return '128 px';
+    case 32:
+      return '256 px';
+    default:
+      return 'Unk';
+  }
+}
+
+function getNameForItem(item: DivoomGalleryInfo): string {
+  return (item.FileName || '').trim() || `Divoom #${item.GalleryId}`;
+}
+
+function stableSort<T>(arr: T[], compare: (a: T, b: T) => number): T[] {
+  return arr
+    .map((item, idx) => ({ item, idx }))
+    .sort((a, b) => {
+      const c = compare(a.item, b.item);
+      return c !== 0 ? c : a.idx - b.idx;
+    })
+    .map((x) => x.item);
+}
+
+function compareForCriterion(a: DivoomGalleryInfo, b: DivoomGalleryInfo, c: SortCriterion): number {
+  const dirMul = c.dir === 'asc' ? 1 : -1;
+  if (c.field === 'name') {
+    return dirMul * getNameForItem(a).localeCompare(getNameForItem(b), undefined, { sensitivity: 'base' });
+  }
+  if (c.field === 'uploaded') {
+    const av = typeof a.Date === 'number' ? a.Date : 0;
+    const bv = typeof b.Date === 'number' ? b.Date : 0;
+    return dirMul * (av - bv);
+  }
+  if (c.field === 'likes') {
+    const av = typeof a.LikeCnt === 'number' ? a.LikeCnt : 0;
+    const bv = typeof b.LikeCnt === 'number' ? b.LikeCnt : 0;
+    return dirMul * (av - bv);
+  }
+  // size
+  const av = typeof a.FileSize === 'number' ? a.FileSize : 0;
+  const bv = typeof b.FileSize === 'number' ? b.FileSize : 0;
+  return dirMul * (av - bv);
+}
+
+function defaultDirForField(field: SortField): SortDir {
+  if (field === 'uploaded') return 'desc';
+  if (field === 'likes') return 'desc';
+  return 'asc';
+}
+
 function toArrayBuffer(view: Uint8Array): ArrayBuffer {
   const copy = new Uint8Array(view.byteLength);
   copy.set(view);
@@ -70,10 +147,20 @@ export default function DivoomImportPage() {
 
   // My uploads list (paged)
   const [page, setPage] = useState(1);
-  const [items, setItems] = useState<DivoomGalleryInfo[]>([]);
+  const [allItems, setAllItems] = useState<DivoomGalleryInfo[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
+  const [itemsLoaded, setItemsLoaded] = useState(false);
   const [itemsError, setItemsError] = useState<string | null>(null);
-  const [hasNextPage, setHasNextPage] = useState(true);
+  const [itemsProgress, setItemsProgress] = useState<string | null>(null);
+  const itemsAbortRef = useRef<AbortController | null>(null);
+  const itemsStallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Panel 2 filters / sorting
+  const [searchName, setSearchName] = useState('');
+  const [onlyRecommended, setOnlyRecommended] = useState(false);
+  const [onlyNew, setOnlyNew] = useState(false);
+  const [sortCriteria, setSortCriteria] = useState<SortCriterion[]>([{ field: 'uploaded', dir: 'desc' }]);
+  const [jumpPageInput, setJumpPageInput] = useState('');
 
   // Single selection across pages
   const [selected, setSelected] = useState<DivoomGalleryInfo | null>(null);
@@ -141,14 +228,20 @@ export default function DivoomImportPage() {
       setDivoomSession(session);
       // Reset page state on login
       setPage(1);
-      setItems([]);
-      setHasNextPage(true);
+      setAllItems([]);
+      setItemsLoaded(false);
+      setItemsProgress(null);
       setSelected(null);
       setPreviewUrl(null);
       setDecodeMeta(null);
       setTitle('');
       setDescription('');
       setHashtags('');
+      setSearchName('');
+      setOnlyRecommended(false);
+      setOnlyNew(false);
+      setSortCriteria([{ field: 'uploaded', dir: 'desc' }]);
+      setJumpPageInput('');
     } catch (err) {
       if (err instanceof DivoomApiError) {
         setDivoomLoginError(`Login failed (ReturnCode ${err.code}). Please check your credentials.`);
@@ -158,35 +251,215 @@ export default function DivoomImportPage() {
     }
   }, [divoomEmail, divoomPassword]);
 
-  const loadPage = useCallback(
-    async (targetPage: number) => {
-      if (!divoomSession) return;
-      setItemsLoading(true);
-      setItemsError(null);
-      try {
-        const start = (targetPage - 1) * PAGE_SIZE + 1;
-        const end = start + PAGE_SIZE - 1;
-        const list = await fetchMyUploads(divoomSession, { start, end });
-        setItems(list);
-        setHasNextPage(list.length === PAGE_SIZE);
-        setPage(targetPage);
-      } catch (err) {
-        if (err instanceof DivoomApiError) {
-          setItemsError(`Failed to load artworks (ReturnCode ${err.code}).`);
-        } else {
-          setItemsError((err as Error).message);
+  const cancelLoadingArtworks = useCallback(() => {
+    if (itemsAbortRef.current) {
+      itemsAbortRef.current.abort();
+      itemsAbortRef.current = null;
+    }
+    if (itemsStallTimerRef.current) {
+      clearTimeout(itemsStallTimerRef.current);
+      itemsStallTimerRef.current = null;
+    }
+    setItemsLoading(false);
+    setItemsProgress(null);
+  }, []);
+
+  const loadAllArtworks = useCallback(async () => {
+    if (!divoomSession) return;
+
+    // Cancel any in-flight load first
+    cancelLoadingArtworks();
+    const controller = new AbortController();
+    itemsAbortRef.current = controller;
+    // Safeguard: abort if we go too long without the unique artwork count increasing.
+    const armStallTimer = () => {
+      if (itemsStallTimerRef.current) clearTimeout(itemsStallTimerRef.current);
+      itemsStallTimerRef.current = setTimeout(() => {
+        // Equivalent to the user pressing "Cancel"
+        controller.abort();
+      }, STALL_ABORT_MS);
+    };
+    armStallTimer();
+
+    setItemsLoading(true);
+    setItemsLoaded(false);
+    setItemsError(null);
+    setItemsProgress('Loading artworks… 0 retrieved so far');
+    setAllItems([]);
+    setPage(1);
+
+    const seen = new Map<number, DivoomGalleryInfo>(); // dedupe by GalleryId
+    let lastPublishedCount = 0;
+    try {
+      for (let refreshIndex = 0; refreshIndex < MAX_REFRESH_BLOCKS; refreshIndex += 1) {
+        let gotAnyInBlock = false;
+        let consecutiveNoNewPages = 0;
+
+        for (let withinBlockPage = 1; withinBlockPage < 100000; withinBlockPage += 1) {
+          const start = (withinBlockPage - 1) * PAGE_SIZE + 1;
+          const end = start + PAGE_SIZE - 1;
+
+          let list: DivoomGalleryInfo[] = [];
+          let attempt = 0;
+          while (attempt <= SHORT_PAGE_RETRIES) {
+            attempt += 1;
+            list = await fetchMyUploads(divoomSession, { start, end, refreshIndex, signal: controller.signal });
+
+            // Retry short pages (server sometimes returns fewer than requested)
+            if (list.length === PAGE_SIZE || list.length === 0 || attempt > SHORT_PAGE_RETRIES) break;
+          }
+
+          if (list.length === 0) {
+            if (!gotAnyInBlock) {
+              // No data for this refresh block => we're done
+              refreshIndex = MAX_REFRESH_BLOCKS; // break outer loop
+            }
+            break;
+          }
+
+          gotAnyInBlock = true;
+          const before = seen.size;
+          for (const item of list) {
+            if (typeof item.GalleryId === 'number' && !seen.has(item.GalleryId)) {
+              seen.set(item.GalleryId, item);
+            }
+          }
+          const after = seen.size;
+          const added = after - before;
+
+          if (added === 0) {
+            consecutiveNoNewPages += 1;
+          } else {
+            consecutiveNoNewPages = 0;
+          }
+
+          // Publish progress only when count actually changes (unique received),
+          // and yield to avoid locking the UI during large imports.
+          if (after !== lastPublishedCount) {
+            lastPublishedCount = after;
+            const merged = Array.from(seen.values());
+            setAllItems(merged);
+            setItemsProgress(`Loading artworks… ${merged.length} retrieved so far`);
+            armStallTimer();
+            await yieldToBrowser();
+          }
+
+          // If the API keeps returning non-empty pages but none are new, treat as end-of-data.
+          if (consecutiveNoNewPages >= MAX_CONSECUTIVE_NO_NEW_PAGES) {
+            refreshIndex = MAX_REFRESH_BLOCKS; // break outer loop
+            break;
+          }
         }
-      } finally {
-        setItemsLoading(false);
       }
-    },
-    [divoomSession],
-  );
+
+      setAllItems(Array.from(seen.values()));
+      setItemsLoaded(true);
+      setItemsProgress(null);
+    } catch (err) {
+      if ((err as Error)?.name === 'AbortError') {
+        // User cancelled — keep whatever we have and allow interaction with the partial list.
+        setItemsLoaded(true);
+        setItemsProgress(null);
+        return;
+      }
+      if (err instanceof DivoomApiError) {
+        setItemsError(`Failed to load artworks (ReturnCode ${err.code}).`);
+      } else {
+        setItemsError((err as Error).message);
+      }
+    } finally {
+      setItemsLoading(false);
+      itemsAbortRef.current = null;
+      if (itemsStallTimerRef.current) {
+        clearTimeout(itemsStallTimerRef.current);
+        itemsStallTimerRef.current = null;
+      }
+    }
+  }, [cancelLoadingArtworks, divoomSession]);
 
   useEffect(() => {
     if (!divoomSession) return;
-    loadPage(1);
-  }, [divoomSession, loadPage]);
+    loadAllArtworks();
+  }, [divoomSession, loadAllArtworks]);
+
+  const filteredSorted = useMemo(() => {
+    let list = allItems;
+    const q = searchName.trim().toLowerCase();
+    if (q) {
+      list = list.filter((it) => getNameForItem(it).toLowerCase().includes(q));
+    }
+    if (onlyRecommended) {
+      list = list.filter((it) => Number((it as any).IsAddRecommend) === 1);
+    }
+    if (onlyNew) {
+      list = list.filter((it) => Number((it as any).IsAddNew) === 1);
+    }
+
+    // Apply multi-sort: criterion[0] is primary, then 1, 2...
+    // We implement it as a stable sort applied from the last criterion to the first.
+    let out = [...list];
+    for (let i = sortCriteria.length - 1; i >= 0; i -= 1) {
+      const crit = sortCriteria[i];
+      out = stableSort(out, (a, b) => compareForCriterion(a, b, crit));
+    }
+    return out;
+  }, [allItems, onlyNew, onlyRecommended, searchName, sortCriteria]);
+
+  const totalPages = useMemo(() => {
+    return Math.max(1, Math.ceil(filteredSorted.length / PAGE_SIZE));
+  }, [filteredSorted.length]);
+
+  useEffect(() => {
+    // Keep page in bounds when filters change
+    setPage((p) => Math.min(Math.max(1, p), totalPages));
+  }, [totalPages]);
+
+  const pageItems = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return filteredSorted.slice(start, start + PAGE_SIZE);
+  }, [filteredSorted, page]);
+
+  const sortLabel = useMemo(() => {
+    const fmt = (c: SortCriterion) => {
+      const field =
+        c.field === 'uploaded'
+          ? 'Uploaded'
+          : c.field === 'name'
+            ? 'Name'
+            : c.field === 'likes'
+              ? 'Lks'
+              : 'Size';
+      const dir = c.dir === 'asc' ? '↑' : '↓';
+      return `${field} ${dir}`;
+    };
+    return sortCriteria.length ? sortCriteria.map(fmt).join(', ') : '—';
+  }, [sortCriteria]);
+
+  const toggleSort = useCallback((field: SortField) => {
+    setSortCriteria((prev) => {
+      const idx = prev.findIndex((c) => c.field === field);
+      if (idx === 0) {
+        // Toggle direction on primary
+        const next: SortCriterion[] = [...prev];
+        next[0] = { field, dir: prev[0].dir === 'asc' ? 'desc' : 'asc' };
+        return next;
+      }
+      if (idx > 0) {
+        // Promote to primary, keep existing direction
+        const existing = prev[idx];
+        return [existing, ...prev.slice(0, idx), ...prev.slice(idx + 1)];
+      }
+      // Add as new primary with default dir
+      return [{ field, dir: defaultDirForField(field) }, ...prev];
+    });
+  }, []);
+
+  const handleJumpToPage = useCallback(() => {
+    const n = Number(jumpPageInput);
+    if (!Number.isFinite(n)) return;
+    const target = Math.min(Math.max(1, Math.trunc(n)), totalPages);
+    setPage(target);
+  }, [jumpPageInput, totalPages]);
 
   const handleSelect = useCallback(
     async (item: DivoomGalleryInfo) => {
@@ -246,12 +519,14 @@ export default function DivoomImportPage() {
 
   const handleLogoutDivoom = useCallback(() => {
     // NO persistence: wipe everything in-memory only.
+    cancelLoadingArtworks();
     setDivoomSession(null);
     setDivoomPassword('');
     setDivoomLoginError(null);
-    setItems([]);
+    setAllItems([]);
     setItemsError(null);
-    setHasNextPage(true);
+    setItemsLoaded(false);
+    setItemsProgress(null);
     setPage(1);
     setSelected(null);
     setDecoding(false);
@@ -270,7 +545,12 @@ export default function DivoomImportPage() {
     setUploadError(null);
     setUploadNotice(null);
     setLastUploadedGalleryId(null);
-  }, [previewUrl]);
+    setSearchName('');
+    setOnlyRecommended(false);
+    setOnlyNew(false);
+    setSortCriteria([{ field: 'uploaded', dir: 'desc' }]);
+    setJumpPageInput('');
+  }, [cancelLoadingArtworks, previewUrl]);
 
   const canSubmit =
     !!selected &&
@@ -369,6 +649,9 @@ export default function DivoomImportPage() {
             ← Back to Submit
           </button>
         </div>
+        <div className="page-note">
+          Makapix Club does not save your Divoom log in. You have to re-enter your credentials every time you open this tool.
+        </div>
 
         <section className="panel">
           <h2 className="panel-title">1. Sign in to Divoom Cloud</h2>
@@ -414,87 +697,183 @@ export default function DivoomImportPage() {
           )}
         </section>
 
-        <section className="panel">
-          <h2 className="panel-title">2. Choose an artwork (20 per page)</h2>
-          {!divoomSession ? (
-            <div className="muted">Sign in above to load your uploads.</div>
-          ) : (
-            <>
-              <div className="pager">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => loadPage(Math.max(1, page - 1))}
-                  disabled={itemsLoading || page <= 1}
-                >
-                  Previous
-                </button>
-                <div className="pager-info">
-                  Page <strong>{page}</strong>
-                </div>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => loadPage(page + 1)}
-                  disabled={itemsLoading || !hasNextPage}
-                >
-                  Next
-                </button>
-              </div>
+        <section className="panel panel2-bar">
+          <div className="panel2-content">
+            <h2 className="panel-title">2. Choose an artwork ({allItems.length} artworks)</h2>
+            {!divoomSession ? (
+              <div className="muted">Sign in above to load your uploads.</div>
+            ) : (
+              <>
+                {itemsLoading && (
+                  <div className="status info">
+                    <div>{itemsProgress || 'Loading artworks…'}</div>
+                    <button type="button" className="btn-secondary" onClick={cancelLoadingArtworks}>
+                      Cancel
+                    </button>
+                  </div>
+                )}
+                {itemsError && <div className="status error">{itemsError}</div>}
 
-              {itemsLoading && <div className="status info">Loading your uploads…</div>}
-              {itemsError && <div className="status error">{itemsError}</div>}
+                {!itemsLoading && itemsLoaded && allItems.length === 0 && (
+                  <div className="muted">No artworks found.</div>
+                )}
 
-              <div className="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th className="col-title">Title</th>
-                      <th className="col-uploaded">Uploaded</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.length ? (
-                      items.map((item) => (
-                        <tr
-                          key={item.GalleryId}
-                          className={`clickable-row ${item.GalleryId === selectedId ? 'active' : ''}`}
-                          onClick={() => handleSelect(item)}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              handleSelect(item);
-                            }
-                          }}
-                          aria-label={`Select ${(item.FileName || '').trim() || `Divoom #${item.GalleryId}`}`}
-                        >
-                          <td className="col-title">
-                            {(item.FileName || '').trim() || `Divoom #${item.GalleryId}`}
-                          </td>
-                          <td className="col-uploaded">
-                            {item.Date ? new Date(item.Date * 1000).toLocaleString() : '—'}
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={2} className="muted">
-                          No items on this page.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
+                {!itemsLoading && itemsLoaded && allItems.length > 0 && (
+                  <>
+                    <div className="panel2-controls">
+                      <label className="search-label">
+                        Search
+                        <input
+                          type="text"
+                          value={searchName}
+                          onChange={(e) => setSearchName(e.target.value)}
+                          placeholder="Filter by name…"
+                        />
+                      </label>
+
+                      <label className="check">
+                        <input
+                          type="checkbox"
+                          checked={onlyRecommended}
+                          onChange={(e) => setOnlyRecommended(e.target.checked)}
+                        />
+                        Rec&apos;d
+                      </label>
+
+                      <label className="check">
+                        <input type="checkbox" checked={onlyNew} onChange={(e) => setOnlyNew(e.target.checked)} />
+                        New
+                      </label>
+
+                      <div className="sort-info">
+                        Sort: <strong>{sortLabel}</strong>
+                      </div>
+                    </div>
+
+                    <div className="pager">
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={page <= 1}
+                      >
+                        Previous
+                      </button>
+                      <div className="pager-info">
+                        Page <strong>{page}</strong> of <strong>{totalPages}</strong>
+                      </div>
+                      <div className="pager-jump">
+                        <input
+                          type="number"
+                          min={1}
+                          max={totalPages}
+                          value={jumpPageInput}
+                          onChange={(e) => setJumpPageInput(e.target.value)}
+                          placeholder="Page #"
+                        />
+                        <button type="button" className="btn-secondary" onClick={handleJumpToPage}>
+                          Go
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={page >= totalPages}
+                      >
+                        Next
+                      </button>
+                    </div>
+
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th
+                              className="col-title sortable"
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => toggleSort('name')}
+                            >
+                              Title
+                            </th>
+                            <th
+                              className="col-uploaded sortable"
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => toggleSort('uploaded')}
+                            >
+                              Uploaded
+                            </th>
+                            <th
+                              className="col-size sortable"
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => toggleSort('size')}
+                            >
+                              Size
+                            </th>
+                            <th
+                              className="col-likes sortable"
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => toggleSort('likes')}
+                            >
+                              Lks
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pageItems.length ? (
+                            pageItems.map((item) => (
+                              <tr
+                                key={item.GalleryId}
+                                className={`clickable-row ${item.GalleryId === selectedId ? 'active' : ''}`}
+                                onClick={() => handleSelect(item)}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    handleSelect(item);
+                                  }
+                                }}
+                                aria-label={`Select ${getNameForItem(item)}`}
+                              >
+                                <td className="col-title" title={getNameForItem(item)}>
+                                  {getNameForItem(item)}
+                                </td>
+                                <td className="col-uploaded">{formatUploadedDateOnly(item.Date)}</td>
+                                <td className="col-size">{mapDivoomFileSizeLabel(item.FileSize)}</td>
+                                <td className="col-likes">{typeof item.LikeCnt === 'number' ? item.LikeCnt : 0}</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan={4} className="muted">
+                                No items on this page.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </div>
         </section>
 
         <section className="panel">
-          <h2 className="panel-title">3. Preview & submit to Makapix</h2>
-          {!selected ? (
+          <h2 className="panel-title">3. Preview & submit to Makapix Club</h2>
+          {!divoomSession ? (
+            <div className="muted">Sign in above to load your uploads.</div>
+          ) : !itemsLoaded ? (
+            <div className="muted">Your artworks are still loading. Please wait for panel 2 to finish.</div>
+          ) : allItems.length === 0 ? (
+            <div className="muted">No artworks found.</div>
+          ) : !selected ? (
             <div className="muted">Select one artwork above to preview and submit it.</div>
           ) : (
             <>
@@ -565,7 +944,7 @@ export default function DivoomImportPage() {
                   {uploadError && <div className="status error">{uploadError}</div>}
 
                   <button type="button" className="submit-btn" onClick={handleSubmitToMakapix} disabled={!canSubmit}>
-                    {uploading ? 'Uploading…' : '🚀 Submit to Makapix'}
+                    {uploading ? 'Uploading…' : '🚀 Submit'}
                   </button>
 
                   {uploadedArtwork && (
@@ -612,6 +991,12 @@ export default function DivoomImportPage() {
           gap: 12px;
           margin-bottom: 18px;
         }
+        .page-note {
+          margin: -6px 0 18px;
+          color: var(--text-muted);
+          font-size: 0.9rem;
+          line-height: 1.35;
+        }
 
         .page-title {
           font-size: 1.75rem;
@@ -638,6 +1023,21 @@ export default function DivoomImportPage() {
           border-radius: 16px;
           padding: 18px;
           margin-bottom: 18px;
+        }
+        /* Panel 2: full-width bar, no border/radius; inner content stays constrained */
+        .panel.panel2-bar {
+          border: none;
+          border-radius: 0;
+          padding: 0;
+          /* full-bleed within the page (ignores the container max-width) */
+          width: 100vw;
+          margin-left: calc(50% - 50vw);
+          margin-right: calc(50% - 50vw);
+        }
+        .panel2-content {
+          max-width: 900px;
+          margin: 0 auto;
+          padding: 18px 24px;
         }
 
         .panel-title {
@@ -755,9 +1155,64 @@ export default function DivoomImportPage() {
         .pager-info {
           color: var(--text-secondary);
         }
+        .pager-jump {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .pager-jump input {
+          width: 86px;
+          padding: 10px 12px;
+          background: var(--bg-secondary);
+          border: 1px solid var(--bg-tertiary);
+          border-radius: 10px;
+          color: var(--text-primary);
+        }
 
-        .table-scroll {
+        .panel2-controls {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px;
+          align-items: end;
+          margin-bottom: 12px;
+        }
+        .search-label {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          color: var(--text-secondary);
+          font-size: 0.9rem;
+          font-weight: 500;
+          flex: 1 1 280px;
+          min-width: 240px;
+        }
+        .search-label input {
+          padding: 12px 14px;
+          background: var(--bg-secondary);
+          border: 1px solid var(--bg-tertiary);
+          border-radius: 10px;
+          color: var(--text-primary);
+          transition: all var(--transition-fast);
+        }
+        .check {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: var(--text-secondary);
+          font-size: 0.9rem;
+          user-select: none;
+        }
+        .sort-info {
+          color: var(--text-muted);
+          font-size: 0.85rem;
+          margin-left: auto;
+          flex: 1 1 220px;
+          text-align: right;
+        }
+
+        .table-wrap {
           overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
           border-radius: 12px;
           border: 1px solid rgba(255, 255, 255, 0.06);
         }
@@ -781,6 +1236,10 @@ export default function DivoomImportPage() {
           font-weight: 700;
           background: rgba(255, 255, 255, 0.03);
         }
+        th.sortable {
+          cursor: pointer;
+          user-select: none;
+        }
         tr.active td {
           background: rgba(0, 212, 255, 0.06);
         }
@@ -801,8 +1260,21 @@ export default function DivoomImportPage() {
         }
 
         .col-uploaded {
-          width: 170px;
+          width: 120px;
           white-space: nowrap;
+        }
+        .col-size {
+          width: 76px;
+          white-space: nowrap;
+        }
+        .col-likes {
+          width: 70px;
+          white-space: nowrap;
+          text-align: right;
+        }
+        td.col-likes,
+        th.col-likes {
+          text-align: right;
         }
 
         .preview-grid {
@@ -943,6 +1415,10 @@ export default function DivoomImportPage() {
           }
           table {
             table-layout: auto;
+          }
+          .sort-info {
+            text-align: left;
+            margin-left: 0;
           }
         }
       `}</style>
