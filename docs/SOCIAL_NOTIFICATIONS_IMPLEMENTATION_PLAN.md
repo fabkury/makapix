@@ -19,6 +19,7 @@
 8. [Implementation Phases](#implementation-phases)
 9. [Testing Strategy](#testing-strategy)
 10. [Migration Strategy](#migration-strategy)
+11. [Questions to be answered](#questions-to-be-answered)
 
 ---
 
