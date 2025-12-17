@@ -1251,7 +1251,7 @@ class Notification(Base):
     content_url = Column(String(1000), nullable=True)
     
     # Status
-    is_read = Column(Boolean, nullable=False, default=False, server_default=func.false(), index=True)
+    is_read = Column(Boolean, nullable=False, default=False, index=True)
     read_at = Column(DateTime(timezone=True), nullable=True)
     
     # Timestamps
@@ -1275,12 +1275,12 @@ class NotificationPreferences(Base):
     
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     
-    notify_on_post_reactions = Column(Boolean, nullable=False, default=True, server_default=func.true())
-    notify_on_post_comments = Column(Boolean, nullable=False, default=True, server_default=func.true())
-    notify_on_blog_reactions = Column(Boolean, nullable=False, default=True, server_default=func.true())
-    notify_on_blog_comments = Column(Boolean, nullable=False, default=True, server_default=func.true())
+    notify_on_post_reactions = Column(Boolean, nullable=False, default=True)
+    notify_on_post_comments = Column(Boolean, nullable=False, default=True)
+    notify_on_blog_reactions = Column(Boolean, nullable=False, default=True)
+    notify_on_blog_comments = Column(Boolean, nullable=False, default=True)
     
-    aggregate_same_type = Column(Boolean, nullable=False, default=True, server_default=func.true())
+    aggregate_same_type = Column(Boolean, nullable=False, default=True)
     
     updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
     

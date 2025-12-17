@@ -179,11 +179,31 @@ async def websocket_endpoint(
     """
     # Verify token and get user
     try:
-        payload = verify_token(token)
-        user_id = payload.get("user_id")
-        if not user_id:
+        # Decode and verify JWT (same logic as get_current_user)
+        import jwt as pyjwt
+        from ..auth import JWT_SECRET_KEY, JWT_ALGORITHM
+        
+        payload = pyjwt.decode(
+            token,
+            JWT_SECRET_KEY,
+            algorithms=[JWT_ALGORITHM]
+        )
+        
+        # Extract user_id from claims (stored as UUID string)
+        user_id_str = payload.get("user_id")
+        if not user_id_str:
             await websocket.close(code=1008, reason="Invalid token")
             return
+        
+        # Convert UUID to user ID
+        import uuid as uuid_lib
+        user_key = uuid_lib.UUID(user_id_str)
+        user = db.query(models.User).filter(models.User.user_key == user_key).first()
+        if not user:
+            await websocket.close(code=1008, reason="User not found")
+            return
+        
+        user_id = user.id
     except Exception as e:
         logger.error(f"WebSocket authentication error: {e}")
         await websocket.close(code=1008, reason="Authentication failed")

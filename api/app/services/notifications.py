@@ -50,7 +50,12 @@ class NotificationService:
         
         if prefs:
             # Check if user wants this type of notification
-            pref_key = f"notify_on_{content_type}_{notification_type}s"
+            # Map content_type to the correct preference key
+            if content_type == "blog_post":
+                pref_key = f"notify_on_blog_{notification_type}s"
+            else:
+                pref_key = f"notify_on_{content_type}_{notification_type}s"
+            
             if hasattr(prefs, pref_key) and not getattr(prefs, pref_key):
                 logger.debug(f"User {user_id} has disabled {pref_key}, skipping notification")
                 return None

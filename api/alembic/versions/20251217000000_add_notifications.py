@@ -43,7 +43,7 @@ def upgrade():
         sa.Column('content_url', sa.String(length=1000), nullable=True),
         
         # Status
-        sa.Column('is_read', sa.Boolean(), nullable=False, server_default=sa.text('false')),
+        sa.Column('is_read', sa.Boolean(), nullable=False),
         sa.Column('read_at', sa.DateTime(timezone=True), nullable=True),
         
         # Timestamps
@@ -74,13 +74,13 @@ def upgrade():
         sa.Column('user_id', sa.Integer(), nullable=False),
         
         # Notification type preferences
-        sa.Column('notify_on_post_reactions', sa.Boolean(), nullable=False, server_default=sa.text('true')),
-        sa.Column('notify_on_post_comments', sa.Boolean(), nullable=False, server_default=sa.text('true')),
-        sa.Column('notify_on_blog_reactions', sa.Boolean(), nullable=False, server_default=sa.text('true')),
-        sa.Column('notify_on_blog_comments', sa.Boolean(), nullable=False, server_default=sa.text('true')),
+        sa.Column('notify_on_post_reactions', sa.Boolean(), nullable=False),
+        sa.Column('notify_on_post_comments', sa.Boolean(), nullable=False),
+        sa.Column('notify_on_blog_reactions', sa.Boolean(), nullable=False),
+        sa.Column('notify_on_blog_comments', sa.Boolean(), nullable=False),
         
         # Aggregation settings (for future use)
-        sa.Column('aggregate_same_type', sa.Boolean(), nullable=False, server_default=sa.text('true')),
+        sa.Column('aggregate_same_type', sa.Boolean(), nullable=False),
         
         # Updated timestamp
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True, onupdate=sa.func.now()),
