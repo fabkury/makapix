@@ -2,35 +2,52 @@
 
 from __future__ import annotations
 
-import re
-from sqlalchemy import text
+import unicodedata
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from ..models import User
 
 
-def is_url_safe(handle: str) -> bool:
+def is_printable_char(char: str) -> bool:
     """
-    Check if a handle is URL-safe.
+    Check if a character is printable (not a control character).
     
-    Allows: alphanumeric, hyphens, underscores
-    Must start with alphanumeric.
+    Allows:
+    - All printable Unicode characters (letters, digits, symbols, punctuation, emoji)
+    
+    Rejects:
+    - Control characters (Cc category)
+    - Format characters (Cf category) 
+    - Private use characters (Co category)
+    - Surrogate characters (Cs category)
+    - Unassigned characters (Cn category)
     """
-    if not handle:
+    if not char:
         return False
     
-    # Must start with alphanumeric
-    if not handle[0].isalnum():
+    category = unicodedata.category(char)
+    # Reject control, format, private use, surrogate, and unassigned characters
+    if category in ('Cc', 'Cf', 'Co', 'Cs', 'Cn'):
         return False
     
-    # Only allow alphanumeric, hyphens, and underscores
-    pattern = re.compile(r'^[a-zA-Z0-9_-]+$')
-    return bool(pattern.match(handle))
+    return True
 
 
-def validate_handle(handle: str, min_length: int = 2, max_length: int = 50) -> tuple[bool, str | None]:
+def is_valid_handle_content(handle: str) -> tuple[bool, str | None]:
     """
-    Validate a handle format and return (is_valid, error_message).
+    Check if a handle contains only valid characters.
+    
+    Allows any UTF-8 printable character including:
+    - All letters (Latin, Cyrillic, CJK, Arabic, etc.)
+    - All digits
+    - Emoji
+    - Punctuation and symbols
+    
+    Rejects:
+    - Control characters
+    - Non-printable characters
+    - Whitespace-only handles (but whitespace within is allowed)
     
     Returns:
         (True, None) if valid
@@ -39,28 +56,65 @@ def validate_handle(handle: str, min_length: int = 2, max_length: int = 50) -> t
     if not handle:
         return False, "Handle cannot be empty"
     
-    if len(handle) < min_length:
-        return False, f"Handle must be at least {min_length} characters"
+    # Check each character is printable
+    for i, char in enumerate(handle):
+        if not is_printable_char(char):
+            char_code = ord(char)
+            return False, f"Handle contains invalid character at position {i + 1} (code: U+{char_code:04X})"
     
-    if len(handle) > max_length:
+    return True, None
+
+
+def validate_handle(handle: str, min_length: int = 1, max_length: int = 32) -> tuple[bool, str | None]:
+    """
+    Validate a handle format and return (is_valid, error_message).
+    
+    Requirements:
+    - Must be stripped of leading/trailing whitespace
+    - Must be 1-32 characters after stripping
+    - Must contain only printable UTF-8 characters (no control characters)
+    
+    Returns:
+        (True, None) if valid
+        (False, error_message) if invalid
+    """
+    if handle is None:
+        return False, "Handle cannot be empty"
+    
+    # Strip whitespace - this should already be done by caller, but ensure it here
+    stripped = handle.strip()
+    
+    if not stripped:
+        return False, "Handle cannot be empty or whitespace-only"
+    
+    if len(stripped) < min_length:
+        return False, f"Handle must be at least {min_length} character{'s' if min_length > 1 else ''}"
+    
+    if len(stripped) > max_length:
         return False, f"Handle must be at most {max_length} characters"
     
-    if not is_url_safe(handle):
-        return False, "Handle can only contain letters, numbers, hyphens, and underscores, and must start with a letter or number"
+    # Check content is valid (printable UTF-8, no control characters)
+    is_valid, error_msg = is_valid_handle_content(stripped)
+    if not is_valid:
+        return False, error_msg
     
     return True, None
 
 
 def is_handle_taken(db: Session, handle: str, exclude_user_id: int | None = None) -> bool:
     """
-    Check if a handle is already taken.
+    Check if a handle is already taken (case-insensitive).
+    
+    Uniqueness is case-insensitive: "User", "user", and "USER" are considered the same.
+    However, the original casing is preserved in the database for display.
     
     Args:
         db: Database session
-        handle: Handle to check
+        handle: Handle to check (will be compared case-insensitively)
         exclude_user_id: Optional user ID to exclude from check (for updates)
     """
-    query = db.query(User).filter(User.handle == handle.lower())
+    # Use LOWER() for case-insensitive comparison
+    query = db.query(User).filter(func.lower(User.handle) == handle.lower())
     
     if exclude_user_id is not None:
         query = query.filter(User.id != exclude_user_id)

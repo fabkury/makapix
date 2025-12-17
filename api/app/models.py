@@ -48,6 +48,9 @@ class User(Base):
         String(255), unique=True, nullable=False, index=True
     )  # Email must be unique
     email_verified = Column(Boolean, nullable=False, default=False, index=True)
+    
+    # Onboarding
+    welcome_completed = Column(Boolean, nullable=False, default=False, index=True)
 
     # Reputation & roles
     reputation = Column(Integer, nullable=False, default=0, index=True)

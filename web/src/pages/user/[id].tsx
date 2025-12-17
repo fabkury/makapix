@@ -74,6 +74,10 @@ export default function UserProfilePage() {
   const [isViewerOwner, setIsViewerOwner] = useState(false);
   const [isBlogPostsCollapsed, setIsBlogPostsCollapsed] = useState(false);
   
+  // Handle availability check state
+  const [handleStatus, setHandleStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
+  const [handleMessage, setHandleMessage] = useState<string>('');
+  
   const observerTarget = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const hasMoreRef = useRef(true);
@@ -227,6 +231,8 @@ export default function UserProfilePage() {
       setEditBio(user.bio || '');
       setSaveError(null);
       setAvatarUploadError(null);
+      setHandleStatus('idle');
+      setHandleMessage('');
       setIsEditing(true);
     }
   };
@@ -238,9 +244,59 @@ export default function UserProfilePage() {
       setEditBio(user.bio || '');
       setSaveError(null);
       setAvatarUploadError(null);
+      setHandleStatus('idle');
+      setHandleMessage('');
       setIsEditing(false);
     }
   };
+  
+  // Check handle availability
+  const checkHandleAvailability = async () => {
+    if (!editHandle.trim()) {
+      setHandleStatus('invalid');
+      setHandleMessage('Handle cannot be empty');
+      return;
+    }
+    
+    setHandleStatus('checking');
+    setHandleMessage('');
+    
+    try {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/auth/check-handle-availability`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ handle: editHandle.trim() }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to check handle availability');
+      }
+      
+      const data = await response.json();
+      
+      if (data.available) {
+        setHandleStatus('available');
+        setHandleMessage(data.message);
+      } else {
+        setHandleStatus(data.message.includes('Invalid') ? 'invalid' : 'taken');
+        setHandleMessage(data.message);
+      }
+    } catch (err) {
+      console.error('Error checking handle:', err);
+      setHandleStatus('invalid');
+      setHandleMessage('Failed to check availability');
+    }
+  };
+  
+  // Reset handle status when handle changes
+  useEffect(() => {
+    if (user && editHandle !== user.handle) {
+      setHandleStatus('idle');
+      setHandleMessage('');
+    }
+  }, [editHandle, user]);
 
   const uploadAvatarFile = async (file: File) => {
     if (!user) return;
@@ -603,14 +659,29 @@ export default function UserProfilePage() {
               {isEditing ? (
                 <>
                   {!isOwner && (
-                    <input
-                      type="text"
-                      className="edit-handle-input"
-                      value={editHandle}
-                      onChange={(e) => setEditHandle(e.target.value)}
-                      placeholder="Handle"
-                      maxLength={50}
-                    />
+                    <div className="handle-edit-row">
+                      <input
+                        type="text"
+                        className={`edit-handle-input ${handleStatus === 'available' ? 'valid' : handleStatus === 'taken' || handleStatus === 'invalid' ? 'invalid' : ''}`}
+                        value={editHandle}
+                        onChange={(e) => setEditHandle(e.target.value)}
+                        placeholder="Handle"
+                        maxLength={32}
+                      />
+                      <button
+                        type="button"
+                        className="check-handle-btn"
+                        onClick={checkHandleAvailability}
+                        disabled={handleStatus === 'checking' || !editHandle.trim()}
+                      >
+                        {handleStatus === 'checking' ? '...' : 'Check'}
+                      </button>
+                    </div>
+                  )}
+                  {!isOwner && handleMessage && (
+                    <p className={`handle-status ${handleStatus === 'available' ? 'success' : 'error'}`}>
+                      {handleStatus === 'available' ? '✓' : '✗'} {handleMessage}
+                    </p>
                   )}
                   {isOwner && (
                     <h1 className="display-name">{user.handle}</h1>
@@ -1084,23 +1155,76 @@ export default function UserProfilePage() {
           transform: scale(1.05);
         }
 
+        .handle-edit-row {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+          margin-bottom: 8px;
+          max-width: 350px;
+        }
+
         .edit-handle-input {
-          font-size: 1.75rem;
+          font-size: 1.5rem;
           font-weight: 700;
           color: var(--text-primary);
           background: var(--bg-tertiary);
           border: 2px solid var(--bg-tertiary);
           border-radius: 8px;
           padding: 8px 12px;
-          width: 100%;
-          max-width: 300px;
-          margin-bottom: 12px;
+          flex: 1;
+          min-width: 0;
           transition: border-color var(--transition-fast);
         }
 
         .edit-handle-input:focus {
           outline: none;
           border-color: var(--accent-cyan);
+        }
+
+        .edit-handle-input.valid {
+          border-color: #4ade80;
+          color: #4ade80;
+        }
+
+        .edit-handle-input.invalid {
+          border-color: #f87171;
+          color: #f87171;
+        }
+
+        .check-handle-btn {
+          padding: 8px 16px;
+          background: var(--bg-tertiary);
+          border: 2px solid var(--border-color);
+          border-radius: 8px;
+          color: var(--text-primary);
+          font-size: 0.9rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          white-space: nowrap;
+        }
+
+        .check-handle-btn:hover:not(:disabled) {
+          border-color: var(--accent-cyan);
+          color: var(--accent-cyan);
+        }
+
+        .check-handle-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .handle-status {
+          font-size: 0.85rem;
+          margin: 0 0 8px 0;
+        }
+
+        .handle-status.success {
+          color: #4ade80;
+        }
+
+        .handle-status.error {
+          color: #f87171;
         }
 
         .edit-bio-input {

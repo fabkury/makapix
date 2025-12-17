@@ -24,6 +24,7 @@ from ..auth import (
     create_refresh_token,
     get_cookie_config,
     get_current_user,
+    get_current_user_optional,
     mark_refresh_token_rotated,
     revoke_refresh_token,
     set_refresh_token_cookie,
@@ -400,6 +401,7 @@ def login(
         public_sqid=user.public_sqid,
         user_handle=user.handle,
         expires_at=expires_at,
+        needs_welcome=not user.welcome_completed,
     )
 
 
@@ -414,7 +416,8 @@ def verify_email(
     """
     Verify email address using the token sent via email.
     
-    After verification, user can optionally change their password and/or handle.
+    After verification, user should go through the welcome flow to customize their profile.
+    The welcome flow allows them to change their handle, avatar, and bio.
     """
     user = mark_email_verified(db, token)
     
@@ -424,12 +427,17 @@ def verify_email(
             detail="Invalid or expired verification token",
         )
     
+    # Check if user needs to go through welcome flow
+    needs_welcome = not user.welcome_completed
+    
     return schemas.VerifyEmailResponse(
         message="Email verified successfully. You can now log in.",
         verified=True,
         handle=user.handle,
         can_change_password=True,
         can_change_handle=True,
+        needs_welcome=needs_welcome,
+        public_sqid=user.public_sqid,
     )
 
 
@@ -501,7 +509,8 @@ def change_handle(
             detail="The site owner's handle cannot be changed",
         )
     
-    new_handle = payload.new_handle.lower().strip()
+    # Strip whitespace but preserve original case
+    new_handle = payload.new_handle.strip()
     
     # Validate handle format
     is_valid, error_msg = validate_handle(new_handle)
@@ -511,14 +520,44 @@ def change_handle(
             detail=f"Invalid handle: {error_msg}",
         )
     
-    # Check if same as current
-    if new_handle == current_user.handle:
+    # Check if same as current (case-insensitive comparison)
+    if new_handle.lower() == current_user.handle.lower():
+        # Even if casing changed, update it
+        if new_handle != current_user.handle:
+            old_handle = current_user.handle
+            current_user.handle = new_handle
+            
+            # Create audit log entry for case change
+            audit_log = models.AuditLog(
+                actor_id=current_user.id,
+                action="handle_change",
+                target_type="user",
+                target_id=current_user.id,
+                note=f"Handle casing changed from '{old_handle}' to '{new_handle}'",
+            )
+            db.add(audit_log)
+            
+            try:
+                db.commit()
+                db.refresh(current_user)
+            except IntegrityError:
+                db.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="This handle is already taken",
+                )
+            
+            return schemas.ChangeHandleResponse(
+                message="Handle updated successfully",
+                handle=current_user.handle,
+            )
+        
         return schemas.ChangeHandleResponse(
             message="Handle unchanged",
             handle=current_user.handle,
         )
     
-    # Check if handle is already taken
+    # Check if handle is already taken (case-insensitive)
     if is_handle_taken(db, new_handle, exclude_user_id=current_user.id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -528,7 +567,7 @@ def change_handle(
     # Store old handle for audit
     old_handle = current_user.handle
     
-    # Update handle
+    # Update handle (preserve original case)
     current_user.handle = new_handle
     
     # Create audit log entry for handle change
@@ -556,6 +595,53 @@ def change_handle(
     return schemas.ChangeHandleResponse(
         message="Handle changed successfully",
         handle=current_user.handle,
+    )
+
+
+@router.post(
+    "/check-handle-availability",
+    response_model=schemas.CheckHandleAvailabilityResponse,
+)
+def check_handle_availability(
+    payload: schemas.CheckHandleAvailabilityRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_optional),
+) -> schemas.CheckHandleAvailabilityResponse:
+    """
+    Check if a handle is available for use.
+    
+    Can be called by authenticated or unauthenticated users.
+    For authenticated users, their current handle is excluded from the check
+    (so they can keep their own handle).
+    
+    The check is case-insensitive: "User", "user", and "USER" are considered the same.
+    """
+    handle = payload.handle.strip()
+    
+    # Validate handle format first
+    is_valid, error_msg = validate_handle(handle)
+    if not is_valid:
+        return schemas.CheckHandleAvailabilityResponse(
+            handle=handle,
+            available=False,
+            message=f"Invalid handle: {error_msg}",
+        )
+    
+    # Check if handle is taken (excluding current user if authenticated)
+    exclude_user_id = current_user.id if current_user else None
+    taken = is_handle_taken(db, handle, exclude_user_id=exclude_user_id)
+    
+    if taken:
+        return schemas.CheckHandleAvailabilityResponse(
+            handle=handle,
+            available=False,
+            message="This handle is already taken",
+        )
+    
+    return schemas.CheckHandleAvailabilityResponse(
+        handle=handle,
+        available=True,
+        message="This handle is available",
     )
 
 
@@ -1177,6 +1263,9 @@ def github_callback(
         host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
         site_origin = f"{proto}://{host}"
 
+        # Check if user needs to go through welcome flow
+        needs_welcome = not user.welcome_completed
+        
         # Create a simple HTML page that shows success and stores tokens
         from fastapi.responses import HTMLResponse
         import html
@@ -1185,6 +1274,12 @@ def github_callback(
         safe_handle = html.escape(user.handle)
         safe_user_id = html.escape(str(user.id))
         safe_site_origin = html.escape(site_origin)
+        
+        # Determine redirect URL based on whether user needs welcome flow
+        if needs_welcome:
+            redirect_url = f"{site_origin}/new-account-welcome"
+        else:
+            redirect_url = site_origin
 
         html_content = f"""
         <!DOCTYPE html>
@@ -1231,12 +1326,14 @@ def github_callback(
                 const authData = {{
                     access_token: {json.dumps(makapix_access_token)},
                     user_id: {json.dumps(str(user.id))},
-                    user_handle: {json.dumps(user.handle)}
+                    user_handle: {json.dumps(user.handle)},
+                    needs_welcome: {json.dumps(needs_welcome)}
                 }};
                 
                 console.log('OAuth Callback - Storing tokens...');
                 console.log('User ID:', authData.user_id);
                 console.log('Handle:', authData.user_handle);
+                console.log('Needs welcome:', authData.needs_welcome);
                 
                 // Store access token in localStorage (refresh token is in HttpOnly cookie)
                 try {{
@@ -1247,20 +1344,37 @@ def github_callback(
                     console.error('Error storing tokens:', error);
                 }}
 
+                // Determine redirect URL
+                const redirectUrl = {json.dumps(redirect_url)};
+
                 // Close popup and notify parent window (fallback to redirect)
                 try {{
                     if (window.opener) {{
+                        // Send message to parent window with redirect info
                         window.opener.postMessage({{
                             type: 'OAUTH_SUCCESS',
-                            tokens: authData
+                            tokens: authData,
+                            redirectUrl: redirectUrl
                         }}, {json.dumps(site_origin)});
+                        // Close the popup immediately
                         window.close();
                     }} else {{
-                        window.location.href = {json.dumps(site_origin)};
+                        // Not a popup - redirect this window
+                        window.location.href = redirectUrl;
                     }}
                 }} catch (error) {{
                     console.error('Error finalizing OAuth flow:', error);
-                    window.location.href = {json.dumps(site_origin)};
+                    // If postMessage fails, try to close and let parent handle it
+                    if (window.opener) {{
+                        try {{
+                            window.close();
+                        }} catch (closeError) {{
+                            // If close fails, redirect this window as fallback
+                            window.location.href = redirectUrl;
+                        }}
+                    }} else {{
+                        window.location.href = redirectUrl;
+                    }}
                 }}
             </script>
         </body>
@@ -1452,11 +1566,12 @@ def exchange_github_code(
         public_sqid=user.public_sqid,
         user_handle=user.handle,
         expires_at=expires_at,
+        needs_welcome=not user.welcome_completed,
     )
 
 
 @router.post("/refresh", response_model=schemas.OAuthTokens)
-def refresh_token(
+def refresh_token_endpoint(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
@@ -1517,7 +1632,24 @@ def refresh_token(
         public_sqid=user.public_sqid,
         user_handle=user.handle,
         expires_at=expires_at,
+        needs_welcome=not user.welcome_completed,
     )
+
+
+@router.post("/complete-welcome", status_code=status.HTTP_204_NO_CONTENT)
+def complete_welcome(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> None:
+    """
+    Mark the current user's welcome flow as completed.
+    
+    This should be called after the user has gone through the new account welcome page,
+    regardless of whether they made any changes ("Skip for now" or "Save changes").
+    """
+    if not current_user.welcome_completed:
+        current_user.welcome_completed = True
+        db.commit()
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

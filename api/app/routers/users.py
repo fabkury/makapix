@@ -328,22 +328,26 @@ def update_user(
                 detail="The site owner's handle cannot be changed",
             )
         
+        # Strip whitespace but preserve original case
+        new_handle = payload.handle.strip()
+        
         # Validate handle format
-        is_valid, error_msg = validate_handle(payload.handle)
+        is_valid, error_msg = validate_handle(new_handle)
         if not is_valid:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid handle: {error_msg}",
             )
         
-        # Check if handle is already taken (excluding current user)
-        if is_handle_taken(db, payload.handle.lower(), exclude_user_id=user.id):
+        # Check if handle is already taken (case-insensitive, excluding current user)
+        if is_handle_taken(db, new_handle, exclude_user_id=user.id):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Handle already taken",
             )
         
-        user.handle = payload.handle.lower()
+        # Preserve original case
+        user.handle = new_handle
     
     # Update fields
     if payload.bio is not None:

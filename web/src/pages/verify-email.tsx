@@ -9,6 +9,8 @@ interface VerifyResponse {
   handle: string;
   can_change_password: boolean;
   can_change_handle: boolean;
+  needs_welcome: boolean;
+  public_sqid: string | null;
 }
 
 export default function VerifyEmailPage() {
@@ -78,9 +80,15 @@ export default function VerifyEmailPage() {
                   <p className="info-text">
                     Your handle: <strong>@{verifyData.handle}</strong>
                   </p>
-                  <p className="info-hint">
-                    You can change your password and handle after logging in.
-                  </p>
+                  {verifyData.needs_welcome ? (
+                    <p className="info-hint">
+                      Log in to customize your profile!
+                    </p>
+                  ) : (
+                    <p className="info-hint">
+                      You can change your password and handle after logging in.
+                    </p>
+                  )}
                 </div>
               )}
               

@@ -7,6 +7,27 @@ import type { DivoomGalleryInfo, DivoomSession } from '../lib/divoom/divoomApi';
 import { divoomLogin, downloadDivoomDat, fetchMyUploads, DivoomApiError } from '../lib/divoom/divoomApi';
 import { PyodideDecoder } from '../lib/divoom/pyodideDecoder';
 
+// SharedArrayBuffer requires COOP/COEP headers which are only applied on full page loads.
+// Client-side navigation (router.push) retains the previous page's security context.
+// Detect this and force a hard refresh to obtain the correct headers.
+function useEnforceCrossOriginIsolation() {
+  const [isReloading, setIsReloading] = useState(false);
+
+  useEffect(() => {
+    // Skip during SSR
+    if (typeof window === 'undefined') return;
+
+    // crossOriginIsolated is true when COOP+COEP headers are active
+    if (!window.crossOriginIsolated) {
+      setIsReloading(true);
+      // Hard refresh to get proper headers from server
+      window.location.reload();
+    }
+  }, []);
+
+  return isReloading;
+}
+
 interface UploadedArtwork {
   id: number;
   public_sqid: string;
@@ -135,6 +156,7 @@ function toArrayBuffer(view: Uint8Array): ArrayBuffer {
 
 export default function DivoomImportPage() {
   const router = useRouter();
+  const isReloading = useEnforceCrossOriginIsolation();
 
   // Makapix auth gate
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -630,6 +652,17 @@ export default function DivoomImportPage() {
     }
   }, [API_BASE_URL, description, hashtags, lastUploadedGalleryId, router, selected, title]);
 
+  // Show loading while forcing reload for cross-origin isolation
+  if (isReloading) {
+    return (
+      <Layout title="Import from Divoom" description="Import your Divoom Cloud artworks">
+        <div className="container">
+          <div className="loading">Preparing secure context…</div>
+        </div>
+      </Layout>
+    );
+  }
+
   if (!isAuthenticated) {
     return (
       <Layout title="Import from Divoom" description="Import your Divoom Cloud artworks">
@@ -921,7 +954,7 @@ export default function DivoomImportPage() {
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
                       maxLength={MAX_DESC_LEN}
-                      rows={4}
+                      rows={10}
                     />
                     <span className="char-count">
                       {description.length}/{MAX_DESC_LEN}
@@ -1355,6 +1388,13 @@ export default function DivoomImportPage() {
           border-radius: 10px;
           color: var(--text-primary);
           transition: all var(--transition-fast);
+        }
+
+        .form-field textarea {
+          min-height: 200px;
+          resize: vertical;
+          font-family: inherit;
+          line-height: 1.5;
         }
 
         .form-field input:focus,

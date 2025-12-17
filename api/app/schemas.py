@@ -117,6 +117,7 @@ class UserFull(UserPublic):
 
     email: str | None = None
     email_verified: bool = False
+    welcome_completed: bool = False  # True if user has completed onboarding welcome flow
     banned_until: datetime | None = None
     roles: list[Literal["user", "moderator", "owner"]] = Field(default_factory=list)
     auto_public_approval: bool = (
@@ -127,7 +128,7 @@ class UserFull(UserPublic):
 class UserCreate(BaseModel):
     """Create user request."""
 
-    handle: str = Field(..., min_length=2, max_length=50)
+    handle: str = Field(..., min_length=1, max_length=32)
     bio: str | None = Field(None, max_length=1000)
     website: str | None = Field(None, max_length=500)
 
@@ -135,7 +136,7 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     """Update user request."""
 
-    handle: str | None = Field(None, min_length=2, max_length=50)
+    handle: str | None = Field(None, min_length=1, max_length=32)
     bio: str | None = Field(None, max_length=1000)
     website: str | None = Field(None, max_length=500)
     avatar_url: str | None = None
@@ -794,6 +795,7 @@ class OAuthTokens(BaseModel):
     public_sqid: str | None = None  # Sqids for canonical URLs
     user_handle: str | None = None  # Handle for display
     expires_at: datetime
+    needs_welcome: bool = False  # Whether user needs to go through welcome flow
 
 
 class GithubExchangeRequest(BaseModel):
@@ -898,6 +900,8 @@ class VerifyEmailResponse(BaseModel):
     handle: str  # User's current handle
     can_change_password: bool = True  # Invite user to optionally change password
     can_change_handle: bool = True  # Invite user to optionally change handle
+    needs_welcome: bool = True  # Whether user needs to go through welcome flow
+    public_sqid: str | None = None  # User's public Sqids ID for redirect
 
 
 class ResendVerificationRequest(BaseModel):
@@ -929,7 +933,7 @@ class ChangePasswordResponse(BaseModel):
 class ChangeHandleRequest(BaseModel):
     """Change handle request."""
 
-    new_handle: str = Field(..., min_length=2, max_length=50)
+    new_handle: str = Field(..., min_length=1, max_length=32)
 
 
 class ChangeHandleResponse(BaseModel):
@@ -937,6 +941,20 @@ class ChangeHandleResponse(BaseModel):
 
     message: str = "Handle changed successfully"
     handle: str
+
+
+class CheckHandleAvailabilityRequest(BaseModel):
+    """Check handle availability request."""
+
+    handle: str = Field(..., min_length=1, max_length=32)
+
+
+class CheckHandleAvailabilityResponse(BaseModel):
+    """Check handle availability response."""
+
+    handle: str
+    available: bool
+    message: str
 
 
 class ForgotPasswordRequest(BaseModel):

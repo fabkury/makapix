@@ -174,7 +174,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
     const handleMessage = (event: MessageEvent) => {
       // Verify message origin for security (in production, check against your domain)
       if (event.data && event.data.type === 'OAUTH_SUCCESS') {
-        const { tokens } = event.data;
+        const { tokens, redirectUrl } = event.data;
         if (tokens) {
           localStorage.setItem('access_token', tokens.access_token || tokens.token);
           clearLoggedOutMarker();
@@ -185,9 +185,18 @@ export default function Layout({ children, title, description }: LayoutProps) {
           localStorage.setItem('public_sqid', tokens.public_sqid || '');
           localStorage.setItem('user_handle', tokens.user_handle || '');
 
-
-          // Post-login destination: Recent Artworks
-          router.push('/');
+          // Use redirectUrl from message if provided, otherwise check needs_welcome
+          if (redirectUrl) {
+            // Extract path from full URL if needed
+            const url = new URL(redirectUrl, window.location.origin);
+            router.push(url.pathname + url.search);
+          } else if (tokens.needs_welcome) {
+            // Fallback: redirect to welcome page if needs_welcome is true
+            router.push('/new-account-welcome');
+          } else {
+            // Default: redirect to Recent Artworks
+            router.push('/');
+          }
         }
       }
     };
