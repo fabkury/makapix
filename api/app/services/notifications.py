@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -209,7 +209,7 @@ class NotificationService:
         ).update(
             {
                 models.Notification.is_read: True,
-                models.Notification.read_at: datetime.utcnow()
+                models.Notification.read_at: datetime.now(timezone.utc)
             },
             synchronize_session=False
         )
@@ -237,7 +237,7 @@ class NotificationService:
         ).update(
             {
                 models.Notification.is_read: True,
-                models.Notification.read_at: datetime.utcnow()
+                models.Notification.read_at: datetime.now(timezone.utc)
             },
             synchronize_session=False
         )
@@ -258,7 +258,7 @@ class NotificationService:
     @staticmethod
     def cleanup_old_notifications(db: Session, days: int = 90) -> int:
         """Delete notifications older than specified days. Returns count of deleted notifications."""
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
         
         count = db.query(models.Notification).filter(
             models.Notification.created_at < cutoff_date
