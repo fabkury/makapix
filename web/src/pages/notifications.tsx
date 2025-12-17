@@ -106,7 +106,7 @@ export default function NotificationsPage() {
         ) : notifications.length === 0 ? (
           <div className="empty-state">
             <p>No notifications yet</p>
-            <p>When someone reacts or comments on your content, you'll see it here!</p>
+            <p>When someone reacts or comments on your content, you&apos;ll see it here!</p>
           </div>
         ) : (
           <div className="notifications-list">
@@ -122,7 +122,7 @@ export default function NotificationsPage() {
                   </div>
                   {notification.content_title && (
                     <div className="notification-title">
-                      "{notification.content_title}"
+                      &ldquo;{notification.content_title}&rdquo;
                     </div>
                   )}
                   {notification.comment_preview && (
