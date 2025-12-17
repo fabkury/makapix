@@ -606,6 +606,24 @@ def create_blog_comment(
         .first()
     )
     
+    # Create notification for blog post owner
+    from ..services.notifications import NotificationService
+    
+    blog_post = db.query(models.BlogPost).filter(models.BlogPost.id == id).first()
+    if blog_post and blog_post.owner_id:
+        NotificationService.create_notification(
+            db=db,
+            user_id=blog_post.owner_id,
+            notification_type="comment",
+            content_type="blog_post",
+            content_id=blog_post.id,
+            actor=current_user,
+            comment_id=comment.id,
+            comment_body=payload.body,
+            content_title=blog_post.title,
+            content_url=f"/blog/{blog_post.public_sqid or blog_post.id}",
+        )
+    
     return schemas.BlogPostComment.model_validate(comment)
 
 
@@ -779,6 +797,23 @@ def add_blog_reaction(
     )
     db.add(reaction)
     db.commit()
+    
+    # Create notification for blog post owner
+    from ..services.notifications import NotificationService
+    
+    blog_post = db.query(models.BlogPost).filter(models.BlogPost.id == id).first()
+    if blog_post and blog_post.owner_id:
+        NotificationService.create_notification(
+            db=db,
+            user_id=blog_post.owner_id,
+            notification_type="reaction",
+            content_type="blog_post",
+            content_id=blog_post.id,
+            actor=current_user,
+            emoji=emoji,
+            content_title=blog_post.title,
+            content_url=f"/blog/{blog_post.public_sqid or blog_post.id}",
+        )
 
 
 @router.delete(

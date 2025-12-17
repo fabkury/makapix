@@ -152,6 +152,23 @@ def add_reaction(
     )
     db.add(reaction)
     db.commit()
+    
+    # Create notification for post owner
+    from ..services.notifications import NotificationService
+    
+    post = db.query(models.Post).filter(models.Post.id == id).first()
+    if post and post.owner_id:
+        NotificationService.create_notification(
+            db=db,
+            user_id=post.owner_id,
+            notification_type="reaction",
+            content_type="post",
+            content_id=post.id,
+            actor=current_user,
+            emoji=emoji,
+            content_title=post.title,
+            content_url=post.art_url,
+        )
 
 
 @router.delete(
