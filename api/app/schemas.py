@@ -1507,3 +1507,63 @@ class HashUrlResponse(BaseModel):
     """Hash URL task response."""
 
     task_id: str
+
+
+# ============================================================================
+# NOTIFICATION SCHEMAS
+# ============================================================================
+
+
+class NotificationBase(BaseModel):
+    """Base notification schema."""
+    notification_type: str
+    content_type: str
+    content_id: int
+    actor_handle: str | None = None
+    emoji: str | None = None
+    comment_preview: str | None = None
+    content_title: str | None = None
+    content_url: str | None = None
+    
+    
+class Notification(NotificationBase):
+    """Full notification schema."""
+    id: UUID
+    user_id: int
+    is_read: bool
+    read_at: datetime | None = None
+    created_at: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NotificationCreate(BaseModel):
+    """Schema for creating a notification."""
+    user_id: int
+    notification_type: str
+    content_type: str
+    content_id: int
+    actor_id: int | None = None
+    actor_ip: str | None = None
+    actor_handle: str | None = None
+    emoji: str | None = None
+    comment_id: UUID | None = None
+    comment_preview: str | None = None
+    content_title: str | None = None
+    content_url: str | None = None
+
+
+class NotificationPreferences(BaseModel):
+    """User notification preferences."""
+    notify_on_post_reactions: bool = True
+    notify_on_post_comments: bool = True
+    notify_on_blog_reactions: bool = True
+    notify_on_blog_comments: bool = True
+    aggregate_same_type: bool = True
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UnreadCountResponse(BaseModel):
+    """Response for unread notification count."""
+    unread_count: int

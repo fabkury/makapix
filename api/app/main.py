@@ -24,6 +24,7 @@ from .routers import (
     comments,
     legacy,
     mqtt,
+    notifications,
     player,
     playlists,
     posts,
@@ -143,6 +144,9 @@ async def lifespan(app: FastAPI):
     from .mqtt.player_requests import start_request_subscriber
     start_status_subscriber()
     start_request_subscriber()
+    # Start WebSocket notification manager
+    from .websocket_manager import connection_manager
+    await connection_manager.start_redis_listener()
     logger.info("Makapix API server ready")
     yield
     # Shutdown
@@ -152,6 +156,8 @@ async def lifespan(app: FastAPI):
     from .mqtt.player_requests import stop_request_subscriber
     stop_status_subscriber()
     stop_request_subscriber()
+    # Stop WebSocket notification manager
+    await connection_manager.stop_redis_listener()
 
 
 app = FastAPI(
@@ -195,6 +201,7 @@ app.include_router(blog_posts.router)
 app.include_router(playlists.router)
 app.include_router(comments.router)
 app.include_router(reactions.router)
+app.include_router(notifications.router)
 app.include_router(reports.router)
 app.include_router(badges.router)
 app.include_router(reputation.router)

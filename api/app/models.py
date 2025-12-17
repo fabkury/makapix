@@ -109,6 +109,12 @@ class User(Base):
     password_reset_tokens = relationship(
         "PasswordResetToken", back_populates="user", cascade="all, delete-orphan"
     )
+    notifications = relationship(
+        "Notification", foreign_keys="Notification.user_id", back_populates="user", cascade="all, delete-orphan"
+    )
+    notification_preferences = relationship(
+        "NotificationPreferences", back_populates="user", uselist=False, cascade="all, delete-orphan"
+    )
 
 
 class RefreshToken(Base):
@@ -1210,3 +1216,73 @@ class BlogPostStatsDaily(Base):
         UniqueConstraint("blog_post_id", "date", name="uq_blog_post_stats_daily_post_date"),
         Index("ix_blog_post_stats_daily_post_date", blog_post_id, date),
     )
+
+
+# ============================================================================
+# NOTIFICATIONS
+# ============================================================================
+
+
+class Notification(Base):
+    """User notification for social interactions."""
+    
+    __tablename__ = "notifications"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid(), index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Type and source
+    notification_type = Column(String(50), nullable=False)  # 'reaction', 'comment'
+    content_type = Column(String(50), nullable=False)       # 'post', 'blog_post'
+    content_id = Column(Integer, nullable=False)
+    
+    # Actor
+    actor_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    actor_ip = Column(String(45), nullable=True)
+    actor_handle = Column(String(50), nullable=True)
+    
+    # Details
+    emoji = Column(String(20), nullable=True)
+    comment_id = Column(UUID(as_uuid=True), nullable=True)
+    comment_preview = Column(Text, nullable=True)
+    
+    # Content metadata
+    content_title = Column(String(200), nullable=True)
+    content_url = Column(String(1000), nullable=True)
+    
+    # Status
+    is_read = Column(Boolean, nullable=False, default=False, server_default=func.false(), index=True)
+    read_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+    
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id], back_populates="notifications")
+    actor = relationship("User", foreign_keys=[actor_id])
+    
+    __table_args__ = (
+        Index("ix_notifications_user_created", user_id, created_at.desc()),
+        Index("ix_notifications_user_unread", user_id, is_read, created_at.desc()),
+        Index("ix_notifications_content", content_type, content_id),
+    )
+
+
+class NotificationPreferences(Base):
+    """User preferences for notifications."""
+    
+    __tablename__ = "notification_preferences"
+    
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    
+    notify_on_post_reactions = Column(Boolean, nullable=False, default=True, server_default=func.true())
+    notify_on_post_comments = Column(Boolean, nullable=False, default=True, server_default=func.true())
+    notify_on_blog_reactions = Column(Boolean, nullable=False, default=True, server_default=func.true())
+    notify_on_blog_comments = Column(Boolean, nullable=False, default=True, server_default=func.true())
+    
+    aggregate_same_type = Column(Boolean, nullable=False, default=True, server_default=func.true())
+    
+    updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
+    
+    # Relationships
+    user = relationship("User", back_populates="notification_preferences")
