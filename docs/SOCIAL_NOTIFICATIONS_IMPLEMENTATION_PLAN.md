@@ -2203,6 +2203,8 @@ Before beginning implementation, the following questions should be carefully con
 
 **Recommendation**: Implement current architecture for 10K MAU target. Plan migration path to distributed architecture when approaching 25K MAU. Monitor key metrics (database query times, WebSocket connection count, Redis memory) and set alerts at 70% capacity thresholds.
 
+**Final answer**: Follow the recommendation.
+
 ---
 
 #### Q2: What are the critical performance metrics to monitor, and what are the alert thresholds?
@@ -2241,6 +2243,8 @@ Before beginning implementation, the following questions should be carefully con
 - **Disk I/O wait**: Alert if >20% consistently
 
 **Recommendation**: Use Prometheus + Grafana for metrics collection and visualization. Set up PagerDuty or similar for critical alerts. Review dashboards weekly during first month post-deployment.
+
+**Final answer**: DO NOT implement Prometheus or Grafana at this point. Do NOT implement these performance metrics listed here. It's too early. Document this as a PLANNED future enhancement.
 
 ---
 
@@ -2291,6 +2295,8 @@ Before beginning implementation, the following questions should be carefully con
 3. Experience frequent Redis failures affecting notifications
 
 Document the migration path but don't implement unless needed.
+
+**Final answer**: Follow the recommendation.
 
 ---
 
@@ -2345,6 +2351,8 @@ Document the migration path but don't implement unless needed.
 4. Add optional HTTP polling **only if** we see >5% of users consistently failing WebSocket connections
 
 Monitor WebSocket connection success rate. If >95% of users successfully maintain WebSocket connections, no fallback needed. The occasional user who can't connect will still see notifications on page load/refresh, which is acceptable for a social network (vs. critical systems like chat or trading).
+
+**Final answer**: Implement WebSocket + reconnection with exponential backoff + Notification Badge Refresh on Page Load. Do NOT implement small icon showing "connected" or "offline", to keep the user interface uncluttered.
 
 ---
 
@@ -2403,6 +2411,8 @@ Monitor WebSocket connection success rate. If >95% of users successfully maintai
 
 During Phase 1, monitor notification count distribution. If >10% of users receive >50 notifications/day, prioritize aggregation. Otherwise, it may not be needed even in Phase 2.
 
+**Final answer**: No aggregation at this moment. Document this notification aggregation feature as a PLANNED future enhancement.
+
 ---
 
 ### Edge Cases and Error Handling
@@ -2431,6 +2441,8 @@ During Phase 1, monitor notification count distribution. If >10% of users receiv
 
 This balances cleanliness with user awareness. Most content has minimal engagement, so cascade delete is fine. For popular content, user makes informed decision.
 
+**Final answer:** Use cascade delete WITHOUT showing such warning. The user interface already asks to confirm deletions, and deletions are only accessible after the artwork has been hidden, so there is no need to ask for more confirmations. 
+
 **Additional Edge Cases**:
 
 - **User blocks someone who reacted to their post**: 
@@ -2441,6 +2453,8 @@ This balances cleanliness with user awareness. Most content has minimal engageme
 
 - **Content ownership transfer** (if feature added later):
   - *Suggested Answer*: Keep notifications pointing to original owner. New owner starts fresh notification history.
+ 
+**Final answer:** Follow the suggested answers about these three items.
 
 ---
 
@@ -2453,46 +2467,39 @@ This balances cleanliness with user awareness. Most content has minimal engageme
 **Rate Limiting Strategies**:
 
 1. **Per-user action rate limits** (apply at reaction/comment creation):
-   - Max 30 reactions per minute per user
-   - Max 10 comments per minute per user
+   - Max 60 reactions per minute per user
+   - Max 15 comments per minute per user
    - Return 429 Too Many Requests if exceeded
    - Already partially implemented in API rate limiting
+**Final answer:** DO implement these limits.
 
 2. **Per-content rate limits**:
-   - Max 100 reactions per hour per post (prevents coordinated spam)
-   - Max 50 comments per hour per post
+   - Max 360 reactions per hour per post (prevents coordinated spam)
+   - Max 60 comments per hour per post
+**Final answer:** Do NOT implement these limits.
    
 3. **Notification rate limits** (apply at notification creation):
-   - Max 50 notifications sent to any user per hour from same actor
-   - Max 200 notifications sent to any user per day total
+   - Max 720 notifications sent to any user per hour from same actor
+   - Max 8640 notifications sent to any user per day total
    - After limit, silently drop notification creation (don't error, just skip)
+**Final answer:** DO implement these limits.
 
 4. **Pattern detection**:
-   - If user removes/adds same reaction >5 times in 10 minutes → flag as spam
-   - If user posts same comment text >3 times → flag as spam
+   - If user posts same comment text >3 times in under 10 minutes → flag as spam
    - Auto-hide flagged notifications from recipient
+**Final answer:** Do implement this limit.
 
 **User Controls**:
 
 1. **Notification preferences**:
-   - Allow users to disable notifications from specific users (soft block)
-   - Allow disabling notifications entirely (per notification type)
+   - Allow users to disable notifications from specific users (soft block): NO
+   - Allow disabling notifications entirely (per notification type): YES
+**Final answer:** Implement this on a separate page, accessible from the user's profile, called "account settings" (account-settings).
    
 2. **Report/Block**:
    - Let users report spam notifications
    - Automatic throttling after 3 reports from different users
-
-**Recommendation**: **Implement basic rate limiting in Phase 1**:
-- 30 reactions/min per user (existing API rate limit)
-- 10 comments/min per user (existing API rate limit)
-- Skip notification creation if same actor sends >50 notifications to same user in 1 hour
-
-**Add advanced spam detection in Phase 2** (after real abuse patterns observed):
-- Pattern detection
-- User-specific notification preferences
-- Report system
-
-Most users won't abuse the system. Start simple, add complexity only when needed.
+**Final answer:** Do NOT implement this.
 
 ---
 
@@ -2523,19 +2530,12 @@ Most users won't abuse the system. Start simple, add complexity only when needed
 
 **Recommendations**:
 
-1. **Immediate** (Phase 1):
+1. **Immediate**:
    - Wrap all Redis calls in try/except (already in plan)
    - Log Redis failures to monitoring system
    - Add Redis health check endpoint: `GET /api/health/redis`
-   - Set up alerts for Redis downtime
-
-2. **Phase 2** (if Redis becomes critical bottleneck):
-   - Redis Sentinel for automatic failover (minimal setup, ~30s failover time)
-   - Keep last 1000 notifications per user in memory cache (fallback for unread count)
-   
-3. **Future** (if approaching 100K MAU):
-   - Redis Cluster for high availability
-   - Consider message queue for Pub/Sub (RabbitMQ has better HA)
+   - Set up alerts for Redis downtime: fire email to fab@kury.dev.
+**Final answer:** Do implement this.
 
 **Testing Recommendation**: During development, regularly test with Redis disabled to ensure graceful degradation. Add integration test that verifies system works (with degraded UX) when Redis is down.
 
@@ -2591,20 +2591,11 @@ Most users won't abuse the system. Start simple, add complexity only when needed
 
 **Recommendations**:
 
-1. **Immediate** (Phase 1):
+1. **Immediate**:
    - Increase ulimit to 65536 in deployment configuration
    - Implement max_connections = 15000 in ConnectionManager
    - Add connection count metric to monitoring dashboard
-   - Set alert at 12,000 connections
-
-2. **Phase 2**:
-   - Implement load shedding if CPU utilization too high
-   - Add connection pool management (prioritize active users)
-
-3. **Future** (if needed):
-   - Dedicated WebSocket servers (separate from API servers)
-   - HAProxy for WebSocket load balancing
-   - Sticky sessions to keep user on same WebSocket server
+   - Set alert at 12,000 connections: fire email to fab@kury.dev.
 
 **Testing**: Use locust or similar to load test with 15,000 concurrent WebSocket connections in staging environment before production deploy.
 
@@ -2769,6 +2760,8 @@ Phase 2 (Add Physical Players):
 
 **Conclusion**: Current architecture is **extensible to physical players with minimal effort** (1-2 days server-side). No refactoring needed. The dual-channel approach (WebSocket for web, MQTT for players) is optimal.
 
+**Final answer:** Do NOT implement notification support for physical players at this moment. It's too early for that. Right now, just document that this is a PLANNED future enhancement.
+
 ---
 
 ### Additional Considerations
@@ -2827,6 +2820,8 @@ Phase 2 (Add Physical Players):
 - Are users requesting email notifications? (Listen to feedback)
 
 Only implement email if data shows it would significantly improve engagement.
+
+**Final answer:** Do NOT implement ANY email notification system right now. Also REMOVE it from the documentation -- we will NOT implement e-mail notifications, this is a design decision.
 
 ---
 
@@ -2933,6 +2928,8 @@ Only implement email if data shows it would significantly improve engagement.
 
 **Future**: Community-contributed translations via Crowdin or similar
 
+**Final answer:** Do NOT implement translations at this moment. It's too early. Just document this as a PLANNED future enhancement.
+
 ---
 
 #### Q13: Should we implement notification preferences per notification type, or is a global on/off sufficient?
@@ -2984,15 +2981,6 @@ Only implement email if data shows it would significantly improve engagement.
    - Settings page: `/settings/notifications`
    - 4 clear toggles with descriptions
    - Preview: "You'll receive notifications when..."
-   
-3. **Smart Defaults**:
-   - If user has >100 followers, suggest enabling aggregation
-   - If user receives >50 notifications/day, prompt to adjust preferences
-
-4. **Phase 2 additions** (if user feedback requests):
-   - Per-content muting: "Mute notifications for this post"
-   - Per-user muting: "Don't notify me about actions from @spammer"
-   - Quiet hours: "Don't send notifications 10pm-8am"
 
 **Testing Preferences**:
 - Ensure preferences are checked before creating notification
@@ -3002,6 +2990,8 @@ Only implement email if data shows it would significantly improve engagement.
 **Migration Path**:
 - When user first signs up: Insert default preferences row
 - For existing users: Backfill preferences on first notification (lazy migration)
+
+**Final answer:** Do implement per-type notification toggles.
 
 ---
 
@@ -3087,6 +3077,8 @@ async def _redis_listener(self):
 
 **Recommendation**: No changes needed for multi-instance support. Current architecture handles it correctly. Monitor Redis CPU and network at scale, optimize only if bottleneck appears.
 
+**Final answer:** See the Recommendation. No changes are needed here.
+
 ---
 
 #### Q15: What security considerations should we address for the notification system?
@@ -3116,7 +3108,7 @@ async def _redis_listener(self):
    - Attacker steals JWT token, connects to victim's notification WebSocket
    - Receives victim's notifications in real-time
    - *Mitigation*: 
-     - Short-lived JWT tokens (15 min expiry)
+     - Short-lived JWT tokens (60 min expiry)
      - HttpOnly cookies for token storage
      - Token refresh mechanism
 
@@ -3177,11 +3169,6 @@ async def _redis_listener(self):
 - [ ] **SQL Injection Prevention**:
   - Use SQLAlchemy parameterized queries (already in plan)
   - Never concatenate user input into SQL
-
-- [ ] **Audit Logging**:
-  - Log all notification creations (who, what, when)
-  - Log suspicious patterns (high rate, spam)
-  - Retain logs for 90 days
 
 - [ ] **Privacy**:
   - Don't leak notification content to unauthorized users
