@@ -109,6 +109,11 @@ export default function CardGrid({ posts, API_BASE_URL: _API_BASE_URL, source, c
         title: p.title,
         art_url: p.art_url,
         canvas: p.canvas,
+        owner: p.owner ? {
+          handle: p.owner.handle,
+          avatar_url: p.owner.avatar_url,
+          public_sqid: p.owner.public_sqid,
+        } : undefined,
       })),
     [posts]
   );

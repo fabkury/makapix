@@ -66,7 +66,11 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Security: Run as non-root user
+# Need su-exec so we can do one-time root initialization (for persistent volumes)
+# and then drop privileges for the actual Next.js server.
+RUN apk add --no-cache su-exec
+
+# Security: Run as non-root user (after init)
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
@@ -81,7 +85,15 @@ RUN chown nextjs:nodejs .next
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-USER nextjs
+# Also keep a copy of the current build's static assets in the image layer so we can
+# sync them into a persistent volume at runtime (without deleting older chunks).
+COPY --from=builder /app/.next/static /opt/next-static
+
+COPY web/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+# Run entrypoint as root so it can initialize/chown mounted volumes, then drop to nextjs.
+USER root
 
 EXPOSE 3000
 
@@ -89,4 +101,5 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 # Run the standalone Next.js server (NOT `npm run dev`)
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["node", "server.js"]

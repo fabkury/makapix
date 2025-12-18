@@ -440,7 +440,7 @@ export interface PlayerRegisterRequest {
 }
 
 export interface PlayerCommandRequest {
-  command_type: "swap_next" | "swap_prev" | "show_artwork";
+  command_type: "swap_next" | "swap_back" | "show_artwork";
   post_id?: number;
 }
 

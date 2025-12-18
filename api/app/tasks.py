@@ -360,6 +360,11 @@ celery_app.conf.update(
             "schedule": 3600.0,  # Every hour (in seconds)
             "options": {"queue": "default"},
         },
+        "mark-stale-players-offline": {
+            "task": "app.tasks.mark_stale_players_offline",
+            "schedule": 60.0,  # Every minute (in seconds)
+            "options": {"queue": "default"},
+        },
         "cleanup-expired-auth-tokens": {
             "task": "app.tasks.cleanup_expired_auth_tokens",
             "schedule": 86400.0,  # Daily at 3AM UTC (in seconds)
@@ -1663,6 +1668,63 @@ def cleanup_expired_player_registrations(self) -> dict[str, Any]:
         
     except Exception as e:
         logger.error(f"Error in cleanup_expired_player_registrations task: {e}", exc_info=True)
+        db.rollback()
+        return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.mark_stale_players_offline", bind=True)
+def mark_stale_players_offline(self) -> dict[str, Any]:
+    """
+    Frequent task: Mark players offline if they have not sent a status heartbeat recently.
+    
+    This is a safety net in case the player does not send an explicit "offline" status
+    (e.g., crash / power loss / network failure / LWT misconfiguration).
+    
+    Policy:
+    - If a player is marked online but last_seen_at is NULL or older than 3 minutes,
+      mark it offline.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from . import models
+    from .db import get_session
+
+    db = next(get_session())
+    try:
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(minutes=3)
+
+        q = (
+            db.query(models.Player)
+            .filter(models.Player.connection_status == "online")
+            .filter(
+                (models.Player.last_seen_at.is_(None))
+                | (models.Player.last_seen_at < cutoff)
+            )
+        )
+
+        marked_offline = q.update(
+            {models.Player.connection_status: "offline"},
+            synchronize_session=False,
+        )
+        db.commit()
+
+        if marked_offline > 0:
+            logger.info(
+                "Marked %s stale player(s) offline (cutoff=%s)",
+                marked_offline,
+                cutoff.isoformat(),
+            )
+
+        return {
+            "status": "success",
+            "marked_offline": marked_offline,
+            "cutoff": cutoff.isoformat(),
+        }
+    except Exception as e:
+        logger.error("Error in mark_stale_players_offline task: %s", e, exc_info=True)
         db.rollback()
         return {"status": "error", "message": str(e)}
     finally:

@@ -203,12 +203,11 @@ services:
       caddy.handle_path.reverse_proxy: api:8000
       # Everything else goes to Next.js
       caddy.reverse_proxy: web:3000
-    # Override Dockerfile CMD to run dev server with hot reload
-    command: sh -c "npm install && rm -rf .next && npm run dev"
+    # Production mode: use pre-built Docker image (no volume mounts, no npm install)
+    # For local dev with hot reload, use docker-compose.override.local.yml
+    # Keep Next.js static assets across deploys so older clients don't 404 on hashed chunks.
     volumes:
-      - ./web:/app
-      - web_node_modules:/app/node_modules
-      # NOTE: Removed web_next_cache volume - .next is now ephemeral to prevent stale chunk errors
+      - web_next_static:/app/.next/static
     ports:
       - "${WEB_PORT:-3000}:3000"
     depends_on:
@@ -265,6 +264,6 @@ networks:
 volumes:
   pg_data:
   api_pip_cache:
-  web_node_modules:
+  web_next_static:
   caddy_data:
   caddy_config:

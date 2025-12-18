@@ -110,6 +110,10 @@ services:
       # Uncomment for basic auth protection:
       # caddy.basicauth./: "devuser {bcrypt}$2y$10$..."
       caddy.reverse_proxy: "{{upstreams ${WEB_APP_PORT:-${DEV_APP_PORT:-3000}}}}"
+    # Keep Next.js static assets across deploys so older clients (especially mobile)
+    # with cached HTML don't 404 on hashed chunks after a redeploy.
+    volumes:
+      - web_next_static:/app/.next/static
     networks:
       - caddy_net
 
@@ -124,3 +128,4 @@ volumes:
   caddy_config:
     external: true
     name: makapix-stack_caddy_config
+  web_next_static:

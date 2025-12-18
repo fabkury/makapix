@@ -346,6 +346,12 @@ export default function AuthPanel({
           padding: 32px;
         }
 
+        /* Standalone login/register page: make panel wider */
+        .auth-container.standalone .auth-card,
+        .auth-container.standalone .success-card {
+          max-width: 520px;
+        }
+
         .logo-section {
           display: flex;
           justify-content: center;

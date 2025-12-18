@@ -8,6 +8,8 @@ import { authenticatedFetch, clearTokens } from '../../lib/api';
 interface PostOwner {
   id: string;
   handle: string;
+  avatar_url?: string | null;
+  public_sqid?: string;
 }
 
 interface Post {

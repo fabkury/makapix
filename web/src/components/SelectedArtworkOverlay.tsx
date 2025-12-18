@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, useAnimationControls, useReducedMotion } from 'framer-motion';
+import { motion, useAnimationControls, useReducedMotion, AnimatePresence } from 'framer-motion';
 import { authenticatedFetch, getAccessToken } from '../lib/api';
 
 type Rect = { left: number; top: number; width: number; height: number };
@@ -11,6 +11,11 @@ export interface SelectedArtworkOverlayPost {
   title: string;
   art_url: string;
   canvas: string; // e.g. "64x64"
+  owner?: {
+    handle: string;
+    avatar_url?: string | null;
+    public_sqid?: string;
+  };
 }
 
 export interface SelectedArtworkOverlayProps {
@@ -34,12 +39,16 @@ function getVisualViewportBox(): { x: number; y: number; width: number; height: 
   };
 }
 
+const POST_HEADER_HEIGHT = 32;
+
 function computeSelectedTargetRect(): { x: number; y: number; width: number; height: number } {
   const vv = getVisualViewportBox();
   const size = 384;
   return {
     x: vv.x + (vv.width - size) / 2,
-    y: vv.y,
+    // Stable position pinned to the top of the viewport (not affected by page scroll)
+    // and must leave room for the post-header.
+    y: POST_HEADER_HEIGHT,
     width: size,
     height: size,
   };
@@ -55,6 +64,39 @@ async function fetchReactionMine(postId: number): Promise<Set<string>> {
   const data = await resp.json().catch(() => null);
   const mine = Array.isArray(data?.mine) ? data.mine : [];
   return new Set(mine);
+}
+
+async function fetchReactionsCount(postId: number): Promise<number> {
+  const url = `/api/post/${postId}/reactions`;
+  const hasToken = !!getAccessToken();
+  try {
+    const resp = hasToken
+      ? await authenticatedFetch(url.startsWith('http') ? url : `${window.location.origin}${url}`)
+      : await fetch(url, { credentials: 'include' });
+    if (!resp.ok) return 0;
+    const data = await resp.json().catch(() => null);
+    const totals = data?.totals || {};
+    // Sum all reaction counts
+    return Object.values(totals).reduce<number>((sum, count) => sum + (typeof count === 'number' ? count : 0), 0);
+  } catch {
+    return 0;
+  }
+}
+
+async function fetchCommentsCount(postId: number): Promise<number> {
+  const url = `/api/post/${postId}/comments`;
+  const hasToken = !!getAccessToken();
+  try {
+    const resp = hasToken
+      ? await authenticatedFetch(url.startsWith('http') ? url : `${window.location.origin}${url}`)
+      : await fetch(url, { credentials: 'include' });
+    if (!resp.ok) return 0;
+    const data = await resp.json().catch(() => null);
+    const items = Array.isArray(data?.items) ? data.items : [];
+    return items.length;
+  } catch {
+    return 0;
+  }
 }
 
 async function setThumbsUp(postId: number, shouldLike: boolean): Promise<void> {
@@ -73,7 +115,8 @@ async function setThumbsUp(postId: number, shouldLike: boolean): Promise<void> {
 const overlayStyles: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
-  zIndex: 9999,
+  // Must sit above the site top-header and any other fixed UI.
+  zIndex: 20000,
   pointerEvents: 'auto',
 };
 
@@ -128,6 +171,63 @@ const likeBurstStyles: React.CSSProperties = {
   pointerEvents: 'none',
 };
 
+function computePostHeaderPosition(): { x: number; y: number } {
+  const vv = getVisualViewportBox();
+  const headerWidth = 384;
+  return {
+    x: vv.x + (vv.width - headerWidth) / 2,
+    // Stable position pinned to the top of the viewport (independent of scroll)
+    y: 0,
+  };
+}
+
+const postHeaderLeftStyles: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+};
+
+const postHeaderRightStyles: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '12px',
+};
+
+const postAuthorAvatarStyles: React.CSSProperties = {
+  width: 32,
+  height: 32,
+  borderRadius: 0,
+  objectFit: 'cover',
+  imageRendering: 'pixelated',
+};
+
+const postAuthorHandleStyles: React.CSSProperties = {
+  fontFamily: "'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  fontSize: '14px',
+  fontWeight: 500,
+  color: '#e8e8f0',
+};
+
+const postReactionCountStyles: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '2px',
+  fontFamily: "'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  fontSize: '14px',
+  fontWeight: 500,
+  color: '#e8e8f0',
+};
+
+const postCommentCountStyles: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '2px',
+  fontFamily: "'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  fontSize: '14px',
+  fontWeight: 500,
+  color: '#e8e8f0',
+};
+
 type AnimationPhase = 'mounting' | 'flying-in' | 'selected' | 'flying-out' | 'swiping';
 
 export default function SelectedArtworkOverlay({
@@ -149,6 +249,11 @@ export default function SelectedArtworkOverlay({
   const [liked, setLiked] = useState(false);
   const [likeBurstKey, setLikeBurstKey] = useState(0);
   const [targetRect, setTargetRect] = useState(() => computeSelectedTargetRect());
+  const [headerPosition, setHeaderPosition] = useState(() => computePostHeaderPosition());
+  const [reactionsCount, setReactionsCount] = useState<number>(0);
+  const [commentsCount, setCommentsCount] = useState<number>(0);
+  const headerControls = useAnimationControls();
+  const [headerContentKey, setHeaderContentKey] = useState(0);
   
   // Store the initial origin rect SYNCHRONOUSLY on first render to avoid timing issues
   // Using a ref to capture it immediately, then a state for re-renders
@@ -220,11 +325,18 @@ export default function SelectedArtworkOverlay({
     const vv = window.visualViewport;
     const handler = () => {
       const next = computeSelectedTargetRect();
+      const nextHeaderPos = computePostHeaderPosition();
       setTargetRect(next);
+      setHeaderPosition(nextHeaderPos);
       if (phase !== 'selected') return;
       controls.start({
         x: next.x,
         y: next.y,
+        transition: reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 520, damping: 44 },
+      });
+      headerControls.start({
+        x: nextHeaderPos.x,
+        y: nextHeaderPos.y,
         transition: reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 520, damping: 44 },
       });
     };
@@ -242,7 +354,7 @@ export default function SelectedArtworkOverlay({
 
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
-  }, [controls, phase, reduceMotion]);
+  }, [controls, headerControls, phase, reduceMotion]);
 
   // Fetch like state (auth or anonymous)
   useEffect(() => {
@@ -254,6 +366,29 @@ export default function SelectedArtworkOverlay({
         const mine = await fetchReactionMine(postId);
         if (cancelled) return;
         setLiked(mine.has('👍'));
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [post?.id]);
+
+  // Fetch reactions and comments counts
+  useEffect(() => {
+    const postId = post?.id;
+    if (!postId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [reactions, comments] = await Promise.all([
+          fetchReactionsCount(postId),
+          fetchCommentsCount(postId),
+        ]);
+        if (cancelled) return;
+        setReactionsCount(reactions);
+        setCommentsCount(comments);
       } catch {
         // ignore
       }
@@ -275,6 +410,22 @@ export default function SelectedArtworkOverlay({
       void backdropControls.start({
         opacity: 0.62,
         transition: reduceMotion ? { duration: 0 } : { duration: 0.38, ease: [0.22, 1, 0.36, 1] },
+      });
+
+      // Animate header sliding in from above viewport
+      const headerPos = computePostHeaderPosition();
+      headerControls.set({
+        x: headerPos.x,
+        y: headerPos.y - POST_HEADER_HEIGHT,
+        opacity: 0,
+      });
+      void headerControls.start({
+        x: headerPos.x,
+        y: headerPos.y,
+        opacity: 1,
+        transition: reduceMotion
+          ? { duration: 0 }
+          : { type: 'spring', stiffness: 400, damping: 35, mass: 0.8 },
       });
       
       const origin = initialOriginRect;
@@ -316,7 +467,7 @@ export default function SelectedArtworkOverlay({
     });
 
     return () => cancelAnimationFrame(timer);
-  }, [backdropControls, controls, portalEl, post, phase, initialOriginRect, reduceMotion, targetRect]);
+  }, [backdropControls, controls, headerControls, portalEl, post, phase, initialOriginRect, reduceMotion, targetRect]);
 
   const triggerLikeToggle = useCallback(async () => {
     if (!post) return;
@@ -338,10 +489,18 @@ export default function SelectedArtworkOverlay({
     const origin = getCurrentOriginRect() ?? initialOriginRect;
     if (!origin) {
       // Still fade the backdrop out to avoid a hard cut
-      await backdropControls.start({
-        opacity: 0,
-        transition: reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.4, 0, 1, 1] },
-      });
+      await Promise.all([
+        backdropControls.start({
+          opacity: 0,
+          transition: reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.4, 0, 1, 1] },
+        }),
+        headerControls.start({
+          x: headerPosition.x,
+          y: headerPosition.y - POST_HEADER_HEIGHT,
+          opacity: 0,
+          transition: reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.4, 0, 1, 1] },
+        }),
+      ]);
       onClose();
       return;
     }
@@ -360,9 +519,15 @@ export default function SelectedArtworkOverlay({
       opacity: 0,
       transition: reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.4, 0, 1, 1] },
     });
-    await Promise.all([flyBack, fadeOut]);
+    const headerSlideOut = headerControls.start({
+      x: headerPosition.x,
+      y: headerPosition.y - POST_HEADER_HEIGHT,
+      opacity: 0,
+      transition: reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 40, mass: 0.8 },
+    });
+    await Promise.all([flyBack, fadeOut, headerSlideOut]);
     onClose();
-  }, [backdropControls, clearPressTimer, controls, getCurrentOriginRect, initialOriginRect, onClose, reduceMotion]);
+  }, [backdropControls, clearPressTimer, controls, getCurrentOriginRect, headerControls, headerPosition, initialOriginRect, onClose, reduceMotion]);
 
   const snapBackToTarget = useCallback(async () => {
     setPhase('flying-in');
@@ -457,6 +622,7 @@ export default function SelectedArtworkOverlay({
       // Run BOTH animations simultaneously:
       // - Outgoing flies from center back to its grid position
       // - Incoming flies from its grid position to center
+      // Header stays in place (no slide out/in) - contents will crossfade
       await Promise.all([
         outgoingControls.start({
           x: outRect.left,
@@ -487,6 +653,9 @@ export default function SelectedArtworkOverlay({
         height: targetRect.height,
         scale: 1,
       });
+      
+      // Trigger header content crossfade by updating key
+      setHeaderContentKey((k) => k + 1);
       
       // Clear transition elements
       setOutgoingPost(null);
@@ -547,6 +716,77 @@ export default function SelectedArtworkOverlay({
           void dismissToOriginAndClose();
         }}
       />
+
+      {/* Post Header */}
+      <motion.div
+        aria-label="post-header"
+        role="banner"
+        style={{
+          position: 'fixed',
+          // CRITICAL: Must set left/top to 0 so Framer Motion's x/y transforms 
+          // become actual viewport coordinates
+          left: 0,
+          top: 0,
+          width: 384,
+          height: POST_HEADER_HEIGHT,
+          background: '#000',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 16px',
+          zIndex: 20001,
+          pointerEvents: 'auto',
+        }}
+        initial={{ x: headerPosition.x, y: headerPosition.y - POST_HEADER_HEIGHT, opacity: 0 }}
+        animate={headerControls}
+      >
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={headerContentKey}
+            style={postHeaderLeftStyles}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: reduceMotion ? 0 : 0.2 }}
+          >
+            {post.owner?.avatar_url ? (
+              <img
+                src={post.owner.avatar_url.startsWith('http') ? post.owner.avatar_url : `${typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin) : ''}${post.owner.avatar_url}`}
+                alt={post.owner.handle || 'Author'}
+                style={postAuthorAvatarStyles}
+              />
+            ) : (
+              <div style={{ ...postAuthorAvatarStyles, background: '#1a1a24', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style={{ color: '#6a6a80' }}>
+                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                </svg>
+              </div>
+            )}
+            {post.owner?.handle && (
+              <span style={postAuthorHandleStyles}>{post.owner.handle}</span>
+            )}
+          </motion.div>
+        </AnimatePresence>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={headerContentKey}
+            style={postHeaderRightStyles}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: reduceMotion ? 0 : 0.2 }}
+          >
+            <div style={postReactionCountStyles}>
+              <span style={{ fontSize: '16px', marginRight: '-2px' }}>⚡</span>
+              <span>{reactionsCount}</span>
+            </div>
+            <div style={postCommentCountStyles}>
+              <span style={{ fontSize: '16px', marginRight: '-2px' }}>💬</span>
+              <span>{commentsCount}</span>
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      </motion.div>
 
       {/* Outgoing artwork during swipe transition (flies back to grid) */}
       {outgoingPost && (
