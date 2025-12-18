@@ -7,8 +7,9 @@ import SendToPlayerModal from './SendToPlayerModal';
 
 export const PLAYER_BAR_HEIGHT = 64;
 
-// z-index must be above SelectedArtworkOverlay which uses 9999
-const PLAYER_BAR_Z_INDEX = 10001;
+// z-index must be above SelectedArtworkOverlay (overlay is intentionally very high).
+// PlayerBar must remain visible and NOT be darkened by the selection overlay backdrop.
+const PLAYER_BAR_Z_INDEX = 40000;
 
 /**
  * PlayerBar - A fixed bar at the bottom of the viewport for sending artwork to players.

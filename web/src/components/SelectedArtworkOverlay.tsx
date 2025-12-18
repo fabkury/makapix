@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, useAnimationControls, useReducedMotion, AnimatePresence } from 'framer-motion';
 import { authenticatedFetch, getAccessToken } from '../lib/api';
+import { PLAYER_BAR_HEIGHT } from './PlayerBarDynamic';
 
 type Rect = { left: number; top: number; width: number; height: number };
 
@@ -108,7 +109,10 @@ async function setThumbsUp(postId: number, shouldLike: boolean): Promise<void> {
   const resp = hasToken
     ? await authenticatedFetch(url.startsWith('http') ? url : `${window.location.origin}${url}`, { method })
     : await fetch(url, { method, credentials: 'include' });
-  void resp;
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => '');
+    throw new Error(`Failed to ${shouldLike ? 'add' : 'remove'} reaction: ${resp.status} ${txt}`.trim());
+  }
 }
 
 // Inline styles to ensure they work inside the portal
@@ -122,7 +126,10 @@ const overlayStyles: React.CSSProperties = {
 
 const backdropStyles: React.CSSProperties = {
   position: 'fixed',
-  inset: 0,
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
   background: 'rgba(0, 0, 0, 0.85)',
   backdropFilter: 'blur(16px)',
   WebkitBackdropFilter: 'blur(16px)',
@@ -245,13 +252,19 @@ export default function SelectedArtworkOverlay({
   const backdropControls = useAnimationControls();
   const [portalEl, setPortalEl] = useState<HTMLElement | null>(null);
   const [phase, setPhase] = useState<AnimationPhase>('mounting');
+  const [hasPlayerBar, setHasPlayerBar] = useState(false);
   const [pressing, setPressing] = useState(false);
   const [liked, setLiked] = useState(false);
   const [likeBurstKey, setLikeBurstKey] = useState(0);
   const [targetRect, setTargetRect] = useState(() => computeSelectedTargetRect());
   const [headerPosition, setHeaderPosition] = useState(() => computePostHeaderPosition());
-  const [reactionsCount, setReactionsCount] = useState<number>(0);
-  const [commentsCount, setCommentsCount] = useState<number>(0);
+  const [countsState, setCountsState] = useState<{
+    postId: number | null;
+    reactions: number | null;
+    comments: number | null;
+    status: 'idle' | 'loading' | 'ready';
+  }>({ postId: null, reactions: null, comments: null, status: 'idle' });
+  const countsCacheRef = useRef<Map<number, { reactions: number; comments: number }>>(new Map());
   const headerControls = useAnimationControls();
   const [headerContentKey, setHeaderContentKey] = useState(0);
   
@@ -319,6 +332,17 @@ export default function SelectedArtworkOverlay({
     };
   }, []);
 
+  // The selection overlay should NOT darken the PlayerBar. We enforce this by
+  // cutting the backdrop short by PLAYER_BAR_HEIGHT when the PlayerBar exists.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const check = () => setHasPlayerBar(!!document.querySelector('.player-bar'));
+    check();
+    const obs = new MutationObserver(check);
+    obs.observe(document.body, { childList: true, subtree: true });
+    return () => obs.disconnect();
+  }, []);
+
   // Keep target position aligned to the visual viewport (browser bar show/hide)
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -382,15 +406,24 @@ export default function SelectedArtworkOverlay({
     let cancelled = false;
     (async () => {
       try {
-        const [reactions, comments] = await Promise.all([
-          fetchReactionsCount(postId),
-          fetchCommentsCount(postId),
-        ]);
+        const cached = countsCacheRef.current.get(postId);
+        if (cached) {
+          setCountsState({ postId, reactions: cached.reactions, comments: cached.comments, status: 'ready' });
+          return;
+        }
+
+        // Important UX: when the selected post changes, the counts should disappear immediately
+        // and only re-appear once the UPDATED values have been fetched.
+        setCountsState({ postId, reactions: null, comments: null, status: 'loading' });
+
+        const [reactions, comments] = await Promise.all([fetchReactionsCount(postId), fetchCommentsCount(postId)]);
         if (cancelled) return;
-        setReactionsCount(reactions);
-        setCommentsCount(comments);
+        countsCacheRef.current.set(postId, { reactions, comments });
+        setCountsState({ postId, reactions, comments, status: 'ready' });
       } catch {
-        // ignore
+        // ignore (fetch helpers already return 0 on failure)
+        if (cancelled) return;
+        setCountsState({ postId, reactions: 0, comments: 0, status: 'ready' });
       }
     })();
     return () => {
@@ -479,6 +512,30 @@ export default function SelectedArtworkOverlay({
       setLikeBurstKey((k) => k + 1);
       if (navigator?.vibrate) navigator.vibrate(18);
       await setThumbsUp(post.id, next);
+
+      // Only update counts once the server has confirmed the write.
+      // Do an immediate +1/-1 for responsiveness, then re-sync from server to be exact.
+      setCountsState((prev) => {
+        if (prev.postId !== post.id || prev.status !== 'ready') return prev;
+        const nextReactions = Math.max(0, (prev.reactions ?? 0) + (next ? 1 : -1));
+        const nextState = { ...prev, reactions: nextReactions };
+        countsCacheRef.current.set(post.id, { reactions: nextReactions, comments: prev.comments ?? 0 });
+        return nextState;
+      });
+
+      // Re-sync totals in the background (accounts for other reaction types).
+      void (async () => {
+        try {
+          const reactions = await fetchReactionsCount(post.id);
+          setCountsState((prev) => {
+            if (prev.postId !== post.id || prev.status !== 'ready') return prev;
+            countsCacheRef.current.set(post.id, { reactions, comments: prev.comments ?? 0 });
+            return { ...prev, reactions };
+          });
+        } catch {
+          // ignore
+        }
+      })();
     } finally {
       likeInFlightRef.current = false;
     }
@@ -698,11 +755,18 @@ export default function SelectedArtworkOverlay({
   const initialH = origin?.height ?? targetRect.height;
 
   const isInteractive = phase === 'selected';
+  const countsForPost =
+    post && countsState.postId === post.id && countsState.status === 'ready'
+      ? { reactions: countsState.reactions ?? 0, comments: countsState.comments ?? 0 }
+      : null;
 
   return createPortal(
     <div style={overlayStyles} role="dialog" aria-modal="true">
       <motion.div
-        style={backdropStyles}
+        style={{
+          ...backdropStyles,
+          bottom: hasPlayerBar ? PLAYER_BAR_HEIGHT : 0,
+        }}
         initial={{ opacity: 0 }}
         animate={backdropControls}
         onMouseDown={(e) => {
@@ -776,14 +840,24 @@ export default function SelectedArtworkOverlay({
             exit={{ opacity: 0 }}
             transition={{ duration: reduceMotion ? 0 : 0.2 }}
           >
-            <div style={postReactionCountStyles}>
-              <span style={{ fontSize: '16px', marginRight: '-2px' }}>⚡</span>
-              <span>{reactionsCount}</span>
-            </div>
-            <div style={postCommentCountStyles}>
-              <span style={{ fontSize: '16px', marginRight: '-2px' }}>💬</span>
-              <span>{commentsCount}</span>
-            </div>
+            {countsForPost && (
+              <motion.div
+                // When counts become ready, mount and fade in (no "old number then change" flicker).
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: reduceMotion ? 0 : 0.2 }}
+                style={{ display: 'flex', alignItems: 'center', gap: '12px' }}
+              >
+                <div style={postReactionCountStyles}>
+                  <span style={{ fontSize: '16px', marginRight: '-2px' }}>⚡</span>
+                  <span>{countsForPost.reactions}</span>
+                </div>
+                <div style={postCommentCountStyles}>
+                  <span style={{ fontSize: '16px', marginRight: '-2px' }}>💬</span>
+                  <span>{countsForPost.comments}</span>
+                </div>
+              </motion.div>
+            )}
           </motion.div>
         </AnimatePresence>
       </motion.div>
