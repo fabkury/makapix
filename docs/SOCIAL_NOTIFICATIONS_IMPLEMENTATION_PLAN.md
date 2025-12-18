@@ -19,6 +19,7 @@
 8. [Implementation Phases](#implementation-phases)
 9. [Testing Strategy](#testing-strategy)
 10. [Migration Strategy](#migration-strategy)
+11. [Questions to be answered](#questions-to-be-answered)
 
 ---
 
@@ -2141,6 +2142,1054 @@ if not NOTIFICATIONS_ENABLED:
    - Track notification open rates
    - A/B test notification formats
    - Monitor engagement metrics
+
+---
+
+## Questions to be answered
+
+Before beginning implementation, the following questions should be carefully considered and answered to ensure the design meets both current and future requirements.
+
+### Performance and Scalability
+
+#### Q1: How will the system perform at different scales (1K MAU, 10K MAU, 100K MAU)?
+
+**Context**: Understanding performance characteristics across different user scales is critical for planning resource allocation and identifying potential bottlenecks.
+
+**Suggested Answer**:
+
+**At 1,000 MAU (Low Scale)**:
+- **Database Load**: Minimal. ~450,000 notifications over 90 days (~500MB storage)
+- **WebSocket Connections**: Peak ~100 concurrent connections
+- **Redis Memory**: <100MB (counters + Pub/Sub overhead)
+- **CPU Utilization**: <20% on 2 vCPU
+- **Response Times**: 
+  - Notification delivery: <200ms
+  - API endpoints: p99 <30ms
+  - Unread count (cached): <1ms
+- **Infrastructure**: Can run comfortably on minimal VPS ($7-10/month)
+- **Bottlenecks**: None expected
+
+**At 10,000 MAU (Target Scale)**:
+- **Database Load**: Moderate. ~4.5M notifications over 90 days (~3-4GB storage with indexes)
+- **WebSocket Connections**: Peak ~1,000 concurrent connections
+- **Redis Memory**: ~500MB (counters + Pub/Sub channels)
+- **CPU Utilization**: 35-45% on 2 vCPU, 20-30% on 4 vCPU
+- **Response Times**:
+  - Notification delivery: <500ms
+  - API endpoints: p99 <50ms
+  - Unread count (cached): <2ms
+- **Infrastructure**: Current VPS (2 vCPU, 4GB RAM) adequate with some headroom
+- **Bottlenecks**: 
+  - Database connection pool may need tuning (recommend pool size 20-30)
+  - WebSocket file descriptor limits (ensure ulimit set to >10,000)
+  - PostgreSQL shared_buffers should be 1GB minimum
+
+**At 100,000 MAU (Future Scale - Requires Architecture Changes)**:
+- **Database Load**: Heavy. ~45M notifications over 90 days (~30-40GB storage)
+- **WebSocket Connections**: Peak ~10,000 concurrent connections
+- **Redis Memory**: ~5GB
+- **Infrastructure**: **Single VPS architecture will not suffice**
+- **Required Changes**:
+  1. **Multi-instance API servers** behind load balancer
+  2. **Database replication** (read replicas for notification queries)
+  3. **Redis Cluster** for distributed Pub/Sub
+  4. **Dedicated WebSocket servers** (separate from API servers)
+  5. **CDN integration** for static assets
+  6. **Database partitioning** (partition notifications by user_id ranges)
+  7. **Consider message queue** (RabbitMQ/Kafka) instead of Redis Pub/Sub
+  8. **Notification aggregation** becomes mandatory (not optional)
+- **Estimated Cost**: $200-500/month (multiple servers + managed services)
+- **Implementation Effort**: 4-6 weeks of refactoring
+
+**Recommendation**: Implement current architecture for 10K MAU target. Plan migration path to distributed architecture when approaching 25K MAU. Monitor key metrics (database query times, WebSocket connection count, Redis memory) and set alerts at 70% capacity thresholds.
+
+**Final answer**: Follow the recommendation.
+
+---
+
+#### Q2: What are the critical performance metrics to monitor, and what are the alert thresholds?
+
+**Context**: Proactive monitoring prevents performance degradation and outages.
+
+**Suggested Answer**:
+
+**Database Metrics**:
+- **Query response time**: Alert if p95 > 100ms, Critical if p95 > 500ms
+- **Connection pool utilization**: Alert at 70%, Critical at 85%
+- **Notifications table size**: Alert at 5GB, Plan cleanup/partitioning at 10GB
+- **Index size**: Monitor b-tree depth and fragmentation monthly
+
+**Redis Metrics**:
+- **Memory usage**: Alert at 80% of max memory, Critical at 90%
+- **Pub/Sub channels**: Monitor count, Alert if exceeds 5,000 active channels
+- **Cache hit rate (unread counts)**: Alert if drops below 90%
+- **Connection count**: Alert at 80% of maxclients
+
+**WebSocket Metrics**:
+- **Concurrent connections**: Alert at 7,000 (70% of safe limit on current infra)
+- **Connection duration**: Track average lifetime (expect >10 minutes)
+- **Reconnection rate**: Alert if >10% of connections reconnect within 60 seconds
+- **Message delivery latency**: Alert if p95 > 1 second
+
+**API Metrics**:
+- **Endpoint response times**: Alert if p99 exceeds targets by 2x
+- **Error rate**: Alert if 5-minute error rate >1%, Critical if >5%
+- **Worker queue depth**: Alert if >100 pending tasks
+
+**System Metrics**:
+- **CPU utilization**: Alert at 75%, Critical at 90%
+- **Memory utilization**: Alert at 85%, Critical at 95%
+- **File descriptors**: Alert at 80% of ulimit
+- **Disk I/O wait**: Alert if >20% consistently
+
+**Recommendation**: Use Prometheus + Grafana for metrics collection and visualization. Set up PagerDuty or similar for critical alerts. Review dashboards weekly during first month post-deployment.
+
+**Final answer**: DO NOT implement Prometheus or Grafana at this point. Do NOT implement these performance metrics listed here. It's too early. Document this as a PLANNED future enhancement.
+
+---
+
+### Architecture Alternatives
+
+#### Q3: Should we use Redis Pub/Sub or a dedicated message queue (RabbitMQ/Kafka) for WebSocket broadcasting?
+
+**Context**: Redis Pub/Sub is simple but has limitations. Dedicated message queues offer more features but add complexity.
+
+**Suggested Answer**:
+
+**Redis Pub/Sub (Current Choice)**:
+
+*Advantages*:
+- Already using Redis for caching - no new infrastructure
+- Low latency (<5ms typically)
+- Simple to implement and maintain
+- Sufficient for 10K MAU scale
+- No message persistence needed (ephemeral notifications)
+- Minimal memory overhead
+
+*Disadvantages*:
+- Messages are fire-and-forget (no delivery guarantees beyond QoS)
+- Not durable (if Redis crashes, in-flight messages lost)
+- Doesn't scale well beyond single Redis instance
+- No message replay capability
+- Limited observability/debugging tools
+
+**RabbitMQ/Kafka Alternative**:
+
+*Advantages*:
+- Strong delivery guarantees
+- Message persistence and replay
+- Better observability and monitoring
+- Scales to 100K+ MAU with clustering
+- Dead letter queues for error handling
+
+*Disadvantages*:
+- Additional infrastructure to maintain
+- Higher latency (20-50ms typical)
+- More complex configuration
+- Higher memory footprint (~500MB minimum)
+- Overkill for current scale
+
+**Recommendation**: **Stick with Redis Pub/Sub** for initial implementation. It's appropriate for the 10K MAU target, keeps infrastructure simple, and maintains cost-effectiveness. Plan migration to RabbitMQ or Kafka only if:
+1. Approaching 25K MAU
+2. Need message persistence for compliance
+3. Experience frequent Redis failures affecting notifications
+
+Document the migration path but don't implement unless needed.
+
+**Final answer**: Follow the recommendation.
+
+---
+
+#### Q4: Should notifications be delivered only via WebSocket, or should we also implement HTTP polling as a fallback?
+
+**Context**: WebSocket connections can be blocked by corporate firewalls or unstable networks. HTTP polling provides a fallback but increases server load.
+
+**Suggested Answer**:
+
+**WebSocket-Only (Current Plan)**:
+
+*Advantages*:
+- Real-time updates with minimal latency
+- Efficient (low server overhead per connection)
+- Standard protocol supported by all modern browsers
+- Aligns with MQTT architecture already in place
+
+*Disadvantages*:
+- May be blocked by restrictive firewalls
+- Requires persistent connection (battery drain on mobile)
+- Users won't get updates if connection fails and doesn't auto-reconnect
+
+**WebSocket + HTTP Polling Fallback**:
+
+*Advantages*:
+- Works in all network environments
+- Graceful degradation
+- Better user experience for users with connectivity issues
+
+*Disadvantages*:
+- Polling creates constant server load (1 request/sec × 1000 users = 1000 req/sec)
+- More complex client-side logic
+- Higher bandwidth usage
+- Users might use polling by default, defeating WebSocket benefits
+
+**WebSocket + Notification Badge Refresh on Page Load**:
+
+*Advantages*:
+- Simple implementation
+- No polling overhead
+- Works as passive fallback
+- Users get updates when they navigate or refresh
+
+*Disadvantages*:
+- Not truly real-time for disconnected users
+- Users might miss notifications until next page load
+
+**Recommendation**: **Implement WebSocket-only with automatic reconnection**, plus:
+1. Fetch unread count on page load/navigation (already in plan)
+2. Implement robust WebSocket reconnection with exponential backoff (already in plan)
+3. Show connection status indicator in UI (small icon showing "connected" or "offline")
+4. Add optional HTTP polling **only if** we see >5% of users consistently failing WebSocket connections
+
+Monitor WebSocket connection success rate. If >95% of users successfully maintain WebSocket connections, no fallback needed. The occasional user who can't connect will still see notifications on page load/refresh, which is acceptable for a social network (vs. critical systems like chat or trading).
+
+**Final answer**: Implement WebSocket + reconnection with exponential backoff + Notification Badge Refresh on Page Load. Do NOT implement small icon showing "connected" or "offline", to keep the user interface uncluttered.
+
+---
+
+#### Q5: Should we implement notification aggregation from the start, or add it later?
+
+**Context**: Aggregation (e.g., "5 people reacted to your post") reduces notification clutter but adds complexity.
+
+**Suggested Answer**:
+
+**No Aggregation (Phase 1)**:
+
+*Advantages*:
+- Simpler implementation (3-4 weeks vs 5-6 weeks)
+- Each notification has complete context
+- Easier to debug and test
+- Users see exactly who interacted and when
+
+*Disadvantages*:
+- Potentially overwhelming for popular content (100 reactions = 100 notifications)
+- Database grows faster
+- More notifications to mark as read
+
+**With Aggregation (Phase 2)**:
+
+*Advantages*:
+- Better UX for popular creators
+- Reduces database growth by 60-80% for popular posts
+- Less overwhelming notification list
+- Industry standard (Twitter, Instagram, Facebook all aggregate)
+
+*Disadvantages*:
+- Significantly more complex logic:
+  - Time windows for aggregation (e.g., aggregate reactions within 1 hour)
+  - Updating aggregated notifications vs creating new ones
+  - Handling edge cases (aggregated notification deleted, then new reaction arrives)
+- Race conditions in high-traffic scenarios
+- More difficult to implement "mark as read" correctly
+
+**Hybrid Approach**:
+
+*Advantages*:
+- Aggregate only for high-volume posts (>10 reactions/hour)
+- Simple logic for normal posts, aggregation for edge cases
+- Best of both worlds
+
+*Disadvantages*:
+- Most complex implementation
+- Inconsistent UX
+
+**Recommendation**: **No aggregation in MVP (Phase 1)**. Add it as **Phase 2 enhancement after 2-3 months** of production data. Rationale:
+1. Most Makapix posts get <10 reactions total (based on current usage patterns)
+2. Overwhelming notifications only affects top 1% of content creators
+3. Implementing aggregation correctly takes significant effort
+4. Better to launch sooner and gather real usage data
+5. Can add aggregation retroactively by running migration to combine old notifications
+
+During Phase 1, monitor notification count distribution. If >10% of users receive >50 notifications/day, prioritize aggregation. Otherwise, it may not be needed even in Phase 2.
+
+**Final answer**: No aggregation at this moment. Document this notification aggregation feature as a PLANNED future enhancement.
+
+---
+
+### Edge Cases and Error Handling
+
+#### Q6: What happens when a user deletes their post/blog while notifications about it exist?
+
+**Context**: Notifications reference content that may be deleted, causing broken links and confusion.
+
+**Suggested Answer**:
+
+**Options**:
+
+1. **Cascade delete notifications** (Current Plan: ON DELETE CASCADE)
+   - *Pros*: Clean database, no orphaned records, no broken links
+   - *Cons*: Users lose notification history, can't see "you got 50 reactions" even after deletion
+   
+2. **Soft-delete notifications** (mark as deleted but keep record)
+   - *Pros*: Preserves history, users can see they got reactions
+   - *Cons*: Broken links, requires filtering in queries, database growth
+   
+3. **Keep notifications but mark content as deleted**
+   - *Pros*: Shows "Someone reacted to your deleted post"
+   - *Cons*: Cluttered UI, still broken links
+
+**Recommendation**: **Use cascade delete (current plan) with one addition**: Before deleting content, check if it has >20 reactions or >10 comments. If so, show user a warning: "This content has received significant engagement (X reactions, Y comments). Deleting it will also remove these notifications from your history. Are you sure?"
+
+This balances cleanliness with user awareness. Most content has minimal engagement, so cascade delete is fine. For popular content, user makes informed decision.
+
+**Final answer:** Use cascade delete WITHOUT showing such warning. The user interface already asks to confirm deletions, and deletions are only accessible after the artwork has been hidden, so there is no need to ask for more confirmations. 
+
+**Additional Edge Cases**:
+
+- **User blocks someone who reacted to their post**: 
+  - *Suggested Answer*: Keep existing notifications, but prevent new ones from blocked user. Optionally, add filter to hide notifications from blocked users.
+
+- **User deletes their account**:
+  - *Suggested Answer*: CASCADE delete all notifications where they are the recipient (user_id). For notifications where they are the actor, set actor_id to NULL and actor_handle to "Deleted User".
+
+- **Content ownership transfer** (if feature added later):
+  - *Suggested Answer*: Keep notifications pointing to original owner. New owner starts fresh notification history.
+ 
+**Final answer:** Follow the suggested answers about these three items.
+
+---
+
+#### Q7: How should we handle notification spam or abuse (e.g., user spamming reactions to trigger notifications)?
+
+**Context**: Bad actors could spam reactions/comments to annoy users with notifications.
+
+**Suggested Answer**:
+
+**Rate Limiting Strategies**:
+
+1. **Per-user action rate limits** (apply at reaction/comment creation):
+   - Max 60 reactions per minute per user
+   - Max 15 comments per minute per user
+   - Return 429 Too Many Requests if exceeded
+   - Already partially implemented in API rate limiting
+**Final answer:** DO implement these limits.
+
+2. **Per-content rate limits**:
+   - Max 360 reactions per hour per post (prevents coordinated spam)
+   - Max 60 comments per hour per post
+**Final answer:** Do NOT implement these limits.
+   
+3. **Notification rate limits** (apply at notification creation):
+   - Max 720 notifications sent to any user per hour from same actor
+   - Max 8640 notifications sent to any user per day total
+   - After limit, silently drop notification creation (don't error, just skip)
+**Final answer:** DO implement these limits.
+
+4. **Pattern detection**:
+   - If user posts same comment text >3 times in under 10 minutes → flag as spam
+   - Auto-hide flagged notifications from recipient
+**Final answer:** Do implement this limit.
+
+**User Controls**:
+
+1. **Notification preferences**:
+   - Allow users to disable notifications from specific users (soft block): NO
+   - Allow disabling notifications entirely (per notification type): YES
+**Final answer:** Implement this on a separate page, accessible from the user's profile, called "account settings" (account-settings).
+   
+2. **Report/Block**:
+   - Let users report spam notifications
+   - Automatic throttling after 3 reports from different users
+**Final answer:** Do NOT implement this.
+
+---
+
+#### Q8: What happens if Redis goes down? How do we handle cache failures gracefully?
+
+**Context**: Redis is used for unread counts (cache) and Pub/Sub (WebSocket broadcasting). Failures affect user experience.
+
+**Suggested Answer**:
+
+**Redis Failure Scenarios**:
+
+1. **Redis cache (unread counts) unavailable**:
+   - *Current Plan*: Fallback to database query (already implemented in `get_unread_count()`)
+   - *Impact*: Slower responses (5-10ms vs <1ms) but functional
+   - *Mitigation*: None needed, graceful degradation already implemented
+
+2. **Redis Pub/Sub unavailable**:
+   - *Impact*: WebSocket notifications won't broadcast, users don't get real-time updates
+   - *Current Plan*: No fallback, notifications still created in DB
+   - *User Experience*: Users see notifications on next page load/refresh (acceptable degradation)
+   
+3. **Redis completely down**:
+   - *Impact*: Both cache and Pub/Sub fail
+   - *Mitigation*: 
+     - Database queries still work (slower but functional)
+     - WebSocket connections stay alive but receive no messages
+     - Users see notifications when they navigate/refresh
+
+**Recommendations**:
+
+1. **Immediate**:
+   - Wrap all Redis calls in try/except (already in plan)
+   - Log Redis failures to monitoring system
+   - Add Redis health check endpoint: `GET /api/health/redis`
+   - Set up alerts for Redis downtime: fire email to fab@kury.dev.
+**Final answer:** Do implement this.
+
+**Testing Recommendation**: During development, regularly test with Redis disabled to ensure graceful degradation. Add integration test that verifies system works (with degraded UX) when Redis is down.
+
+---
+
+#### Q9: How do we handle WebSocket connection limits and memory pressure?
+
+**Context**: Each WebSocket connection consumes memory and a file descriptor. Linux systems have limits (default ulimit often 1024).
+
+**Suggested Answer**:
+
+**Connection Limits**:
+
+1. **Operating System Level**:
+   - Default ulimit (file descriptors): Often 1024 (too low)
+   - **Required change**: Set ulimit to 65536 in systemd service files
+   - Command: `ulimit -n 65536` in startup scripts
+   - Edit `/etc/security/limits.conf`:
+     ```
+     * soft nofile 65536
+     * hard nofile 65536
+     ```
+
+2. **Application Level**:
+   - FastAPI/Uvicorn default: No explicit limit (uses OS limits)
+   - **Recommended**: Set max_connections in ConnectionManager
+   - Implement connection limit: Max 15,000 concurrent WebSocket connections
+   - Return 503 Service Unavailable if limit reached
+
+3. **Memory Management**:
+   - Each WebSocket connection: ~40KB memory (Python + buffers)
+   - 10,000 connections = ~400MB
+   - Current 4GB RAM VPS: Plenty of headroom
+   - Alert at 12,000 connections (approaching limit)
+
+**Connection Cleanup**:
+
+1. **Stale connection detection**:
+   - Implement ping/pong timeout (already in plan, 30s interval)
+   - If client doesn't respond to ping within 90s, disconnect
+   - Prevents accumulation of zombie connections
+
+2. **Graceful degradation**:
+   - If approaching connection limit, close oldest idle connections
+   - Clients will auto-reconnect with exponential backoff
+
+**Load Shedding**:
+- If server CPU >90% for >60 seconds:
+  - Stop accepting new WebSocket connections
+  - Return 503 with Retry-After header
+  - Existing connections remain active
+  - Resume accepting connections when CPU <70%
+
+**Recommendations**:
+
+1. **Immediate**:
+   - Increase ulimit to 65536 in deployment configuration
+   - Implement max_connections = 15000 in ConnectionManager
+   - Add connection count metric to monitoring dashboard
+   - Set alert at 12,000 connections: fire email to fab@kury.dev.
+
+**Testing**: Use locust or similar to load test with 15,000 concurrent WebSocket connections in staging environment before production deploy.
+
+---
+
+### Physical Player Integration
+
+#### Q10: If we want to extend notifications to physical players (e.g., show notification on p3a device), would the current architecture support this, or would it need significant refactoring?
+
+**Context**: Physical players currently use MQTT for receiving commands and displaying artwork. Notifications could potentially be delivered to these devices (e.g., LED notification indicator, screen message).
+
+**Suggested Answer**:
+
+**Current Architecture Analysis**:
+
+The current plan uses:
+- **WebSocket over HTTPS** for web client notifications
+- **Redis Pub/Sub** for broadcasting to web clients
+- Physical players already use **MQTT** for commands (per MQTT_PROTOCOL.md)
+
+**Integration Options**:
+
+**Option 1: Dual-Channel Approach** (Easiest, Recommended)
+
+Architecture:
+- Web clients: WebSocket + Redis Pub/Sub (current plan)
+- Physical players: MQTT (existing infrastructure)
+- NotificationService publishes to both:
+  - Redis Pub/Sub channel for WebSocket clients
+  - MQTT topic for physical players
+
+Implementation:
+```python
+# In NotificationService._broadcast_notification()
+# Existing code publishes to Redis
+redis.publish(channel, json.dumps(payload))
+
+# Add MQTT publishing
+mqtt_client.publish(
+    topic=f"makapix/player/{player_key}/notification",
+    payload=json.dumps(payload),
+    qos=1
+)
+```
+
+Changes needed:
+- Add MQTT client to NotificationService (5 lines)
+- Physical players subscribe to `makapix/player/{player_key}/notification` topic
+- Players handle notification messages (display LED, show on screen, play sound)
+
+Effort: **1-2 days** to implement server-side, player firmware update needed
+
+**Option 2: Unified MQTT Approach** (Major Refactor)
+
+Architecture:
+- Both web clients and physical players use MQTT
+- Web clients connect via MQTT over WebSocket (port 9001)
+- Remove WebSocket manager, use MQTT broker for all real-time messaging
+
+Changes needed:
+- Replace WebSocket client with MQTT.js library in frontend
+- Remove ConnectionManager and WebSocket endpoint
+- All clients subscribe to MQTT topics
+- MQTT broker handles all pub/sub
+
+Effort: **2-3 weeks** refactoring, complete rewrite of WebSocket layer
+
+**Option 3: Notification Service Abstraction** (Over-Engineered)
+
+Architecture:
+- Abstract notification delivery behind interface
+- Multiple delivery backends: WebSocket, MQTT, FCM (mobile push), Email
+- Factory pattern to choose delivery method per user preference
+
+Changes needed:
+- Create NotificationDeliveryService abstraction
+- Implement WebSocketDelivery, MQTTDelivery adapters
+- Routing logic to choose delivery method
+
+Effort: **1 week**, adds significant complexity for unclear benefit
+
+**Recommendation**: **Option 1: Dual-Channel Approach**
+
+Rationale:
+1. **Minimal changes**: Uses existing MQTT infrastructure, adds ~20 lines of code
+2. **Protocol-appropriate**: WebSocket for web is standard, MQTT for IoT devices is standard
+3. **Independently scalable**: Can scale WebSocket and MQTT separately
+4. **Graceful degradation**: If MQTT fails, web notifications still work (and vice versa)
+5. **Future-proof**: Easy to add more channels later (FCM, email, etc.)
+
+Physical player notification handling:
+```javascript
+// In player firmware (ESP32 example)
+void onMQTTMessage(String topic, String payload) {
+    if (topic.endsWith("/notification")) {
+        JSONObject notification = parseJSON(payload);
+        
+        // Simple notification indicator
+        digitalWrite(LED_PIN, HIGH);  // Turn on LED
+        delay(3000);
+        digitalWrite(LED_PIN, LOW);   // Turn off after 3s
+        
+        // OR: Show on screen
+        displayNotification(
+            notification["actor_handle"] + " reacted to your post",
+            notification["emoji"]
+        );
+    }
+}
+```
+
+**Architecture Diagram with Physical Players**:
+
+```
+User Action (Reaction/Comment)
+        ↓
+NotificationService.create_notification()
+        ↓
+    Save to DB
+        ↓
+    Update Redis Counter
+        ↓
+        ├─────────────────┬─────────────────┐
+        ↓                 ↓                 ↓
+  Redis Pub/Sub     MQTT Publish    (Future: FCM, Email)
+        ↓                 ↓
+  WebSocket Server  MQTT Broker
+        ↓                 ↓
+   Web Browsers    Physical Players
+```
+
+**Additional Considerations for Physical Players**:
+
+1. **Notification Preferences**:
+   - Let users disable notifications to physical players (conserve battery/display)
+   - Per-player settings: "Show notifications on p3a", "Show on web only"
+   
+2. **Rate Limiting**:
+   - Physical players have limited processing power
+   - Aggregate notifications before sending (max 1/minute to player)
+   
+3. **Offline Handling**:
+   - Physical players may be offline
+   - MQTT QoS 1 ensures delivery when player reconnects
+   - Consider max queue depth (discard old notifications if >10 pending)
+
+4. **Battery Considerations**:
+   - Frequent MQTT messages drain battery
+   - Implement "quiet hours" or batch notifications
+
+**Implementation in Phases**:
+
+Phase 1 (Web Only):
+- Implement WebSocket notifications as planned
+- No physical player integration
+
+Phase 2 (Add Physical Players):
+- Add MQTT publishing to NotificationService
+- Update player firmware to handle notification messages
+- Add user preferences for player notifications
+- Test with p3a devices
+
+**Conclusion**: Current architecture is **extensible to physical players with minimal effort** (1-2 days server-side). No refactoring needed. The dual-channel approach (WebSocket for web, MQTT for players) is optimal.
+
+**Final answer:** Do NOT implement notification support for physical players at this moment. It's too early for that. Right now, just document that this is a PLANNED future enhancement.
+
+---
+
+### Additional Considerations
+
+#### Q11: Should we implement email notifications as an optional fallback or supplement to in-app notifications?
+
+**Context**: Users who aren't actively browsing the site might miss important notifications. Email digests could improve engagement.
+
+**Suggested Answer**:
+
+**Email Notification Options**:
+
+1. **No Email** (Current Plan)
+   - *Pros*: Simple, no email infrastructure needed, no spam concerns
+   - *Cons*: Users miss notifications when not on site, lower re-engagement
+
+2. **Real-time Email** (Every notification)
+   - *Pros*: Immediate awareness, high engagement
+   - *Cons*: Extremely annoying, high unsubscribe rate, expensive (SendGrid charges per email)
+
+3. **Daily Digest Email**
+   - *Pros*: One email per day with summary, less annoying, effective re-engagement
+   - *Cons*: Delayed notifications, requires email queue management
+   
+4. **Weekly Digest Email**
+   - *Pros*: Minimal annoyance, very cheap
+   - *Cons*: Too slow for timely engagement
+
+**Recommendation**: **Start with no email (Phase 1)**, add **daily digest email in Phase 2** with these features:
+
+1. **User preferences**:
+   - Email notifications: On/Off (default Off)
+   - Frequency: Daily / Weekly / Never
+   - Minimum threshold: "Only if I have >5 unread notifications"
+
+2. **Email content**:
+   - Subject: "You have 12 new notifications on Makapix"
+   - Body: Top 5 notifications with thumbnails and links
+   - CTA: "View all notifications" button linking to /notifications page
+
+3. **Implementation**:
+   - Celery beat task runs daily at 8am user's timezone
+   - Query users with email_notifications=true AND unread_count>threshold
+   - Send digest via SendGrid (free tier: 100 emails/day sufficient for testing)
+   - Track open rate and unsubscribe rate
+
+4. **Cost**:
+   - SendGrid free tier: 100/day (sufficient for early stages)
+   - Paid tier at scale: $15/month for 50K emails (assumes 10K users, 50% opt-in, daily emails)
+
+**Phase 1**: Skip email entirely. Monitor user engagement without it.
+
+**Phase 2**: After 2-3 months, analyze data:
+- What % of users log in daily? (If >70%, email not needed)
+- What's average time to see notification? (If <24 hours, email not urgent)
+- Are users requesting email notifications? (Listen to feedback)
+
+Only implement email if data shows it would significantly improve engagement.
+
+**Final answer:** Do NOT implement ANY email notification system right now. Also REMOVE it from the documentation -- we will NOT implement e-mail notifications, this is a design decision.
+
+---
+
+#### Q12: How should we handle notification localization/internationalization for future multi-language support?
+
+**Context**: Makapix may expand to non-English speaking markets. Notifications contain user-facing text.
+
+**Suggested Answer**:
+
+**Current Plan**: English-only hardcoded strings
+
+**Future i18n Considerations**:
+
+1. **Notification text generation**:
+   - Current: `"{actor_handle} reacted {emoji} to your artwork"`
+   - i18n approach: Template with variables
+   ```python
+   notification_template = {
+       "en": "{actor} reacted {emoji} to your {content_type}",
+       "es": "{actor} reaccionó {emoji} a tu {content_type}",
+       "pt": "{actor} reagiu {emoji} ao seu {content_type}",
+   }
+   ```
+
+2. **Storage strategy**:
+   
+   **Option A: Store template key + parameters** (Recommended)
+   ```json
+   {
+       "template": "notification.reaction.post",
+       "params": {
+           "actor": "john",
+           "emoji": "❤️",
+           "content_type": "artwork"
+       }
+   }
+   ```
+   - Render in user's preferred language at display time
+   - Can change wording without database migration
+   - Minimal storage overhead
+   
+   **Option B: Store pre-rendered text per language**
+   ```json
+   {
+       "text_en": "john reacted ❤️ to your artwork",
+       "text_es": "john reaccionó ❤️ a tu obra",
+       "text_pt": "john reagiu ❤️ à sua obra"
+   }
+   ```
+   - Faster display (no rendering)
+   - Much larger database
+   - Can't fix typos retroactively
+
+3. **Database schema changes**:
+   ```sql
+   -- Option A approach
+   ALTER TABLE notifications ADD COLUMN template_key VARCHAR(100);
+   ALTER TABLE notifications ADD COLUMN template_params JSONB;
+   
+   -- Store rendered text as fallback only
+   ALTER TABLE notifications ADD COLUMN text_rendered TEXT;
+   ```
+
+**Recommendation**: **Implement i18n-ready architecture in Phase 1** even if only supporting English:
+
+1. **Use template approach** from day one:
+   ```python
+   # notification_templates.py
+   TEMPLATES = {
+       "reaction.post": {
+           "en": "{actor} reacted {emoji} to your artwork"
+       },
+       "comment.post": {
+           "en": "{actor} commented on your artwork"
+       }
+   }
+   
+   # Store in database
+   notification.template_key = "reaction.post"
+   notification.template_params = {"actor": actor_handle, "emoji": emoji}
+   ```
+
+2. **Render at display time**:
+   ```python
+   def render_notification(notification, user_language="en"):
+       template = TEMPLATES[notification.template_key][user_language]
+       return template.format(**notification.template_params)
+   ```
+
+3. **Cost of i18n-ready**:
+   - Additional development time: 2-3 hours (minimal)
+   - Storage overhead: ~100 bytes per notification (minimal)
+   - Complexity: Low (template system is simple)
+
+4. **Benefits**:
+   - Easy to add languages later (just add template translations)
+   - Can A/B test notification wording
+   - Can fix typos/improve copy without database migration
+   - Professional architecture from the start
+
+**Phase 1**: Implement template system with English only
+
+**Phase 2**: Add Spanish and Portuguese translations (largest Makapix markets after English)
+
+**Future**: Community-contributed translations via Crowdin or similar
+
+**Final answer:** Do NOT implement translations at this moment. It's too early. Just document this as a PLANNED future enhancement.
+
+---
+
+#### Q13: Should we implement notification preferences per notification type, or is a global on/off sufficient?
+
+**Context**: Users may want some notifications (comments) but not others (reactions). Granular control improves UX but adds complexity.
+
+**Suggested Answer**:
+
+**Preference Granularity Options**:
+
+1. **Global On/Off Only**:
+   - Single toggle: "Enable notifications"
+   - Simplest UX, minimal code
+   - All-or-nothing (annoying for users)
+
+2. **Per-Type Preferences** (Current Plan):
+   ```python
+   notify_on_post_reactions: bool
+   notify_on_post_comments: bool
+   notify_on_blog_reactions: bool
+   notify_on_blog_comments: bool
+   ```
+   - Moderate complexity
+   - Users control what they care about
+   - 4 toggles (manageable)
+
+3. **Per-Type + Per-Content Preferences**:
+   - "Notify me about reactions on this specific post"
+   - Very complex
+   - Useful for creators who want to track specific content
+
+4. **Advanced Filtering**:
+   - "Only notify if reaction is ❤️ or 🔥"
+   - "Only notify if commenter is someone I follow"
+   - Very powerful but complex
+
+**Recommendation**: **Implement per-type preferences (current plan) in Phase 1**, with these additions:
+
+1. **Default Preferences** (for new users):
+   ```python
+   notify_on_post_reactions = True
+   notify_on_post_comments = True
+   notify_on_blog_reactions = True
+   notify_on_blog_comments = True
+   aggregate_same_type = True  # When implemented
+   ```
+
+2. **UI for Preferences**:
+   - Settings page: `/settings/notifications`
+   - 4 clear toggles with descriptions
+   - Preview: "You'll receive notifications when..."
+
+**Testing Preferences**:
+- Ensure preferences are checked before creating notification
+- Cache preferences in Redis for performance
+- Invalidate cache when user updates preferences
+
+**Migration Path**:
+- When user first signs up: Insert default preferences row
+- For existing users: Backfill preferences on first notification (lazy migration)
+
+**Final answer:** Do implement per-type notification toggles.
+
+---
+
+#### Q14: How do we ensure notification delivery consistency in a multi-instance API server environment (future scaling)?
+
+**Context**: At 100K MAU, we'll need multiple API server instances. Current Redis Pub/Sub approach may have issues.
+
+**Suggested Answer**:
+
+**Current Single-Instance Architecture**:
+- One API server, one WebSocket manager, one Redis Pub/Sub listener
+- Notification created → Redis publish → WebSocket manager receives → Broadcasts to clients
+- Works perfectly at 10K MAU
+
+**Multi-Instance Challenges**:
+
+1. **Problem**: User connected to Server A, notification created on Server B
+   - Server B publishes to Redis Pub/Sub
+   - Both Server A and Server B receive message
+   - **Only Server A has the user's WebSocket connection**
+   - **Server B can't deliver** (no connection)
+
+2. **Solution Options**:
+
+**Option A: Sticky Sessions** (Recommended for Phase 2)
+- Load balancer assigns user to same server instance
+- User always connects to Server A
+- All their notifications route to Server A
+- Implementation: HAProxy/nginx hash based on user_id
+- Limitation: If Server A crashes, user's connections lost
+
+**Option B: Broadcast to All Instances**
+- Redis Pub/Sub broadcasts to all instances (already happens)
+- Each instance checks if it has user's WebSocket
+- Only instance with connection delivers message
+- Current architecture already supports this!
+- No code changes needed
+
+**Option C: Redis Cluster with Sharding**
+- Shard WebSocket connections by user_id
+- Pub/Sub messages routed only to correct shard
+- Complex setup, probably overkill
+
+**Recommendation**: **Current architecture already supports multi-instance with no changes needed!**
+
+Here's why:
+```python
+# In ConnectionManager._redis_listener()
+async def _redis_listener(self):
+    pubsub.psubscribe("notifications:user:*")
+    
+    while running:
+        message = pubsub.get_message()
+        user_id = extract_user_id(message)
+        
+        # This check handles multi-instance naturally
+        if user_id in self.active_connections:
+            await self.send_personal_message(message, user_id)
+        # else: This instance doesn't have user's connection, ignore
+```
+
+**Multi-Instance Behavior**:
+1. Notification created on Server B
+2. Server B publishes to Redis: `notifications:user:123`
+3. ALL instances receive message (Server A, B, C)
+4. Server A has user 123's connection → delivers message
+5. Server B, C don't have connection → silently ignore
+
+**Result**: No lost messages, no duplicate delivery, no code changes needed!
+
+**Only Concern**: Redis Pub/Sub scalability
+- Pattern subscription (`notifications:user:*`) on all instances
+- Each instance receives ALL messages (even for users not connected to it)
+- At 10K concurrent users, 100 notifications/sec, 10 instances:
+  - Each instance receives 100 msg/sec
+  - Processes ~10 (its own users)
+  - Ignores ~90 (other instances' users)
+  - Still very efficient (Redis handles 100K+ msg/sec easily)
+
+**Future Optimization** (only if Redis becomes bottleneck at 100K+ MAU):
+- Implement sticky sessions to reduce unnecessary message broadcasting
+- OR: Migrate to RabbitMQ with topic exchanges (more efficient routing)
+
+**Recommendation**: No changes needed for multi-instance support. Current architecture handles it correctly. Monitor Redis CPU and network at scale, optimize only if bottleneck appears.
+
+**Final answer:** See the Recommendation. No changes are needed here.
+
+---
+
+#### Q15: What security considerations should we address for the notification system?
+
+**Context**: Notifications could be exploited for harassment, information disclosure, or DoS attacks.
+
+**Suggested Answer**:
+
+**Security Threats**:
+
+1. **Notification Spam**:
+   - Attacker creates 1000 accounts, spams reactions on victim's post
+   - Victim receives 1000 notifications
+   - *Mitigation*: Covered in Q7 (rate limiting)
+
+2. **Information Disclosure**:
+   - Notifications reveal that content exists before deletion
+   - *Example*: User posts then deletes immediately, but notifications already sent
+   - *Mitigation*: Acceptable tradeoff (content was public briefly)
+
+3. **Enumeration Attack**:
+   - Attacker tries to discover private content by triggering notifications
+   - *Example*: Try to react to post IDs 1-10000, see which ones generate notifications
+   - *Mitigation*: Already handled by existing post access controls
+
+4. **WebSocket Hijacking**:
+   - Attacker steals JWT token, connects to victim's notification WebSocket
+   - Receives victim's notifications in real-time
+   - *Mitigation*: 
+     - Short-lived JWT tokens (60 min expiry)
+     - HttpOnly cookies for token storage
+     - Token refresh mechanism
+
+5. **XSS via Notification Content**:
+   - Attacker posts comment: `<script>alert('xss')</script>`
+   - Notification shows comment preview with script
+   - Script executes in victim's browser
+   - *Mitigation*:
+     - Sanitize all user-generated content before storing
+     - Escape HTML when rendering notifications
+     - Use React (already does escaping by default)
+
+6. **DoS via WebSocket Connections**:
+   - Attacker opens 10000 WebSocket connections
+   - Exhausts server resources
+   - *Mitigation*: Covered in Q9 (connection limits, rate limiting)
+
+7. **Redis Command Injection**:
+   - Attacker manipulates user_id to inject Redis commands
+   - *Example*: user_id = "123; FLUSHALL"
+   - *Mitigation*: Use parameterized Redis operations (already in plan)
+
+**Security Checklist for Implementation**:
+
+- [ ] **Input Validation**:
+  - Validate all user_id, content_id parameters (must be integers)
+  - Validate emoji (max 20 chars, UTF-8)
+  - Validate comment_preview (max 100 chars, sanitized HTML)
+
+- [ ] **Authentication**:
+  - Verify JWT token on WebSocket connection
+  - Reject expired or invalid tokens
+  - Use secure token storage (HttpOnly cookies)
+
+- [ ] **Authorization**:
+  - User can only access their own notifications (check user_id)
+  - User can only mark their own notifications as read
+  - User cannot create notifications for others (server-side only)
+
+- [ ] **Rate Limiting** (implement in Phase 1):
+  ```python
+  # In notification creation
+  rate_limit_key = f"notif_rate:{actor_id}:{recipient_id}"
+  if redis.incr(rate_limit_key) > 50:  # Max 50/hour per pair
+      logger.warning(f"Rate limit exceeded for notifications")
+      return None
+  redis.expire(rate_limit_key, 3600)
+  ```
+
+- [ ] **XSS Prevention**:
+  - Sanitize comment_body before storing preview:
+  ```python
+  import bleach
+  comment_preview = bleach.clean(comment_body[:100], strip=True)
+  ```
+  - Frontend uses React (auto-escapes)
+
+- [ ] **SQL Injection Prevention**:
+  - Use SQLAlchemy parameterized queries (already in plan)
+  - Never concatenate user input into SQL
+
+- [ ] **Privacy**:
+  - Don't leak notification content to unauthorized users
+  - Don't reveal whether user has notifications (unless authenticated)
+  - Respect user blocks (covered in Q6)
+
+**Security Testing**:
+
+1. **Penetration Testing**:
+   - Test with OWASP ZAP or Burp Suite
+   - Try common attacks: XSS, SQL injection, CSRF
+
+2. **Load Testing for DoS**:
+   - Test rate limiting with locust
+   - Verify server doesn't crash under load
+
+3. **Code Review**:
+   - Review all database queries for SQL injection
+   - Review all user input handling for XSS
+
+**Recommendation**: Implement security measures in Phase 1. Don't defer to "later". Security is foundational.
 
 ---
 
