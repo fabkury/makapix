@@ -612,6 +612,29 @@ def send_player_command(
             "canvas": post.canvas,
         }
     
+    elif payload.command_type == "play_channel":
+        # Validate channel parameters
+        if not any([payload.channel_name, payload.hashtag, payload.user_sqid]):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="play_channel requires one of: channel_name, hashtag, or user_sqid",
+            )
+        
+        # Build channel payload
+        if payload.channel_name:
+            command_payload = {"channel_name": payload.channel_name}
+        elif payload.hashtag:
+            command_payload = {"hashtag": payload.hashtag}
+        elif payload.user_sqid:
+            # Validate that the user exists
+            target_user = get_user_by_sqid(payload.user_sqid, db)
+            if not target_user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found",
+                )
+            command_payload = {"user_sqid": payload.user_sqid}
+    
     # Publish command via MQTT
     command_id = publish_player_command(
         player_key=player.player_key,
@@ -692,6 +715,29 @@ def send_command_to_all_players(
             "art_url": post.art_url,
             "canvas": post.canvas,
         }
+    
+    elif payload.command_type == "play_channel":
+        # Validate channel parameters
+        if not any([payload.channel_name, payload.hashtag, payload.user_sqid]):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="play_channel requires one of: channel_name, hashtag, or user_sqid",
+            )
+        
+        # Build channel payload
+        if payload.channel_name:
+            command_payload = {"channel_name": payload.channel_name}
+        elif payload.hashtag:
+            command_payload = {"hashtag": payload.hashtag}
+        elif payload.user_sqid:
+            # Validate that the user exists
+            target_user = get_user_by_sqid(payload.user_sqid, db)
+            if not target_user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found",
+                )
+            command_payload = {"user_sqid": payload.user_sqid}
     
     # Send to all players
     commands = []

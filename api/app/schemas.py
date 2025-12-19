@@ -742,8 +742,12 @@ class PlayerUpdateRequest(BaseModel):
 class PlayerCommandRequest(BaseModel):
     """Player command request."""
 
-    command_type: Literal["swap_next", "swap_back", "show_artwork"]
+    command_type: Literal["swap_next", "swap_back", "show_artwork", "play_channel"]
     post_id: int | None = None  # Required for show_artwork
+    # Channel identification (for play_channel)
+    channel_name: str | None = None  # 'promoted' or 'all'
+    hashtag: str | None = None  # hashtag without #
+    user_sqid: str | None = None  # user's sqid for profile channels
 
 
 class PlayerCommandResponse(BaseModel):

@@ -5,6 +5,7 @@ import Layout from '../components/Layout';
 import CardGrid from '../components/CardGrid';
 import PlayerBar from '../components/PlayerBarDynamic';
 import { authenticatedFetch, clearTokens } from '../lib/api';
+import { usePlayerBarOptional } from '../contexts/PlayerBarContext';
 
 interface PostOwner {
   id: string;
@@ -37,6 +38,7 @@ interface PageResponse<T> {
 
 export default function HomePage() {
   const router = useRouter();
+  const playerBarContext = usePlayerBarOptional();
   const [posts, setPosts] = useState<Post[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,6 +66,26 @@ export default function HomePage() {
       setIsAuthenticated(true);
     }
   }, [router]);
+
+  // Set current channel for PlayerBar
+  useEffect(() => {
+    if (playerBarContext) {
+      playerBarContext.setCurrentChannel({
+        displayName: 'Recent',
+        channelName: 'all',
+      });
+    }
+    // Clear channel on unmount
+    return () => {
+      if (playerBarContext) {
+        playerBarContext.setCurrentChannel(null);
+      }
+    };
+    // Note: We intentionally use an empty dependency array here.
+    // The context's setCurrentChannel is stable (from useState), and we only
+    // want to set/clear the channel on mount/unmount, not on every context update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loadPosts = useCallback(async (cursor: string | null = null) => {
     if (loadingRef.current || (cursor !== null && !hasMoreRef.current)) {

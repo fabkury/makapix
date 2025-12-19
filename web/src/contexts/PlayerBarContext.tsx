@@ -8,12 +8,21 @@ export interface SelectedArtwork {
   art_url: string;
 }
 
+export interface ChannelInfo {
+  displayName: string;
+  channelName?: string;  // 'promoted' or 'all'
+  hashtag?: string;      // hashtag without #
+  userSqid?: string;     // user's sqid
+}
+
 interface PlayerBarContextValue {
   players: Player[];
   onlinePlayers: Player[];
   hasOnlinePlayer: boolean;
   selectedArtwork: SelectedArtwork | null;
   setSelectedArtwork: (artwork: SelectedArtwork | null) => void;
+  currentChannel: ChannelInfo | null;
+  setCurrentChannel: (channel: ChannelInfo | null) => void;
   isLoading: boolean;
   refreshPlayers: () => Promise<void>;
 }
@@ -28,6 +37,7 @@ export function PlayerBarProvider({ children }: PlayerBarProviderProps) {
   const [players, setPlayers] = useState<Player[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedArtwork, setSelectedArtwork] = useState<SelectedArtwork | null>(null);
+  const [currentChannel, setCurrentChannel] = useState<ChannelInfo | null>(null);
   const [userSqid, setUserSqid] = useState<string | null>(null);
 
   // Fetch user info and then players
@@ -100,6 +110,8 @@ export function PlayerBarProvider({ children }: PlayerBarProviderProps) {
     hasOnlinePlayer,
     selectedArtwork,
     setSelectedArtwork,
+    currentChannel,
+    setCurrentChannel,
     isLoading,
     refreshPlayers,
   };

@@ -3,7 +3,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
 import CardGrid from '../../components/CardGrid';
+import PlayerBar from '../../components/PlayerBarDynamic';
 import { authenticatedFetch, clearTokens } from '../../lib/api';
+import { usePlayerBarOptional } from '../../contexts/PlayerBarContext';
 
 interface PostOwner {
   id: string;
@@ -35,6 +37,7 @@ interface PageResponse<T> {
 export default function HashtagPage() {
   const router = useRouter();
   const { tag } = router.query;
+  const playerBarContext = usePlayerBarOptional();
   
   const [posts, setPosts] = useState<Post[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -58,6 +61,22 @@ export default function HashtagPage() {
       router.push('/auth');
     }
   }, [router]);
+
+  // Set current channel for PlayerBar
+  useEffect(() => {
+    if (playerBarContext && tag && typeof tag === 'string') {
+      playerBarContext.setCurrentChannel({
+        displayName: `#${tag}`,
+        hashtag: tag,
+      });
+    }
+    // Clear channel on unmount
+    return () => {
+      if (playerBarContext) {
+        playerBarContext.setCurrentChannel(null);
+      }
+    };
+  }, [playerBarContext, tag]);
 
   const loadPosts = useCallback(async (hashtag: string, cursor: string | null = null) => {
     if (loadingRef.current || (!hasMoreRef.current && cursor !== null) || !hashtag) return;
@@ -200,6 +219,8 @@ export default function HashtagPage() {
           </div>
         )}
       </div>
+
+      <PlayerBar />
 
       <style jsx>{`
         .feed-container {

@@ -440,8 +440,12 @@ export interface PlayerRegisterRequest {
 }
 
 export interface PlayerCommandRequest {
-  command_type: "swap_next" | "swap_back" | "show_artwork";
+  command_type: "swap_next" | "swap_back" | "show_artwork" | "play_channel";
   post_id?: number;
+  // Channel identification (for play_channel)
+  channel_name?: string;  // 'promoted' or 'all'
+  hashtag?: string;       // hashtag without #
+  user_sqid?: string;     // user's sqid for profile channels
 }
 
 export interface PlayerCommandResponse {

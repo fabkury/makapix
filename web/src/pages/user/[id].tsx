@@ -5,6 +5,7 @@ import Layout from '../../components/Layout';
 import CardGrid from '../../components/CardGrid';
 import PlayerBar from '../../components/PlayerBarDynamic';
 import { authenticatedFetch, authenticatedRequestJson, authenticatedPostJson, clearTokens, logout } from '../../lib/api';
+import { usePlayerBarOptional } from '../../contexts/PlayerBarContext';
 
 interface User {
   id: number;
@@ -50,6 +51,7 @@ interface PageResponse<T> {
 export default function UserProfilePage() {
   const router = useRouter();
   const { id } = router.query;
+  const playerBarContext = usePlayerBarOptional();
   
   const [user, setUser] = useState<User | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -157,6 +159,22 @@ export default function UserProfilePage() {
 
     fetchUser();
   }, [id, API_BASE_URL]);
+
+  // Set current channel for PlayerBar (for users without public_sqid)
+  useEffect(() => {
+    if (playerBarContext && user && user.public_sqid) {
+      playerBarContext.setCurrentChannel({
+        displayName: user.handle,
+        userSqid: user.public_sqid,
+      });
+    }
+    // Clear channel on unmount
+    return () => {
+      if (playerBarContext) {
+        playerBarContext.setCurrentChannel(null);
+      }
+    };
+  }, [playerBarContext, user]);
 
   // Load user's posts
   const loadPosts = useCallback(async (cursor: string | null = null) => {
