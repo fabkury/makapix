@@ -137,16 +137,18 @@ export default function WelcomePage() {
             />
           </div>
 
-          <h1 className="headline">Let&apos;s meet at the pixel.</h1>
+          <h1 className="headline">A place to publish pixel art and document maker projects.</h1>
 
           <div className="copy">
-            <p>From 1-bpp to 24-bpp, Makapix Club convenes:</p>
+            <p>Makapix Club is a lightweight, open-source social network for people who create things.</p>
+            <p>Free, ad-free, and built to last.</p>
+            <p className="who-for"><strong>For:</strong></p>
             <ul>
-              <li>DIY makers</li>
               <li>Pixel artists</li>
-              <li>Art lovers</li>
+              <li>DIY makers and embedded projects</li>
+              <li>Anyone who values craft over algorithms</li>
             </ul>
-            <p className="closing">Come in, we are open!</p>
+            <p className="closing">Your work stays yours. The platform stays open.</p>
             <p className="recommended-link">
               <Link href="/recommended">See our Recommended artworks without logging in →</Link>
             </p>
@@ -257,8 +259,17 @@ export default function WelcomePage() {
           z-index: 2;
         }
 
+        .copy p {
+          margin: 10px 0;
+        }
+
+        .who-for {
+          margin-top: 16px;
+          margin-bottom: 6px;
+        }
+
         .copy ul {
-          margin: 10px 0 14px;
+          margin: 6px 0 14px;
           padding-left: 56px;
         }
 
@@ -267,7 +278,7 @@ export default function WelcomePage() {
         }
 
         .closing {
-          margin-top: 12px;
+          margin-top: 16px;
           color: var(--text-primary);
         }
 
