@@ -185,20 +185,20 @@ export default function PlayerBar() {
         }
 
         .send-to-player-btn:hover:not(:disabled) {
-          transform: scale(1.08);
+          transform: scale(1.04);
         }
 
         .send-to-player-btn:active:not(:disabled) {
-          transform: scale(0.95);
+          transform: scale(0.97);
         }
 
         .send-to-player-btn:disabled {
           opacity: 0.5;
-          cursor: not-allowed;
+          cursor: pointer;
         }
 
         .send-to-player-btn.pulse {
-          animation: pulse 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+          animation: pulse 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
         @keyframes pulse {
@@ -206,7 +206,7 @@ export default function PlayerBar() {
             transform: scale(1);
           }
           50% {
-            transform: scale(1.3);
+            transform: scale(1.12);
           }
           100% {
             transform: scale(1);

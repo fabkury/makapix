@@ -116,9 +116,13 @@ async function setThumbsUp(postId: number, shouldLike: boolean): Promise<void> {
 }
 
 // Inline styles to ensure they work inside the portal
+// NOTE: overlayStyles is used as a base; bottom is dynamically adjusted to exclude PlayerBar
 const overlayStyles: React.CSSProperties = {
   position: 'fixed',
-  inset: 0,
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0, // Dynamically adjusted in JSX when PlayerBar is present
   // Must sit above the site top-header and any other fixed UI.
   zIndex: 20000,
   pointerEvents: 'auto',
@@ -761,7 +765,7 @@ export default function SelectedArtworkOverlay({
       : null;
 
   return createPortal(
-    <div style={overlayStyles} role="dialog" aria-modal="true">
+    <div style={{ ...overlayStyles, bottom: hasPlayerBar ? PLAYER_BAR_HEIGHT : 0 }} role="dialog" aria-modal="true">
       <motion.div
         style={{
           ...backdropStyles,

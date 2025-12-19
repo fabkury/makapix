@@ -78,7 +78,11 @@ export default function CardGrid({ posts, API_BASE_URL: _API_BASE_URL, source, c
     } else {
       playerBarContext.setSelectedArtwork(null);
     }
-  }, [selectedIndex, posts, playerBarContext]);
+    // Note: We intentionally exclude playerBarContext from dependencies.
+    // setSelectedArtwork is stable (from useState), and including the entire
+    // context object would cause infinite re-renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIndex, posts]);
 
   // Choose one "super post" per component mount (surrogate for backend flag).
   useEffect(() => {
