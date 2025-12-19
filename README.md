@@ -1,189 +1,65 @@
-# Makapix Club - Pixel Art Social Network
+# Makapix Club
 
-**A lightweight social network for makers and pixel artists**, designed to run efficiently and affordably on a single VPS.
+A quiet corner of the internet for pixel artists and makers who care more about the work than the algorithm.
 
-Makapix Club is a community platform where pixel artists can share their creations, engage with other makers through reactions and comments, and showcase their work both on the web and through physical player devices that display artwork in real spaces.
-
-## ✨ What Makes Makapix Special
-
-- **🎨 Pixel Art First**: Focused exclusively on pixel art with validation for proper formats and dimensions
-- **💰 Cost-Effective**: Runs on a ~$7-$18/month VPS with minimal infrastructure complexity
-- **📱 Web + Physical**: View artwork on the website or display it on physical player devices
-- **⚡ Real-Time**: MQTT-based notifications keep devices and browsers instantly updated
-- **🔒 Self-Hosted**: Images stored in a local vault on the VPS, served directly (no third-party hosting)
-- **👥 Social Features**: Reactions (up to 5 emojis per post), threaded comments, playlists, and user reputation
-- **🛡️ Moderation**: Built-in tools for content moderation, user reputation, and community safety
-
-## 🏗️ Technical Architecture
-
-**Tech Stack:**
-- **Frontend**: Next.js 14 with TypeScript and React 18
-- **Backend**: FastAPI (Python 3.12+) with SQLAlchemy ORM
-- **Database**: PostgreSQL 16 for structured data
-- **Cache/Queue**: Redis for sessions, rate limiting, and background tasks
-- **Messaging**: Eclipse Mosquitto for real-time MQTT notifications
-- **Proxy**: Caddy for TLS termination and reverse proxy
-- **Storage**: Local vault (hash-based folder structure) mounted on VPS
-
-**Deployment**: All services containerized with Docker Compose, designed to run on a single VPS (2 vCPU, 2-4 GB RAM) supporting up to 10,000 monthly active users.
-
-## 📁 Repository Structure
-
-This is a **monorepo** containing all project components:
-
-```
-makapix/
-├── apps/cta/              # Marketing website (live at makapix.club)
-├── web/                   # Next.js frontend application
-├── api/                   # FastAPI backend with Alembic migrations
-├── worker/                # Celery background worker
-├── db/                    # Database initialization scripts
-├── mqtt/                  # MQTT broker configuration
-├── proxy/                 # Caddy reverse proxy configuration
-├── deploy/stack/          # VPS deployment orchestration
-├── docs/                  # Technical documentation
-└── docker-compose.yml     # Local development stack
-```
-
-## 🚀 Quick Start
-
-### Local Development
-
-```bash
-# Clone the repository
-git clone https://github.com/fabkury/makapix.git
-cd makapix
-
-# Set up local environment
-make local
-
-# Start all services
-make up
-
-# Access the application
-# - Web UI: http://localhost:3000
-# - API docs: http://localhost:8000/docs
-# - API endpoints: http://localhost:8000/api/
-
-# View logs
-make logs
-
-# Stop services
-make down
-```
-
-### For Developers
-
-- **[Development Guide](docs/DEVELOPMENT.md)** - Complete local setup, workflows, and testing
-- **[Architecture Documentation](docs/ARCHITECTURE.md)** - System design, components, and data flows
-- **[API Documentation](http://localhost:8000/docs)** - Interactive API reference (when running locally)
-- **[Naming Conventions](docs/NAMING_CONVENTIONS.md)** - Clear definitions for CTA vs web preview, compose files, and service names
-
-### For Deployers
-
-- **[Deployment Guide](docs/DEPLOYMENT.md)** - VPS setup and production deployment
-- **[Physical Player Integration](docs/PHYSICAL_PLAYER.md)** - Guide for integrating display devices
-
-## 📚 Documentation
-
-- **[Full Project Specification](makapix_full_project_spec.md)** - Comprehensive feature and technical spec
-- **[Architecture Overview](docs/ARCHITECTURE.md)** - System design and component details
-- **[Development Guide](docs/DEVELOPMENT.md)** - Developer workflows and best practices
-- **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment instructions
-- **[Physical Player Guide](docs/PHYSICAL_PLAYER.md)** - Hardware integration documentation
-- **[Roadmap](docs/ROADMAP.md)** - Project milestones and planned features
-
-## 🔑 Key Features
-
-### For Artists
-
-- **Upload and Share**: Post pixel art with titles, descriptions, and hashtags
-- **Organize**: Create playlists to curate collections of artwork
-- **Engage**: Receive reactions and comments from the community
-- **Reputation**: Earn reputation points through community participation
-- **Badges**: Display achievement badges on your profile
-
-### For Viewers
-
-- **Discover**: Browse promoted artworks, recent posts, and search by hashtags
-- **Interact**: React with up to 5 emojis per post, leave threaded comments
-- **Follow**: Create playlists of your favorite artworks
-- **Real-Time**: Get instant updates via MQTT when new artwork is posted
-
-### For Physical Players
-
-- **MQTT Integration**: Devices receive real-time notifications of new artwork
-- **Vault Access**: Direct download of artwork images from the VPS vault
-- **Remote Control**: Owners can control what displays on their devices
-- **Status Reporting**: Devices report online/offline status and current artwork
-
-## 💾 Image Storage
-
-Makapix uses a **local vault** storage system:
-
-- Images are stored directly on the VPS in a hash-based folder structure
-- Files are organized using the first 6 characters of the artwork ID's hash (e.g., `/vault/a1/b2/c3/artwork-id.png`)
-- The vault is mounted as a Docker volume and served directly by the API
-- Maximum file size: 5 MB per image
-- Supported formats: PNG, GIF, WebP
-- Canvas dimensions: Configurable, validated on upload
-
-This approach eliminates third-party hosting costs while keeping the system simple and performant.
-
-## 🛠️ Development Commands
-
-```bash
-# Environment management
-make local          # Switch to local development config
-make remote         # Switch to remote development config
-make status         # Show current environment
-
-# Service control
-make up             # Start all services
-make down           # Stop all services
-make restart        # Restart services
-make rebuild        # Rebuild containers and restart
-
-# Logs
-make logs           # View all service logs
-make logs-api       # View API logs only
-make logs-web       # View web logs only
-
-# Database
-make db.reset       # Reset database with seed data
-make db.shell       # Open PostgreSQL shell
-
-# Code quality
-make fmt            # Format code (API)
-make api.test       # Run API tests
-```
-
-## 📊 Current Status
-
-- **CTA Site**: ✅ Live at https://makapix.club (marketing/landing page)
-- **Web (Live Preview)**: 🚧 Testing at https://dev.makapix.club (full application)
-- **Production**: 🔜 Full application launch planned
-
-## 🤝 Contributing
-
-Contributions are welcome! Please ensure your changes:
-
-1. Follow existing code style and conventions
-2. Include tests for new functionality
-3. Update documentation as needed
-4. Pass all linting and tests (`make fmt`, `make api.test`)
-
-## 📄 License
-
-[License information to be added]
-
-## 🔗 Links
-
-- **Website**: https://makapix.club
-- **Web (Live Preview)**: https://dev.makapix.club
-- **Repository**: https://github.com/fabkury/makapix
+**Open-source. Ad-free. No algorithms deciding what you see.**
 
 ---
 
-Built with ❤️ for pixel artists and makers everywhere.
+## Why Makapix Exists
+
+Most social platforms are built to keep you scrolling. They optimize for engagement, sell your attention to advertisers, and bury your work under algorithmic noise. Your creations become content to be consumed and forgotten.
+
+Makapix was built for the opposite reason.
+
+This is a place where your work stays yours. No ads. No promoted posts. No subscription tiers. No mystery algorithm deciding who sees what. Just a straightforward space to document your projects and share them with people who actually want to see them.
+
+The goal is permanence, not virality. Your pixel art and maker projects deserve a home that respects them.
+
+---
+
+## What You Can Do on Makapix
+
+- **Publish your pixel art** with titles, descriptions, and hashtags
+- **Document your maker projects** from microcontroller builds to embedded experiments
+- **Create playlists and galleries** to organize your work the way you want
+- **Display your art on physical devices** through MQTT integration with LED matrices and displays
+- **Build a portfolio** that belongs to you, not to an algorithm
+
+This is a place for showing, not scrolling.
+
+---
+
+## Who Makapix Is For
+
+- Pixel artists who want their work seen on its own terms
+- DIY makers and embedded systems hobbyists
+- People building with microcontrollers, LED matrices, and small displays
+- Creators who value craft over clout
+- Anyone tired of platforms that treat art as engagement bait
+
+If you are looking for viral reach or influencer tools, this is not the place.
+If you want a calm, intentional space to share what you make, you are welcome here.
+
+---
+
+## Open Source and Community Values
+
+Makapix is fully open-source. The code is available, the roadmap is public, and contributions are welcome.
+
+- **Self-host if you want** - run your own instance for your community
+- **Contribute** - improvements, bug fixes, and ideas are all appreciated
+- **Stay informed** - no hidden changes or surprise monetization
+
+This project is built to last. Sustainability comes from simplicity and community support, not from growth metrics or venture capital.
+
+---
+
+## Get Started
+
+Take a look around. Create an account if it feels right.
+
+There is no urgency. The work will still be here tomorrow.
+
+[Explore Makapix](https://makapix.club)
 
