@@ -337,28 +337,55 @@ def _handle_query_posts(
             # Only query player owner's posts
             query = query.filter(models.Post.owner_id == player.owner_id)
         elif request.channel == "by_user":
-            # Query arbitrary user's posts by handle
-            if not request.user_handle:
+            # Query arbitrary user's posts by handle or sqid
+            target_user = None
+            if request.user_handle:
+                target_user = db.query(models.User).filter(models.User.handle == request.user_handle).first()
+            elif request.user_sqid:
+                target_user = db.query(models.User).filter(models.User.public_sqid == request.user_sqid).first()
+            else:
                 _send_error_response(
                     player.player_key,
                     request.request_id,
-                    "user_handle is required when channel='by_user'",
-                    "missing_user_handle",
+                    "user_handle or user_sqid is required when channel='by_user'",
+                    "missing_user_identifier",
                 )
                 return
             
-            # Look up user by handle
-            target_user = db.query(models.User).filter(models.User.handle == request.user_handle).first()
             if not target_user:
+                identifier = request.user_handle or request.user_sqid
                 _send_error_response(
                     player.player_key,
                     request.request_id,
-                    f"User '{request.user_handle}' not found",
+                    f"User '{identifier}' not found",
                     "user_not_found",
                 )
                 return
             
             query = query.filter(models.Post.owner_id == target_user.id)
+        elif request.channel == "hashtag":
+            # Query posts by hashtag
+            if not request.hashtag:
+                _send_error_response(
+                    player.player_key,
+                    request.request_id,
+                    "hashtag is required when channel='hashtag'",
+                    "missing_hashtag",
+                )
+                return
+            
+            # Normalize hashtag (lowercase, strip) to match how they're stored
+            hashtag_normalized = request.hashtag.strip().lower()
+            if not hashtag_normalized:
+                _send_error_response(
+                    player.player_key,
+                    request.request_id,
+                    "hashtag cannot be empty",
+                    "invalid_hashtag",
+                )
+                return
+            
+            query = query.filter(models.Post.hashtags.contains([hashtag_normalized]))
         elif request.channel == "artwork":
             # Protocol compatibility: do not exclude playlists (per server policy).
             pass

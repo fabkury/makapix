@@ -181,7 +181,11 @@ export default function UserProfilePage() {
         playerBarContext.setCurrentChannel(null);
       }
     };
-  }, [playerBarContext, user, sqid]);
+    // Note: We intentionally exclude playerBarContext from dependencies.
+    // The context's setCurrentChannel is stable (from useState), and including
+    // the entire context object would cause infinite re-renders that block navigation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, sqid]);
 
   // Load user's posts
   const loadPosts = useCallback(async (cursor: string | null = null) => {

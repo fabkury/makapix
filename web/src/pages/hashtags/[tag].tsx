@@ -76,7 +76,11 @@ export default function HashtagPage() {
         playerBarContext.setCurrentChannel(null);
       }
     };
-  }, [playerBarContext, tag]);
+    // Note: We intentionally exclude playerBarContext from dependencies.
+    // The context's setCurrentChannel is stable (from useState), and including
+    // the entire context object would cause infinite re-renders that block navigation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tag]);
 
   const loadPosts = useCallback(async (hashtag: string, cursor: string | null = null) => {
     if (loadingRef.current || (!hasMoreRef.current && cursor !== null) || !hashtag) return;

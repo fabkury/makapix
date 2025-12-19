@@ -327,7 +327,7 @@ class TestQueryPosts:
         
         # Error response should be sent
         assert mock_error.called
-        assert "user_handle is required" in mock_error.call_args[0][2]
+        assert "user_handle or user_sqid is required" in mock_error.call_args[0][2]
 
     @patch("app.mqtt.player_requests._send_error_response")
     def test_query_by_user_handle_not_found(
