@@ -30,6 +30,9 @@ export default function PlayerBar() {
   const [showPlayerSelector, setShowPlayerSelector] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [showPulse, setShowPulse] = useState(false);
+  const [showSwapNextPulse, setShowSwapNextPulse] = useState(false);
+  const [showSwapBackPulse, setShowSwapBackPulse] = useState(false);
+  const [pendingCommand, setPendingCommand] = useState<'send' | 'swap_next' | 'swap_back' | null>(null);
 
   // Visibility: show only when there's at least one online player
   if (!context || context.isLoading || !context.hasOnlinePlayer) {
@@ -51,17 +54,43 @@ export default function PlayerBar() {
     setTimeout(() => setShowPulse(false), 600);
   };
 
-  const sendCommand = async (playerId: string) => {
-    if (!userSqid || !hasContent) return;
+  const triggerSwapNextPulse = () => {
+    setShowSwapNextPulse(true);
+    setTimeout(() => setShowSwapNextPulse(false), 600);
+  };
+
+  const triggerSwapBackPulse = () => {
+    setShowSwapBackPulse(true);
+    setTimeout(() => setShowSwapBackPulse(false), 600);
+  };
+
+  const sendCommand = async (playerId: string, commandType?: 'send' | 'swap_next' | 'swap_back') => {
+    const cmdType = commandType || pendingCommand || 'send';
+    
+    if (!userSqid) return;
+
+    // For send command, we need content
+    if (cmdType === 'send' && !hasContent) return;
 
     setIsSending(true);
     try {
-      if (selectedArtwork) {
+      if (cmdType === 'swap_next') {
+        await sendPlayerCommand(userSqid, playerId, {
+          command_type: 'swap_next',
+        });
+        triggerSwapNextPulse();
+      } else if (cmdType === 'swap_back') {
+        await sendPlayerCommand(userSqid, playerId, {
+          command_type: 'swap_back',
+        });
+        triggerSwapBackPulse();
+      } else if (selectedArtwork) {
         // Send show_artwork command
         await sendPlayerCommand(userSqid, playerId, {
           command_type: 'show_artwork',
           post_id: selectedArtwork.id,
         });
+        triggerPulse();
       } else if (currentChannel) {
         // Send play_channel command
         const channelCommand: PlayerCommandRequest = {
@@ -72,13 +101,13 @@ export default function PlayerBar() {
         };
         
         await sendPlayerCommand(userSqid, playerId, channelCommand);
+        triggerPulse();
       }
-      
-      triggerPulse();
     } catch (err) {
       console.error('Failed to send command to player:', err);
     } finally {
       setIsSending(false);
+      setPendingCommand(null);
     }
   };
 
@@ -89,9 +118,36 @@ export default function PlayerBar() {
 
     // If exactly one online player, send directly
     if (onlinePlayers.length === 1) {
-      await sendCommand(onlinePlayers[0].id);
+      await sendCommand(onlinePlayers[0].id, 'send');
     } else {
       // Multiple online players - show selector
+      setPendingCommand('send');
+      setShowPlayerSelector(true);
+    }
+  };
+
+  const handleSwapNextClick = async () => {
+    if (!userSqid) return;
+
+    // If exactly one online player, send directly
+    if (onlinePlayers.length === 1) {
+      await sendCommand(onlinePlayers[0].id, 'swap_next');
+    } else {
+      // Multiple online players - show selector
+      setPendingCommand('swap_next');
+      setShowPlayerSelector(true);
+    }
+  };
+
+  const handleSwapBackClick = async () => {
+    if (!userSqid) return;
+
+    // If exactly one online player, send directly
+    if (onlinePlayers.length === 1) {
+      await sendCommand(onlinePlayers[0].id, 'swap_back');
+    } else {
+      // Multiple online players - show selector
+      setPendingCommand('swap_back');
       setShowPlayerSelector(true);
     }
   };
@@ -115,6 +171,22 @@ export default function PlayerBar() {
               {displayText}
             </div>
           )}
+          <button
+            className={`swap-btn ${showSwapBackPulse ? 'pulse' : ''}`}
+            onClick={handleSwapBackClick}
+            disabled={isSending}
+            title="Previous artwork"
+          >
+            ◀
+          </button>
+          <button
+            className={`swap-btn ${showSwapNextPulse ? 'pulse' : ''}`}
+            onClick={handleSwapNextClick}
+            disabled={isSending}
+            title="Next artwork"
+          >
+            ▶
+          </button>
           <button
             className={`send-to-player-btn ${showPulse ? 'pulse' : ''}`}
             onClick={handleSendClick}
@@ -188,8 +260,12 @@ export default function PlayerBar() {
           transform: scale(1.04);
         }
 
-        .send-to-player-btn:active:not(:disabled) {
-          transform: scale(0.97);
+        .send-to-player-btn:active,
+        .send-to-player-btn:focus,
+        .send-to-player-btn:focus-visible {
+          background: transparent;
+          outline: none;
+          opacity: 1;
         }
 
         .send-to-player-btn:disabled {
@@ -218,6 +294,52 @@ export default function PlayerBar() {
           height: 48px;
           image-rendering: auto;
           pointer-events: none;
+        }
+
+        .swap-btn {
+          background: transparent;
+          border: none;
+          color: #ffffff;
+          cursor: pointer;
+          padding: 8px 12px;
+          border-radius: 8px;
+          font-size: 1.2rem;
+          transition: all 0.15s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          outline: none;
+          -webkit-tap-highlight-color: transparent;
+          user-select: none;
+          min-width: 44px;
+          height: 44px;
+        }
+
+        .swap-btn:hover:not(:disabled) {
+          background: rgba(255, 255, 255, 0.1);
+          transform: scale(1.04);
+        }
+
+        .swap-btn:active,
+        .swap-btn:focus,
+        .swap-btn:focus-visible {
+          background: transparent;
+          outline: none;
+          opacity: 1;
+        }
+
+        .swap-btn:hover:active,
+        .swap-btn:hover:focus {
+          background: rgba(255, 255, 255, 0.1);
+        }
+
+        .swap-btn:disabled {
+          opacity: 0.5;
+          cursor: pointer;
+        }
+
+        .swap-btn.pulse {
+          animation: pulse 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
       `}</style>
     </>
