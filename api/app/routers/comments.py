@@ -175,6 +175,24 @@ def create_comment(
         joinedload(models.Comment.author)
     ).filter(models.Comment.id == comment.id).first()
     
+    # Create notification for post owner
+    from ..services.notifications import NotificationService
+    
+    post = db.query(models.Post).filter(models.Post.id == id).first()
+    if post and post.owner_id:
+        NotificationService.create_notification(
+            db=db,
+            user_id=post.owner_id,
+            notification_type="comment",
+            content_type="post",
+            content_id=post.id,
+            actor=current_user,
+            comment_id=comment.id,
+            comment_body=payload.body,
+            content_title=post.title,
+            content_url=post.art_url,
+        )
+    
     return schemas.Comment.model_validate(comment)
 
 

@@ -179,3 +179,9 @@ def cache_delete(key: str) -> bool:
         logger.warning(f"Cache delete error for key '{key}': {e}")
         return False
 
+
+# Alias for backward compatibility with notification service
+def get_redis():
+    """Get Redis client for direct access (e.g., Pub/Sub)."""
+    return get_redis_client()
+

@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { authenticatedFetch, clearLoggedOutMarker, clearTokens } from '../lib/api';
+import { useNotifications } from '../hooks/useNotifications';
+import { NotificationBadge } from './NotificationBadge';
 
 interface LayoutProps {
   children: ReactNode;
@@ -61,6 +63,9 @@ export default function Layout({ children, title, description }: LayoutProps) {
   // Note: We intentionally do NOT change --header-offset when the header hides.
   // The header uses transform to slide out, but the page layout stays fixed.
   // This prevents scroll jumps when the header shows/hides.
+  
+  // Get notification count
+  const { unreadCount } = useNotifications(userId);
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
@@ -271,26 +276,28 @@ export default function Layout({ children, title, description }: LayoutProps) {
             </Link>
             
             {isLoggedIn && publicSqid && (
-              <Link
-                href={`/u/${publicSqid}`}
-                className={`user-profile-link ${router.pathname === '/u/[sqid]' && router.query.sqid === publicSqid ? 'active' : ''}`}
-                aria-label="My Profile"
-                suppressHydrationWarning
-              >
-                <div className="user-icon">
-                  {avatarUrl ? (
-                    <img 
-                      src={avatarUrl.startsWith('http') ? avatarUrl : `${typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin) : ''}${avatarUrl}`}
-                      alt="Profile" 
-                      className="user-avatar"
-                    />
-                  ) : (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                    </svg>
-                  )}
-                </div>
-              </Link>
+              <NotificationBadge count={unreadCount}>
+                <Link
+                  href={`/u/${publicSqid}`}
+                  className={`user-profile-link ${router.pathname === '/u/[sqid]' && router.query.sqid === publicSqid ? 'active' : ''}`}
+                  aria-label="My Profile"
+                  suppressHydrationWarning
+                >
+                  <div className="user-icon">
+                    {avatarUrl ? (
+                      <img 
+                        src={avatarUrl.startsWith('http') ? avatarUrl : `${typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin) : ''}${avatarUrl}`}
+                        alt="Profile" 
+                        className="user-avatar"
+                      />
+                    ) : (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                      </svg>
+                    )}
+                  </div>
+                </Link>
+              </NotificationBadge>
             )}
 
             {isLoggedIn && isModerator && (
