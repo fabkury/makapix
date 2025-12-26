@@ -499,6 +499,31 @@ def _handle_submit_view(
         db: Database session
     """
     try:
+        # Import rate limiting
+        from ..services.rate_limit import check_player_view_rate_limit
+        
+        # Check rate limit first (1 view per 5 seconds per player)
+        allowed, retry_after = check_player_view_rate_limit(str(player.player_key))
+        
+        if not allowed:
+            # Send rate limit response with retry_after
+            response = SubmitViewResponse(
+                request_id=request.request_id,
+                success=False,
+                error="Rate limit exceeded. Players can submit 1 view per 5 seconds.",
+                error_code="rate_limited",
+                retry_after=retry_after,
+            )
+            response_topic = f"makapix/player/{player.player_key}/response/{request.request_id}"
+            publish(
+                topic=response_topic,
+                payload=response.model_dump(mode="json"),
+                qos=1,
+                retain=False,
+            )
+            logger.debug(f"Rate limited view submission from player {player.player_key}, retry after {retry_after}s")
+            return
+        
         # Check if post exists
         post = db.query(models.Post).filter(models.Post.id == request.post_id).first()
         
@@ -531,10 +556,10 @@ def _handle_submit_view(
         from ..tasks import write_view_event
         from datetime import datetime, timezone
         
-        # Map view_intent to view_type
-        if request.view_intent == "intentional":
+        # Map view_intent to view_type (support both old and new values)
+        if request.view_intent in ("intentional", "artwork"):
             view_type = ViewType.INTENTIONAL
-        elif request.view_intent == "automated":
+        elif request.view_intent in ("automated", "channel"):
             view_type = ViewType.LISTING
         else:
             # Default to LISTING for unexpected values
@@ -544,6 +569,13 @@ def _handle_submit_view(
         # Create view event data
         # For player views, we use a synthetic IP hash based on player_key
         player_ip_hash = hash_ip(f"player:{player.player_key}")
+        
+        # Build channel_context from channel-specific fields
+        channel_context = None
+        if request.channel == "by_user" and request.channel_user_sqid:
+            channel_context = request.channel_user_sqid
+        elif request.channel == "hashtag" and request.channel_hashtag:
+            channel_context = request.channel_hashtag
         
         event_data = {
             "post_id": str(request.post_id),
@@ -556,6 +588,13 @@ def _handle_submit_view(
             "user_agent_hash": None,  # Players don't have user agents
             "referrer_domain": None,
             "created_at": datetime.now(timezone.utc).isoformat(),
+            # New player-specific fields
+            "player_id": str(player.id),
+            "local_datetime": request.local_datetime,
+            "local_timezone": request.local_timezone,
+            "play_order": request.play_order,
+            "channel": request.channel,
+            "channel_context": channel_context,
         }
         
         # Dispatch to Celery for async write

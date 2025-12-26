@@ -863,8 +863,15 @@ def write_view_event(self, event_data: dict) -> None:
             - user_agent_hash: SHA256 hash or None
             - referrer_domain: domain string or None
             - created_at: ISO datetime string
+            - player_id: Player UUID (as string) or None (player views only)
+            - local_datetime: Player's local datetime ISO string or None
+            - local_timezone: Player's IANA timezone or None
+            - play_order: Play order mode (0-2) or None
+            - channel: Channel name or None
+            - channel_context: Channel context (user_sqid or hashtag) or None
     """
     from datetime import datetime
+    from uuid import UUID
     from . import models
     from .db import SessionLocal
     
@@ -873,6 +880,14 @@ def write_view_event(self, event_data: dict) -> None:
         # Parse post_id as int (no longer UUID)
         post_id = int(event_data["post_id"])
         viewer_user_id = int(event_data["viewer_user_id"]) if event_data.get("viewer_user_id") else None
+        
+        # Parse player_id as UUID if present
+        player_id = None
+        if event_data.get("player_id"):
+            try:
+                player_id = UUID(event_data["player_id"])
+            except (ValueError, TypeError):
+                logger.warning(f"Invalid player_id in event_data: {event_data.get('player_id')}")
         
         # Parse datetime
         created_at = datetime.fromisoformat(event_data["created_at"])
@@ -890,6 +905,13 @@ def write_view_event(self, event_data: dict) -> None:
             user_agent_hash=event_data.get("user_agent_hash"),
             referrer_domain=event_data.get("referrer_domain"),
             created_at=created_at,
+            # Player-specific fields (nullable)
+            player_id=player_id,
+            local_datetime=event_data.get("local_datetime"),
+            local_timezone=event_data.get("local_timezone"),
+            play_order=event_data.get("play_order"),
+            channel=event_data.get("channel"),
+            channel_context=event_data.get("channel_context"),
         )
         
         db.add(view_event)

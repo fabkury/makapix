@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, useAnimationControls, useReducedMotion, AnimatePresence } from 'framer-motion';
+import { useRouter } from 'next/router';
 import { authenticatedFetch, getAccessToken } from '../lib/api';
 import { PLAYER_BAR_HEIGHT } from './PlayerBarDynamic';
 
@@ -10,6 +11,7 @@ export interface SelectedArtworkOverlayPost {
   id: number;
   public_sqid: string;
   title: string;
+  description?: string;
   art_url: string;
   canvas: string; // e.g. "64x64"
   owner?: {
@@ -146,7 +148,7 @@ const artworkShellStyles: React.CSSProperties = {
   // an unpredictable "static" position in the document flow.
   left: 0,
   top: 0,
-  overflow: 'hidden',
+  overflow: 'visible', // Must be visible to show post-footer below artwork
   touchAction: 'none',
   willChange: 'transform, width, height',
   background: 'rgba(0, 0, 0, 0.18)',
@@ -239,6 +241,33 @@ const postCommentCountStyles: React.CSSProperties = {
   color: '#e8e8f0',
 };
 
+const postFooterStyles: React.CSSProperties = {
+  position: 'absolute',
+  bottom: -64,
+  left: 0,
+  right: 0,
+  height: 64,
+  background: '#000',
+  display: 'flex',
+  flexDirection: 'column',
+  pointerEvents: 'none',
+};
+
+const postFooterTextStyles: React.CSSProperties = {
+  fontFamily: "'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  fontSize: '14px',
+  fontWeight: 500,
+  color: '#ffffff',
+  height: 32,
+  display: 'flex',
+  alignItems: 'center',
+  paddingLeft: 16,
+  paddingRight: 16,
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+};
+
 type AnimationPhase = 'mounting' | 'flying-in' | 'selected' | 'flying-out' | 'swiping';
 
 export default function SelectedArtworkOverlay({
@@ -250,6 +279,7 @@ export default function SelectedArtworkOverlay({
   getOriginRectForIndex,
 }: SelectedArtworkOverlayProps) {
   const reduceMotion = useReducedMotion();
+  const router = useRouter();
   const controls = useAnimationControls();
   const outgoingControls = useAnimationControls();
   const incomingControls = useAnimationControls();
@@ -270,6 +300,7 @@ export default function SelectedArtworkOverlay({
   }>({ postId: null, reactions: null, comments: null, status: 'idle' });
   const countsCacheRef = useRef<Map<number, { reactions: number; comments: number }>>(new Map());
   const headerControls = useAnimationControls();
+  const footerControls = useAnimationControls();
   const [headerContentKey, setHeaderContentKey] = useState(0);
   
   // Store the initial origin rect SYNCHRONOUSLY on first render to avoid timing issues
@@ -464,6 +495,19 @@ export default function SelectedArtworkOverlay({
           ? { duration: 0 }
           : { type: 'spring', stiffness: 400, damping: 35, mass: 0.8 },
       });
+
+      // Animate footer sliding down and fading in
+      footerControls.set({
+        y: -64,
+        opacity: 0,
+      });
+      void footerControls.start({
+        y: 0,
+        opacity: 1,
+        transition: reduceMotion
+          ? { duration: 0 }
+          : { type: 'spring', stiffness: 400, damping: 35, mass: 0.8 },
+      });
       
       const origin = initialOriginRect;
       if (!origin) {
@@ -504,7 +548,7 @@ export default function SelectedArtworkOverlay({
     });
 
     return () => cancelAnimationFrame(timer);
-  }, [backdropControls, controls, headerControls, portalEl, post, phase, initialOriginRect, reduceMotion, targetRect]);
+  }, [backdropControls, controls, footerControls, headerControls, portalEl, post, phase, initialOriginRect, reduceMotion, targetRect]);
 
   const triggerLikeToggle = useCallback(async () => {
     if (!post) return;
@@ -561,6 +605,11 @@ export default function SelectedArtworkOverlay({
           opacity: 0,
           transition: reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.4, 0, 1, 1] },
         }),
+        footerControls.start({
+          y: -64,
+          opacity: 0,
+          transition: reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.4, 0, 1, 1] },
+        }),
       ]);
       onClose();
       return;
@@ -586,9 +635,14 @@ export default function SelectedArtworkOverlay({
       opacity: 0,
       transition: reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 40, mass: 0.8 },
     });
-    await Promise.all([flyBack, fadeOut, headerSlideOut]);
+    const footerSlideUp = footerControls.start({
+      y: -64,
+      opacity: 0,
+      transition: reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 40, mass: 0.8 },
+    });
+    await Promise.all([flyBack, fadeOut, headerSlideOut, footerSlideUp]);
     onClose();
-  }, [backdropControls, clearPressTimer, controls, getCurrentOriginRect, headerControls, headerPosition, initialOriginRect, onClose, reduceMotion]);
+  }, [backdropControls, clearPressTimer, controls, footerControls, getCurrentOriginRect, headerControls, headerPosition, initialOriginRect, onClose, reduceMotion]);
 
   const snapBackToTarget = useCallback(async () => {
     setPhase('flying-in');
@@ -811,27 +865,70 @@ export default function SelectedArtworkOverlay({
         <AnimatePresence mode="wait">
           <motion.div
             key={headerContentKey}
-            style={postHeaderLeftStyles}
+            style={{ ...postHeaderLeftStyles, pointerEvents: 'auto' }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: reduceMotion ? 0 : 0.2 }}
           >
-            {post.owner?.avatar_url ? (
-              <img
-                src={post.owner.avatar_url.startsWith('http') ? post.owner.avatar_url : `${typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin) : ''}${post.owner.avatar_url}`}
-                alt={post.owner.handle || 'Author'}
-                style={postAuthorAvatarStyles}
-              />
-            ) : (
-              <div style={{ ...postAuthorAvatarStyles, background: '#1a1a24', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style={{ color: '#6a6a80' }}>
-                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                </svg>
+            {post.owner?.public_sqid ? (
+              <div
+                role="button"
+                tabIndex={0}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', pointerEvents: 'auto' }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  if (post.owner?.public_sqid) {
+                    router.push(`/u/${post.owner.public_sqid}`);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    if (post.owner?.public_sqid) {
+                      router.push(`/u/${post.owner.public_sqid}`);
+                    }
+                  }
+                }}
+              >
+                {post.owner?.avatar_url ? (
+                  <img
+                    src={post.owner.avatar_url.startsWith('http') ? post.owner.avatar_url : `${typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin) : ''}${post.owner.avatar_url}`}
+                    alt={post.owner.handle || 'Author'}
+                    style={postAuthorAvatarStyles}
+                  />
+                ) : (
+                  <div style={{ ...postAuthorAvatarStyles, background: '#1a1a24', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style={{ color: '#6a6a80' }}>
+                      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                    </svg>
+                  </div>
+                )}
+                {post.owner?.handle && (
+                  <span style={postAuthorHandleStyles}>{post.owner.handle}</span>
+                )}
               </div>
-            )}
-            {post.owner?.handle && (
-              <span style={postAuthorHandleStyles}>{post.owner.handle}</span>
+            ) : (
+              <>
+                {post.owner?.avatar_url ? (
+                  <img
+                    src={post.owner.avatar_url.startsWith('http') ? post.owner.avatar_url : `${typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin) : ''}${post.owner.avatar_url}`}
+                    alt={post.owner.handle || 'Author'}
+                    style={postAuthorAvatarStyles}
+                  />
+                ) : (
+                  <div style={{ ...postAuthorAvatarStyles, background: '#1a1a24', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style={{ color: '#6a6a80' }}>
+                      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                    </svg>
+                  </div>
+                )}
+                {post.owner?.handle && (
+                  <span style={postAuthorHandleStyles}>{post.owner.handle}</span>
+                )}
+              </>
             )}
           </motion.div>
         </AnimatePresence>
@@ -988,7 +1085,6 @@ export default function SelectedArtworkOverlay({
           const isTap = absX < 10 && absY < 10 && duration < 300;
           if (isTap) {
             onNavigateToPost(selectedIndex);
-            onClose(); // Immediately unmount overlay so page can render
             return;
           }
 
@@ -1023,7 +1119,6 @@ export default function SelectedArtworkOverlay({
           e.stopPropagation();
           if (!isInteractive) return;
           onNavigateToPost(selectedIndex);
-          onClose(); // Immediately unmount overlay so page can render
         }}
       >
         <div style={artworkClipStyles}>
@@ -1053,6 +1148,27 @@ export default function SelectedArtworkOverlay({
             </motion.div>
           )}
         </div>
+
+        {/* Post Footer */}
+        <motion.div
+          style={postFooterStyles}
+          initial={{ y: -64, opacity: 0 }}
+          animate={footerControls}
+        >
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={headerContentKey}
+              style={{ display: 'flex', flexDirection: 'column' }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: reduceMotion ? 0 : 0.2 }}
+            >
+              <div style={postFooterTextStyles}>{post.title}</div>
+              <div style={postFooterTextStyles}>{post.description || ''}</div>
+            </motion.div>
+          </AnimatePresence>
+        </motion.div>
       </motion.div>
     </div>,
     portalEl

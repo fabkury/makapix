@@ -111,6 +111,7 @@ export default function CardGrid({ posts, API_BASE_URL: _API_BASE_URL, source, c
         id: p.id,
         public_sqid: p.public_sqid,
         title: p.title,
+        description: p.description,
         art_url: p.art_url,
         canvas: p.canvas,
         owner: p.owner ? {

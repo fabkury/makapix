@@ -180,9 +180,36 @@ class SubmitViewRequest(PlayerRequestBase):
     
     request_type: Literal["submit_view"] = "submit_view"
     post_id: int = Field(..., description="Post ID to record view for")
-    view_intent: Literal["automated", "intentional"] = Field(
+    view_intent: Literal["automated", "intentional", "channel", "artwork"] = Field(
         "automated",
-        description="'automated' for playlist/auto-swap views, 'intentional' for direct user selection"
+        description="View intent: 'automated'/'channel' for playlist/channel views, 'intentional'/'artwork' for direct user selection"
+    )
+    # Player-reported context (optional, for player devices)
+    local_datetime: str | None = Field(
+        None,
+        description="Player's local date and time in ISO 8601 format with timezone (e.g., '2025-12-22T14:30:00-05:00')"
+    )
+    local_timezone: str | None = Field(
+        None,
+        description="Player's IANA timezone identifier (e.g., 'America/New_York'). Future: proper timezone support."
+    )
+    play_order: int | None = Field(
+        None,
+        ge=0,
+        le=2,
+        description="Play order mode: 0=server order, 1=created_at order, 2=random"
+    )
+    channel: Literal["all", "promoted", "user", "by_user", "artwork", "hashtag"] | None = Field(
+        None,
+        description="Channel being played when view occurred"
+    )
+    channel_user_sqid: str | None = Field(
+        None,
+        description="User sqid for 'by_user' channel context"
+    )
+    channel_hashtag: str | None = Field(
+        None,
+        description="Hashtag (without #) for 'hashtag' channel context"
     )
 
 
@@ -192,6 +219,11 @@ class SubmitViewResponse(BaseModel):
     request_id: str
     success: bool = True
     error: str | None = None
+    error_code: str | None = None
+    retry_after: float | None = Field(
+        None,
+        description="Seconds until next view submission allowed (only set when rate limited)"
+    )
 
 
 class SubmitReactionRequest(PlayerRequestBase):
@@ -274,4 +306,36 @@ class ErrorResponse(BaseModel):
     success: bool = False
     error: str
     error_code: str | None = None
+
+
+# ============================================================================
+# P3A Fire-and-Forget View Event (Direct MQTT Topic)
+# ============================================================================
+
+
+class P3AViewEvent(BaseModel):
+    """
+    Fire-and-forget view event from p3a player devices.
+    
+    Published to: makapix/player/{player_key}/view
+    No response expected (fire-and-forget).
+    
+    Note: This is separate from the request/response pattern for backward compatibility.
+    Future: Consider consolidating these two approaches.
+    """
+    
+    post_id: int = Field(..., description="Artwork post ID")
+    timestamp: str = Field(..., description="ISO 8601 UTC timestamp (e.g., '2025-12-22T16:24:15Z')")
+    timezone: str = Field(..., description="Reserved for future use. Currently empty string.")
+    intent: Literal["artwork", "channel"] = Field(
+        ...,
+        description="View origin: 'artwork' (explicit request) or 'channel' (automated playback)"
+    )
+    play_order: int = Field(..., ge=0, le=2, description="Playback order: 0=server, 1=created, 2=random")
+    channel: str = Field(..., description="Active channel (e.g., 'all', 'promoted', 'hashtag', etc.)")
+    player_key: str = Field(..., description="UUID identifying the p3a device")
+    
+    # Optional fields for future compatibility (not currently sent by p3a)
+    channel_user_sqid: str | None = Field(None, description="User sqid for 'by_user' channel")
+    channel_hashtag: str | None = Field(None, description="Hashtag for 'hashtag' channel")
 

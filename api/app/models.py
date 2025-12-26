@@ -807,6 +807,29 @@ class ViewEvent(Base):
     user_agent_hash = Column(String(64), nullable=True)  # For device fingerprinting
     referrer_domain = Column(String(255), nullable=True)  # Extracted referrer domain
 
+    # Player-specific context (nullable for web views)
+    player_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("players.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )  # Player that submitted this view
+    local_datetime = Column(
+        String(50), nullable=True
+    )  # Player's local datetime as ISO string (e.g., "2025-12-22T14:30:00-05:00")
+    local_timezone = Column(
+        String(50), nullable=True
+    )  # Player's IANA timezone (e.g., "America/New_York"). Future: proper timezone support.
+    play_order = Column(
+        Integer, nullable=True
+    )  # Play order mode: 0=server, 1=created_at, 2=random
+    channel = Column(
+        String(20), nullable=True, index=True
+    )  # Channel being played: all, promoted, user, by_user, artwork, hashtag
+    channel_context = Column(
+        String(100), nullable=True
+    )  # Context for channel (user_sqid for by_user, hashtag for hashtag channel)
+
     # Timestamps
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
@@ -815,6 +838,11 @@ class ViewEvent(Base):
     # Relationships
     post = relationship(
         "Post",
+        backref=backref("view_events", passive_deletes=True),
+        passive_deletes=True,
+    )
+    player = relationship(
+        "Player",
         backref=backref("view_events", passive_deletes=True),
         passive_deletes=True,
     )

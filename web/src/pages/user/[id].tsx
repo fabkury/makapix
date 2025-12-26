@@ -428,7 +428,7 @@ export default function UserProfilePage() {
   const trustUser = async () => {
     if (!user) return;
     try {
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${user.id}/auto-approval`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${user.user_key}/auto-approval`, {
         method: 'POST',
       });
       
@@ -452,7 +452,7 @@ export default function UserProfilePage() {
   const distrustUser = async () => {
     if (!user) return;
     try {
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${user.id}/auto-approval`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${user.user_key}/auto-approval`, {
         method: 'DELETE',
       });
       

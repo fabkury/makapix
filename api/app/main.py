@@ -141,8 +141,10 @@ async def lifespan(app: FastAPI):
     # Start MQTT subscribers
     from .mqtt.player_status import start_status_subscriber
     from .mqtt.player_requests import start_request_subscriber
+    from .mqtt.player_views import start_view_subscriber
     start_status_subscriber()
     start_request_subscriber()
+    start_view_subscriber()
     logger.info("Makapix API server ready")
     yield
     # Shutdown

@@ -642,13 +642,6 @@ export default function PostPage() {
     
     const isHidden = post.hidden_by_mod;
     const action = isHidden ? 'unhide' : 'hide';
-    const confirmed = confirm(
-      isHidden
-        ? 'Unhide this post (moderator action)? It will become visible again.'
-        : 'Hide this post as moderator? This is a moderation action that will be logged.'
-    );
-    
-    if (!confirmed) return;
     
     try {
       const url = `${API_BASE_URL}/api/post/${post.id}/hide`;
@@ -688,13 +681,6 @@ export default function PostPage() {
     
     const isPromoted = post.promoted;
     const action = isPromoted ? 'demote' : 'promote';
-    const confirmed = confirm(
-      isPromoted
-        ? 'Remove this post from promoted posts?'
-        : 'Promote this post to the frontpage?'
-    );
-    
-    if (!confirmed) return;
     
     try {
       const url = `${API_BASE_URL}/api/post/${post.id}/promote`;
@@ -968,8 +954,8 @@ export default function PostPage() {
             </div>
           )}
 
-          {/* Send to Player button - visible to authenticated users with players */}
-          {currentUser && players.length > 0 && (
+          {/* Send to Player button - visible to authenticated users with online players */}
+          {currentUser && players.some(p => p.connection_status === 'online') && (
             <div className="player-action">
               <button
                 onClick={handleSendToPlayerClick}

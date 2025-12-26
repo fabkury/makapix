@@ -14,7 +14,8 @@ interface PostOwner {
 }
 
 interface User {
-  id: string;
+  id: number;
+  user_key: string;
   handle: string;
   public_sqid?: string;
   display_name: string;
@@ -690,11 +691,11 @@ export default function ModDashboardPage() {
                       </div>
                       <div className="item-actions">
                         {profile.auto_public_approval ? (
-                          <button onClick={() => distrustUser(profile.id)} className="action-btn danger">⚠️ Distrust</button>
+                          <button onClick={() => distrustUser(profile.user_key)} className="action-btn danger">⚠️ Distrust</button>
                         ) : (
-                          <button onClick={() => trustUser(profile.id)} className="action-btn success">🫱🏽‍🫲🏼 Trust</button>
+                          <button onClick={() => trustUser(profile.user_key)} className="action-btn success">🫱🏽‍🫲🏼 Trust</button>
                         )}
-                        <button onClick={() => banUser(profile.id)} className="action-btn danger">🚷 Ban</button>
+                        <button onClick={() => banUser(profile.user_key)} className="action-btn danger">🚷 Ban</button>
                       </div>
                     </div>
                   ))}
