@@ -771,6 +771,24 @@ class PlayerRenewCertResponse(BaseModel):
     message: str = "Certificate renewed successfully"
 
 
+class OnlinePlayerInfo(BaseModel):
+    """Online player information for moderator dashboard."""
+    
+    id: UUID
+    name: str | None = None
+    device_model: str | None = None
+    firmware_version: str | None = None
+    last_seen_at: datetime | None = None
+    owner_handle: str | None = None
+
+
+class OnlinePlayersResponse(BaseModel):
+    """Response with list of currently online players."""
+    
+    online_players: list[OnlinePlayerInfo]
+    total_online: int
+
+
 class TLSCertBundle(BaseModel):
     """TLS certificate bundle for player."""
 

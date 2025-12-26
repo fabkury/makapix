@@ -583,3 +583,43 @@ def get_sitewide_stats(
         views_by_player=stats.views_by_player,
         computed_at=datetime.fromisoformat(stats.computed_at),
     )
+
+
+@router.get("/online-players", response_model=schemas.OnlinePlayersResponse)
+def get_online_players(
+    db: Session = Depends(get_db),
+    _moderator: models.User = Depends(require_moderator),
+) -> schemas.OnlinePlayersResponse:
+    """
+    Get list of currently online players (moderator only).
+    
+    Returns players with connection_status='online'.
+    """
+    # Query online players
+    online_players = db.query(models.Player).filter(
+        models.Player.connection_status == "online"
+    ).order_by(models.Player.last_seen_at.desc()).all()
+    
+    # Get owner handles
+    owner_ids = [p.owner_id for p in online_players if p.owner_id]
+    owners = {}
+    if owner_ids:
+        users = db.query(models.User).filter(models.User.id.in_(owner_ids)).all()
+        owners = {u.id: u.handle for u in users}
+    
+    # Build response
+    player_infos = []
+    for player in online_players:
+        player_infos.append(schemas.OnlinePlayerInfo(
+            id=player.id,
+            name=player.name,
+            device_model=player.device_model,
+            firmware_version=player.firmware_version,
+            last_seen_at=player.last_seen_at,
+            owner_handle=owners.get(player.owner_id) if player.owner_id else None,
+        ))
+    
+    return schemas.OnlinePlayersResponse(
+        online_players=player_infos,
+        total_online=len(player_infos),
+    )

@@ -74,8 +74,18 @@ const DEVICE_LABELS: Record<string, string> = {
   tablet: '📱 Tablet',
 };
 
+interface OnlinePlayer {
+  id: string;
+  name: string | null;
+  device_model: string | null;
+  firmware_version: string | null;
+  last_seen_at: string | null;
+  owner_handle: string | null;
+}
+
 export default function SiteMetricsPanel() {
   const [stats, setStats] = useState<SitewideStats | null>(null);
+  const [onlinePlayers, setOnlinePlayers] = useState<OnlinePlayer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [includeUnauthenticated, setIncludeUnauthenticated] = useState(true);
@@ -119,18 +129,38 @@ export default function SiteMetricsPanel() {
       }
     };
 
+    const fetchOnlinePlayers = async () => {
+      try {
+        const response = await authenticatedFetch(`${API_BASE_URL}/api/admin/online-players`);
+        if (response.ok) {
+          const data = await response.json();
+          setOnlinePlayers(data.online_players || []);
+        }
+      } catch (err) {
+        console.error('Error fetching online players:', err);
+      }
+    };
+
     fetchStats();
+    fetchOnlinePlayers();
   }, [API_BASE_URL]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      const response = await authenticatedFetch(
-        `${API_BASE_URL}/api/admin/sitewide-stats?refresh=true`
-      );
-      if (response.ok) {
-        const data = await response.json();
+      const [statsResponse, playersResponse] = await Promise.all([
+        authenticatedFetch(`${API_BASE_URL}/api/admin/sitewide-stats?refresh=true`),
+        authenticatedFetch(`${API_BASE_URL}/api/admin/online-players`),
+      ]);
+      
+      if (statsResponse.ok) {
+        const data = await statsResponse.json();
         setStats(data);
+      }
+      
+      if (playersResponse.ok) {
+        const data = await playersResponse.json();
+        setOnlinePlayers(data.online_players || []);
       }
     } catch (err) {
       console.error('Error refreshing sitewide stats:', err);
@@ -531,6 +561,54 @@ export default function SiteMetricsPanel() {
         )}
       </div>
 
+      {/* Online Players Section */}
+      <div className="metrics-section online-players-section">
+        <h3>🟢 Online Players</h3>
+        
+        {onlinePlayers.length > 0 ? (
+          <div className="online-players-list">
+            {onlinePlayers.map((player) => (
+              <div key={player.id} className="online-player-card">
+                <div className="player-header">
+                  <span className="player-status-dot">●</span>
+                  <span className="player-name">{player.name || 'Unnamed Player'}</span>
+                </div>
+                <div className="player-details">
+                  {player.device_model && (
+                    <div className="player-detail">
+                      <span className="detail-label">Model:</span>
+                      <span className="detail-value">{player.device_model}</span>
+                    </div>
+                  )}
+                  {player.firmware_version && (
+                    <div className="player-detail">
+                      <span className="detail-label">Firmware:</span>
+                      <span className="detail-value">{player.firmware_version}</span>
+                    </div>
+                  )}
+                  {player.owner_handle && (
+                    <div className="player-detail">
+                      <span className="detail-label">Owner:</span>
+                      <span className="detail-value">{player.owner_handle}</span>
+                    </div>
+                  )}
+                  {player.last_seen_at && (
+                    <div className="player-detail">
+                      <span className="detail-label">Last seen:</span>
+                      <span className="detail-value">
+                        {new Date(player.last_seen_at).toLocaleTimeString()}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="no-data">No players currently online.</p>
+        )}
+      </div>
+
       {/* Footer */}
       <div className="metrics-footer">
         <span>Last updated: {new Date(stats.computed_at).toLocaleString()}</span>
@@ -902,6 +980,86 @@ export default function SiteMetricsPanel() {
           color: var(--text-muted, #888);
           font-style: italic;
           padding: 20px;
+        }
+
+        /* Online Players Styles */
+        .online-players-section {
+          background: var(--bg-secondary, #1a1a2e);
+          border-radius: 12px;
+          padding: 20px;
+          margin-top: 24px;
+          border: 1px solid rgba(78, 205, 196, 0.2);
+        }
+
+        .online-players-section h3 {
+          color: var(--accent-cyan, #4ecdc4);
+          margin-bottom: 16px;
+        }
+
+        .online-players-list {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+          gap: 16px;
+        }
+
+        .online-player-card {
+          background: var(--bg-tertiary, #2a2a3e);
+          border: 1px solid rgba(78, 205, 196, 0.15);
+          border-radius: 8px;
+          padding: 16px;
+          transition: all 0.2s ease;
+        }
+
+        .online-player-card:hover {
+          border-color: rgba(78, 205, 196, 0.3);
+          transform: translateY(-2px);
+        }
+
+        .player-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 12px;
+          padding-bottom: 12px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .player-status-dot {
+          color: #00ff00;
+          font-size: 1.2rem;
+          animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+
+        .player-name {
+          font-weight: 600;
+          color: var(--text-primary, #fff);
+          font-size: 1rem;
+        }
+
+        .player-details {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .player-detail {
+          display: flex;
+          justify-content: space-between;
+          font-size: 0.85rem;
+        }
+
+        .detail-label {
+          color: var(--text-muted, #888);
+        }
+
+        .detail-value {
+          color: var(--text-secondary, #ccc);
+          font-family: monospace;
         }
       `}</style>
     </div>
