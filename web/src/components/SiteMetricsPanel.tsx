@@ -35,6 +35,11 @@ interface SitewideStats {
   views_by_device_authenticated: Record<string, number>;
   top_referrers_authenticated: Record<string, number>;
   errors_by_type: Record<string, number>;
+  // Player Activity
+  total_player_artwork_views_30d: number;
+  active_players_30d: number;
+  daily_player_views: DailyCount[];
+  views_by_player: Record<string, number>;
   computed_at: string;
 }
 
@@ -74,6 +79,7 @@ export default function SiteMetricsPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [includeUnauthenticated, setIncludeUnauthenticated] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const API_BASE_URL = typeof window !== 'undefined'
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
@@ -115,6 +121,23 @@ export default function SiteMetricsPanel() {
 
     fetchStats();
   }, [API_BASE_URL]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      const response = await authenticatedFetch(
+        `${API_BASE_URL}/api/admin/sitewide-stats?refresh=true`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data);
+      }
+    } catch (err) {
+      console.error('Error refreshing sitewide stats:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Compute displayed stats based on toggle
   const displayedStats = useMemo(() => {
@@ -416,9 +439,109 @@ export default function SiteMetricsPanel() {
         </div>
       )}
 
+      {/* Player Activity Section */}
+      <div className="metrics-section player-activity-section">
+        <h3>🎮 Player Activity (Artwork Views)</h3>
+        <p className="section-note">
+          Views from physical player devices (P3A and others) - separate from website page views.
+        </p>
+        
+        {/* Player Summary Cards */}
+        <div className="player-summary">
+          <div className="metric-card player-card">
+            <div className="metric-value">{stats.total_player_artwork_views_30d?.toLocaleString() || 0}</div>
+            <div className="metric-label">Player Artwork Views (30d)</div>
+          </div>
+          <div className="metric-card player-card">
+            <div className="metric-value">{stats.active_players_30d?.toLocaleString() || 0}</div>
+            <div className="metric-label">Active Players (30d)</div>
+          </div>
+        </div>
+
+        {/* Daily Player Views Trend */}
+        {stats.daily_player_views && stats.daily_player_views.length > 0 && (
+          <>
+            <h4>📈 Player Views (Last 30 Days)</h4>
+            <div className="trend-chart">
+              {(() => {
+                const maxPlayerViews = Math.max(...stats.daily_player_views.map(d => d.count), 1);
+                return stats.daily_player_views.map((day, index) => {
+                  const height = maxPlayerViews > 0 ? (day.count / maxPlayerViews) * 100 : 0;
+                  const showLabel =
+                    index % 5 === 0 ||
+                    index === stats.daily_player_views.length - 1 ||
+                    day.count === maxPlayerViews;
+                  return (
+                    <div key={day.date} className="trend-bar-wrap">
+                      {showLabel && day.count > 0 && (
+                        <span className="trend-bar-label" aria-hidden="true">
+                          {day.count.toLocaleString()}
+                        </span>
+                      )}
+                      <div
+                        className="trend-bar player-bar"
+                        style={{ height: `${Math.max(height, 2)}%` }}
+                        title={`${day.date}: ${day.count} player views`}
+                        aria-label={`${day.date}: ${day.count} player views`}
+                        role="img"
+                      />
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+            <div className="trend-labels">
+              <span>30 days ago</span>
+              <span>Today</span>
+            </div>
+          </>
+        )}
+
+        {/* Views by Player */}
+        {stats.views_by_player && Object.keys(stats.views_by_player).length > 0 && (
+          <>
+            <h4>🏆 Top Players</h4>
+            <div className="breakdown-list">
+              {Object.entries(stats.views_by_player)
+                .sort(([, a], [, b]) => b - a)
+                .map(([playerName, count]) => {
+                  const maxPlayerCount = Math.max(...Object.values(stats.views_by_player));
+                  return (
+                    <div key={playerName} className="breakdown-item">
+                      <div className="breakdown-label">
+                        <span className="player-icon">📺</span>
+                        <span>{playerName}</span>
+                      </div>
+                      <div className="breakdown-bar-container">
+                        <div
+                          className="breakdown-bar player-bar"
+                          style={{ width: `${(count / maxPlayerCount) * 100}%` }}
+                        />
+                      </div>
+                      <div className="breakdown-value">{count.toLocaleString()}</div>
+                    </div>
+                  );
+                })}
+            </div>
+          </>
+        )}
+
+        {stats.total_player_artwork_views_30d === 0 && (
+          <p className="no-data">No player activity in the last 30 days.</p>
+        )}
+      </div>
+
       {/* Footer */}
       <div className="metrics-footer">
         <span>Last updated: {new Date(stats.computed_at).toLocaleString()}</span>
+        <button 
+          onClick={handleRefresh} 
+          disabled={isRefreshing}
+          className="refresh-link"
+          title="Cache is refreshed every 5 minutes, but click here to refresh it now"
+        >
+          {isRefreshing ? 'Refreshing...' : 'Refresh cache'}
+        </button>
       </div>
 
       <style jsx>{`
@@ -690,10 +813,95 @@ export default function SiteMetricsPanel() {
         .metrics-footer {
           display: flex;
           justify-content: space-between;
+          align-items: center;
           font-size: 0.75rem;
           color: var(--text-muted, #888);
           padding-top: 16px;
           border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .refresh-link {
+          background: none;
+          border: none;
+          color: var(--accent-cyan, #4ecdc4);
+          cursor: pointer;
+          font-size: 0.75rem;
+          padding: 4px 8px;
+          border-radius: 4px;
+          transition: all 0.2s ease;
+        }
+
+        .refresh-link:hover:not(:disabled) {
+          background: rgba(78, 205, 196, 0.1);
+          text-decoration: underline;
+        }
+
+        .refresh-link:disabled {
+          color: var(--text-muted, #888);
+          cursor: not-allowed;
+        }
+
+        /* Player Activity Styles */
+        .player-activity-section {
+          background: var(--bg-secondary, #1a1a2e);
+          border-radius: 12px;
+          padding: 20px;
+          margin-top: 24px;
+          border: 1px solid rgba(78, 205, 196, 0.2);
+        }
+
+        .player-activity-section h3 {
+          color: var(--accent-cyan, #4ecdc4);
+          margin-bottom: 8px;
+        }
+
+        .player-activity-section h4 {
+          font-size: 0.9rem;
+          font-weight: 600;
+          color: var(--text-secondary, #ccc);
+          margin: 20px 0 12px 0;
+        }
+
+        .section-note {
+          font-size: 0.8rem;
+          color: var(--text-muted, #888);
+          margin-bottom: 16px;
+        }
+
+        .player-summary {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 12px;
+          margin-bottom: 20px;
+        }
+
+        .player-card {
+          background: var(--bg-tertiary, #2a2a3e);
+          border: 1px solid rgba(78, 205, 196, 0.15);
+        }
+
+        .player-card .metric-value {
+          color: var(--accent-cyan, #4ecdc4);
+        }
+
+        .trend-bar.player-bar {
+          background: linear-gradient(to top, var(--accent-cyan, #4ecdc4), #7fdbda);
+        }
+
+        .breakdown-bar.player-bar {
+          background: linear-gradient(to right, var(--accent-cyan, #4ecdc4), #7fdbda);
+        }
+
+        .player-icon {
+          font-size: 1rem;
+          margin-right: 4px;
+        }
+
+        .no-data {
+          text-align: center;
+          color: var(--text-muted, #888);
+          font-style: italic;
+          padding: 20px;
         }
       `}</style>
     </div>

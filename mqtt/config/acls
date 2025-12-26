@@ -4,11 +4,14 @@
 
 # API Server - publish commands, read status, publish notifications
 # Also: read player requests, write player responses
+# Also: read player view events, write view acks
 user api-server
 topic write makapix/player/+/command
 topic read makapix/player/+/status
 topic read makapix/player/+/request/+
 topic write makapix/player/+/response/+
+topic read makapix/player/+/view
+topic write makapix/player/+/view/ack
 topic write makapix/post/new/#
 topic write makapix/post/new/user/#
 topic write makapix/post/new/category/#
@@ -20,6 +23,8 @@ pattern read makapix/player/%u/command
 pattern write makapix/player/%u/status
 pattern write makapix/player/%u/request/+
 pattern read makapix/player/%u/response/#
+pattern write makapix/player/%u/view
+pattern read makapix/player/%u/view/ack
 
 # Web clients - can only subscribe (read) to topics
 # Pattern: user_{user_id} for authenticated web clients

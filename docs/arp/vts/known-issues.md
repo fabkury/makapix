@@ -6,11 +6,11 @@ This document centralizes all known issues, limitations, and areas for improveme
 
 | ID | Category | Severity | Status | Description |
 |----|----------|----------|--------|-------------|
-| VTS-001 | Data Loss | Medium | Open | Authenticated stats limited to 7-day window |
-| VTS-002 | Accuracy | Low | Open | Unique viewer approximation across aggregated days |
+| VTS-001 | Data Loss | Medium | **Resolved** | Authenticated stats limited to 7-day window |
+| VTS-002 | Accuracy | Low | **Resolved** | Unique viewer approximation across aggregated days |
 | VTS-003 | Feature Gap | Low | Open | Timezone analytics not implemented |
-| VTS-004 | Architecture | Low | Open | Two MQTT view patterns should be consolidated |
-| VTS-005 | Cache | Low | Open | Cache invalidation relies on TTL only |
+| VTS-004 | Architecture | Low | **Resolved** | Two MQTT view patterns should be consolidated |
+| VTS-005 | Cache | Low | **Resolved** | Cache invalidation relies on TTL only |
 | VTS-006 | Feature Gap | Low | Open | No playlist item-level view tracking |
 | VTS-007 | Feature Gap | Low | Open | No geographic data for player views |
 | VTS-008 | Performance | Low | Open | Artist dashboard queries all posts synchronously |
@@ -58,6 +58,18 @@ Requires migration and rollup task update.
 
 Currently, users are informed via UI that authenticated stats cover a shorter window.
 
+### Resolution (December 26, 2025)
+
+**Status: RESOLVED**
+
+Implemented authenticated-only counters in `PostStatsDaily`:
+- Added columns: `total_views_authenticated`, `unique_viewers_authenticated`, `views_by_country_authenticated`, `views_by_device_authenticated`, `views_by_type_authenticated`
+- Updated `rollup_view_events()` task to populate authenticated counters separately
+- Updated `_compute_stats()` to aggregate authenticated data from both raw events and daily aggregates
+- Authenticated statistics now span the full 30-day window
+
+Migration: `20251226155423_add_authenticated_daily_stats.py`
+
 ---
 
 ## VTS-002: Unique Viewer Approximation
@@ -90,6 +102,19 @@ Options:
 ### Workaround
 
 The UI could label unique viewers as "≈" (approximate) for 30-day stats.
+
+### Resolution (December 26, 2025)
+
+**Status: RESOLVED**
+
+Changed UI to display "Unique Visitors (7 days)" instead of attempting 30-day unique counts:
+- UI now explicitly labels unique viewers as 7-day metric
+- Daily trend chart remains accurate using exact IP deduplication
+- Added informational note explaining the 7-day tracking window
+- Raw event retention remains at 7 days for exact counting
+- From day 8 onwards, daily aggregates are not re-aggregated, preserving accuracy
+
+Per-artwork daily aggregates now extend unlimitedly into the past without approximation.
 
 ---
 
@@ -160,6 +185,20 @@ Consolidate into a single pattern (likely fire-and-forget with optional ack flag
 
 Both patterns work correctly; this is a code quality issue only.
 
+### Resolution (December 26, 2025)
+
+**Status: RESOLVED**
+
+Consolidated to single fire-and-forget pattern with optional acknowledgment:
+- Removed `submit_view` request/response handler from `player_requests.py`
+- Removed `SubmitViewRequest` and `SubmitViewResponse` schemas
+- Added `request_ack` field to `P3AViewEvent` schema (defaults to `false`)
+- Updated `_on_view_message()` handler to send acknowledgments when requested
+- Acks are published to `makapix/player/{player_key}/view/ack`
+- Updated MQTT ACL to allow API server to publish acks and players to read them
+
+All view reporting now uses the `/view` topic pattern.
+
 ---
 
 ## VTS-005: Cache Invalidation Relies on TTL
@@ -193,6 +232,19 @@ Options:
 ### Workaround
 
 Users can wait 5 minutes or refresh multiple times.
+
+### Resolution (December 26, 2025)
+
+**Status: RESOLVED**
+
+Added manual cache refresh capability:
+- Added `refresh` query parameter to `GET /api/post/{id}/stats` endpoint
+- When `refresh=true`, cache is invalidated before computing stats
+- Frontend now displays "Refresh cache" button in statistics panel footer
+- Button includes tooltip: "Cache is refreshed every 5 minutes, but click here to refresh it now"
+- Users can force immediate stats refresh as needed
+
+Cache still auto-refreshes every 5 minutes (TTL), but manual refresh is now available.
 
 ---
 
@@ -337,5 +389,5 @@ When discovering new VTS issues:
 
 ---
 
-*Last updated: December 2025*
+*Last updated: December 26, 2025*
 

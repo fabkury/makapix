@@ -1116,6 +1116,11 @@ def rollup_view_events(self) -> dict[str, Any]:
                         "views_by_country": {},
                         "views_by_device": {},
                         "views_by_type": {},
+                        "total_views_authenticated": 0,
+                        "unique_ip_hashes_authenticated": set(),
+                        "views_by_country_authenticated": {},
+                        "views_by_device_authenticated": {},
+                        "views_by_type_authenticated": {},
                     }
                 
                 agg = aggregates[key]
@@ -1131,6 +1136,21 @@ def rollup_view_events(self) -> dict[str, Any]:
                 
                 agg["views_by_type"][event.view_type] = \
                     agg["views_by_type"].get(event.view_type, 0) + 1
+                
+                # Track authenticated views separately
+                if event.viewer_user_id is not None:
+                    agg["total_views_authenticated"] += 1
+                    agg["unique_ip_hashes_authenticated"].add(event.viewer_ip_hash)
+                    
+                    if event.country_code:
+                        agg["views_by_country_authenticated"][event.country_code] = \
+                            agg["views_by_country_authenticated"].get(event.country_code, 0) + 1
+                    
+                    agg["views_by_device_authenticated"][event.device_type] = \
+                        agg["views_by_device_authenticated"].get(event.device_type, 0) + 1
+                    
+                    agg["views_by_type_authenticated"][event.view_type] = \
+                        agg["views_by_type_authenticated"].get(event.view_type, 0) + 1
             
             processed_count += len(batch)
             offset += BATCH_SIZE
@@ -1172,6 +1192,25 @@ def rollup_view_events(self) -> dict[str, Any]:
                 for vtype, count in agg["views_by_type"].items():
                     existing_types[vtype] = existing_types.get(vtype, 0) + count
                 existing.views_by_type = existing_types
+                
+                # Merge authenticated data
+                existing.total_views_authenticated += agg["total_views_authenticated"]
+                existing.unique_viewers_authenticated += len(agg["unique_ip_hashes_authenticated"])
+                
+                existing_countries_auth = existing.views_by_country_authenticated or {}
+                for country, count in agg["views_by_country_authenticated"].items():
+                    existing_countries_auth[country] = existing_countries_auth.get(country, 0) + count
+                existing.views_by_country_authenticated = existing_countries_auth
+                
+                existing_devices_auth = existing.views_by_device_authenticated or {}
+                for device, count in agg["views_by_device_authenticated"].items():
+                    existing_devices_auth[device] = existing_devices_auth.get(device, 0) + count
+                existing.views_by_device_authenticated = existing_devices_auth
+                
+                existing_types_auth = existing.views_by_type_authenticated or {}
+                for vtype, count in agg["views_by_type_authenticated"].items():
+                    existing_types_auth[vtype] = existing_types_auth.get(vtype, 0) + count
+                existing.views_by_type_authenticated = existing_types_auth
             else:
                 # Create new record
                 daily_stat = models.PostStatsDaily(
@@ -1182,6 +1221,11 @@ def rollup_view_events(self) -> dict[str, Any]:
                     views_by_country=agg["views_by_country"],
                     views_by_device=agg["views_by_device"],
                     views_by_type=agg["views_by_type"],
+                    total_views_authenticated=agg["total_views_authenticated"],
+                    unique_viewers_authenticated=len(agg["unique_ip_hashes_authenticated"]),
+                    views_by_country_authenticated=agg["views_by_country_authenticated"],
+                    views_by_device_authenticated=agg["views_by_device_authenticated"],
+                    views_by_type_authenticated=agg["views_by_type_authenticated"],
                 )
                 db.add(daily_stat)
             

@@ -181,6 +181,11 @@ class PostStatsService:
             total_views += ds.total_views
             unique_viewers += ds.unique_viewers  # Note: may slightly overcount across boundaries
         
+        # Add older aggregated data (authenticated)
+        for ds in daily_stats:
+            total_views_authenticated += ds.total_views_authenticated
+            unique_viewers_authenticated += ds.unique_viewers_authenticated
+        
         # Aggregate views by country (all)
         views_by_country: dict[str, int] = {}
         for v in recent_views:
@@ -200,7 +205,9 @@ class PostStatsService:
         for v in authenticated_views:
             if v.country_code:
                 views_by_country_authenticated[v.country_code] = views_by_country_authenticated.get(v.country_code, 0) + 1
-        # Note: daily_stats don't separate authenticated, so we only use recent authenticated views
+        for ds in daily_stats:
+            for country, count in (ds.views_by_country_authenticated or {}).items():
+                views_by_country_authenticated[country] = views_by_country_authenticated.get(country, 0) + count
         
         # Sort by count and keep top 10
         views_by_country_authenticated = dict(
@@ -219,6 +226,9 @@ class PostStatsService:
         views_by_device_authenticated: dict[str, int] = {}
         for v in authenticated_views:
             views_by_device_authenticated[v.device_type] = views_by_device_authenticated.get(v.device_type, 0) + 1
+        for ds in daily_stats:
+            for device, count in (ds.views_by_device_authenticated or {}).items():
+                views_by_device_authenticated[device] = views_by_device_authenticated.get(device, 0) + count
         
         # Aggregate views by type (all)
         views_by_type: dict[str, int] = {}
@@ -232,6 +242,9 @@ class PostStatsService:
         views_by_type_authenticated: dict[str, int] = {}
         for v in authenticated_views:
             views_by_type_authenticated[v.view_type] = views_by_type_authenticated.get(v.view_type, 0) + 1
+        for ds in daily_stats:
+            for vtype, count in (ds.views_by_type_authenticated or {}).items():
+                views_by_type_authenticated[vtype] = views_by_type_authenticated.get(vtype, 0) + count
         
         # ===== DAILY VIEW TRENDS (last 30 days) =====
         
@@ -300,6 +313,13 @@ class PostStatsService:
             if day_str in daily_lookup_authenticated:
                 daily_lookup_authenticated[day_str].views = len(views)
                 daily_lookup_authenticated[day_str].unique_viewers = len(set(v.viewer_ip_hash for v in views))
+        
+        # Fill in data from daily aggregates (older than 7 days) - authenticated
+        for ds in daily_stats:
+            day_str = ds.date.isoformat()
+            if day_str in daily_lookup_authenticated:
+                daily_lookup_authenticated[day_str].views = ds.total_views_authenticated
+                daily_lookup_authenticated[day_str].unique_viewers = ds.unique_viewers_authenticated
         
         # Sort by date ascending (oldest first)
         daily_views_authenticated.sort(key=lambda x: x.date)

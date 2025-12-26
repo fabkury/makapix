@@ -505,6 +505,7 @@ def list_anonymous_users(
 
 @router.get("/sitewide-stats", response_model=schemas.SitewideStatsResponse)
 def get_sitewide_stats(
+    refresh: bool = Query(False, description="Force cache refresh"),
     db: Session = Depends(get_db),
     _moderator: models.User = Depends(require_moderator),
 ) -> schemas.SitewideStatsResponse:
@@ -516,7 +517,11 @@ def get_sitewide_stats(
     
     Statistics are cached in Redis for 5 minutes.
     """
-    from ..services.site_stats import get_sitewide_stats
+    from ..services.site_stats import get_sitewide_stats, SiteStatsService
+    
+    if refresh:
+        service = SiteStatsService(db)
+        service.invalidate_cache()
     
     stats = get_sitewide_stats(db)
     
@@ -569,5 +574,12 @@ def get_sitewide_stats(
         views_by_device_authenticated=stats.views_by_device_authenticated,
         top_referrers_authenticated=stats.top_referrers_authenticated,
         errors_by_type=stats.errors_by_type,
+        total_player_artwork_views_30d=stats.total_player_artwork_views_30d,
+        active_players_30d=stats.active_players_30d,
+        daily_player_views=[
+            schemas.DailyCount(date=dv.date, count=dv.count)
+            for dv in stats.daily_player_views
+        ],
+        views_by_player=stats.views_by_player,
         computed_at=datetime.fromisoformat(stats.computed_at),
     )

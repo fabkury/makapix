@@ -175,57 +175,6 @@ class GetPostResponse(BaseModel):
     error_code: str | None = None
 
 
-class SubmitViewRequest(PlayerRequestBase):
-    """Request to submit a view event."""
-    
-    request_type: Literal["submit_view"] = "submit_view"
-    post_id: int = Field(..., description="Post ID to record view for")
-    view_intent: Literal["automated", "intentional", "channel", "artwork"] = Field(
-        "automated",
-        description="View intent: 'automated'/'channel' for playlist/channel views, 'intentional'/'artwork' for direct user selection"
-    )
-    # Player-reported context (optional, for player devices)
-    local_datetime: str | None = Field(
-        None,
-        description="Player's local date and time in ISO 8601 format with timezone (e.g., '2025-12-22T14:30:00-05:00')"
-    )
-    local_timezone: str | None = Field(
-        None,
-        description="Player's IANA timezone identifier (e.g., 'America/New_York'). Future: proper timezone support."
-    )
-    play_order: int | None = Field(
-        None,
-        ge=0,
-        le=2,
-        description="Play order mode: 0=server order, 1=created_at order, 2=random"
-    )
-    channel: Literal["all", "promoted", "user", "by_user", "artwork", "hashtag"] | None = Field(
-        None,
-        description="Channel being played when view occurred"
-    )
-    channel_user_sqid: str | None = Field(
-        None,
-        description="User sqid for 'by_user' channel context"
-    )
-    channel_hashtag: str | None = Field(
-        None,
-        description="Hashtag (without #) for 'hashtag' channel context"
-    )
-
-
-class SubmitViewResponse(BaseModel):
-    """Response after submitting a view."""
-    
-    request_id: str
-    success: bool = True
-    error: str | None = None
-    error_code: str | None = None
-    retry_after: float | None = Field(
-        None,
-        description="Seconds until next view submission allowed (only set when rate limited)"
-    )
-
-
 class SubmitReactionRequest(PlayerRequestBase):
     """Request to add an emoji reaction."""
     
@@ -318,10 +267,8 @@ class P3AViewEvent(BaseModel):
     Fire-and-forget view event from p3a player devices.
     
     Published to: makapix/player/{player_key}/view
-    No response expected (fire-and-forget).
-    
-    Note: This is separate from the request/response pattern for backward compatibility.
-    Future: Consider consolidating these two approaches.
+    Optional acknowledgment can be requested via request_ack field.
+    If requested, ack is sent to: makapix/player/{player_key}/view/ack
     """
     
     post_id: int = Field(..., description="Artwork post ID")
@@ -338,4 +285,5 @@ class P3AViewEvent(BaseModel):
     # Optional fields for future compatibility (not currently sent by p3a)
     channel_user_sqid: str | None = Field(None, description="User sqid for 'by_user' channel")
     channel_hashtag: str | None = Field(None, description="Hashtag for 'hashtag' channel")
+    request_ack: bool = Field(False, description="Whether to send acknowledgment to view/ack topic")
 

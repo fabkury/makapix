@@ -1428,6 +1428,12 @@ class SitewideStatsResponse(BaseModel):
     # Error tracking
     errors_by_type: dict[str, int]  # {"404": 50, "500": 5, ...}
 
+    # Player Activity (artwork views from player devices)
+    total_player_artwork_views_30d: int = 0
+    active_players_30d: int = 0
+    daily_player_views: list[DailyCount] = []
+    views_by_player: dict[str, int] = {}  # player_name -> view count
+
     computed_at: datetime
 
 

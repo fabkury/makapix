@@ -876,6 +876,13 @@ class PostStatsDaily(Base):
         JSON, nullable=False, default=dict
     )  # {"intentional": 60, "listing": 15, ...}
 
+    # Authenticated-only aggregates (for 30-day stats)
+    total_views_authenticated = Column(Integer, nullable=False, default=0)
+    unique_viewers_authenticated = Column(Integer, nullable=False, default=0)
+    views_by_country_authenticated = Column(JSON, nullable=False, default=dict)
+    views_by_device_authenticated = Column(JSON, nullable=False, default=dict)
+    views_by_type_authenticated = Column(JSON, nullable=False, default=dict)
+
     # Timestamps
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

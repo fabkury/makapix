@@ -6,13 +6,13 @@ import logging
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..auth import get_current_user
 from ..deps import get_db
-from ..services.stats import get_post_stats
+from ..services.stats import get_post_stats, invalidate_post_stats_cache
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,7 @@ router = APIRouter(prefix="/post", tags=["Statistics"])
 @router.get("/{id}/stats", response_model=schemas.PostStatsResponse)
 async def get_post_statistics(
     id: int,  # Changed from UUID to int
+    refresh: bool = Query(False, description="Force cache refresh"),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> schemas.PostStatsResponse:
@@ -34,6 +35,9 @@ async def get_post_statistics(
     **Authorization:**
     - Post owner can view statistics for their own posts
     - Moderators and owners can view statistics for any post
+    
+    **Query Parameters:**
+    - `refresh`: If true, invalidates cache and recomputes statistics
     
     **Response includes:**
     - All statistics (including unauthenticated): `total_views`, `unique_viewers`, etc.
@@ -57,6 +61,10 @@ async def get_post_statistics(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have permission to view statistics for this post"
         )
+    
+    # Invalidate cache if requested
+    if refresh:
+        invalidate_post_stats_cache(db, id)
     
     # Get statistics
     stats = get_post_stats(db, id)

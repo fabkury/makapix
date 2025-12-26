@@ -24,8 +24,6 @@ from .schemas import (
     PlaylistArtworkPayload,
     PlaylistPostPayload,
     PlayerPostPayload,
-    SubmitViewRequest,
-    SubmitViewResponse,
     RevokeReactionRequest,
     RevokeReactionResponse,
     SubmitReactionRequest,
@@ -485,143 +483,6 @@ def _handle_query_posts(
         )
 
 
-def _handle_submit_view(
-    player: models.Player,
-    request: SubmitViewRequest,
-    db: Session,
-) -> None:
-    """
-    Handle submit_view request.
-    
-    Args:
-        player: Authenticated player instance
-        request: Parsed request
-        db: Database session
-    """
-    try:
-        # Import rate limiting
-        from ..services.rate_limit import check_player_view_rate_limit
-        
-        # Check rate limit first (1 view per 5 seconds per player)
-        allowed, retry_after = check_player_view_rate_limit(str(player.player_key))
-        
-        if not allowed:
-            # Send rate limit response with retry_after
-            response = SubmitViewResponse(
-                request_id=request.request_id,
-                success=False,
-                error="Rate limit exceeded. Players can submit 1 view per 5 seconds.",
-                error_code="rate_limited",
-                retry_after=retry_after,
-            )
-            response_topic = f"makapix/player/{player.player_key}/response/{request.request_id}"
-            publish(
-                topic=response_topic,
-                payload=response.model_dump(mode="json"),
-                qos=1,
-                retain=False,
-            )
-            logger.debug(f"Rate limited view submission from player {player.player_key}, retry after {retry_after}s")
-            return
-        
-        # Check if post exists
-        post = db.query(models.Post).filter(models.Post.id == request.post_id).first()
-        
-        if not post:
-            _send_error_response(
-                player.player_key,
-                request.request_id,
-                f"Post {request.post_id} not found",
-                "not_found",
-            )
-            return
-        
-        # Don't record view if player owner is the post owner
-        if player.owner_id == post.owner_id:
-            # Still send success response, but don't record
-            response = SubmitViewResponse(request_id=request.request_id)
-            response_topic = f"makapix/player/{player.player_key}/response/{request.request_id}"
-            publish(
-                topic=response_topic,
-                payload=response.model_dump(mode="json"),
-                qos=1,
-                retain=False,
-            )
-            logger.debug(f"Skipped view recording for post {request.post_id} - player owner is post owner")
-            return
-        
-        # Import view tracking utilities
-        from ..utils.view_tracking import ViewType, ViewSource, hash_ip
-        from ..geoip import get_country_code
-        from ..tasks import write_view_event
-        from datetime import datetime, timezone
-        
-        # Map view_intent to view_type (support both old and new values)
-        if request.view_intent in ("intentional", "artwork"):
-            view_type = ViewType.INTENTIONAL
-        elif request.view_intent in ("automated", "channel"):
-            view_type = ViewType.LISTING
-        else:
-            # Default to LISTING for unexpected values
-            logger.warning(f"Unexpected view_intent value: {request.view_intent}, defaulting to LISTING")
-            view_type = ViewType.LISTING
-        
-        # Create view event data
-        # For player views, we use a synthetic IP hash based on player_key
-        player_ip_hash = hash_ip(f"player:{player.player_key}")
-        
-        # Build channel_context from channel-specific fields
-        channel_context = None
-        if request.channel == "by_user" and request.channel_user_sqid:
-            channel_context = request.channel_user_sqid
-        elif request.channel == "hashtag" and request.channel_hashtag:
-            channel_context = request.channel_hashtag
-        
-        event_data = {
-            "post_id": str(request.post_id),
-            "viewer_user_id": str(player.owner_id),
-            "viewer_ip_hash": player_ip_hash,
-            "country_code": None,  # Players don't have geographic info
-            "device_type": "player",
-            "view_source": ViewSource.PLAYER.value,
-            "view_type": view_type.value,
-            "user_agent_hash": None,  # Players don't have user agents
-            "referrer_domain": None,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            # New player-specific fields
-            "player_id": str(player.id),
-            "local_datetime": request.local_datetime,
-            "local_timezone": request.local_timezone,
-            "play_order": request.play_order,
-            "channel": request.channel,
-            "channel_context": channel_context,
-        }
-        
-        # Dispatch to Celery for async write
-        write_view_event.delay(event_data)
-        
-        # Send success response
-        response = SubmitViewResponse(request_id=request.request_id)
-        response_topic = f"makapix/player/{player.player_key}/response/{request.request_id}"
-        publish(
-            topic=response_topic,
-            payload=response.model_dump(mode="json"),
-            qos=1,
-            retain=False,
-        )
-        
-        logger.info(f"Recorded view for post {request.post_id} from player {player.player_key}")
-        
-    except Exception as e:
-        logger.error(f"Error handling submit_view: {e}", exc_info=True)
-        _send_error_response(
-            player.player_key,
-            request.request_id,
-            f"Internal error recording view: {str(e)}",
-            "internal_error",
-        )
-
-
 def _handle_get_post(
     player: models.Player,
     request: GetPostRequest,
@@ -1060,9 +921,6 @@ def _on_request_message(client: mqtt_client.Client, userdata: Any, msg: mqtt_cli
             elif request_type == "get_post":
                 request_obj = GetPostRequest(**payload)
                 _handle_get_post(player, request_obj, db)
-            elif request_type == "submit_view":
-                request_obj = SubmitViewRequest(**payload)
-                _handle_submit_view(player, request_obj, db)
             elif request_type == "submit_reaction":
                 request_obj = SubmitReactionRequest(**payload)
                 _handle_submit_reaction(player, request_obj, db)

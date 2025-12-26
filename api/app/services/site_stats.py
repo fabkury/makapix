@@ -138,6 +138,12 @@ class SitewideStats:
     # Error tracking
     errors_by_type: dict[str, int]
     
+    # Player Activity (from artwork views, not page views)
+    total_player_artwork_views_30d: int
+    active_players_30d: int
+    daily_player_views: list[DailyCount]
+    views_by_player: dict[str, int]  # player_key -> view count
+    
     computed_at: str  # ISO format datetime
     
     def to_dict(self) -> dict:
@@ -166,6 +172,10 @@ class SitewideStats:
             "views_by_device_authenticated": self.views_by_device_authenticated,
             "top_referrers_authenticated": self.top_referrers_authenticated,
             "errors_by_type": self.errors_by_type,
+            "total_player_artwork_views_30d": self.total_player_artwork_views_30d,
+            "active_players_30d": self.active_players_30d,
+            "daily_player_views": [{"date": d.date, "count": d.count} for d in self.daily_player_views],
+            "views_by_player": self.views_by_player,
             "computed_at": self.computed_at,
         }
 
@@ -495,6 +505,61 @@ class SiteStatsService:
         # Sort and keep top 10
         top_referrers_authenticated = dict(sorted(top_referrers_authenticated.items(), key=lambda x: -x[1])[:10])
         
+        # ===== PLAYER ACTIVITY (from view_events table) =====
+        
+        # Query view_events for player device views in last 30 days
+        player_view_events = self.db.query(models.ViewEvent).filter(
+            models.ViewEvent.device_type == "player",
+            models.ViewEvent.created_at >= thirty_days_ago
+        ).all()
+        
+        # Total player artwork views (30 days)
+        total_player_artwork_views_30d = len(player_view_events)
+        
+        # Active players (unique player_ids that sent views)
+        active_player_ids = set(v.player_id for v in player_view_events if v.player_id)
+        active_players_30d = len(active_player_ids)
+        
+        # Daily player views trend (last 30 days)
+        daily_player_views: list[DailyCount] = []
+        player_views_by_day: dict[str, int] = {}
+        for v in player_view_events:
+            day_str = v.created_at.date().isoformat()
+            player_views_by_day[day_str] = player_views_by_day.get(day_str, 0) + 1
+        
+        # Fill in all 30 days
+        for i in range(30):
+            day = (now - timedelta(days=29-i)).date()
+            day_str = day.isoformat()
+            daily_player_views.append(DailyCount(
+                date=day_str,
+                count=player_views_by_day.get(day_str, 0)
+            ))
+        
+        # Views by player (get player names for display)
+        views_by_player_id: dict[str, int] = {}
+        for v in player_view_events:
+            if v.player_id:
+                player_id_str = str(v.player_id)
+                views_by_player_id[player_id_str] = views_by_player_id.get(player_id_str, 0) + 1
+        
+        # Fetch player names for display
+        views_by_player: dict[str, int] = {}
+        if views_by_player_id:
+            from uuid import UUID
+            player_ids = [UUID(pid) for pid in views_by_player_id.keys()]
+            players = self.db.query(models.Player).filter(
+                models.Player.id.in_(player_ids)
+            ).all()
+            player_names = {str(p.id): p.name or str(p.player_key)[:8] for p in players}
+            
+            for player_id_str, count in views_by_player_id.items():
+                player_name = player_names.get(player_id_str, player_id_str[:8])
+                views_by_player[player_name] = views_by_player.get(player_name, 0) + count
+        
+        # Sort by view count and keep top 10
+        views_by_player = dict(sorted(views_by_player.items(), key=lambda x: -x[1])[:10])
+        
         # ===== BUILD RESULT =====
         
         return SitewideStats(
@@ -521,6 +586,10 @@ class SiteStatsService:
             views_by_device_authenticated=views_by_device_authenticated,
             top_referrers_authenticated=top_referrers_authenticated,
             errors_by_type=errors_by_type,
+            total_player_artwork_views_30d=total_player_artwork_views_30d,
+            active_players_30d=active_players_30d,
+            daily_player_views=daily_player_views,
+            views_by_player=views_by_player,
             computed_at=now.isoformat(),
         )
     
@@ -550,6 +619,10 @@ class SiteStatsService:
             views_by_device_authenticated=data.get("views_by_device_authenticated", {}),
             top_referrers_authenticated=data.get("top_referrers_authenticated", {}),
             errors_by_type=data["errors_by_type"],
+            total_player_artwork_views_30d=data.get("total_player_artwork_views_30d", 0),
+            active_players_30d=data.get("active_players_30d", 0),
+            daily_player_views=[DailyCount(**d) for d in data.get("daily_player_views", [])],
+            views_by_player=data.get("views_by_player", {}),
             computed_at=data["computed_at"],
         )
 

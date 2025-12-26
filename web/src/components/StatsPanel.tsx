@@ -88,6 +88,7 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [includeUnauthenticated, setIncludeUnauthenticated] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const API_BASE_URL = typeof window !== 'undefined'
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
@@ -133,6 +134,32 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
 
     fetchStats();
   }, [isOpen, postId, API_BASE_URL]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      const response = await authenticatedFetch(
+        `${API_BASE_URL}/api/post/${postId}/stats?refresh=true`
+      );
+      
+      if (response.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
+
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data);
+      } else {
+        console.error('Error refreshing stats:', response.statusText);
+      }
+    } catch (err) {
+      console.error('Error refreshing stats:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Compute displayed stats based on toggle
   const displayedStats = useMemo(() => {
@@ -226,7 +253,7 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
               </div>
               <div className="stat-card">
                 <div className="stat-value">{displayedStats.unique_viewers.toLocaleString()}</div>
-                <div className="stat-label">Unique Visitors</div>
+                <div className="stat-label">Unique Visitors (7 days)</div>
               </div>
               <div className="stat-card">
                 <div className="stat-value">{displayedStats.total_reactions.toLocaleString()}</div>
@@ -377,6 +404,14 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
             {/* Footer */}
             <div className="stats-footer">
               <span>Last updated: {new Date(displayedStats.computed_at).toLocaleString()}</span>
+              <button 
+                onClick={handleRefresh} 
+                disabled={isRefreshing}
+                className="refresh-link"
+                title="Cache is refreshed every 5 minutes, but click here to refresh it now"
+              >
+                {isRefreshing ? 'Refreshing...' : 'Refresh cache'}
+              </button>
               {displayedStats.first_view_at && (
                 <span>First view: {new Date(displayedStats.first_view_at).toLocaleString()}</span>
               )}
@@ -787,6 +822,26 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
           border-top: 1px solid rgba(255, 255, 255, 0.05);
           flex-wrap: wrap;
           gap: 8px;
+        }
+
+        .refresh-link {
+          background: transparent;
+          border: none;
+          color: var(--primary, #4a9eff);
+          cursor: pointer;
+          padding: 0;
+          font-size: 0.75rem;
+          text-decoration: underline;
+          transition: opacity 0.2s;
+        }
+
+        .refresh-link:hover:not(:disabled) {
+          opacity: 0.8;
+        }
+
+        .refresh-link:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
       `}</style>
     </div>

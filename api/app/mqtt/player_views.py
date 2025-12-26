@@ -29,11 +29,13 @@ UNSYNC_TIMESTAMP = "1970-01-01T00:00:00Z"
 
 def _on_view_message(client: mqtt_client.Client, userdata: Any, msg: mqtt_client.MQTTMessage) -> None:
     """
-    Handle incoming player view event messages (fire-and-forget).
+    Handle incoming player view event messages.
     
     Topic pattern: makapix/player/{player_key}/view
-    No response is sent back to the player.
+    Optional acknowledgment sent to: makapix/player/{player_key}/view/ack
     """
+    view_event = None
+    player_key = None
     try:
         # Parse topic to extract player_key
         parts = msg.topic.split("/")
@@ -66,6 +68,14 @@ def _on_view_message(client: mqtt_client.Client, userdata: Any, msg: mqtt_client
         # Verify player_key in payload matches topic
         if str(player_key) != view_event.player_key:
             logger.warning(f"player_key mismatch: topic={player_key}, payload={view_event.player_key}")
+            if view_event.request_ack:
+                ack_topic = f"makapix/player/{player_key}/view/ack"
+                ack_payload = json.dumps({
+                    "success": False,
+                    "error": "player_key mismatch between topic and payload",
+                    "error_code": "player_key_mismatch"
+                })
+                client.publish(ack_topic, ack_payload, qos=1)
             return
         
         # Get database session
@@ -83,10 +93,26 @@ def _on_view_message(client: mqtt_client.Client, userdata: Any, msg: mqtt_client
             
             if not player:
                 logger.warning(f"View event from unregistered player: {player_key}")
+                if view_event.request_ack:
+                    ack_topic = f"makapix/player/{player_key}/view/ack"
+                    ack_payload = json.dumps({
+                        "success": False,
+                        "error": "Player not registered",
+                        "error_code": "player_not_registered"
+                    })
+                    client.publish(ack_topic, ack_payload, qos=1)
                 return
             
             if not player.owner_id:
                 logger.warning(f"Player {player_key} has no owner")
+                if view_event.request_ack:
+                    ack_topic = f"makapix/player/{player_key}/view/ack"
+                    ack_payload = json.dumps({
+                        "success": False,
+                        "error": "Player has no owner",
+                        "error_code": "player_no_owner"
+                    })
+                    client.publish(ack_topic, ack_payload, qos=1)
                 return
             
             # Import rate limiting and deduplication
@@ -95,23 +121,51 @@ def _on_view_message(client: mqtt_client.Client, userdata: Any, msg: mqtt_client
             # Check for duplicates (MQTT QoS 1 retransmissions)
             if check_view_duplicate(str(player_key), view_event.post_id, view_event.timestamp):
                 logger.debug(f"Discarded duplicate view: player={player_key}, post={view_event.post_id}")
+                if view_event.request_ack:
+                    ack_topic = f"makapix/player/{player_key}/view/ack"
+                    ack_payload = json.dumps({
+                        "success": False,
+                        "error": "Duplicate view event",
+                        "error_code": "duplicate"
+                    })
+                    client.publish(ack_topic, ack_payload, qos=1)
                 return
             
             # Check rate limit (1 view per 5 seconds per player)
             allowed, retry_after = check_player_view_rate_limit(str(player_key))
             if not allowed:
                 logger.debug(f"Rate limited view from player {player_key}, retry after {retry_after}s")
+                if view_event.request_ack:
+                    ack_topic = f"makapix/player/{player_key}/view/ack"
+                    ack_payload = json.dumps({
+                        "success": False,
+                        "error": f"Rate limited, retry after {retry_after}s",
+                        "error_code": "rate_limited"
+                    })
+                    client.publish(ack_topic, ack_payload, qos=1)
                 return
             
             # Check if post exists
             post = db.query(models.Post).filter(models.Post.id == view_event.post_id).first()
             if not post:
                 logger.warning(f"View event for non-existent post: {view_event.post_id}")
+                if view_event.request_ack:
+                    ack_topic = f"makapix/player/{player_key}/view/ack"
+                    ack_payload = json.dumps({
+                        "success": False,
+                        "error": "Post not found",
+                        "error_code": "post_not_found"
+                    })
+                    client.publish(ack_topic, ack_payload, qos=1)
                 return
             
             # Don't record view if player owner is the post owner
             if player.owner_id == post.owner_id:
                 logger.debug(f"Skipped view recording for post {view_event.post_id} - player owner is post owner")
+                if view_event.request_ack:
+                    ack_topic = f"makapix/player/{player_key}/view/ack"
+                    ack_payload = json.dumps({"success": True})
+                    client.publish(ack_topic, ack_payload, qos=1)
                 return
             
             # Import view tracking utilities
@@ -170,8 +224,25 @@ def _on_view_message(client: mqtt_client.Client, userdata: Any, msg: mqtt_client
             
             logger.info(f"Recorded view for post {view_event.post_id} from player {player_key} (fire-and-forget)")
             
+            # Send acknowledgment if requested
+            if view_event.request_ack:
+                ack_topic = f"makapix/player/{player_key}/view/ack"
+                ack_payload = json.dumps({"success": True})
+                client.publish(ack_topic, ack_payload, qos=1)
+                logger.debug(f"Sent view ack to {ack_topic}")
+            
         except Exception as e:
             logger.error(f"Error processing view event: {e}", exc_info=True)
+            # Send error ack if requested
+            if view_event and view_event.request_ack:
+                ack_topic = f"makapix/player/{player_key}/view/ack"
+                ack_payload = json.dumps({
+                    "success": False,
+                    "error": str(e),
+                    "error_code": "processing_error"
+                })
+                client.publish(ack_topic, ack_payload, qos=1)
+                logger.debug(f"Sent error ack to {ack_topic}")
         finally:
             db.close()
     
