@@ -50,7 +50,7 @@ def decode_sqid(sqid: str) -> int | None:
             return decoded[0]
     except Exception:
         pass
-
+    
     return None
 
 
@@ -83,7 +83,7 @@ def decode_user_sqid(sqid: str) -> int | None:
             return decoded[0]
     except Exception:
         pass
-
+    
     return None
 
 
@@ -116,6 +116,6 @@ def decode_blog_post_sqid(sqid: str) -> int | None:
             return decoded[0]
     except Exception:
         pass
-
+    
     return None
 
