@@ -175,7 +175,13 @@ Contributions are welcome! Please ensure your changes:
 
 ## 📄 License
 
-[License information to be added]
+Makapix Club is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the full license text.
+
+### Third-Party Software
+
+Makapix Club integrates code from the [Piskel](https://github.com/piskelapp/piskel) project, which is also licensed under Apache License 2.0. We are grateful to the Piskel team for creating an excellent open-source pixel art editor.
+
+For detailed attribution information, see [NOTICE](NOTICE).
 
 ## 🔗 Links
 

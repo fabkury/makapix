@@ -7,6 +7,7 @@ name = "makapix-api"
 version = "0.1.0"
 description = "Local development FastAPI backend for the Makapix social network prototype."
 authors = [{ name = "Makapix Team" }]
+license = { text = "Apache-2.0" }
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.13.2",
