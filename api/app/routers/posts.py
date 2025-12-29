@@ -1110,6 +1110,89 @@ def revoke_public_visibility(
     return schemas.PublicVisibilityResponse(post_id=id, public_visibility=False)
 
 
+@router.post("/{id}/replace-artwork")
+async def replace_artwork(
+    id: int,
+    image: UploadFile = File(...),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Replace the artwork of an existing post (Piskel edit feature)"""
+    # Get the post
+    post = db.query(models.Post).filter(models.Post.id == id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    # Verify ownership
+    if post.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to modify this post")
+    
+    # Read file
+    contents = await image.read()
+    file_size = len(contents)
+    
+    # Validate file size (5 MB limit)
+    validate_file_size(file_size)
+    
+    # Validate MIME type
+    mime_type = image.content_type
+    if mime_type not in ALLOWED_MIME_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type: {mime_type}. Allowed: PNG, GIF, WebP"
+        )
+    
+    # Validate dimensions
+    img = Image.open(io.BytesIO(contents))
+    width, height = img.size
+    validate_image_dimensions(width, height)
+    
+    # Upload new image to vault
+    storage_key = save_artwork_to_vault(contents, mime_type)
+    new_art_url = get_artwork_url(storage_key)
+    
+    # Update post with new artwork URL
+    post.art_url = new_art_url
+    post.width = width
+    post.height = height
+    post.format = mime_type.split('/')[-1].upper()
+    
+    # Update animation info if GIF
+    if mime_type == 'image/gif' and getattr(img, 'is_animated', False):
+        post.frame_count = getattr(img, 'n_frames', 1)
+        # Attempt to extract frame duration
+        try:
+            frame_duration_ms = img.info.get('duration', 100)
+            post.min_frame_duration_ms = frame_duration_ms
+        except:
+            post.min_frame_duration_ms = 100
+    else:
+        post.frame_count = 1
+        post.min_frame_duration_ms = None
+    
+    # Recompute transparency metadata
+    transparency_meta = compute_transparency_metadata(img)
+    post.transparency_meta = transparency_meta
+    
+    db.commit()
+    db.refresh(post)
+    
+    # Log the replacement
+    logger.info(f"Artwork replaced for post {post.public_sqid} by user {current_user.public_sqid}")
+    
+    return {
+        "message": "Artwork replaced successfully",
+        "post": {
+            "id": post.id,
+            "public_sqid": post.public_sqid,
+            "art_url": post.art_url,
+            "width": post.width,
+            "height": post.height,
+            "frame_count": post.frame_count
+        }
+    }
+
+
 @router.get(
     "/{id}/admin-notes",
     response_model=schemas.AdminNoteList,

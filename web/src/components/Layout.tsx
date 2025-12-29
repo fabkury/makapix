@@ -19,6 +19,12 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { 
+    href: '/editor', 
+    icon: '🖌️', 
+    label: 'Create',
+    matchPaths: ['/editor']
+  },
+  { 
     href: '/submit', 
     icon: '➕', 
     label: 'Submit',
@@ -317,12 +323,18 @@ export default function Layout({ children, title, description }: LayoutProps) {
           <nav className="nav" aria-label="Main navigation">
             {navItems.map((item) => {
               const active = isActive(item);
-              // For Recent artworks (/), redirect unauthenticated users to /welcome
+              // Auth checks and redirects
               const handleClick = (e: React.MouseEvent) => {
+                // For Recent artworks (/), redirect unauthenticated users to /welcome
                 if (item.href === '/' && !isLoggedIn) {
                   e.preventDefault();
                   markWelcomeAsInternalNav();
                   router.push('/welcome');
+                }
+                // Editor requires authentication
+                if (item.href === '/editor' && !isLoggedIn) {
+                  e.preventDefault();
+                  router.push('/auth?redirect=/editor');
                 }
               };
               return (

@@ -44,6 +44,7 @@ export default function SubmitPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+  const [fromPiskel, setFromPiskel] = useState(false);
   
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -145,6 +146,53 @@ export default function SubmitPage() {
     
     return errors;
   }, []);
+
+  // Check for Piskel export data (after validation functions are defined)
+  useEffect(() => {
+    if (router.query.from !== 'piskel') return;
+    
+    try {
+      const exportDataStr = sessionStorage.getItem('piskel_export');
+      if (!exportDataStr) return;
+      
+      const exportData = JSON.parse(exportDataStr);
+      
+      // Check if data is recent (within 5 minutes)
+      if (Date.now() - exportData.timestamp > 5 * 60 * 1000) {
+        sessionStorage.removeItem('piskel_export');
+        return;
+      }
+      
+      setFromPiskel(true);
+      
+      // Convert base64 back to File
+      const byteString = atob(exportData.imageData.split(',')[1]);
+      const mimeType = exportData.imageData.split(',')[0].split(':')[1].split(';')[0];
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+      }
+      const blob = new Blob([ab], { type: mimeType });
+      const file = new File([blob], `${exportData.name || 'artwork'}.gif`, { type: mimeType });
+      
+      // Set file and preview
+      setSelectedFile(file);
+      setPreviewUrl(exportData.imageData);
+      setImageDimensions({ width: exportData.width, height: exportData.height });
+      setTitle(exportData.name || '');
+      
+      // Validate
+      const fileErrors = validateFile(file);
+      const dimErrors = validateImageDimensions(exportData.width, exportData.height);
+      setValidationErrors([...fileErrors, ...dimErrors]);
+      
+      // Clear the stored data
+      sessionStorage.removeItem('piskel_export');
+    } catch (err) {
+      console.error('Failed to load Piskel export:', err);
+    }
+  }, [router.query.from, validateFile, validateImageDimensions]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -289,7 +337,15 @@ export default function SubmitPage() {
   return (
     <Layout title="Submit Artwork" description="Upload your pixel art">
       <div className="submit-container">
-        <h1 className="page-title">Submit Artwork</h1>
+        <h1 className="page-title">
+          {fromPiskel ? '🖌️ Publish Artwork' : 'Submit Artwork'}
+        </h1>
+        
+        {fromPiskel && (
+          <div className="piskel-notice">
+            <span>✨ Artwork from Piskel ready to publish!</span>
+          </div>
+        )}
 
         <div className="import-row">
           <button
@@ -465,6 +521,17 @@ export default function SubmitPage() {
           color: var(--text-primary);
           margin-bottom: 24px;
           text-align: center;
+        }
+
+        .piskel-notice {
+          text-align: center;
+          margin-bottom: 20px;
+          padding: 12px 16px;
+          background: linear-gradient(135deg, rgba(255, 110, 180, 0.15), rgba(180, 78, 255, 0.15));
+          border: 1px solid rgba(255, 110, 180, 0.3);
+          border-radius: 12px;
+          color: var(--accent-pink);
+          font-weight: 500;
         }
 
         .import-row {

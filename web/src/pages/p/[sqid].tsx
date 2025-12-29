@@ -971,6 +971,13 @@ export default function PostPage() {
           {isOwner && !isEditing && (
             <div className="owner-actions">
               <button
+                onClick={() => router.push(`/editor?edit=${post.public_sqid}`)}
+                className="action-button piskel-edit"
+                title="Edit in Piskel"
+              >
+                🖌️ Edit in Piskel
+              </button>
+              <button
                 onClick={handleHide}
                 className={`action-button ${post.hidden_by_user ? 'unhide' : 'hide'}`}
               >
@@ -1313,6 +1320,16 @@ export default function PostPage() {
         .action-button.player:hover:not(:disabled) {
           background: rgba(78, 159, 255, 0.3);
           box-shadow: 0 0 12px rgba(78, 159, 255, 0.3);
+        }
+
+        .action-button.piskel-edit {
+          background: rgba(255, 165, 0, 0.2);
+          color: #ffa500;
+        }
+
+        .action-button.piskel-edit:hover:not(:disabled) {
+          background: rgba(255, 165, 0, 0.3);
+          box-shadow: 0 0 12px rgba(255, 165, 0, 0.3);
         }
 
         .stats-action {

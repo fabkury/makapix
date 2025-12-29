@@ -162,6 +162,28 @@ services:
     networks:
       - caddy_net
 
+  # ---------------------------------------------------------------------------
+  # Piskel Editor - Pixel art editor at piskel.makapix.club
+  # ---------------------------------------------------------------------------
+  piskel:
+    build:
+      context: ../../apps/piskel
+      dockerfile: Dockerfile
+    container_name: makapix-piskel
+    restart: unless-stopped
+    labels:
+      # Caddy auto-routing via label
+      caddy: piskel.makapix.club
+      caddy.encode: "gzip zstd"
+      # Security headers
+      caddy.header.X-Content-Type-Options: "nosniff"
+      # Allow iframe embedding from dev.makapix.club
+      caddy.header.Content-Security-Policy: "frame-ancestors 'self' https://dev.makapix.club"
+      # Reverse proxy to container's Caddy
+      caddy.reverse_proxy: "{{upstreams 80}}"
+    networks:
+      - caddy_net
+
 networks:
   caddy_net:
     external: true
