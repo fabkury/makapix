@@ -1,0 +1,46 @@
+Makapix Club
+Copyright 2024-2025 Fabrício Kury
+
+This product includes software developed by Fabrício Kury.
+
+================================================================================
+
+This software includes code from the Piskel project:
+https://github.com/piskelapp/piskel
+
+Piskel is licensed under the Apache License, Version 2.0.
+Copyright (c) 2013 Julian Descottes
+
+Makapix Club integrates Piskel as a pixel art editor, with modifications
+to enable seamless publishing of artwork to the Makapix platform. The 
+integration includes:
+- Custom export functionality to publish directly to Makapix
+- Modified UI to include Makapix-specific buttons and workflows
+- Integration layer for communication between Piskel and Makapix
+- Deployment configuration for hosting as part of the Makapix service
+
+The original Piskel source code and license can be found at:
+https://github.com/piskelapp/piskel
+
+================================================================================
+
+THIRD-PARTY DEPENDENCIES
+
+Makapix Club uses various third-party libraries and dependencies, each with
+their own license terms. These dependencies are specified in the package.json
+files throughout the project and include but are not limited to:
+
+- Next.js (MIT License)
+- React (MIT License)
+- FastAPI (MIT License)
+- PostgreSQL (PostgreSQL License)
+- Redis (BSD 3-Clause License)
+- Eclipse Mosquitto (EPL 2.0 / EDL 1.0)
+- Caddy (Apache License 2.0)
+
+For complete dependency information, please refer to:
+- web/package.json (Frontend dependencies)
+- api/requirements.txt (Backend dependencies)
+- worker/requirements.txt (Worker dependencies)
+
+Each dependency retains its original copyright and license terms.

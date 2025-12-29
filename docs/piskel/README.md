@@ -7,6 +7,16 @@
 
 This document set describes the integration of [Piskel](https://github.com/piskelapp/piskel), an open-source pixel art editor, into Makapix Club. The integration enables users to create pixel art directly within the Makapix ecosystem and publish their creations without file downloads/uploads.
 
+### License Information
+
+Piskel is licensed under the Apache License, Version 2.0, Copyright (c) 2013 Julian Descottes.  
+Makapix Club is also licensed under the Apache License, Version 2.0.
+
+For detailed attribution and licensing information, please see:
+- [LICENSE](../../LICENSE) - Makapix Club license
+- [NOTICE](../../NOTICE) - Attribution notices including Piskel
+- [THIRD_PARTY_LICENSES.md](../../THIRD_PARTY_LICENSES.md) - Comprehensive third-party license documentation
+
 ## Goals
 
 1. **Create Button**: Add a 🖌️ button in Makapix Club's top-header that navigates to the Piskel editor
