@@ -41,6 +41,8 @@ services:
       - caddy_data:/data
       - caddy_config:/config
       - /var/log/caddy:/var/log/caddy
+      # Mount vault for HTTP file serving (vault.makapix.club)
+      - ${VAULT_HOST_PATH}:/srv/vault:ro
     logging:
       driver: "json-file"
       options:
@@ -61,12 +63,55 @@ services:
     labels:
       caddy: ${ROOT_DOMAIN}, www.${ROOT_DOMAIN}
       caddy.encode: "gzip zstd"
-      caddy.header.Strict-Transport-Security: "max-age=31536000; includeSubDomains; preload"
+      # Note: Removed "includeSubDomains" to allow HTTP access to vault.makapix.club
+      # HSTS still applies to makapix.club itself, just not subdomains
+      caddy.header.Strict-Transport-Security: "max-age=31536000"
       caddy.header.Content-Security-Policy: "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:"
       caddy.header.X-Content-Type-Options: "nosniff"
       caddy.header.Referrer-Policy: "strict-origin-when-cross-origin"
       caddy.reverse_proxy: "{{upstreams 80}}"
       caddy.log.output: "file /var/log/caddy/access.log"
+      caddy.log.format: "json"
+      caddy.log.level: "INFO"
+    networks:
+      - caddy_net
+
+  # ---------------------------------------------------------------------------
+  # Vault HTTP Labels - HTTP-only static file server for physical players
+  # ---------------------------------------------------------------------------
+  # Serves artwork files via plain HTTP for IoT devices that benefit from
+  # reduced TLS overhead. Files are served directly by the Caddy proxy container
+  # (via the /srv/vault volume mount on the caddy service above).
+  #
+  # URL pattern: http://vault.makapix.club/a1/b2/c3/{storage_key}.png
+  #
+  # ⚠️  SECURITY NOTE: This serves files without authentication.
+  #     Access control is NOT enforced at this level (same as HTTPS vault).
+  #     Hidden/deleted artwork restrictions rely on URL obscurity.
+  #
+  # The vault container below exists only to provide the Caddy labels.
+  # The actual file serving is done by the main Caddy proxy.
+  # ---------------------------------------------------------------------------
+  vault:
+    image: alpine:latest
+    container_name: makapix-vault
+    restart: unless-stopped
+    # Minimal container - just needs to exist for its labels
+    command: ["sleep", "infinity"]
+    labels:
+      # HTTP-only subdomain for vault files (http:// prefix = no HTTPS)
+      caddy: http://${VAULT_DOMAIN:-vault.makapix.club}
+      # Serve static files from vault directory (mounted in caddy container)
+      caddy.file_server: "*"
+      caddy.root: "* /srv/vault"
+      # Enable compression for efficiency
+      caddy.encode: "gzip"
+      # CORS headers for cross-origin access from players/browsers
+      caddy.header.Access-Control-Allow-Origin: "*"
+      # Security headers
+      caddy.header.X-Content-Type-Options: "nosniff"
+      # Logging
+      caddy.log.output: "file /var/log/caddy/vault-access.log"
       caddy.log.format: "json"
       caddy.log.level: "INFO"
     networks:

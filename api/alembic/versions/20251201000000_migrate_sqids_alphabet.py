@@ -1,11 +1,14 @@
-"""migrate sqids alphabet
+"""migrate sqids alphabet (historical)
 
 Revision ID: 20251201000000
 Revises: 20251128000000
 Create Date: 2025-12-01 00:00:00.000000
 
-This migration re-encodes all existing public_sqid values from SQIDS_ALPHABET
-to NEW_SQIDS_ALPHABET (removing ambiguous characters: 0, o, O, 1, l, I).
+This migration originally re-encoded all existing public_sqid values from an old
+alphabet to a new alphabet (removing ambiguous characters: 0, o, O, 1, l, I).
+
+The codebase has since standardized on a single alphabet via SQIDS_ALPHABET, so
+this migration is now effectively a no-op for new installs (old == new).
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ depends_on = None
 
 def upgrade() -> None:
     """
-    Re-encode all public_sqid values using NEW_SQIDS_ALPHABET.
+    Re-encode all public_sqid values using SQIDS_ALPHABET.
     
     Process:
     1. Decode each public_sqid using OLD alphabet to get integer id
@@ -32,9 +35,9 @@ def upgrade() -> None:
     import os
     from sqids import Sqids
     
-    # Get alphabets from environment
+    # Get alphabet from environment
     old_alphabet = os.getenv("SQIDS_ALPHABET", "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-    new_alphabet = os.getenv("NEW_SQIDS_ALPHABET", old_alphabet)
+    new_alphabet = old_alphabet
     
     # Create Sqids instances
     sqids_old = Sqids(alphabet=old_alphabet, min_length=0)
@@ -87,9 +90,9 @@ def downgrade() -> None:
     import os
     from sqids import Sqids
     
-    # Get alphabets from environment
+    # Get alphabet from environment
     old_alphabet = os.getenv("SQIDS_ALPHABET", "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-    new_alphabet = os.getenv("NEW_SQIDS_ALPHABET", old_alphabet)
+    new_alphabet = old_alphabet
     
     # Create Sqids instances
     sqids_old = Sqids(alphabet=old_alphabet, min_length=0)

@@ -6,6 +6,7 @@ This directory contains the Docker Compose configuration for deploying the Makap
 
 - **CTA (static)**: https://makapix.club (content: `apps/cta/`)
 - **Web (staging)**: https://dev.makapix.club (builds from `web/`)
+- **Vault (HTTP)**: http://vault.makapix.club (artwork files for physical players)
 - **Reverse Proxy**: lucaslorentz/caddy-docker-proxy
 - **Compose dir**: `deploy/stack/` (run commands from here)
 
@@ -88,12 +89,65 @@ docker logs -f makapix-cta
 
 # Web application
 docker logs -f makapix-web
+
+# Vault HTTP server
+docker logs -f makapix-vault
 ```
 
 ## Monitoring
 
 - Monitor CTA stats: `./monitor-cta-stats.sh`
 - Stats are saved to `cta-stats.csv` (gitignored)
+
+## Vault HTTP Server
+
+The vault provides **HTTP-only** access to artwork files for physical players (IoT devices).
+This reduces TLS handshake overhead for resource-constrained devices.
+
+### Architecture
+
+The vault is served directly by the main **Caddy proxy container**, not a separate container:
+- The `makapix-vault` container only provides Docker labels for caddy-docker-proxy
+- Actual file serving is done by Caddy using its `/srv/vault` mount
+- This is more efficient than proxying through another container
+
+### URL Pattern
+
+```
+http://vault.makapix.club/{hash1}/{hash2}/{hash3}/{storage_key}.{ext}
+
+Example:
+http://vault.makapix.club/a1/b2/c3/550e8400-e29b-41d4-a716-446655440000.png
+```
+
+### Features
+
+- **No TLS overhead**: HTTP-only for IoT efficiency
+- **Direct file serving**: Caddy serves files directly (no Python)
+- **CORS enabled**: `Access-Control-Allow-Origin: *`
+- **Compression**: gzip enabled
+- **Security headers**: `X-Content-Type-Options: nosniff`
+
+### Security Considerations
+
+⚠️ **Important**: The vault serves files **without authentication**. This is intentional and matches
+the security model of the HTTPS vault (`/api/vault/...`). Access control for hidden/deleted
+artworks relies on URL obscurity (UUIDs are not guessable).
+
+### Managing the Vault
+
+```bash
+# Start/restart vault (restarts caddy to apply label changes)
+docker compose up -d vault && docker compose restart caddy
+
+# Verify vault is working
+curl -I http://vault.makapix.club/path/to/file.png
+
+# View vault access logs
+docker exec caddy tail -f /var/log/caddy/vault-access.log
+```
+
+---
 
 ## Troubleshooting
 

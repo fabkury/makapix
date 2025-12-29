@@ -566,7 +566,7 @@ def upgrade() -> None:
     import os
     from sqids import Sqids
     
-    sqids_alphabet = os.getenv("NEW_SQIDS_ALPHABET", os.getenv("SQIDS_ALPHABET", "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"))
+    sqids_alphabet = os.getenv("SQIDS_ALPHABET", "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
     sqids = Sqids(alphabet=sqids_alphabet, min_length=0)
     
     # Get connection
