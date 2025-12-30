@@ -56,13 +56,13 @@ def get_post_by_sqid(
     
     This is the canonical URL for posts sitewide.
     """
-    # Decode the Sqids ID
+    # Decode the Sqids ID using the single canonical alphabet (SQIDS_ALPHABET).
     from ..sqids_config import decode_sqid
-    
+
     post_id = decode_sqid(public_sqid)
     if post_id is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
-    
+
     # Query post with owner relationship
     post = (
         db.query(models.Post)
@@ -113,13 +113,13 @@ def download_by_sqid(
     """
     Download artwork file by public Sqids ID.
     """
-    # Decode the Sqids ID
+    # Decode the Sqids ID using the single canonical alphabet (SQIDS_ALPHABET).
     from ..sqids_config import decode_sqid
-    
+
     post_id = decode_sqid(public_sqid)
     if post_id is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
-    
+
     # Query post
     post = db.query(models.Post).filter(models.Post.id == post_id).first()
     

@@ -723,7 +723,7 @@ async def replace_artwork(
     post.min_frame_duration_ms = min_frame_duration_ms
     post.uses_transparency = uses_transparency
     post.uses_alpha = uses_alpha
-    post.expected_hash = file_hash
+    post.hash = file_hash
     post.mime_type = mime_type
     post.artwork_modified_at = now
     

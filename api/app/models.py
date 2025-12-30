@@ -269,9 +269,9 @@ class Post(Base):
     alpha_actual = Column(
         Boolean, nullable=False, default=False
     )  # True if any pixel anywhere has alpha not in {0, 255}
-    expected_hash = Column(
-        String(64), nullable=True, index=True
-    )  # SHA256 hash for mismatch detection
+    hash = Column(
+        String(64), nullable=True, unique=True
+    )  # SHA256 hash of the artwork bytes (dedupe + mismatch detection)
     mime_type = Column(
         String(50), nullable=True
     )  # MIME type (image/png, image/jpeg, image/gif)

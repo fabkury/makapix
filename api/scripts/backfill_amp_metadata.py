@@ -10,6 +10,7 @@ Backfills all existing artwork posts with comprehensive AMP metadata:
 - alpha_meta
 - transparency_actual
 - alpha_actual
+- hash (sha256)
 
 Usage (from within the API container):
     python /workspace/api/scripts/backfill_amp_metadata.py
@@ -114,7 +115,7 @@ def run_amp_inspector(file_path: Path) -> dict[str, Any] | None:
         }
 
 
-def backfill_post(post: Post, dry_run: bool = False) -> tuple[bool, str | None]:
+def backfill_post(db: SessionLocal, post: Post, dry_run: bool = False) -> tuple[bool, str | None]:
     """
     Backfill AMP metadata for a single post.
     
@@ -140,9 +141,23 @@ def backfill_post(post: Post, dry_run: bool = False) -> tuple[bool, str | None]:
     
     # Extract metadata
     metadata = result["metadata"]
+
+    sha256 = metadata.get("sha256")
+    if not sha256:
+        return False, "AMP result missing sha256"
+
+    # Detect duplicates early and fail the backfill as requested.
+    existing = db.query(Post).filter(Post.hash == sha256, Post.id != post.id).first()
+    if existing:
+        return (
+            False,
+            f"DUPLICATE_HASH: post {post.id} duplicates post {existing.id} (sha256={sha256})",
+        )
     
     if dry_run:
-        logger.info(f"  [DRY-RUN] Would update post {post.id} with: {json.dumps(metadata, indent=2)}")
+        logger.info(
+            f"  [DRY-RUN] Would update post {post.id} with: {json.dumps(metadata, indent=2)}"
+        )
         return True, None
     
     # Update post with AMP metadata
@@ -153,6 +168,7 @@ def backfill_post(post: Post, dry_run: bool = False) -> tuple[bool, str | None]:
     post.alpha_meta = metadata.get("alpha_meta", False)
     post.transparency_actual = metadata.get("transparency_actual", False)
     post.alpha_actual = metadata.get("alpha_actual", False)
+    post.hash = sha256
     
     # Also update min_frame_duration_ms if present
     if metadata.get("shortest_duration_ms") is not None:
@@ -212,6 +228,7 @@ def main():
         success_count = 0
         failure_count = 0
         failures = []
+        duplicates = []
         
         start_time = time.time()
         
@@ -222,7 +239,7 @@ def main():
             
             logger.info(f"{progress} Processing post {post.id} (storage_key: {post.storage_key})")
             
-            success, error = backfill_post(post, dry_run=args.dry_run)
+            success, error = backfill_post(db, post, dry_run=args.dry_run)
             
             if success:
                 success_count += 1
@@ -231,6 +248,13 @@ def main():
                 failure_count += 1
                 failures.append({"post_id": post.id, "error": error})
                 logger.warning(f"{progress} ✗ Post {post.id} - FAILED: {error}")
+
+                if error and error.startswith("DUPLICATE_HASH:"):
+                    duplicates.append({"post_id": post.id, "error": error})
+                    # Fail fast on duplicates (required behavior)
+                    if not args.dry_run:
+                        db.rollback()
+                    break
                 
                 # Mark as non_conformant
                 if not args.dry_run:
@@ -272,6 +296,10 @@ def main():
                     "failures": failures,
                 }, fp, indent=2)
             logger.info(f"Failures written to: {failures_file}")
+
+        if duplicates:
+            logger.error("Duplicate hashes found. Backfill aborted.")
+            raise SystemExit(1)
         
         logger.info("=" * 60)
         

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import logging
@@ -26,6 +25,7 @@ from fastapi import (
 )
 from fastapi.responses import RedirectResponse
 from PIL import Image
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
@@ -50,6 +50,7 @@ from ..services.post_stats import annotate_posts_with_counts, get_user_liked_pos
 from ..vault import (
     ALLOWED_MIME_TYPES,
     MAX_FILE_SIZE_BYTES,
+    delete_artwork_from_vault,
     get_artwork_url,
     save_artwork_to_vault,
     validate_file_size,
@@ -239,6 +240,7 @@ def create_post(
         alpha_meta=False,
         transparency_actual=False,
         alpha_actual=False,
+        hash=payload.hash,
         metadata_modified_at=now,
         artwork_modified_at=now,
         dwell_time_ms=30000,
@@ -382,8 +384,14 @@ async def upload_artwork(
         except Exception as e:
             logger.warning(f"Failed to delete temp file {tmp_path}: {e}")
 
-    # Calculate SHA256 hash of the file content
-    file_hash = hashlib.sha256(file_content).hexdigest()
+    # AMP now provides sha256 after Phase B (after Pillow is done with the file).
+    file_hash = metadata.get("sha256")
+    if not file_hash:
+        logger.error("AMP result missing sha256")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to process image. Please try again.",
+        )
 
     # Parse hashtags (comma-separated, normalize to lowercase)
     parsed_hashtags = []
@@ -429,15 +437,37 @@ async def upload_artwork(
         alpha_meta=alpha_meta,
         transparency_actual=transparency_actual,
         alpha_actual=alpha_actual,
-        expected_hash=file_hash,
+        hash=file_hash,
         mime_type=mime_type,
         public_visibility=public_visibility,
         metadata_modified_at=now,
         artwork_modified_at=now,
         dwell_time_ms=30000,
     )
-    db.add(post)
-    db.flush()  # Get the post ID without committing
+    # Fast-path duplicate check (user-friendly error); UNIQUE constraint is the
+    # authoritative protection against races.
+    existing = (
+        db.query(models.Post)
+        .filter(models.Post.kind == "artwork", models.Post.hash == file_hash)
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Artwork already exists",
+        )
+
+    # Insert first (flush) so the UNIQUE constraint prevents races *before* we
+    # write to the vault (avoids orphan vault files on duplicate uploads).
+    try:
+        db.add(post)
+        db.flush()  # Get the post ID without committing
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Artwork already exists",
+        )
 
     # Generate public_sqid from the assigned id
     from ..sqids_config import encode_id
@@ -1129,68 +1159,195 @@ async def replace_artwork(
     db: Session = Depends(get_db),
 ):
     """Replace the artwork of an existing post (Piskel edit feature)"""
-    # Get the post
     post = db.query(models.Post).filter(models.Post.id == id).first()
-    if not post:
+    if not post or post.kind != "artwork":
         raise HTTPException(status_code=404, detail="Post not found")
-    
-    # Verify ownership
+
     if post.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to modify this post")
-    
-    # Read file
-    contents = await image.read()
-    file_size = len(contents)
-    
-    # Validate file size (5 MB limit)
-    validate_file_size(file_size)
-    
-    # Validate MIME type
-    mime_type = image.content_type
-    if mime_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(
-            status_code=400,
-            detail=f"Invalid file type: {mime_type}. Allowed: PNG, GIF, WebP, BMP"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to modify this post",
         )
-    
-    # Validate dimensions
-    img = Image.open(io.BytesIO(contents))
-    width, height = img.size
-    validate_image_dimensions(width, height)
-    
-    # Upload new image to vault
-    storage_key = save_artwork_to_vault(contents, mime_type)
-    new_art_url = get_artwork_url(storage_key)
-    
-    # Update post with new artwork URL
+
+    file_content = await image.read()
+    file_size = len(file_content)
+    validate_file_size(file_size)
+
+    # Save to temporary file for AMP inspection (preserve extension if possible)
+    filename = image.filename or ""
+    ext = ""
+    if "." in filename:
+        ext = "." + filename.lower().split(".")[-1]
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp_file:
+        tmp_file.write(file_content)
+        tmp_path = tmp_file.name
+
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "app.amp.amp_inspector",
+                "--backend",
+                tmp_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+
+        try:
+            amp_result = json.loads(result.stdout)
+        except json.JSONDecodeError as e:
+            logger.error(
+                f"Failed to parse AMP inspector output: {e}\nOutput: {result.stdout}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to process image. Please try again.",
+            )
+
+        if not amp_result.get("success"):
+            error_info = amp_result.get("error", {})
+            error_message = error_info.get(
+                "message", "Unknown error during image inspection"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=error_message,
+            )
+
+        metadata = amp_result["metadata"]
+        width = metadata["width"]
+        height = metadata["height"]
+        file_bytes = metadata["file_bytes"]
+        file_format = metadata["file_format"]
+        frame_count = metadata["frame_count"]
+        min_frame_duration_ms = metadata.get("shortest_duration_ms")
+        max_frame_duration_ms = metadata.get("longest_duration_ms")
+        bit_depth = metadata.get("bit_depth")
+        unique_colors = metadata.get("unique_colors")
+        transparency_meta = metadata.get("transparency_meta", False)
+        alpha_meta = metadata.get("alpha_meta", False)
+        transparency_actual = metadata.get("transparency_actual", False)
+        alpha_actual = metadata.get("alpha_actual", False)
+        file_hash = metadata.get("sha256")
+        if not file_hash:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to process image. Please try again.",
+            )
+
+        # Disallow redundant replacement (same hash as current artwork)
+        if post.hash and file_hash == post.hash:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Artwork is identical to current artwork",
+            )
+
+        # Also disallow replacing with an artwork that already exists elsewhere
+        existing = (
+            db.query(models.Post)
+            .filter(
+                models.Post.kind == "artwork",
+                models.Post.hash == file_hash,
+                models.Post.id != post.id,
+            )
+            .first()
+        )
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Artwork already exists",
+            )
+
+        format_to_mime = {
+            "png": "image/png",
+            "gif": "image/gif",
+            "webp": "image/webp",
+            "bmp": "image/bmp",
+        }
+        mime_type = format_to_mime.get(file_format, "image/png")
+        if mime_type not in ALLOWED_MIME_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid file type: {mime_type}. Allowed: PNG, GIF, WebP, BMP",
+            )
+
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception as e:
+            logger.warning(f"Failed to delete temp file {tmp_path}: {e}")
+
+    # Compute new art_url (may change extension if format changes)
+    new_extension = ALLOWED_MIME_TYPES[mime_type]
+    new_art_url = get_artwork_url(post.storage_key, new_extension)
+
+    # Update post first (flush) so UNIQUE constraint blocks races before vault write
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    old_art_url = post.art_url
     post.art_url = new_art_url
     post.width = width
     post.height = height
-    post.format = mime_type.split('/')[-1].upper()
-    
-    # Update animation info if GIF
-    if mime_type == 'image/gif' and getattr(img, 'is_animated', False):
-        post.frame_count = getattr(img, 'n_frames', 1)
-        # Attempt to extract frame duration
-        try:
-            frame_duration_ms = img.info.get('duration', 100)
-            post.min_frame_duration_ms = frame_duration_ms
-        except:
-            post.min_frame_duration_ms = 100
-    else:
-        post.frame_count = 1
-        post.min_frame_duration_ms = None
-    
-    # Recompute transparency metadata
-    transparency_meta = compute_transparency_metadata(img)
+    post.canvas = f"{width}x{height}"
+    post.file_bytes = file_bytes
+    post.frame_count = frame_count
+    post.min_frame_duration_ms = min_frame_duration_ms
+    post.max_frame_duration_ms = max_frame_duration_ms
+    post.bit_depth = bit_depth
+    post.unique_colors = unique_colors
     post.transparency_meta = transparency_meta
-    
-    db.commit()
-    db.refresh(post)
-    
-    # Log the replacement
-    logger.info(f"Artwork replaced for post {post.public_sqid} by user {current_user.public_sqid}")
-    
+    post.alpha_meta = alpha_meta
+    post.transparency_actual = transparency_actual
+    post.alpha_actual = alpha_actual
+    post.hash = file_hash
+    post.mime_type = mime_type
+    post.metadata_modified_at = now
+    post.artwork_modified_at = now
+
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Artwork already exists",
+        )
+
+    # If extension changed, delete the old file (best-effort) after flush but before overwrite
+    try:
+        old_ext = None
+        if old_art_url:
+            old_ext = "." + old_art_url.rsplit(".", 1)[-1].lower()
+        if old_ext and old_ext != new_extension and old_ext in ALLOWED_MIME_TYPES.values():
+            delete_artwork_from_vault(post.storage_key, old_ext)
+    except Exception as e:
+        logger.warning(f"Failed to delete old artwork file for post {post.id}: {e}")
+
+    # Overwrite vault file at storage_key
+    try:
+        save_artwork_to_vault(post.storage_key, file_content, mime_type)
+        db.commit()
+        db.refresh(post)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to replace artwork in vault: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save artwork. Please try again.",
+        )
+
+    logger.info(
+        "Artwork replaced for post %s by user %s",
+        post.public_sqid,
+        current_user.public_sqid,
+    )
+
     return {
         "message": "Artwork replaced successfully",
         "post": {
@@ -1199,8 +1356,8 @@ async def replace_artwork(
             "art_url": post.art_url,
             "width": post.width,
             "height": post.height,
-            "frame_count": post.frame_count
-        }
+            "frame_count": post.frame_count,
+        },
     }
 
 

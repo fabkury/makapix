@@ -15,6 +15,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -111,7 +112,21 @@ def main() -> int:
         print("Phase B: Loading image with Pillow...", file=sys.stderr)
 
     try:
-        img = Image.open(args.file_path)
+        # Use a context manager so the underlying file handle is closed
+        # as soon as Pillow is done reading it (required by AMP spec).
+        with Image.open(args.file_path) as img:
+            if not args.backend:
+                print("Phase B: Extracting metadata...", file=sys.stderr)
+
+            try:
+                metadata = extract_metadata(args.file_path, img)
+            except Exception as e:
+                return _output_error(
+                    "METADATA_EXTRACTION_FAILED",
+                    f"Failed to extract metadata: {e}",
+                    args.backend,
+                    exit_code=2,
+                )
     except Exception as e:
         return _output_error(
             "PILLOW_LOAD_FAILED",
@@ -120,15 +135,18 @@ def main() -> int:
             exit_code=1,
         )
 
-    if not args.backend:
-        print("Phase B: Extracting metadata...", file=sys.stderr)
-
+    # Phase B (continued): After Pillow is finished and its file handle is closed,
+    # compute SHA256 of the entire file (required by AMP spec).
     try:
-        metadata = extract_metadata(args.file_path, img)
+        digest = hashlib.sha256()
+        with args.file_path.open("rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                digest.update(chunk)
+        sha256_hex = digest.hexdigest()
     except Exception as e:
         return _output_error(
-            "METADATA_EXTRACTION_FAILED",
-            f"Failed to extract metadata: {e}",
+            "HASH_COMPUTE_FAILED",
+            f"Failed to compute SHA256: {e}",
             args.backend,
             exit_code=2,
         )
@@ -150,6 +168,7 @@ def main() -> int:
             "alpha_meta": metadata.alpha_meta,
             "transparency_actual": metadata.transparency_actual,
             "alpha_actual": metadata.alpha_actual,
+            "sha256": sha256_hex,
         },
     }
 

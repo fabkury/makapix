@@ -183,7 +183,7 @@ def create_playlist(
         alpha_meta=False,
         transparency_actual=False,
         alpha_actual=False,
-        expected_hash=None,
+        hash=None,
         mime_type=None,
         visible=True,
         hidden_by_user=False,

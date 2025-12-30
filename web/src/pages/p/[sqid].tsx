@@ -540,13 +540,6 @@ export default function PostPage() {
     
     const isHidden = post.hidden_by_user;
     const action = isHidden ? 'unhide' : 'hide';
-    const confirmed = confirm(
-      isHidden
-        ? 'Unhide this post? It will become visible again in feeds.'
-        : 'Hide this post? It will be removed from feeds temporarily.'
-    );
-    
-    if (!confirmed) return;
     
     try {
       const url = `${API_BASE_URL}/api/post/${post.id}/hide`;
@@ -871,239 +864,243 @@ export default function PostPage() {
 
   return (
     <Layout title={post.title} description={post.description || post.title}>
-      <div className="post-container">
-        {!imageError ? (
-          <img
-            src={post.art_url}
-            alt={post.title}
-            className="artwork-image pixel-art"
-            onError={() => {
-              setImageError(true);
-            }}
-          />
-        ) : (
-          <div className="image-error-message">
-            <span className="error-icon">🖼️</span>
-            <p>Image not available</p>
-          </div>
-        )}
-
-        <div className="post-info">
-          {isOwner && isEditing ? (
-            <div className="edit-field">
-              <label htmlFor="edit-title">Title</label>
-              <input
-                id="edit-title"
-                type="text"
-                value={editTitle}
-                onChange={(e) => setEditTitle(e.target.value)}
-                placeholder="Artwork title..."
-                maxLength={200}
-                disabled={isSaving}
-                className="edit-title-input"
-              />
-            </div>
+      <div className="post-page">
+        <div className="post-container">
+          {!imageError ? (
+            <img
+              src={post.art_url}
+              alt={post.title}
+              className="artwork-image pixel-art"
+              onError={() => {
+                setImageError(true);
+              }}
+            />
           ) : (
-            <h1 className="post-title">{post.title}</h1>
+            <div className="image-error-message">
+              <span className="error-icon">🖼️</span>
+              <p>Image not available</p>
+            </div>
           )}
-          
-          <div className="post-meta">
-            {post.owner && (
-              <Link href={`/u/${post.owner.public_sqid}`} className="author-link">
-                {post.owner.display_name || post.owner.handle}
-              </Link>
+
+          <div className="post-info">
+            {isOwner && isEditing ? (
+              <div className="edit-field">
+                <label htmlFor="edit-title">Title</label>
+                <input
+                  id="edit-title"
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  placeholder="Artwork title..."
+                  maxLength={200}
+                  disabled={isSaving}
+                  className="edit-title-input"
+                />
+              </div>
+            ) : (
+              <h1 className="post-title">{post.title}</h1>
             )}
-            <span className="meta-separator">•</span>
-            <span className="post-date">{new Date(post.created_at).toLocaleDateString()}</span>
-            <span className="meta-separator">•</span>
-            <span className="post-canvas">{post.canvas}</span>
-          </div>
 
-          {post.description && (
-            <div className="post-description">
-              {post.description.split('\n').map((line, i) => (
-                <p key={i}>{line}</p>
-              ))}
-            </div>
-          )}
-
-          {post.hashtags && post.hashtags.length > 0 && (
-            <div className="hashtags">
-              {post.hashtags.map((tag) => (
-                <Link
-                  key={tag}
-                  href={`/hashtags/${encodeURIComponent(tag)}`}
-                  className="hashtag"
-                >
-                  #{tag}
+            <div className="post-meta">
+              {post.owner && (
+                <Link href={`/u/${post.owner.public_sqid}`} className="author-link">
+                  {post.owner.display_name || post.owner.handle}
                 </Link>
-              ))}
+              )}
+              <span className="meta-separator">•</span>
+              <span className="post-date">{new Date(post.created_at).toLocaleDateString()}</span>
+              <span className="meta-separator">•</span>
+              <span className="post-canvas">{post.canvas}</span>
             </div>
-          )}
 
-          {/* Stats button - visible to owner and moderators */}
-          {(isOwner || isModerator) && (
-            <div className="stats-action">
-              <button
-                onClick={() => setShowStats(true)}
-                className="action-button stats"
-                title="View Statistics"
-              >
-                📈 Statistics
-              </button>
-            </div>
-          )}
+            {post.description && (
+              <div className="post-description">
+                {post.description.split('\n').map((line, i) => (
+                  <p key={i}>{line}</p>
+                ))}
+              </div>
+            )}
 
-          {/* Send to Player button - visible to authenticated users with online players */}
-          {currentUser && players.some(p => p.connection_status === 'online') && (
-            <div className="player-action">
-              <button
-                onClick={handleSendToPlayerClick}
-                className="action-button player"
-                title="Send to Player"
-                disabled={isQuickSendingToPlayer}
-              >
-                {isQuickSendingToPlayer ? 'Sending...' : '🖼️ Send to Player'}
-              </button>
-            </div>
-          )}
+            {post.hashtags && post.hashtags.length > 0 && (
+              <div className="hashtags">
+                {post.hashtags.map((tag) => (
+                  <Link
+                    key={tag}
+                    href={`/hashtags/${encodeURIComponent(tag)}`}
+                    className="hashtag"
+                  >
+                    #{tag}
+                  </Link>
+                ))}
+              </div>
+            )}
 
-          {isOwner && !isEditing && (
-            <div className="owner-actions">
-              <button
-                onClick={() => router.push(`/editor?edit=${post.public_sqid}`)}
-                className="action-button piskel-edit"
-                title="Edit in Piskel"
-              >
-                🖌️ Edit in Piskel
-              </button>
-              <button
-                onClick={handleHide}
-                className={`action-button ${post.hidden_by_user ? 'unhide' : 'hide'}`}
-              >
-                {post.hidden_by_user ? '👁️ Unhide' : '🙈 Hide'}
-              </button>
-              {post.hidden_by_user && (
+            {/* Stats button - visible to owner and moderators */}
+            {(isOwner || isModerator) && (
+              <div className="stats-action">
+                <button
+                  onClick={() => setShowStats(true)}
+                  className="action-button stats"
+                  title="View Statistics"
+                >
+                  📈 Statistics
+                </button>
+              </div>
+            )}
+
+            {/* Send to Player button - visible to authenticated users with online players */}
+            {currentUser && players.some(p => p.connection_status === 'online') && (
+              <div className="player-action">
+                <button
+                  onClick={handleSendToPlayerClick}
+                  className="action-button player"
+                  title="Send to Player"
+                  disabled={isQuickSendingToPlayer}
+                >
+                  {isQuickSendingToPlayer ? 'Sending...' : '🖼️ Send to Player'}
+                </button>
+              </div>
+            )}
+
+            {isOwner && !isEditing && (
+              <div className="owner-actions">
+                <button
+                  onClick={() => router.push(`/editor?edit=${post.public_sqid}`)}
+                  className="action-button piskel-edit"
+                  title="Edit in Piskel"
+                >
+                  🖌️ Edit in Piskel
+                </button>
+                <button
+                  onClick={handleHide}
+                  className={`action-button ${post.hidden_by_user ? 'unhide' : 'hide'}`}
+                  title={post.hidden_by_user ? 'Unhide artwork' : 'Hide artwork'}
+                  aria-label={post.hidden_by_user ? 'Unhide artwork' : 'Hide artwork'}
+                >
+                  {post.hidden_by_user ? '👁️' : '🙈'}
+                </button>
                 <button
                   onClick={handleDelete}
                   className="action-button delete"
+                  title="Delete artwork"
+                  aria-label="Delete artwork"
                 >
-                  🗑 Delete
+                  🗑️
                 </button>
-              )}
-              <button
-                onClick={handleEditClick}
-                className="action-button edit"
-              >
-                ✏️ Edit
-              </button>
-            </div>
-          )}
+                <button
+                  onClick={handleEditClick}
+                  className="action-button edit"
+                >
+                  ✏️ Edit
+                </button>
+              </div>
+            )}
 
-          {isOwner && isEditing && (
-            <div className="edit-section">
-              <h3 className="edit-title">Edit Artwork</h3>
-              
-              <div className="edit-field">
-                <label htmlFor="edit-description">Description</label>
-                <textarea
-                  id="edit-description"
-                  value={editDescription}
-                  onChange={(e) => setEditDescription(e.target.value)}
-                  placeholder="Describe your artwork..."
-                  rows={4}
-                  maxLength={5000}
-                  disabled={isSaving}
-                />
-              </div>
-              
-              <div className="edit-field">
-                <label htmlFor="edit-hashtags">Hashtags</label>
-                <input
-                  id="edit-hashtags"
-                  type="text"
-                  value={editHashtags}
-                  onChange={(e) => setEditHashtags(e.target.value)}
-                  placeholder="art, pixel, game (comma-separated)"
-                  disabled={isSaving}
-                />
-                <span className="field-hint">Separate hashtags with commas</span>
-              </div>
-              
-              {saveError && (
-                <p className="save-error">{saveError}</p>
-              )}
-              
-              <div className="edit-actions">
-                <button
-                  onClick={handleSaveEdit}
-                  className="action-button save"
-                  disabled={isSaving}
-                >
-                  {isSaving ? 'Saving...' : '💾 Save Changes'}
-                </button>
-                <button
-                  onClick={handleCancelEdit}
-                  className="action-button cancel"
-                  disabled={isSaving}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
+            {isOwner && isEditing && (
+              <div className="edit-section">
+                <h3 className="edit-title">Edit Artwork</h3>
 
-          {isModerator && (
-            <div className="moderator-actions">
-              <div className="mod-actions-grid">
-                <button
-                  onClick={handleModHide}
-                  className={`mod-button ${post.hidden_by_mod ? 'active' : ''}`}
-                >
-                  {post.hidden_by_mod ? '👁️ Unhide' : '🙈 Hide'}
-                </button>
-                <button
-                  onClick={handlePromote}
-                  className={`mod-button ${post.promoted ? 'active' : ''}`}
-                >
-                  {post.promoted ? '⬇️ Demote' : '⭐ Promote'}
-                </button>
-                {!post.public_visibility && (
-                  <button
-                    onClick={handleApprovePublicVisibility}
-                    className="mod-button"
-                  >
-                    ✅ Approve
-                  </button>
-                )}
-                {(post.hidden_by_mod || post.hidden_by_user) && (
-                  <button
-                    onClick={handlePermanentDelete}
-                    className="mod-button danger"
-                  >
-                    🗑️ Delete Permanently
-                  </button>
-                )}
-              </div>
-              {(post.hidden_by_mod || post.promoted || !post.public_visibility) && (
-                <div className="mod-status-badges">
-                  {post.hidden_by_mod && <span className="status-badge hidden">Hidden by mod</span>}
-                  {post.promoted && <span className="status-badge promoted">Promoted</span>}
-                  {!post.public_visibility && <span className="status-badge pending">Pending approval</span>}
+                <div className="edit-field">
+                  <label htmlFor="edit-description">Description</label>
+                  <textarea
+                    id="edit-description"
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    placeholder="Describe your artwork..."
+                    rows={4}
+                    maxLength={5000}
+                    disabled={isSaving}
+                  />
                 </div>
-              )}
-            </div>
-          )}
-        </div>
 
-        <div className="widget-section">
-          <CommentsAndReactions
-            contentType="artwork"
-            contentId={post.id}
-            API_BASE_URL={API_BASE_URL}
-            currentUserId={currentUser?.id || null}
-            isModerator={isModerator}
-          />
+                <div className="edit-field">
+                  <label htmlFor="edit-hashtags">Hashtags</label>
+                  <input
+                    id="edit-hashtags"
+                    type="text"
+                    value={editHashtags}
+                    onChange={(e) => setEditHashtags(e.target.value)}
+                    placeholder="art, pixel, game (comma-separated)"
+                    disabled={isSaving}
+                  />
+                  <span className="field-hint">Separate hashtags with commas</span>
+                </div>
+
+                {saveError && (
+                  <p className="save-error">{saveError}</p>
+                )}
+
+                <div className="edit-actions">
+                  <button
+                    onClick={handleSaveEdit}
+                    className="action-button save"
+                    disabled={isSaving}
+                  >
+                    {isSaving ? 'Saving...' : '💾 Save Changes'}
+                  </button>
+                  <button
+                    onClick={handleCancelEdit}
+                    className="action-button cancel"
+                    disabled={isSaving}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {isModerator && (
+              <div className="moderator-actions">
+                <div className="mod-actions-grid">
+                  <button
+                    onClick={handleModHide}
+                    className={`mod-button ${post.hidden_by_mod ? 'active' : ''}`}
+                  >
+                    {post.hidden_by_mod ? '👁️ Unhide' : '🙈 Hide'}
+                  </button>
+                  <button
+                    onClick={handlePromote}
+                    className={`mod-button ${post.promoted ? 'active' : ''}`}
+                  >
+                    {post.promoted ? '⬇️ Demote' : '⭐ Promote'}
+                  </button>
+                  {!post.public_visibility && (
+                    <button
+                      onClick={handleApprovePublicVisibility}
+                      className="mod-button"
+                    >
+                      ✅ Approve
+                    </button>
+                  )}
+                  {(post.hidden_by_mod || post.hidden_by_user) && (
+                    <button
+                      onClick={handlePermanentDelete}
+                      className="mod-button danger"
+                    >
+                      🗑️ Delete Permanently
+                    </button>
+                  )}
+                </div>
+                {(post.hidden_by_mod || post.promoted || !post.public_visibility) && (
+                  <div className="mod-status-badges">
+                    {post.hidden_by_mod && <span className="status-badge hidden">Hidden by mod</span>}
+                    {post.promoted && <span className="status-badge promoted">Promoted</span>}
+                    {!post.public_visibility && <span className="status-badge pending">Pending approval</span>}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="widget-section">
+            <CommentsAndReactions
+              contentType="artwork"
+              contentId={post.id}
+              API_BASE_URL={API_BASE_URL}
+              currentUserId={currentUser?.id || null}
+              isModerator={isModerator}
+            />
+          </div>
         </div>
       </div>
 
@@ -1127,10 +1124,16 @@ export default function PostPage() {
 
 
       <style jsx>{`
-        .post-container {
-          max-width: 1000px;
-          margin: 0 auto;
+        .post-page {
           padding: 24px;
+        }
+
+        /* Clamp both the artwork and the content below it to 512 CSS pixels max */
+        .post-container {
+          width: 100%;
+          max-width: 512px;
+          margin: 0 auto;
+          box-sizing: border-box;
         }
 
         .artwork-image {
@@ -1536,6 +1539,12 @@ export default function PostPage() {
         /* Ensure widget inherits dark theme properly */
         .widget-section :global(.makapix-widget) {
           background: transparent;
+        }
+
+        @media (max-width: 640px) {
+          .post-page {
+            padding: 16px;
+          }
         }
       `}</style>
     </Layout>

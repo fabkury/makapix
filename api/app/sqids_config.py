@@ -12,9 +12,17 @@ from sqids import Sqids
 
 # Get alphabet from environment variable.
 #
-# Default is base62, but in production we expect SQIDS_ALPHABET to be explicitly
-# set to our canonical alphabet (with ambiguous characters removed).
-SQIDS_ALPHABET = os.getenv("SQIDS_ALPHABET", "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+# Guardrail: SQIDS_ALPHABET MUST be explicitly set in the environment to prevent
+# accidental drift between environments (and to ensure public IDs remain stable).
+#
+# Note: Older versions of this code defaulted to base62. We intentionally fail
+# fast now so missing configuration can't silently generate incompatible IDs.
+SQIDS_ALPHABET = os.getenv("SQIDS_ALPHABET")
+if not SQIDS_ALPHABET:
+    raise RuntimeError(
+        "SQIDS_ALPHABET is required but was not set (or was empty). "
+        "Set SQIDS_ALPHABET in your .env / deployment environment."
+    )
 
 # Create singleton Sqids instance
 # Note: Salt has been removed from sqids library, so we don't use it.

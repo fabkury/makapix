@@ -424,8 +424,8 @@ def check_post_hash(self, post_id: str) -> dict[str, Any]:
             logger.error("Post %s not found", post_id)
             return {"status": "error", "message": "Post not found"}
         
-        if not post.expected_hash:
-            logger.info("Post %s has no expected_hash, skipping", post_id)
+        if not post.hash:
+            logger.info("Post %s has no hash, skipping", post_id)
             return {"status": "skipped", "message": "No expected hash"}
         
         if not post.art_url:
@@ -437,11 +437,11 @@ def check_post_hash(self, post_id: str) -> dict[str, Any]:
         hash_result = hash_url_sync(post.art_url)
         actual_hash = hash_result["sha256"]
         
-        if actual_hash != post.expected_hash:
+        if actual_hash != post.hash:
             logger.warning(
                 "Hash mismatch for post %s: expected %s, got %s",
                 post_id,
-                post.expected_hash,
+                post.hash,
                 actual_hash
             )
             
@@ -456,7 +456,7 @@ def check_post_hash(self, post_id: str) -> dict[str, Any]:
             
             return {
                 "status": "mismatch",
-                "expected": post.expected_hash,
+                "expected": post.hash,
                 "actual": actual_hash,
                 "non_conformant": True,
             }
@@ -485,7 +485,7 @@ def periodic_check_post_hashes(self) -> dict[str, Any]:
     Periodic task to check post hashes for mismatches.
     Runs every 6 hours (configurable via beat_schedule).
     
-    Checks batches of posts with expected_hash set, marks non-conformant on mismatch.
+    Checks batches of posts with hash set, marks non-conformant on mismatch.
     """
     from . import models
     from .db import SessionLocal
@@ -495,10 +495,10 @@ def periodic_check_post_hashes(self) -> dict[str, Any]:
     try:
         # Get system user ID for audit logging
         system_user_id = get_system_user_id(db)
-        # Query posts with expected_hash set, limit to reasonable batch size
+        # Query posts with hash set, limit to reasonable batch size
         # Check posts that haven't been checked recently or are already non-conformant
         posts_to_check = db.query(models.Post).filter(
-            models.Post.expected_hash.isnot(None),
+            models.Post.hash.isnot(None),
             models.Post.art_url.isnot(None),
         ).limit(100).all()  # Process 100 at a time
         
@@ -515,11 +515,11 @@ def periodic_check_post_hashes(self) -> dict[str, Any]:
                 hash_result = hash_url_sync(post.art_url)
                 actual_hash = hash_result["sha256"]
                 
-                if actual_hash != post.expected_hash:
+                if actual_hash != post.hash:
                     logger.warning(
                         "Hash mismatch detected for post %s: expected %s, got %s",
                         post.id,
-                        post.expected_hash,
+                        post.hash,
                         actual_hash
                     )
                     
@@ -537,7 +537,7 @@ def periodic_check_post_hashes(self) -> dict[str, Any]:
                             target_type="post",
                             target_id=post.id,
                             reason_code="hash_mismatch",
-                            note=f"Automated hash check detected mismatch. Expected: {post.expected_hash[:16]}..., Got: {actual_hash[:16]}...",
+                            note=f"Automated hash check detected mismatch. Expected: {post.hash[:16]}..., Got: {actual_hash[:16]}...",
                         )
                     except Exception as audit_error:
                         logger.error("Failed to log hash mismatch to audit log: %s", audit_error)
@@ -748,7 +748,7 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
                 alpha_meta=False,
                 transparency_actual=False,
                 alpha_actual=False,
-                expected_hash=artwork.get("sha256"),  # Store hash from manifest
+                hash=artwork.get("sha256"),  # Store hash from manifest
                 mime_type=artwork.get("mime_type"),  # Store MIME type from manifest
                 metadata_modified_at=now,
                 artwork_modified_at=now,

@@ -237,6 +237,7 @@ class PostCreate(BaseModel):
     art_url: str  # Can be relative URL for vault-hosted images or full URL for external
     canvas: str = Field(..., pattern=r"^\d+x\d+$")
     file_bytes: int = Field(..., gt=0, le=MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES)
+    hash: str = Field(..., min_length=64, max_length=64)
 
 
 class PostUpdate(BaseModel):

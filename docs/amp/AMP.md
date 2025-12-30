@@ -105,6 +105,7 @@ After header validation passes, the full image is loaded with Pillow to extract:
 | `alpha_meta` | File format claims alpha channel support |
 | `transparency_actual` | Actual transparent pixels found (alpha < 255) |
 | `alpha_actual` | Actual semi-transparent pixels found (0 < alpha < 255) |
+| `sha256` | SHA256 hash of the entire file |
 
 ### Main Inspector Script
 
@@ -184,7 +185,8 @@ Only outputs JSON to stdout (no progress messages):
     "transparency_meta": true,
     "alpha_meta": true,
     "transparency_actual": false,
-    "alpha_actual": false
+    "alpha_actual": false,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb924..."
   }
 }
 ```
