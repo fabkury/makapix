@@ -2,6 +2,12 @@
 
 This document describes the various sources from which view events can originate and the channel/intent classification system.
 
+> **⚠️ FEATURE POSTPONED: Blog Posts**
+> 
+> As of December 2025, blog post functionality has been postponed to an indeterminate future date.
+> This document currently covers view tracking for artwork only. Blog post view tracking is implemented
+> but not exposed to users until the feature is reactivated.
+
 ## View Sources
 
 Views can originate from four distinct sources:

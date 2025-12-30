@@ -33,7 +33,7 @@ function formatMiB(bytes: number): string {
 }
 
 const MAX_CANVAS_SIZE = 256;
-const ALLOWED_TYPES = ['image/png', 'image/gif', 'image/webp'];
+const ALLOWED_TYPES = ['image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/x-ms-bmp'];
 
 export default function SubmitPage() {
   const router = useRouter();
@@ -83,7 +83,7 @@ export default function SubmitPage() {
     if (!ALLOWED_TYPES.includes(file.type)) {
       errors.push({
         type: 'format',
-        message: 'Invalid format. Please use PNG, GIF, or WebP',
+        message: 'Invalid format. Please use PNG, GIF, WebP, or BMP',
       });
     }
     
@@ -399,7 +399,7 @@ export default function SubmitPage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/png,image/gif,image/webp"
+                accept="image/png,image/gif,image/webp,image/bmp"
                 onChange={handleFileSelect}
                 className="file-input"
                 id="file-upload"
@@ -429,7 +429,7 @@ export default function SubmitPage() {
                 <label htmlFor="file-upload" className="upload-label">
                   <span className="upload-icon">📁</span>
                   <span className="upload-text">Drop image here or click to select</span>
-                  <span className="upload-hint">PNG, GIF, or WebP • Max {formatMiB(MAX_FILE_SIZE_BYTES)} • See size rules below</span>
+                  <span className="upload-hint">PNG, GIF, WebP, or BMP • Max {formatMiB(MAX_FILE_SIZE_BYTES)} • See size rules below</span>
                 </label>
               )}
             </div>

@@ -126,8 +126,10 @@ interface MakapixInitMessage {
   userSqid: string;
   editMode?: {
     postSqid: string;
-    artworkUrl: string;
+    artworkUrl: string;  // Absolute URL to artwork (for fallback/static images)
     title: string;
+    frameDataUrls?: string[];  // Optional: Pre-decoded PNG frames as data URLs (for animated WebP)
+    fps?: number;  // Optional: Frames per second for animation (calculated from WebP durations)
   };
 }
 
@@ -246,6 +248,44 @@ Existing vault CORS headers should suffice:
 ```
 Access-Control-Allow-Origin: *
 ```
+
+## WebP Animation Support
+
+### Challenge
+
+Most Makapix artworks are stored in animated WebP format, but Piskel's image importer only supports:
+- Static images (PNG, JPEG, GIF)
+- Animated GIF (via SuperGif library)
+
+WebP animations cannot be directly loaded by Piskel.
+
+### Solution: Hybrid Decoder with Pre-decoding
+
+When a user clicks "Edit in Piskel" for an animated WebP:
+
+1. **Detection**: Check if artwork is animated WebP by inspecting file headers
+2. **Decoding** (Makapix editor.tsx side):
+   - **Modern browsers** (Chrome/Firefox/Edge): Use native `ImageDecoder` API
+   - **Safari/fallback**: Lazy-load `@saschazar/wasm-webp` library (350KB)
+3. **Frame Extraction**: Decode all frames to PNG data URLs
+4. **FPS Calculation**: Calculate average FPS from WebP frame durations
+5. **Transfer**: Send frame data via postMessage in `MAKAPIX_INIT.editMode`
+6. **Loading** (Piskel side): Load all frames into Piskel's multi-frame editor
+
+### Performance Characteristics
+
+| Browser | Decoder | 64x64, 10 frames | 256x256, 50 frames |
+|---------|---------|------------------|---------------------|
+| Chrome/Edge | Native ImageDecoder | ~50-100ms | ~200-400ms |
+| Firefox | Native ImageDecoder | ~60-120ms | ~250-500ms |
+| Safari | WASM fallback | ~150-300ms | ~800-1500ms |
+
+### User Experience
+
+- **Progress Display**: "Loading animation... Frame 5/24"
+- **Error Handling**: If decoding fails, show error and block editing
+- **Static WebP**: Uses simple image loading (no pre-decoding needed)
+- **Non-WebP animations**: GIF animations use Piskel's native SuperGif loader
 
 ## State Management
 

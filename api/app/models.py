@@ -248,10 +248,25 @@ class Post(Base):
     min_frame_duration_ms = Column(
         Integer, nullable=True
     )  # Minimum non-zero frame duration (ms), NULL for static
-    uses_transparency = Column(
+    max_frame_duration_ms = Column(
+        Integer, nullable=True
+    )  # Maximum frame duration (ms), NULL for static
+    bit_depth = Column(
+        Integer, nullable=True
+    )  # Per-channel bit depth (e.g., 8, 16)
+    unique_colors = Column(
+        Integer, nullable=True
+    )  # Max unique colors in any single frame
+    transparency_meta = Column(
+        Boolean, nullable=False, default=False
+    )  # File metadata claims transparency capability
+    alpha_meta = Column(
+        Boolean, nullable=False, default=False
+    )  # File metadata claims alpha channel
+    transparency_actual = Column(
         Boolean, nullable=False, default=False
     )  # True if any pixel anywhere has alpha != 255
-    uses_alpha = Column(
+    alpha_actual = Column(
         Boolean, nullable=False, default=False
     )  # True if any pixel anywhere has alpha not in {0, 255}
     expected_hash = Column(

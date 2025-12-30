@@ -55,7 +55,6 @@ export default function UserProfilePage() {
   
   const [user, setUser] = useState<User | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
-  const [blogPosts, setBlogPosts] = useState<any[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [postsLoading, setPostsLoading] = useState(false);
@@ -76,7 +75,6 @@ export default function UserProfilePage() {
   const [isOwner, setIsOwner] = useState(false);
   const [isModerator, setIsModerator] = useState(false);
   const [isViewerOwner, setIsViewerOwner] = useState(false);
-  const [isBlogPostsCollapsed, setIsBlogPostsCollapsed] = useState(false);
   
   // Handle availability check state
   const [handleStatus, setHandleStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
@@ -230,27 +228,6 @@ export default function UserProfilePage() {
       loadPosts();
     }
   }, [user, loadPosts]);
-
-  // Load blog posts when user is loaded (stats are returned by the API)
-  useEffect(() => {
-    if (user && user.user_key) {
-      loadBlogPosts();
-    }
-  }, [user, API_BASE_URL]);
-
-  const loadBlogPosts = async () => {
-    if (!user?.user_key) return;
-    try {
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}/blog-posts/recent`);
-      if (response.ok) {
-        const data = await response.json();
-        // Endpoint returns a plain list
-        setBlogPosts(Array.isArray(data) ? data : []);
-      }
-    } catch (err) {
-      console.error('Error loading blog posts:', err);
-    }
-  };
 
   // Handle entering edit mode
   const handleEditClick = () => {
@@ -791,9 +768,6 @@ export default function UserProfilePage() {
                   <Link href={`/u/${user.public_sqid}/dashboard`} className="dashboard-btn">
                     📊 Dashboard
                   </Link>
-                  <Link href="/blog/write" className="write-blog-btn">
-                    ✍️ Write Blog
-                  </Link>
                   <Link href={`/u/${user.public_sqid}/player`} className="players-btn">
                     📺 Players
                   </Link>
@@ -895,44 +869,6 @@ export default function UserProfilePage() {
           </div>
           </div>
         </div>
-
-        {blogPosts.length > 0 && (
-          <div className={`blog-posts-section ${isBlogPostsCollapsed ? 'collapsed' : ''}`}>
-            <div className="blog-posts-content">
-              <div className="blog-posts-header">
-                <h2 className="section-title">Recent Blog Posts</h2>
-                <button
-                  className="blog-posts-toggle"
-                  onClick={() => setIsBlogPostsCollapsed(!isBlogPostsCollapsed)}
-                  aria-label={isBlogPostsCollapsed ? 'Expand blog posts' : 'Collapse blog posts'}
-                >
-                  {isBlogPostsCollapsed ? '▶' : '▼'}
-                </button>
-              </div>
-              {!isBlogPostsCollapsed && (
-                <div className="blog-posts-list">
-                  {blogPosts.map((blogPost) => {
-                    const displayDate = blogPost.updated_at || blogPost.created_at;
-                    const reactionCount = blogPost.reaction_count ?? 0;
-                    const commentCount = blogPost.comment_count ?? 0;
-                    return (
-                      <Link key={blogPost.id} href={`/b/${blogPost.public_sqid}`} className="blog-post-item">
-                        <h3 className="blog-post-item-title">{blogPost.title}</h3>
-                        <div className="blog-post-item-meta">
-                          <span className="blog-post-item-date">{new Date(displayDate).toLocaleDateString()}</span>
-                          <span className="meta-separator">•</span>
-                          <span className="blog-post-item-reactions">⚡ {reactionCount}</span>
-                          <span className="meta-separator">•</span>
-                          <span className="blog-post-item-comments">💬 {commentCount}</span>
-                        </div>
-                      </Link>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
         <div className="artworks-section">
           {posts.length === 0 && !postsLoading && (
@@ -1146,7 +1082,6 @@ export default function UserProfilePage() {
           }
         }
 
-        .profile-actions :global(.write-blog-btn),
         .profile-actions :global(.players-btn),
         .profile-actions :global(.dashboard-btn) {
           background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
@@ -1165,7 +1100,6 @@ export default function UserProfilePage() {
           gap: 6px;
         }
 
-        .profile-actions :global(.write-blog-btn:hover),
         .profile-actions :global(.players-btn:hover),
         .profile-actions :global(.dashboard-btn:hover) {
           transform: translateY(-2px);

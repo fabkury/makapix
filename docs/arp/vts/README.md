@@ -103,7 +103,7 @@ flowchart TB
 ## Related Systems
 
 - **Site Metrics System** — Tracks page views at the site level (separate from artwork views)
-- **Blog Post View Tracking** — Parallel system for blog post analytics
+- **Blog Post View Tracking** — Parallel system for blog post analytics *(POSTPONED: Blog posts deferred to later date)*
 - **Player Command System** — Handles other player interactions (reactions, comments)
 
 ---

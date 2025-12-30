@@ -6,6 +6,14 @@
 
 ---
 
+> **⚠️ FEATURE POSTPONED: Blog Posts**
+> 
+> As of December 2025, blog post functionality has been postponed to an indeterminate future date.
+> References to blog post issues in this report are preserved for historical context but are not
+> currently active concerns. When blog posts are reactivated, these issues should be revisited.
+
+---
+
 ## Executive Summary
 
 This report details the findings from a comprehensive sanity check of the Makapix Club codebase. The analysis covers the Python/FastAPI backend (API), the Next.js frontend (web), and the Celery worker infrastructure.

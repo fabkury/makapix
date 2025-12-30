@@ -309,15 +309,6 @@ export default function Layout({ children, title, description }: LayoutProps) {
                 <div className="mod-icon">🎛️</div>
               </Link>
             )}
-
-            <Link
-              href="/blog"
-              className={`blog-feed-link ${router.pathname.startsWith('/blog') ? 'active' : ''}`}
-              aria-label="Blog Feed"
-              suppressHydrationWarning
-            >
-              <div className="blog-icon">📰</div>
-            </Link>
           </div>
 
           <nav className="nav" aria-label="Main navigation">
@@ -499,33 +490,6 @@ export default function Layout({ children, title, description }: LayoutProps) {
         .header-left :global(a.mod-dashboard-link.active) .mod-icon {
           background: rgba(255, 255, 255, 0.15);
           box-shadow: 0 0 16px rgba(180, 78, 255, 0.4), inset 0 0 0 2px rgba(180, 78, 255, 0.3);
-        }
-
-        .header-left :global(a.blog-feed-link) {
-          display: flex;
-          align-items: center;
-        }
-
-        .blog-icon {
-          width: 32px;
-          height: 32px;
-          border-radius: 50%;
-          background: var(--bg-tertiary);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 18px;
-          transition: all var(--transition-fast);
-        }
-
-        .header-left :global(a.blog-feed-link:hover) .blog-icon {
-          background: var(--accent-cyan);
-          box-shadow: var(--glow-cyan);
-        }
-
-        .header-left :global(a.blog-feed-link.active) .blog-icon {
-          background: rgba(255, 255, 255, 0.15);
-          box-shadow: 0 0 16px rgba(0, 212, 255, 0.4), inset 0 0 0 2px rgba(0, 212, 255, 0.3);
         }
 
         .nav {

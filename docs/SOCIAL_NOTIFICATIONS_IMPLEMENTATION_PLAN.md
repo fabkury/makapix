@@ -7,6 +7,18 @@
 
 ---
 
+> **⚠️ FEATURE POSTPONED: Blog Posts**
+> 
+> As of December 2025, blog post functionality has been postponed to an indeterminate future date.
+> All references to blog post notifications in this document are preserved for future implementation
+> but are currently not active. The notification system will initially only support artwork-related
+> notifications (reactions and comments on artwork).
+> 
+> When blog posts are reactivated, the notification system can be extended to include blog post
+> notifications as originally planned in this document.
+
+---
+
 ## Table of Contents
 
 1. [Executive Summary](#executive-summary)
@@ -25,11 +37,13 @@
 
 ## Executive Summary
 
-This plan details the implementation of a social notifications system for Makapix Club that will notify users when their artwork or blog posts receive reactions or comments. The system leverages existing infrastructure (PostgreSQL, Redis) and uses WebSockets over HTTPS for real-time delivery, maintaining low operational costs.
+This plan details the implementation of a social notifications system for Makapix Club that will notify users when their artwork receives reactions or comments. The system leverages existing infrastructure (PostgreSQL, Redis) and uses WebSockets over HTTPS for real-time delivery, maintaining low operational costs.
+
+**Note:** Blog post notifications are mentioned throughout this document but are currently postponed. Initial implementation will focus on artwork-only notifications.
 
 ### Key Features
 
-- **Unified notifications** for artwork reactions, artwork comments, blog post reactions, and blog post comments
+- **Unified notifications** for artwork reactions and artwork comments (blog post notifications postponed)
 - **Unread counter badge** displayed on user profile button in header (bottom-right overlay)
 - **Notifications button** on user profile page with same counter
 - **Dedicated notifications page** showing all notifications with highlights for unread items

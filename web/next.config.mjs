@@ -38,7 +38,7 @@ const nextConfig = {
     NEXT_PUBLIC_MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES:
       process.env.MAKAPIX_ARTWORK_SIZE_LIMIT ?? "5242880",
   },
-  webpack: (config) => {
+  webpack: (config, { isServer }) => {
     // Some client-side dependencies (zstd/lzo) reference `.wasm` assets via `new URL("*.wasm", import.meta.url)`.
     // Ensure webpack can resolve and emit these as static assets.
     config.experiments = { ...(config.experiments || {}), asyncWebAssembly: true };
@@ -47,6 +47,17 @@ const nextConfig = {
       test: /\.wasm$/,
       type: "asset/resource",
     });
+    
+    // Client-side builds: stub out Node.js modules that some WASM libraries try to import
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        path: false,
+        crypto: false,
+      };
+    }
+    
     return config;
   },
 };

@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import logging
+import os
+import subprocess
+import sys
+import tempfile
 import uuid
 from uuid import UUID
 
@@ -50,7 +55,6 @@ from ..vault import (
     validate_file_size,
     validate_image_dimensions,
 )
-from ..utils.transparency import compute_transparency_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -228,8 +232,13 @@ def create_post(
         file_bytes=payload.file_bytes,
         frame_count=1,
         min_frame_duration_ms=None,
-        uses_transparency=False,
-        uses_alpha=False,
+        max_frame_duration_ms=None,
+        bit_depth=None,
+        unique_colors=None,
+        transparency_meta=False,
+        alpha_meta=False,
+        transparency_actual=False,
+        alpha_actual=False,
         metadata_modified_at=now,
         artwork_modified_at=now,
         dwell_time_ms=30000,
@@ -285,7 +294,7 @@ async def upload_artwork(
     - From 128x128 to 256x256 (inclusive): Any size allowed (square or rectangular)
     - Above 256x256: Not allowed
     - Max 5 MB file size
-    - PNG, GIF, or WebP format
+    - PNG, GIF, WebP, or BMP format
 
     Public visibility is automatically set based on the user's auto_public_approval privilege.
     If the user does not have this privilege, the artwork will not appear in Recent Artworks
@@ -293,88 +302,85 @@ async def upload_artwork(
     """
     # Read the file content
     file_content = await image.read()
-    file_size = len(file_content)
 
-    # Validate file size
-    is_valid, error = validate_file_size(file_size)
-    if not is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=error,
+    # Save to temporary file for AMP inspection
+    # Preserve original extension if available
+    filename = image.filename or ""
+    ext = ""
+    if "." in filename:
+        ext = "." + filename.lower().split(".")[-1]
+    
+    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp_file:
+        tmp_file.write(file_content)
+        tmp_path = tmp_file.name
+    
+    try:
+        # Call AMP inspector to validate and extract metadata
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "app.amp.amp_inspector",
+                "--backend",
+                tmp_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
         )
-
-    # Determine MIME type from content-type header or file extension
-    mime_type = image.content_type
-    if mime_type not in ALLOWED_MIME_TYPES:
-        # Try to detect from file extension
-        filename = image.filename or ""
-        ext = filename.lower().split(".")[-1] if "." in filename else ""
-        ext_to_mime = {"png": "image/png", "gif": "image/gif", "webp": "image/webp"}
-        mime_type = ext_to_mime.get(ext)
-
-        if mime_type not in ALLOWED_MIME_TYPES:
+        
+        # Parse JSON output
+        try:
+            amp_result = json.loads(result.stdout)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse AMP inspector output: {e}\nOutput: {result.stdout}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to process image. Please try again.",
+            )
+        
+        # Check if AMP inspection succeeded
+        if not amp_result.get("success"):
+            error_info = amp_result.get("error", {})
+            error_message = error_info.get("message", "Unknown error during image inspection")
+            logger.warning(f"AMP inspection failed: {error_message}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid image format. Allowed formats: PNG, GIF, WebP",
+                detail=error_message,
             )
-
-    # Validate image dimensions using PIL
-    try:
-        img = Image.open(io.BytesIO(file_content))
-        width, height = img.size
-    except Exception as e:
-        logger.error(f"Failed to open image: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Could not read image file. Please ensure it's a valid image.",
-        )
-
-    # Extract metadata for new fields
-    # 1. Frame count - use img.n_frames for animated images
-    frame_count = 1
-    try:
-        frame_count = img.n_frames
-    except (AttributeError, Exception) as e:
-        logger.warning(f"Failed to get frame count: {e}")
-
-    # 2. Minimum non-zero frame duration (for animated images)
-    min_frame_duration_ms = None
-    if frame_count > 1:
+        
+        # Extract metadata from AMP result
+        metadata = amp_result["metadata"]
+        width = metadata["width"]
+        height = metadata["height"]
+        file_size = metadata["file_bytes"]
+        file_format = metadata["file_format"]
+        frame_count = metadata["frame_count"]
+        min_frame_duration_ms = metadata.get("shortest_duration_ms")
+        max_frame_duration_ms = metadata.get("longest_duration_ms")
+        bit_depth = metadata.get("bit_depth")
+        unique_colors = metadata.get("unique_colors")
+        transparency_meta = metadata.get("transparency_meta", False)
+        alpha_meta = metadata.get("alpha_meta", False)
+        transparency_actual = metadata.get("transparency_actual", False)
+        alpha_actual = metadata.get("alpha_actual", False)
+        
+        # Map file format to MIME type
+        format_to_mime = {
+            "png": "image/png",
+            "gif": "image/gif",
+            "webp": "image/webp",
+            "bmp": "image/bmp",
+        }
+        mime_type = format_to_mime.get(file_format, "image/png")
+        
+    finally:
+        # Clean up temporary file
         try:
-            durations = []
-            for frame_idx in range(frame_count):
-                img.seek(frame_idx)
-                duration = img.info.get("duration")
-                if duration is not None and duration > 0:
-                    durations.append(duration)
-            if durations:
-                min_frame_duration_ms = min(durations)
-            # Reset to first frame
-            img.seek(0)
+            os.unlink(tmp_path)
         except Exception as e:
-            logger.warning(f"Failed to extract frame durations: {e}")
-
-    # 3. Transparency metadata (pixel-scanned; metadata may short-circuit negative case)
-    # NOTE: If this fails, we currently fail the upload. Later we may use this error
-    # to label uploads as unhealthy or refuse specific files with a clearer reason.
-    try:
-        tmeta = compute_transparency_metadata(img)
-        uses_transparency = bool(tmeta.uses_transparency)
-        uses_alpha = bool(tmeta.uses_alpha)
-    except Exception as e:
-        logger.error(f"Failed to compute transparency metadata: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to process image transparency metadata. Please try again.",
-        )
-
-    # Validate dimensions according to Makapix Club size rules
-    is_valid, error = validate_image_dimensions(width, height)
-    if not is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=error,
-        )
+            logger.warning(f"Failed to delete temp file {tmp_path}: {e}")
 
     # Calculate SHA256 hash of the file content
     file_hash = hashlib.sha256(file_content).hexdigest()
@@ -416,8 +422,13 @@ async def upload_artwork(
         file_bytes=file_size,
         frame_count=frame_count,
         min_frame_duration_ms=min_frame_duration_ms,
-        uses_transparency=uses_transparency,
-        uses_alpha=uses_alpha,
+        max_frame_duration_ms=max_frame_duration_ms,
+        bit_depth=bit_depth,
+        unique_colors=unique_colors,
+        transparency_meta=transparency_meta,
+        alpha_meta=alpha_meta,
+        transparency_actual=transparency_actual,
+        alpha_actual=alpha_actual,
         expected_hash=file_hash,
         mime_type=mime_type,
         public_visibility=public_visibility,
@@ -1139,7 +1150,7 @@ async def replace_artwork(
     if mime_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid file type: {mime_type}. Allowed: PNG, GIF, WebP"
+            detail=f"Invalid file type: {mime_type}. Allowed: PNG, GIF, WebP, BMP"
         )
     
     # Validate dimensions

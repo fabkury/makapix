@@ -32,6 +32,8 @@ ALLOWED_MIME_TYPES = {
     "image/png": ".png",
     "image/gif": ".gif",
     "image/webp": ".webp",
+    "image/bmp": ".bmp",
+    "image/x-ms-bmp": ".bmp",  # Alternative MIME type for BMP
 }
 
 

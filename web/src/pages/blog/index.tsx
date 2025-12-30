@@ -29,6 +29,13 @@ interface PageResponse<T> {
 }
 
 export default function BlogFeedPage() {
+  // ============================================================================
+  // FEATURE POSTPONED: Blog Posts
+  // ============================================================================
+  // Blog post functionality has been postponed to an indeterminate future date.
+  // This page displays a notice to users that the feature is deferred.
+  // ============================================================================
+  
   const router = useRouter();
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -143,6 +150,20 @@ export default function BlogFeedPage() {
   return (
     <Layout title="Blog Feed" description="Read blog posts from the community">
       <div className="blog-feed-container">
+        {/* FEATURE POSTPONED NOTICE */}
+        <div className="postponed-notice">
+          <div className="postponed-icon">📰</div>
+          <h1 className="postponed-title">Blog Posts Feature Postponed</h1>
+          <p className="postponed-message">
+            The blog posts feature has been deferred to a later time. We&apos;re focusing on other 
+            features for the upcoming launch. Thank you for your understanding!
+          </p>
+          <Link href="/" className="back-home-link">
+            ← Back to Home
+          </Link>
+        </div>
+
+        {/* Original content hidden but preserved for future reactivation
         <div className="blog-feed-header">
           {isLoggedIn && (
             <Link href="/blog/write" className="write-button">
@@ -238,9 +259,59 @@ export default function BlogFeedPage() {
             )}
           </div>
         )}
+        */}
       </div>
 
       <style jsx>{`
+        .postponed-notice {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          min-height: calc(100vh - var(--header-height) - 100px);
+          padding: 3rem 2rem;
+          text-align: center;
+        }
+
+        .postponed-icon {
+          font-size: 5rem;
+          margin-bottom: 1.5rem;
+          opacity: 0.7;
+        }
+
+        .postponed-title {
+          font-size: 2rem;
+          font-weight: 700;
+          color: var(--text-primary);
+          margin-bottom: 1rem;
+        }
+
+        .postponed-message {
+          font-size: 1.1rem;
+          color: var(--text-secondary);
+          max-width: 600px;
+          line-height: 1.6;
+          margin-bottom: 2rem;
+        }
+
+        .postponed-notice :global(.back-home-link) {
+          display: inline-block;
+          padding: 12px 24px;
+          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          color: white;
+          border-radius: 8px;
+          font-weight: 600;
+          text-decoration: none;
+          transition: all var(--transition-fast);
+        }
+
+        .postponed-notice :global(.back-home-link:hover) {
+          transform: translateY(-2px);
+          box-shadow: var(--glow-pink);
+        }
+
+        /* Original styles preserved for future reactivation */
+        /*
         .blog-feed-container {
           max-width: 900px;
           margin: 0 auto;
@@ -526,6 +597,7 @@ export default function BlogFeedPage() {
             width: auto;
           }
         }
+        */
       `}</style>
     </Layout>
   );

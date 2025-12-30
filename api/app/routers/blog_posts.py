@@ -37,6 +37,35 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/blog-post", tags=["Blog Posts"])
 
 
+# ============================================================================
+# FEATURE POSTPONED: Blog Posts
+# ============================================================================
+# Blog post functionality has been postponed to an indeterminate future date.
+# All endpoints in this router are protected by a hardcoded safety lock that
+# returns HTTP 503 to preserve the implemented functionality while ensuring
+# it cannot be used until explicitly reactivated.
+#
+# When reactivating blog posts in the future:
+# 1. Remove all calls to _check_blog_posts_feature_lock() from each endpoint
+# 2. Review and update the implementation as the codebase may have evolved
+# 3. Update frontend to re-expose blog post UI components
+# 4. Update documentation to remove POSTPONED notices
+# ============================================================================
+
+def _check_blog_posts_feature_lock() -> None:
+    """
+    Safety lock for blog post feature postponement.
+    
+    Raises HTTP 503 to indicate that blog posts are deferred to a later time.
+    This hardcoded lock preserves implemented functionality while ensuring
+    it cannot be used until explicitly reactivated in the future.
+    """
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Blog posts are deferred to a later time"
+    )
+
+
 def extract_image_urls_from_markdown(body: str) -> list[str]:
     """Extract image URLs from markdown image syntax ![alt](url)."""
     pattern = r'!\[.*?\]\((.*?)\)'
@@ -65,6 +94,7 @@ def list_blog_posts(
     - reactions: Sort by reaction count
     - comments: Sort by comment count
     """
+    _check_blog_posts_feature_lock()  # FEATURE POSTPONED - Remove this line to reactivate
     query = db.query(models.BlogPost).options(joinedload(models.BlogPost.owner))
     
     is_moderator = (
@@ -163,6 +193,7 @@ def create_blog_post(
     
     Public visibility is automatically set based on the user's auto_public_approval privilege.
     """
+    _check_blog_posts_feature_lock()  # FEATURE POSTPONED - Remove this line to reactivate
     # Validate body length
     if len(payload.body) > 10000:
         raise HTTPException(
@@ -209,6 +240,7 @@ def get_blog_post_by_sqid(
     
     This is the canonical URL for blog posts sitewide.
     """
+    _check_blog_posts_feature_lock()  # FEATURE POSTPONED - Remove this line to reactivate
     # Decode the Sqids ID
     from ..sqids_config import decode_blog_post_sqid
     
@@ -274,6 +306,7 @@ def get_blog_post(
     
     Legacy endpoint - if UUID format is detected, redirects to canonical URL /b/{public_sqid}.
     """
+    _check_blog_posts_feature_lock()  # FEATURE POSTPONED - Remove this line to reactivate
     # Try to parse as UUID first (legacy blog_post_key)
     try:
         blog_post_key = UUID(id)
@@ -346,6 +379,7 @@ def update_blog_post(
     current_user: models.User = Depends(get_current_user),
 ) -> schemas.BlogPost:
     """Update blog post (owner only)."""
+    _check_blog_posts_feature_lock()  # FEATURE POSTPONED - Remove this line to reactivate
     blog_post = db.query(models.BlogPost).filter(models.BlogPost.id == id).first()
     if not blog_post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
@@ -381,6 +415,7 @@ def delete_blog_post(
     current_user: models.User = Depends(get_current_user),
 ) -> None:
     """Delete blog post (soft delete, owner only)."""
+    _check_blog_posts_feature_lock()  # FEATURE POSTPONED - Remove this line to reactivate
     blog_post = db.query(models.BlogPost).filter(models.BlogPost.id == id).first()
     if not blog_post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
@@ -409,6 +444,7 @@ async def upload_blog_image(
     Returns the image URL to be inserted into markdown as ![](url).
     Maximum file size is 10 MB. Up to 10 images per blog post.
     """
+    _check_blog_posts_feature_lock()  # FEATURE POSTPONED - Remove this line to reactivate
     blog_post = db.query(models.BlogPost).filter(models.BlogPost.id == id).first()
     if not blog_post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
@@ -480,6 +516,7 @@ def list_blog_comments(
     current_user: models.User | None = Depends(get_current_user_or_anonymous),
 ) -> schemas.Page[schemas.BlogPostComment]:
     """List comments for a blog post."""
+    _check_blog_posts_feature_lock()  # FEATURE POSTPONED - Remove this line to reactivate
     query = (
         db.query(models.BlogPostComment)
         .options(joinedload(models.BlogPostComment.author))
@@ -554,6 +591,7 @@ def create_blog_comment(
     current_user: models.User | AnonymousUser = Depends(get_current_user_or_anonymous),
 ) -> schemas.BlogPostComment:
     """Create comment on a blog post."""
+    _check_blog_posts_feature_lock()  # FEATURE POSTPONED - Remove this line to reactivate
     # Check comment count limit
     comment_count = db.query(func.count(models.BlogPostComment.id)).filter(
         models.BlogPostComment.blog_post_id == id
@@ -617,6 +655,7 @@ def update_blog_comment(
     current_user: models.User = Depends(get_current_user),
 ) -> schemas.BlogPostComment:
     """Update blog post comment (authenticated users only)."""
+    _check_blog_posts_feature_lock()  # FEATURE POSTPONED - Remove this line to reactivate
     comment = db.query(models.BlogPostComment).filter(models.BlogPostComment.id == commentId).first()
     if not comment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
@@ -650,6 +689,7 @@ def delete_blog_comment(
     current_user: models.User | AnonymousUser = Depends(get_current_user_or_anonymous),
 ) -> None:
     """Delete blog post comment (soft delete)."""
+    _check_blog_posts_feature_lock()  # FEATURE POSTPONED - Remove this line to reactivate
     comment = db.query(models.BlogPostComment).filter(models.BlogPostComment.id == commentId).first()
     if not comment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
@@ -686,6 +726,7 @@ def get_blog_reactions(
     current_user: models.User | AnonymousUser = Depends(get_current_user_or_anonymous),
 ) -> schemas.BlogPostReactionTotals:
     """Get reaction totals for a blog post."""
+    _check_blog_posts_feature_lock()  # FEATURE POSTPONED - Remove this line to reactivate
     reactions = db.query(models.BlogPostReaction).filter(models.BlogPostReaction.blog_post_id == id).all()
     
     totals: dict[str, int] = {}
@@ -730,6 +771,7 @@ def add_blog_reaction(
     current_user: models.User | AnonymousUser = Depends(get_current_user_or_anonymous),
 ) -> None:
     """Add reaction to a blog post."""
+    _check_blog_posts_feature_lock()  # FEATURE POSTPONED - Remove this line to reactivate
     if not emoji or len(emoji) > 20:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -793,6 +835,7 @@ def remove_blog_reaction(
     current_user: models.User | AnonymousUser = Depends(get_current_user_or_anonymous),
 ) -> None:
     """Remove reaction from a blog post (idempotent)."""
+    _check_blog_posts_feature_lock()  # FEATURE POSTPONED - Remove this line to reactivate
     if isinstance(current_user, models.User):
         db.query(models.BlogPostReaction).filter(
             models.BlogPostReaction.blog_post_id == id,
@@ -821,6 +864,7 @@ def approve_blog_public_visibility(
     moderator: models.User = Depends(require_moderator),
 ) -> schemas.PublicVisibilityResponse:
     """Approve public visibility for a blog post (moderator only)."""
+    _check_blog_posts_feature_lock()  # FEATURE POSTPONED - Remove this line to reactivate
     blog_post = db.query(models.BlogPost).filter(models.BlogPost.id == id).first()
     if not blog_post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
@@ -849,6 +893,7 @@ def hide_blog_post(
     current_user: models.User = Depends(get_current_user),
 ) -> None:
     """Hide blog post."""
+    _check_blog_posts_feature_lock()  # FEATURE POSTPONED - Remove this line to reactivate
     blog_post = db.query(models.BlogPost).filter(models.BlogPost.id == id).first()
     if not blog_post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
@@ -885,6 +930,7 @@ def unhide_blog_post(
     current_user: models.User = Depends(get_current_user),
 ) -> None:
     """Unhide blog post."""
+    _check_blog_posts_feature_lock()  # FEATURE POSTPONED - Remove this line to reactivate
     blog_post = db.query(models.BlogPost).filter(models.BlogPost.id == id).first()
     if not blog_post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found")
@@ -927,6 +973,7 @@ async def get_blog_post_statistics(
     - Authenticated-only statistics: `total_views_authenticated`, `unique_viewers_authenticated`, etc.
     - Timestamps: `first_view_at`, `last_view_at`, `computed_at`
     """
+    _check_blog_posts_feature_lock()  # FEATURE POSTPONED - Remove this line to reactivate
     from ..services.blog_post_stats_service import get_blog_post_stats
     
     # Check if blog post exists

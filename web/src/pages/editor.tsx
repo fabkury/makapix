@@ -7,6 +7,10 @@ import {
   getAccessToken, 
   clearTokens 
 } from '../lib/api';
+import { 
+  decodeWebPAnimation, 
+  DecodingProgress 
+} from '../utils/webpDecoder';
 
 const PISKEL_ORIGIN = 'https://piskel.makapix.club';
 
@@ -14,6 +18,12 @@ interface EditContext {
   postSqid: string;
   artworkUrl: string;
   title: string;
+  // Animated WebP frames are sent via a separate postMessage with transferables.
+  hasRgbaFrames?: boolean;
+  frameCount?: number;
+  width?: number;
+  height?: number;
+  fps?: number;
 }
 
 interface Post {
@@ -21,16 +31,20 @@ interface Post {
   public_sqid: string;
   title: string;
   art_url: string;
+  mime_type?: string;
 }
 
 export default function EditorPage() {
   const router = useRouter();
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const frameRgbaBuffersRef = useRef<ArrayBuffer[] | null>(null);
+  const frameDurationsMsRef = useRef<number[] | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editContext, setEditContext] = useState<EditContext | null>(null);
   const [piskelReady, setPiskelReady] = useState(false);
+  const [decodingProgress, setDecodingProgress] = useState<DecodingProgress | null>(null);
 
   const API_BASE_URL = typeof window !== 'undefined' 
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
@@ -57,32 +71,146 @@ export default function EditorPage() {
       return;
     }
 
-    // Fetch post data
-    authenticatedFetch(`${API_BASE_URL}/api/p/${editSqid}`)
-      .then(res => {
+    let cancelled = false;
+
+    // Fetch and process artwork for editing
+    (async () => {
+      try {
+        // Fetch post data
+        const res = await authenticatedFetch(`${API_BASE_URL}/api/p/${editSqid}`);
+        
         if (res.status === 401) {
           clearTokens();
           router.push('/auth');
-          return null;
+          return;
         }
-        if (!res.ok) throw new Error('Failed to load artwork');
-        return res.json();
-      })
-      .then((post: Post | null) => {
-        if (post) {
-          setEditContext({
-            postSqid: post.public_sqid,
-            artworkUrl: post.art_url,
-            title: post.title,
+        
+        if (!res.ok) {
+          throw new Error('Failed to load artwork');
+        }
+        
+        const post: Post = await res.json();
+        
+        if (cancelled) return;
+
+        // Convert relative URL to absolute
+        const artworkUrl = post.art_url.startsWith('/') 
+          ? `${API_BASE_URL}${post.art_url}` 
+          : post.art_url;
+
+        // Check if it's a WebP file
+        const isWebP = post.mime_type === 'image/webp' || artworkUrl.toLowerCase().endsWith('.webp');
+
+        if (cancelled) return;
+
+        // Helper to convert URL to data URL (avoids CORS issues in Piskel iframe)
+        const urlToDataUrl = async (url: string): Promise<string> => {
+          const response = await fetch(url);
+          const blob = await response.blob();
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
           });
+        };
+
+        if (isWebP) {
+          // Try to decode WebP animation with progress tracking
+          setDecodingProgress({ current: 0, total: 1, phase: 'fetching' });
+
+          try {
+            const decoded = await decodeWebPAnimation(artworkUrl, (progress) => {
+              if (!cancelled) {
+                setDecodingProgress(progress);
+              }
+            });
+
+            if (cancelled) return;
+
+            if (decoded.isAnimated && decoded.frames.length > 0) {
+              // Animated WebP: keep RGBA buffers in a ref and send them via transferables.
+              frameRgbaBuffersRef.current = decoded.frames.map((f) => f.rgba);
+              frameDurationsMsRef.current = decoded.frames.map((f) => f.duration);
+
+              // Set edit context metadata only (serializable).
+              setEditContext({
+                postSqid: post.public_sqid,
+                artworkUrl,
+                title: post.title,
+                hasRgbaFrames: true,
+                frameCount: decoded.frames.length,
+                width: decoded.width,
+                height: decoded.height,
+                fps: decoded.averageFps,
+              });
+            } else {
+              // Not animated - convert to data URL to avoid CORS in Piskel
+              const dataUrl = await urlToDataUrl(artworkUrl);
+              if (cancelled) return;
+              
+              setEditContext({
+                postSqid: post.public_sqid,
+                artworkUrl: dataUrl,
+                title: post.title,
+              });
+            }
+          } catch {
+            // WebP decoding failed - try to convert to data URL anyway
+            try {
+              const dataUrl = await urlToDataUrl(artworkUrl);
+              if (cancelled) return;
+              
+              setEditContext({
+                postSqid: post.public_sqid,
+                artworkUrl: dataUrl,
+                title: post.title,
+              });
+            } catch {
+              // Even data URL conversion failed - pass original URL as last resort
+              setEditContext({
+                postSqid: post.public_sqid,
+                artworkUrl,
+                title: post.title,
+              });
+            }
+          }
+
+          setDecodingProgress(null);
+        } else {
+          // Non-WebP - convert to data URL to avoid CORS in Piskel
+          try {
+            const dataUrl = await urlToDataUrl(artworkUrl);
+            if (cancelled) return;
+            
+            setEditContext({
+              postSqid: post.public_sqid,
+              artworkUrl: dataUrl,
+              title: post.title,
+            });
+          } catch {
+            // Conversion failed - pass original URL as fallback
+            setEditContext({
+              postSqid: post.public_sqid,
+              artworkUrl,
+              title: post.title,
+            });
+          }
         }
+
         setIsLoading(false);
-      })
-      .catch(err => {
+      } catch (err) {
+        if (cancelled) return;
         console.error('Failed to load edit context:', err);
-        setError('Failed to load artwork for editing');
+        setError(err instanceof Error ? err.message : 'Failed to load artwork for editing');
         setIsLoading(false);
-      });
+        setDecodingProgress(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [isAuthenticated, router.query.edit, API_BASE_URL, router]);
 
   // Handle messages from Piskel
@@ -96,7 +224,8 @@ export default function EditorPage() {
       switch (data.type) {
         case 'PISKEL_READY':
           setPiskelReady(true);
-          sendInitMessage();
+          // Don't call sendInitMessage here - let the useEffect at the bottom handle it
+          // to ensure editContext is loaded first
           break;
 
         case 'PISKEL_AUTH_REFRESH_REQUEST':
@@ -134,6 +263,27 @@ export default function EditorPage() {
     }
 
     iframeRef.current.contentWindow.postMessage(message, PISKEL_ORIGIN);
+
+    // Send RGBA frames as a separate message with transferables to avoid giant data URLs.
+    if (editContext?.hasRgbaFrames && frameRgbaBuffersRef.current?.length) {
+      const buffers = frameRgbaBuffersRef.current;
+      const durations = frameDurationsMsRef.current || [];
+
+      const framesMessage: any = {
+        type: 'MAKAPIX_EDIT_FRAMES_RGBA',
+        postSqid: editContext.postSqid,
+        width: editContext.width,
+        height: editContext.height,
+        fps: editContext.fps,
+        frameDurationsMs: durations,
+        frameRgbaBuffers: buffers,
+      };
+
+      iframeRef.current.contentWindow.postMessage(framesMessage, PISKEL_ORIGIN, buffers);
+      // Release memory on parent side after transfer.
+      frameRgbaBuffersRef.current = null;
+      frameDurationsMsRef.current = null;
+    }
   }, [editContext]);
 
   const handleAuthRefresh = async () => {
@@ -274,6 +424,23 @@ export default function EditorPage() {
           title="Piskel Editor"
           allow="clipboard-write"
         />
+        
+        {decodingProgress && (
+          <div className="decoding-overlay">
+            <div className="decoding-panel">
+              <div className="spinner"></div>
+              <div className="decoding-text">
+                {decodingProgress.phase === 'fetching' && 'Fetching artwork...'}
+                {decodingProgress.phase === 'decoding' && (
+                  <>Loading animation... Frame {decodingProgress.current}/{decodingProgress.total}</>
+                )}
+                {decodingProgress.phase === 'converting' && (
+                  <>Converting frames... {decodingProgress.current}/{decodingProgress.total}</>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <style jsx>{`
@@ -325,6 +492,38 @@ export default function EditorPage() {
           border-radius: 8px;
           font-weight: 600;
           cursor: pointer;
+        }
+
+        .decoding-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.8);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 10000;
+        }
+
+        .decoding-panel {
+          background: #1a1a1a;
+          border: 2px solid #00d4ff;
+          border-radius: 12px;
+          padding: 32px 48px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 20px;
+          min-width: 300px;
+        }
+
+        .decoding-text {
+          color: #fff;
+          font-size: 16px;
+          text-align: center;
+          font-weight: 500;
         }
       `}</style>
     </>

@@ -542,7 +542,14 @@ def get_user_recent_blog_posts(
     Get the 2 most recent blog posts for a user.
     
     Used for displaying recent blog posts panel on user profile pages.
+    
+    FEATURE POSTPONED: Blog posts are deferred to a later time.
     """
+    # FEATURE POSTPONED - Remove this block to reactivate blog posts
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Blog posts are deferred to a later time"
+    )
     # Look up user by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
@@ -586,7 +593,14 @@ def get_user_blog_posts(
     Get blog posts for a user.
     
     Used for displaying blog posts on user profile pages.
+    
+    FEATURE POSTPONED: Blog posts are deferred to a later time.
     """
+    # FEATURE POSTPONED - Remove this block to reactivate blog posts
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Blog posts are deferred to a later time"
+    )
     # Look up user by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
