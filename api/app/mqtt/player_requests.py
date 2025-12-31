@@ -11,7 +11,7 @@ from typing import Any
 from uuid import UUID
 
 from paho.mqtt import client as mqtt_client
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from ..db import get_session
@@ -34,6 +34,8 @@ from .schemas import (
     GetCommentsResponse,
     CommentSummary,
     ErrorResponse,
+    FilterCriterion,
+    FileFormatValue,
 )
 
 logger = logging.getLogger(__name__)
@@ -307,6 +309,164 @@ def _trim_posts_payload_to_limit(payload: dict[str, Any]) -> dict[str, Any]:
     return trimmed
 
 
+# file_format to mime_type mapping for criteria filtering
+FILE_FORMAT_TO_MIME = {
+    "png": "image/png",
+    "gif": "image/gif",
+    "webp": "image/webp",
+    "bmp": "image/bmp",
+}
+
+KNOWN_MIME_TYPES = set(FILE_FORMAT_TO_MIME.values())
+
+
+def _apply_criteria_filters(
+    query,
+    criteria: list[FilterCriterion],
+) -> tuple[Any, str | None]:
+    """
+    Apply AMP field criteria to a SQLAlchemy query.
+
+    Args:
+        query: SQLAlchemy query object
+        criteria: List of FilterCriterion objects
+
+    Returns:
+        tuple: (modified_query, error_message or None)
+    """
+    if not criteria:
+        return query, None
+
+    # Map field names to Post model columns
+    field_to_column = {
+        "width": models.Post.width,
+        "height": models.Post.height,
+        "file_bytes": models.Post.file_bytes,
+        "frame_count": models.Post.frame_count,
+        "min_frame_duration_ms": models.Post.min_frame_duration_ms,
+        "max_frame_duration_ms": models.Post.max_frame_duration_ms,
+        "bit_depth": models.Post.bit_depth,
+        "unique_colors": models.Post.unique_colors,
+        "transparency_meta": models.Post.transparency_meta,
+        "alpha_meta": models.Post.alpha_meta,
+        "transparency_actual": models.Post.transparency_actual,
+        "alpha_actual": models.Post.alpha_actual,
+        "mime_type": models.Post.mime_type,
+    }
+
+    filters = []
+
+    for i, criterion in enumerate(criteria):
+        field_name = criterion.field.value
+        op = criterion.op.value
+        value = criterion.value
+
+        # Handle file_format specially - map to mime_type queries
+        if field_name == "file_format":
+            try:
+                filter_expr = _build_file_format_filter(op, value)
+                filters.append(filter_expr)
+            except ValueError as e:
+                return None, f"Criterion {i}: {str(e)}"
+            continue
+
+        column = field_to_column.get(field_name)
+        if column is None:
+            return None, f"Unknown field in criterion {i}: {field_name}"
+
+        try:
+            if op == "eq":
+                filters.append(column == value)
+            elif op == "neq":
+                filters.append(column != value)
+            elif op == "lt":
+                filters.append(column < value)
+            elif op == "gt":
+                filters.append(column > value)
+            elif op == "lte":
+                filters.append(column <= value)
+            elif op == "gte":
+                filters.append(column >= value)
+            elif op == "in":
+                filters.append(column.in_(value))
+            elif op == "not_in":
+                filters.append(~column.in_(value))
+            elif op == "is_null":
+                filters.append(column.is_(None))
+            elif op == "is_not_null":
+                filters.append(column.isnot(None))
+            else:
+                return None, f"Unknown operator in criterion {i}: {op}"
+        except Exception as e:
+            logger.error(f"Error applying criterion {i}: {e}")
+            return None, f"Invalid criterion {i}: {str(e)}"
+
+    if filters:
+        query = query.filter(and_(*filters))
+
+    return query, None
+
+
+def _build_file_format_filter(op: str, value: str | list[str] | None):
+    """
+    Build a SQLAlchemy filter for file_format criteria.
+
+    file_format is derived from mime_type at query time:
+    - "png" -> mime_type = "image/png"
+    - "unknown" -> mime_type IS NULL OR mime_type NOT IN known types
+
+    Args:
+        op: Operator (eq, neq, in, not_in)
+        value: file_format value(s)
+
+    Returns:
+        SQLAlchemy filter expression
+    """
+    mime_col = models.Post.mime_type
+
+    def format_to_condition(fmt: str):
+        """Convert a single file_format value to a filter condition."""
+        if fmt == "unknown":
+            # "unknown" means mime_type is NULL or not in known types
+            return or_(mime_col.is_(None), ~mime_col.in_(KNOWN_MIME_TYPES))
+        else:
+            mime = FILE_FORMAT_TO_MIME.get(fmt)
+            if mime is None:
+                raise ValueError(f"Invalid file_format: {fmt}")
+            return mime_col == mime
+
+    if op == "eq":
+        return format_to_condition(value)
+    elif op == "neq":
+        if value == "unknown":
+            # NOT unknown = mime_type IS NOT NULL AND mime_type IN known types
+            return and_(mime_col.isnot(None), mime_col.in_(KNOWN_MIME_TYPES))
+        else:
+            mime = FILE_FORMAT_TO_MIME.get(value)
+            if mime is None:
+                raise ValueError(f"Invalid file_format: {value}")
+            return mime_col != mime
+    elif op == "in":
+        # OR together conditions for each format in the list
+        conditions = [format_to_condition(fmt) for fmt in value]
+        return or_(*conditions)
+    elif op == "not_in":
+        # AND together negated conditions for each format
+        conditions = []
+        for fmt in value:
+            if fmt == "unknown":
+                # NOT unknown = mime_type IS NOT NULL AND mime_type IN known types
+                conditions.append(and_(mime_col.isnot(None), mime_col.in_(KNOWN_MIME_TYPES)))
+            else:
+                mime = FILE_FORMAT_TO_MIME.get(fmt)
+                if mime is None:
+                    raise ValueError(f"Invalid file_format: {fmt}")
+                conditions.append(mime_col != mime)
+        return and_(*conditions)
+    else:
+        raise ValueError(f"Operator '{op}' not supported for file_format")
+
+
 def _handle_query_posts(
     player: models.Player,
     request: QueryPostsRequest,
@@ -402,7 +562,19 @@ def _handle_query_posts(
         else:
             # Moderators see everything except non-visible
             query = query.filter(models.Post.visible, ~models.Post.hidden_by_user)
-        
+
+        # Apply AMP criteria filters
+        if request.criteria:
+            query, error = _apply_criteria_filters(query, request.criteria)
+            if error:
+                _send_error_response(
+                    player.player_key,
+                    request.request_id,
+                    f"Invalid criteria: {error}",
+                    "invalid_criteria",
+                )
+                return
+
         # Apply sorting
         if request.sort == "created_at":
             query = query.order_by(models.Post.created_at.desc())

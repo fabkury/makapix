@@ -3,10 +3,177 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal
+from enum import Enum
+from typing import Annotated, Literal, Union
 from uuid import UUID
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, model_validator
+
+
+# ============================================================================
+# AMP Criteria Filtering Enums and Constants
+# ============================================================================
+
+
+class CriteriaOperator(str, Enum):
+    """Supported operators for AMP field criteria."""
+
+    EQ = "eq"  # =
+    NEQ = "neq"  # !=
+    LT = "lt"  # <
+    GT = "gt"  # >
+    LTE = "lte"  # <=
+    GTE = "gte"  # >=
+    IN = "in"  # IN (array)
+    NOT_IN = "not_in"  # NOT IN (array)
+    IS_NULL = "is_null"
+    IS_NOT_NULL = "is_not_null"
+
+
+class CriteriaField(str, Enum):
+    """Queryable AMP field names (map to Post model columns)."""
+
+    WIDTH = "width"
+    HEIGHT = "height"
+    FILE_BYTES = "file_bytes"
+    FRAME_COUNT = "frame_count"
+    MIN_FRAME_DURATION_MS = "min_frame_duration_ms"
+    MAX_FRAME_DURATION_MS = "max_frame_duration_ms"
+    BIT_DEPTH = "bit_depth"
+    UNIQUE_COLORS = "unique_colors"
+    TRANSPARENCY_META = "transparency_meta"
+    ALPHA_META = "alpha_meta"
+    TRANSPARENCY_ACTUAL = "transparency_actual"
+    ALPHA_ACTUAL = "alpha_actual"
+    FILE_FORMAT = "file_format"
+    MIME_TYPE = "mime_type"
+
+
+class FileFormatValue(str, Enum):
+    """Valid file format values for file_format field."""
+
+    PNG = "png"
+    GIF = "gif"
+    WEBP = "webp"
+    BMP = "bmp"
+    UNKNOWN = "unknown"
+
+
+# Field type categorizations
+NUMERIC_FIELDS = {
+    "width",
+    "height",
+    "file_bytes",
+    "frame_count",
+    "min_frame_duration_ms",
+    "max_frame_duration_ms",
+    "bit_depth",
+    "unique_colors",
+}
+
+BOOLEAN_FIELDS = {
+    "transparency_meta",
+    "alpha_meta",
+    "transparency_actual",
+    "alpha_actual",
+}
+
+STRING_ENUM_FIELDS = {
+    "file_format",
+    "mime_type",
+}
+
+NULLABLE_FIELDS = {
+    "min_frame_duration_ms",
+    "max_frame_duration_ms",
+    "bit_depth",
+    "unique_colors",
+    "mime_type",
+}
+
+# Valid operators per field type
+NUMERIC_OPERATORS = {"eq", "neq", "lt", "gt", "lte", "gte", "in", "not_in", "is_null", "is_not_null"}
+BOOLEAN_OPERATORS = {"eq", "neq"}
+STRING_ENUM_OPERATORS = {"eq", "neq", "in", "not_in", "is_null", "is_not_null"}
+
+
+class FilterCriterion(BaseModel):
+    """Single filter criterion for AMP field queries."""
+
+    field: CriteriaField = Field(..., description="AMP field to filter on")
+    op: CriteriaOperator = Field(..., description="Comparison operator")
+    value: Union[int, float, bool, str, list[int], list[str], None] = Field(
+        None,
+        description="Value(s) to compare. Required for most operators. "
+        "Array for IN/NOT IN. Not required for IS NULL/IS NOT NULL.",
+    )
+
+    @model_validator(mode="after")
+    def validate_field_operator_value_combination(self) -> "FilterCriterion":
+        """Validate that operator is valid for field type and value matches."""
+        field_name = self.field.value
+        op_name = self.op.value
+
+        # Check operator validity for field type
+        if field_name in NUMERIC_FIELDS:
+            if op_name not in NUMERIC_OPERATORS:
+                raise ValueError(f"Operator '{op_name}' not valid for numeric field '{field_name}'")
+            # Only allow null checks on nullable numeric fields
+            if op_name in ("is_null", "is_not_null") and field_name not in NULLABLE_FIELDS:
+                raise ValueError(f"Field '{field_name}' is not nullable")
+        elif field_name in BOOLEAN_FIELDS:
+            if op_name not in BOOLEAN_OPERATORS:
+                raise ValueError(f"Operator '{op_name}' not valid for boolean field '{field_name}'")
+        elif field_name in STRING_ENUM_FIELDS:
+            if op_name not in STRING_ENUM_OPERATORS:
+                raise ValueError(f"Operator '{op_name}' not valid for string field '{field_name}'")
+            # Only allow null checks on nullable string fields
+            if op_name in ("is_null", "is_not_null") and field_name not in NULLABLE_FIELDS:
+                raise ValueError(f"Field '{field_name}' is not nullable")
+
+        # Validate value presence/type
+        if op_name in ("is_null", "is_not_null"):
+            if self.value is not None:
+                raise ValueError(f"Operator '{op_name}' does not accept a value")
+        elif op_name in ("in", "not_in"):
+            if not isinstance(self.value, list):
+                raise ValueError(f"Operator '{op_name}' requires an array value")
+            if len(self.value) == 0:
+                raise ValueError(f"Operator '{op_name}' requires at least one value")
+            if len(self.value) > 100:
+                raise ValueError(f"Operator '{op_name}' accepts at most 100 values")
+        else:
+            if self.value is None:
+                raise ValueError(f"Operator '{op_name}' requires a value")
+
+        # Validate value type matches field type
+        if self.value is not None:
+            if field_name in NUMERIC_FIELDS:
+                if op_name in ("in", "not_in"):
+                    if not all(isinstance(v, (int, float)) for v in self.value):
+                        raise ValueError(f"All values must be numeric for field '{field_name}'")
+                else:
+                    if not isinstance(self.value, (int, float)):
+                        raise ValueError(f"Value must be numeric for field '{field_name}'")
+            elif field_name in BOOLEAN_FIELDS:
+                if not isinstance(self.value, bool):
+                    raise ValueError(f"Value must be boolean for field '{field_name}'")
+            elif field_name == "file_format":
+                # Validate file_format enum values
+                valid_formats = {e.value for e in FileFormatValue}
+                if op_name in ("in", "not_in"):
+                    invalid = [v for v in self.value if v not in valid_formats]
+                    if invalid:
+                        raise ValueError(
+                            f"Invalid file_format values: {invalid}. Valid: {sorted(valid_formats)}"
+                        )
+                else:
+                    if self.value not in valid_formats:
+                        raise ValueError(
+                            f"Invalid file_format: {self.value}. Valid: {sorted(valid_formats)}"
+                        )
+
+        return self
 
 
 class PostNotificationPayload(BaseModel):
@@ -80,6 +247,11 @@ class QueryPostsRequest(PlayerRequestBase):
         ge=0,
         le=1023,
         description="Playlist Expansion (0 = all). If omitted, server defaults to 1.",
+    )
+    criteria: list[FilterCriterion] = Field(
+        default_factory=list,
+        description="AMP field criteria for filtering (0-64 items, AND-ed together)",
+        max_length=64,
     )
 
 

@@ -108,6 +108,119 @@ request = {
 }
 ```
 
+#### AMP Field Filtering (Criteria)
+
+The `query_posts` operation supports optional filtering by AMP (Artwork Metadata Platform) fields using the `criteria` parameter. This enables queries like "find all PNG images with width 64-128px that have no transparency".
+
+**Criteria Structure:**
+```json
+{
+  "criteria": [
+    {"field": "width", "op": "gte", "value": 64},
+    {"field": "width", "op": "lte", "value": 128},
+    {"field": "file_format", "op": "in", "value": ["png", "bmp"]},
+    {"field": "transparency_actual", "op": "eq", "value": false},
+    {"field": "min_frame_duration_ms", "op": "is_null"}
+  ]
+}
+```
+
+**Rules:**
+- 0 to 64 criteria per query
+- All criteria are AND-ed together (must all match)
+- Field names match database column names exactly
+- `criteria` is optional (defaults to empty = no filtering)
+
+**Queryable Fields:**
+
+| Field | Type | Nullable | Description |
+|-------|------|----------|-------------|
+| `width` | numeric | no | Canvas width in pixels |
+| `height` | numeric | no | Canvas height in pixels |
+| `file_bytes` | numeric | no | File size in bytes |
+| `frame_count` | numeric | no | Animation frame count (1 for static) |
+| `min_frame_duration_ms` | numeric | yes | Shortest frame duration (ms), NULL for static |
+| `max_frame_duration_ms` | numeric | yes | Longest frame duration (ms), NULL for static |
+| `bit_depth` | numeric | yes | Per-channel bit depth (8, 16, 32) |
+| `unique_colors` | numeric | yes | Max unique colors in any frame |
+| `transparency_meta` | boolean | no | File metadata claims transparency |
+| `alpha_meta` | boolean | no | File metadata claims alpha channel |
+| `transparency_actual` | boolean | no | Actual transparent pixels found (alpha != 255) |
+| `alpha_actual` | boolean | no | Semi-transparent pixels found (alpha not in {0, 255}) |
+| `file_format` | enum | no | Image format (derived from mime_type) |
+| `mime_type` | string | yes | MIME type (e.g., "image/png") |
+
+**Operators:**
+
+| Operator | Symbol | Supported Types | Value |
+|----------|--------|-----------------|-------|
+| `eq` | = | all | single value |
+| `neq` | != | all | single value |
+| `lt` | < | numeric | single value |
+| `gt` | > | numeric | single value |
+| `lte` | <= | numeric | single value |
+| `gte` | >= | numeric | single value |
+| `in` | IN | numeric, string/enum | array (1-100 values) |
+| `not_in` | NOT IN | numeric, string/enum | array (1-100 values) |
+| `is_null` | IS NULL | nullable fields only | not required |
+| `is_not_null` | IS NOT NULL | nullable fields only | not required |
+
+**Valid `file_format` Values:**
+- `"png"` - PNG images (MIME: image/png)
+- `"gif"` - GIF images, may be animated (MIME: image/gif)
+- `"webp"` - WebP images, may be animated (MIME: image/webp)
+- `"bmp"` - BMP images (MIME: image/bmp)
+- `"unknown"` - Format could not be determined (MIME is NULL or unrecognized)
+
+**Example: Find static PNG/BMP images 64-128px wide without transparency:**
+```python
+request = {
+    "request_id": "criteria-example",
+    "request_type": "query_posts",
+    "player_key": "your-player-uuid",
+    "channel": "all",
+    "criteria": [
+        {"field": "width", "op": "gte", "value": 64},
+        {"field": "width", "op": "lte", "value": 128},
+        {"field": "file_format", "op": "in", "value": ["png", "bmp"]},
+        {"field": "frame_count", "op": "eq", "value": 1},
+        {"field": "transparency_actual", "op": "eq", "value": False}
+    ],
+    "sort": "created_at",
+    "limit": 20
+}
+```
+
+**Example: Find animated images (GIF/WebP with multiple frames):**
+```python
+request = {
+    "request_id": "animated-example",
+    "request_type": "query_posts",
+    "player_key": "your-player-uuid",
+    "channel": "all",
+    "criteria": [
+        {"field": "file_format", "op": "in", "value": ["gif", "webp"]},
+        {"field": "frame_count", "op": "gt", "value": 1}
+    ],
+    "limit": 10
+}
+```
+
+**Example: Find small images (under 10KB) with transparency:**
+```python
+request = {
+    "request_id": "small-transparent",
+    "request_type": "query_posts",
+    "player_key": "your-player-uuid",
+    "channel": "all",
+    "criteria": [
+        {"field": "file_bytes", "op": "lt", "value": 10240},
+        {"field": "transparency_actual", "op": "eq", "value": True}
+    ],
+    "limit": 50
+}
+```
+
 ### 2. Submit View
 
 Record a view event for an artwork. Views are classified by intent and tracked for analytics.
@@ -310,6 +423,7 @@ All operations may return error responses:
 - `authentication_failed`: Player not registered or invalid player_key
 - `not_found`: Requested resource (post, comment) not found
 - `invalid_request`: Malformed request or missing required fields
+- `invalid_criteria`: Invalid AMP criteria (unknown field, invalid operator for field type, type mismatch, invalid file_format value)
 - `invalid_emoji`: Emoji format validation failed
 - `reaction_limit_exceeded`: Maximum 5 reactions per post exceeded
 - `internal_error`: Server-side processing error
@@ -439,6 +553,12 @@ python3 scripts/validate_mqtt_player_api.py \
 The script will run through all API operations and report success/failure for each.
 
 ## Changelog
+
+### Version 1.1 (2025-12-31)
+- Added AMP field filtering (criteria) to query_posts operation
+- 13 queryable fields: width, height, file_bytes, frame_count, min/max_frame_duration_ms, bit_depth, unique_colors, transparency_meta, alpha_meta, transparency_actual, alpha_actual, file_format, mime_type
+- 10 operators: eq, neq, lt, gt, lte, gte, in, not_in, is_null, is_not_null
+- Added `invalid_criteria` error code
 
 ### Version 1.0 (2025-12-08)
 - Initial implementation of MQTT player API
