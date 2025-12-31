@@ -1560,6 +1560,7 @@ class SocialNotificationBase(BaseModel):
     comment_preview: str | None = None
     content_title: str | None = None
     content_sqid: str | None = None
+    content_art_url: str | None = None
 
 
 class SocialNotification(SocialNotificationBase):
@@ -1586,6 +1587,7 @@ class SocialNotificationCreate(BaseModel):
     comment_preview: str | None = None
     content_title: str | None = None
     content_sqid: str | None = None
+    content_art_url: str | None = None
 
 
 class SocialNotificationUnreadCount(BaseModel):

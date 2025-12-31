@@ -101,6 +101,7 @@ class SocialNotificationService:
             comment_preview=comment_preview,
             content_title=post.title,
             content_sqid=post.public_sqid,
+            content_art_url=post.art_url,
         )
 
         db.add(notification)
@@ -343,6 +344,7 @@ class SocialNotificationService:
             "comment_preview": notification.comment_preview,
             "content_title": notification.content_title,
             "content_sqid": notification.content_sqid,
+            "content_art_url": notification.content_art_url,
             "created_at": notification.created_at.isoformat(),
         }
 

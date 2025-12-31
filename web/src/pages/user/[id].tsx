@@ -6,6 +6,7 @@ import CardGrid from '../../components/CardGrid';
 import PlayerBar from '../../components/PlayerBarDynamic';
 import { authenticatedFetch, authenticatedRequestJson, authenticatedPostJson, clearTokens, logout } from '../../lib/api';
 import { usePlayerBarOptional } from '../../contexts/PlayerBarContext';
+import { calculatePageSize } from '../../utils/gridUtils';
 
 interface User {
   id: number;
@@ -86,10 +87,16 @@ export default function UserProfilePage() {
   const loadingRef = useRef(false);
   const hasMoreRef = useRef(true);
   const nextCursorRef = useRef<string | null>(null);
-  
-  const API_BASE_URL = typeof window !== 'undefined' 
+  const pageSizeRef = useRef(20); // Will be set on mount
+
+  const API_BASE_URL = typeof window !== 'undefined'
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
     : '';
+
+  // Calculate page size on mount (client-side only)
+  useEffect(() => {
+    pageSizeRef.current = calculatePageSize();
+  }, []);
 
   // Fetch user profile
   useEffect(() => {
@@ -189,7 +196,7 @@ export default function UserProfilePage() {
     setPostsLoading(true);
     
     try {
-      const url = `${API_BASE_URL}/api/post?owner_id=${user?.id || id}&limit=20&sort=created_at&order=desc${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const url = `${API_BASE_URL}/api/post?owner_id=${user?.id || id}&limit=${pageSizeRef.current}&sort=created_at&order=desc${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       const response = await authenticatedFetch(url);
       
       if (!response.ok) {

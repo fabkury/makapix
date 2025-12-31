@@ -1310,6 +1310,7 @@ class SocialNotification(Base):
     # Content metadata (denormalized for display)
     content_title = Column(String(200), nullable=True)
     content_sqid = Column(String(50), nullable=True)  # For URL generation
+    content_art_url = Column(String(1000), nullable=True)  # For artwork thumbnail
 
     # Status
     is_read = Column(Boolean, nullable=False, default=False, index=True)

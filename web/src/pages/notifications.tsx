@@ -174,6 +174,16 @@ export default function NotificationsPage() {
                     {!notification.is_read && (
                       <div className="unread-indicator" aria-hidden="true" />
                     )}
+                    {notification.content_art_url && (
+                      <img
+                        src={notification.content_art_url}
+                        alt=""
+                        width={64}
+                        height={64}
+                        className="notification-artwork pixel-art"
+                        aria-hidden="true"
+                      />
+                    )}
                   </Link>
                 </li>
               ))}
@@ -248,11 +258,7 @@ export default function NotificationsPage() {
         }
 
         .notification-item {
-          border-bottom: 1px solid var(--border-color, #333);
-        }
-
-        .notification-item:last-child {
-          border-bottom: none;
+          height: 64px;
         }
 
         .notification-item.unread {
@@ -261,9 +267,10 @@ export default function NotificationsPage() {
 
         .notification-item :global(.notification-link) {
           display: flex;
-          align-items: flex-start;
-          gap: 12px;
-          padding: 16px 12px;
+          align-items: center;
+          gap: 8px;
+          height: 64px;
+          padding: 0 8px 0 12px;
           text-decoration: none;
           color: inherit;
           transition: background var(--transition-fast);
@@ -275,8 +282,8 @@ export default function NotificationsPage() {
 
         .notification-icon {
           flex-shrink: 0;
-          width: 40px;
-          height: 40px;
+          width: 32px;
+          height: 32px;
           border-radius: 50%;
           background: var(--bg-tertiary, #222);
           display: flex;
@@ -286,24 +293,28 @@ export default function NotificationsPage() {
         }
 
         .notification-icon .emoji {
-          font-size: 20px;
+          font-size: 16px;
         }
 
         .notification-content {
           flex: 1;
           min-width: 0;
+          overflow: hidden;
         }
 
         .notification-message {
-          margin: 0 0 4px;
-          font-size: 15px;
-          line-height: 1.4;
+          margin: 0;
+          font-size: 13px;
+          line-height: 1.3;
           color: var(--text-primary, #fff);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         .comment-preview {
-          margin: 0 0 4px;
-          font-size: 14px;
+          margin: 2px 0 0;
+          font-size: 12px;
           color: var(--text-secondary, #888);
           overflow: hidden;
           text-overflow: ellipsis;
@@ -312,18 +323,24 @@ export default function NotificationsPage() {
         }
 
         .notification-time {
-          font-size: 12px;
+          font-size: 11px;
           color: var(--text-tertiary, #666);
         }
 
         .unread-indicator {
           flex-shrink: 0;
-          width: 8px;
-          height: 8px;
+          width: 6px;
+          height: 6px;
           border-radius: 50%;
           background: var(--accent-cyan);
-          box-shadow: 0 0 8px rgba(0, 212, 255, 0.5);
-          align-self: center;
+          box-shadow: 0 0 6px rgba(0, 212, 255, 0.5);
+        }
+
+        .notification-item :global(.notification-artwork) {
+          flex-shrink: 0;
+          width: 64px;
+          height: 64px;
+          display: block;
         }
 
         .load-more-container {

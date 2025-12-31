@@ -6,6 +6,7 @@ import CardGrid from '../../components/CardGrid';
 import PlayerBar from '../../components/PlayerBarDynamic';
 import { authenticatedFetch, clearTokens } from '../../lib/api';
 import { usePlayerBarOptional } from '../../contexts/PlayerBarContext';
+import { calculatePageSize } from '../../utils/gridUtils';
 
 interface PostOwner {
   id: string;
@@ -49,10 +50,16 @@ export default function HashtagPage() {
   const loadingRef = useRef(false);
   const hasMoreRef = useRef(true);
   const nextCursorRef = useRef<string | null>(null);
-  
-  const API_BASE_URL = typeof window !== 'undefined' 
+  const pageSizeRef = useRef(20); // Will be set on mount
+
+  const API_BASE_URL = typeof window !== 'undefined'
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
     : '';
+
+  // Calculate page size on mount (client-side only)
+  useEffect(() => {
+    pageSizeRef.current = calculatePageSize();
+  }, []);
 
   // Check authentication on mount
   useEffect(() => {
@@ -90,7 +97,7 @@ export default function HashtagPage() {
     setError(null);
     
     try {
-      const url = `${API_BASE_URL}/api/post?hashtag=${encodeURIComponent(hashtag)}&limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const url = `${API_BASE_URL}/api/post?hashtag=${encodeURIComponent(hashtag)}&limit=${pageSizeRef.current}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       const response = await authenticatedFetch(url);
       
       if (response.status === 401) {
