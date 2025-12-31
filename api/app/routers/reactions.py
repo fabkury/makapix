@@ -12,6 +12,7 @@ from uuid import UUID
 from .. import models, schemas
 from ..auth import AnonymousUser, get_current_user, get_current_user_or_anonymous
 from ..deps import get_db
+from ..services.social_notifications import SocialNotificationService
 
 router = APIRouter(prefix="/post", tags=["Reactions"])
 
@@ -152,6 +153,19 @@ def add_reaction(
     )
     db.add(reaction)
     db.commit()
+
+    # Create notification for post owner (only for authenticated users)
+    if isinstance(current_user, models.User):
+        post = db.query(models.Post).filter(models.Post.id == id).first()
+        if post:
+            SocialNotificationService.create_notification(
+                db=db,
+                user_id=post.owner_id,
+                notification_type="reaction",
+                post=post,
+                actor=current_user,
+                emoji=emoji,
+            )
 
 
 @router.delete(

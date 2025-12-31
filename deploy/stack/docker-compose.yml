@@ -137,7 +137,7 @@ services:
       args:
         # These are baked into the JS bundle at build time
         - NEXT_PUBLIC_API_BASE_URL=https://dev.makapix.club
-        - NEXT_PUBLIC_MQTT_WS_URL=wss://dev.makapix.club:9001
+        - NEXT_PUBLIC_MQTT_WS_URL=wss://dev.makapix.club/mqtt
     container_name: makapix-web
     restart: unless-stopped
     environment:
@@ -147,14 +147,17 @@ services:
       - NEXT_TELEMETRY_DISABLED=1
       # Runtime env vars (for server-side code)
       - NEXT_PUBLIC_API_BASE_URL=https://dev.makapix.club
-      - NEXT_PUBLIC_MQTT_WS_URL=wss://dev.makapix.club:9001
+      - NEXT_PUBLIC_MQTT_WS_URL=wss://dev.makapix.club/mqtt
     labels:
       # Caddy auto-routing via label
       caddy: ${WEB_DOMAIN:-${DEV_DOMAIN}}
       caddy.header.X-Robots-Tag: "noindex, nofollow, noarchive"
-      # Uncomment for basic auth protection:
-      # caddy.basicauth./: "devuser {bcrypt}$2y$10$..."
-      caddy.reverse_proxy: "{{upstreams ${WEB_APP_PORT:-${DEV_APP_PORT:-3000}}}}"
+      # MQTT WebSocket proxy at /mqtt path (proxies to makapix-mqtt-1:9001)
+      caddy.@mqtt.path: /mqtt
+      caddy.handle_0: "@mqtt"
+      caddy.handle_0.reverse_proxy: makapix-mqtt-1:9001
+      # Default: proxy to Next.js web app
+      caddy.handle_1.reverse_proxy: "{{upstreams ${WEB_APP_PORT:-${DEV_APP_PORT:-3000}}}}"
     # Keep Next.js static assets across deploys so older clients (especially mobile)
     # with cached HTML don't 404 on hashed chunks after a redeploy.
     volumes:
@@ -184,6 +187,24 @@ services:
     networks:
       - caddy_net
 
+  # ---------------------------------------------------------------------------
+  # Redis Cache - For caching and rate limiting
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: makapix-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - caddy_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 networks:
   caddy_net:
     external: true
@@ -196,3 +217,4 @@ volumes:
     external: true
     name: makapix-stack_caddy_config
   web_next_static:
+  redis_data:

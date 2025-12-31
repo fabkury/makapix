@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 from .. import models, schemas
 from ..auth import AnonymousUser, get_current_user, get_current_user_or_anonymous, require_moderator, require_ownership
 from ..deps import get_db
+from ..services.social_notifications import SocialNotificationService
 from ..utils.audit import log_moderation_action
 
 router = APIRouter(prefix="/post", tags=["Comments"])
@@ -169,12 +170,25 @@ def create_comment(
     )
     db.add(comment)
     db.commit()
-    
+
+    # Create notification for post owner (only for authenticated users)
+    if isinstance(current_user, models.User):
+        post = db.query(models.Post).filter(models.Post.id == id).first()
+        if post:
+            SocialNotificationService.create_notification(
+                db=db,
+                user_id=post.owner_id,
+                notification_type="comment",
+                post=post,
+                actor=current_user,
+                comment=comment,
+            )
+
     # Reload comment with author relationship to ensure display name is available
     comment = db.query(models.Comment).options(
         joinedload(models.Comment.author)
     ).filter(models.Comment.id == comment.id).first()
-    
+
     return schemas.Comment.model_validate(comment)
 
 

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { authenticatedFetch, clearLoggedOutMarker, clearTokens } from '../lib/api';
+import SocialNotificationBadge from './SocialNotificationBadge';
 
 interface LayoutProps {
   children: ReactNode;
@@ -97,8 +98,14 @@ export default function Layout({ children, title, description }: LayoutProps) {
           if (data?.user) {
             // Sync localStorage with actual user data from API
             if (data.user.id) {
-              localStorage.setItem('user_id', String(data.user.id));
-              setUserId(String(data.user.id));
+              const newUserId = String(data.user.id);
+              const oldUserId = localStorage.getItem('user_id');
+              localStorage.setItem('user_id', newUserId);
+              setUserId(newUserId);
+              // Dispatch custom event if userId changed (for MQTT reconnection)
+              if (oldUserId !== newUserId) {
+                window.dispatchEvent(new Event('localStorageUpdated'));
+              }
             }
             if (data.user.public_sqid) {
               localStorage.setItem('public_sqid', data.user.public_sqid);
@@ -190,6 +197,8 @@ export default function Layout({ children, title, description }: LayoutProps) {
           localStorage.setItem('user_key', tokens.user_key || '');
           localStorage.setItem('public_sqid', tokens.public_sqid || '');
           localStorage.setItem('user_handle', tokens.user_handle || '');
+          // Dispatch custom event to trigger MQTT reconnection with new userId
+          window.dispatchEvent(new Event('localStorageUpdated'));
 
           // Use redirectUrl from message if provided, otherwise check needs_welcome
           if (redirectUrl) {
@@ -285,9 +294,9 @@ export default function Layout({ children, title, description }: LayoutProps) {
               >
                 <div className="user-icon">
                   {avatarUrl ? (
-                    <img 
+                    <img
                       src={avatarUrl.startsWith('http') ? avatarUrl : `${typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin) : ''}${avatarUrl}`}
-                      alt="Profile" 
+                      alt="Profile"
                       className="user-avatar"
                     />
                   ) : (
@@ -297,6 +306,10 @@ export default function Layout({ children, title, description }: LayoutProps) {
                   )}
                 </div>
               </Link>
+            )}
+
+            {isLoggedIn && (
+              <SocialNotificationBadge />
             )}
 
             {isLoggedIn && isModerator && (

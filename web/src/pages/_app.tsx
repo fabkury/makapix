@@ -1,18 +1,57 @@
 import type { AppProps } from 'next/app';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import '../styles/globals.css';
 import { getAccessToken, isTokenExpired, refreshAccessToken, wasRecentlyLoggedOut } from '../lib/api';
 import { usePageViewTracking } from '../hooks/usePageViewTracking';
 import { PlayerBarProvider } from '../contexts/PlayerBarContext';
+import { SocialNotificationsProvider } from '../contexts/SocialNotificationsContext';
 
 export default function App({ Component, pageProps }: AppProps) {
   const router = useRouter();
   // Use ref to prevent duplicate refresh attempts
   const isCheckingRef = useRef(false);
+  // Track userId for social notifications
+  const [userId, setUserId] = useState<string | null>(null);
 
   // Track page views for analytics
   usePageViewTracking();
+
+  // Track userId from localStorage
+  useEffect(() => {
+    const checkUserId = () => {
+      const storedUserId = localStorage.getItem('user_id');
+      const token = getAccessToken();
+      // Only set userId if we have both token and userId
+      setUserId(token && storedUserId ? storedUserId : null);
+    };
+
+    checkUserId();
+
+    // Listen for storage changes (login/logout in other tabs)
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'user_id' || event.key === 'access_token') {
+        checkUserId();
+      }
+    };
+
+    // Custom event for same-tab localStorage changes
+    const handleLocalStorageUpdate = () => {
+      checkUserId();
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('localStorageUpdated', handleLocalStorageUpdate);
+    
+    // Also check on route changes in case login happens
+    router.events.on('routeChangeComplete', checkUserId);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('localStorageUpdated', handleLocalStorageUpdate);
+      router.events.off('routeChangeComplete', checkUserId);
+    };
+  }, [router.events]);
 
   // In dev tooling (including automated browsers), extra DOM attributes may be injected
   // before hydration (e.g. `data-cursor-ref`), which can cause noisy hydration warnings.
@@ -132,9 +171,11 @@ export default function App({ Component, pageProps }: AppProps) {
   }, [router.events]);
 
   return (
-    <PlayerBarProvider>
-      <Component {...pageProps} />
-    </PlayerBarProvider>
+    <SocialNotificationsProvider userId={userId}>
+      <PlayerBarProvider>
+        <Component {...pageProps} />
+      </PlayerBarProvider>
+    </SocialNotificationsProvider>
   );
 }
 

@@ -141,6 +141,8 @@ export default function AuthPanel({
         localStorage.setItem('user_key', data.user_key || '');
         localStorage.setItem('public_sqid', data.public_sqid || '');
         localStorage.setItem('user_handle', data.user_handle || '');
+        // Dispatch custom event to trigger MQTT reconnection with new userId
+        window.dispatchEvent(new Event('localStorageUpdated'));
         router.push('/');
       }
     } catch (err) {

@@ -1543,3 +1543,52 @@ class HashUrlResponse(BaseModel):
     """Hash URL task response."""
 
     task_id: str
+
+
+# ============================================================================
+# SOCIAL NOTIFICATIONS
+# ============================================================================
+
+
+class SocialNotificationBase(BaseModel):
+    """Base schema for social notifications."""
+
+    notification_type: str  # 'reaction' or 'comment'
+    post_id: int
+    actor_handle: str | None = None
+    emoji: str | None = None
+    comment_preview: str | None = None
+    content_title: str | None = None
+    content_sqid: str | None = None
+
+
+class SocialNotification(SocialNotificationBase):
+    """Full social notification schema."""
+
+    id: UUID
+    user_id: int
+    is_read: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SocialNotificationCreate(BaseModel):
+    """Schema for creating a social notification (internal use)."""
+
+    user_id: int
+    notification_type: str
+    post_id: int
+    actor_id: int | None = None
+    actor_handle: str | None = None
+    emoji: str | None = None
+    comment_id: UUID | None = None
+    comment_preview: str | None = None
+    content_title: str | None = None
+    content_sqid: str | None = None
+
+
+class SocialNotificationUnreadCount(BaseModel):
+    """Response for unread notification count."""
+
+    unread_count: int

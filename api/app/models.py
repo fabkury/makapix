@@ -109,6 +109,12 @@ class User(Base):
     password_reset_tokens = relationship(
         "PasswordResetToken", back_populates="user", cascade="all, delete-orphan"
     )
+    social_notifications = relationship(
+        "SocialNotification",
+        foreign_keys="SocialNotification.user_id",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
 
 class RefreshToken(Base):
@@ -1260,3 +1266,61 @@ class BlogPostStatsDaily(Base):
         UniqueConstraint("blog_post_id", "date", name="uq_blog_post_stats_daily_post_date"),
         Index("ix_blog_post_stats_daily_post_date", blog_post_id, date),
     )
+
+
+# ============================================================================
+# SOCIAL NOTIFICATIONS
+# ============================================================================
+
+
+class SocialNotification(Base):
+    """
+    Social notification for reactions and comments on artwork.
+
+    Notifies users when their content receives engagement from other users.
+    Blog post notifications are excluded (feature postponed).
+    """
+
+    __tablename__ = "social_notifications"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    # Type: 'reaction' or 'comment'
+    notification_type = Column(String(50), nullable=False)
+
+    # Target content (artwork only)
+    post_id = Column(
+        Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    # Actor (who triggered the notification)
+    actor_id = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    actor_handle = Column(String(50), nullable=True)  # Denormalized for display
+
+    # Notification details
+    emoji = Column(String(20), nullable=True)  # For reaction notifications
+    comment_id = Column(UUID(as_uuid=True), nullable=True)  # For comment notifications
+    comment_preview = Column(Text, nullable=True)  # First 100 chars of comment
+
+    # Content metadata (denormalized for display)
+    content_title = Column(String(200), nullable=True)
+    content_sqid = Column(String(50), nullable=True)  # For URL generation
+
+    # Status
+    is_read = Column(Boolean, nullable=False, default=False, index=True)
+    read_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Timestamps
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id], back_populates="social_notifications")
+    actor = relationship("User", foreign_keys=[actor_id])
+    post = relationship("Post")

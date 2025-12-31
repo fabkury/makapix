@@ -11,7 +11,11 @@
       "Bash(awk:*)",
       "Bash(docker compose:*)",
       "Bash(git pull:*)",
-      "Bash(docker-compose exec:*)"
+      "Bash(docker-compose exec:*)",
+      "Bash(docker system:*)",
+      "Bash(docker images:*)",
+      "Bash(docker builder prune:*)",
+      "Bash(npm cache clean:*)"
     ],
     "deny": [],
     "ask": []

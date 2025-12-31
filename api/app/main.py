@@ -33,6 +33,7 @@ from .routers import (
     reports,
     reputation,
     search,
+    social_notifications,
     stats,
     system,
     tracking,
@@ -197,6 +198,7 @@ app.include_router(blog_posts.router)
 app.include_router(playlists.router)
 app.include_router(comments.router)
 app.include_router(reactions.router)
+app.include_router(social_notifications.router)
 app.include_router(reports.router)
 app.include_router(badges.router)
 app.include_router(reputation.router)
