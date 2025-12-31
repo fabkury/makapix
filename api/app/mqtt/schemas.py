@@ -140,8 +140,8 @@ class FilterCriterion(BaseModel):
                 raise ValueError(f"Operator '{op_name}' requires an array value")
             if len(self.value) == 0:
                 raise ValueError(f"Operator '{op_name}' requires at least one value")
-            if len(self.value) > 100:
-                raise ValueError(f"Operator '{op_name}' accepts at most 100 values")
+            if len(self.value) > 128:
+                raise ValueError(f"Operator '{op_name}' accepts at most 128 values")
         else:
             if self.value is None:
                 raise ValueError(f"Operator '{op_name}' requires a value")

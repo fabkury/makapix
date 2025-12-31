@@ -160,8 +160,8 @@ The `query_posts` operation supports optional filtering by AMP (Artwork Metadata
 | `gt` | > | numeric | single value |
 | `lte` | <= | numeric | single value |
 | `gte` | >= | numeric | single value |
-| `in` | IN | numeric, string/enum | array (1-100 values) |
-| `not_in` | NOT IN | numeric, string/enum | array (1-100 values) |
+| `in` | IN | numeric, string/enum | array (1-128 values) |
+| `not_in` | NOT IN | numeric, string/enum | array (1-128 values) |
 | `is_null` | IS NULL | nullable fields only | not required |
 | `is_not_null` | IS NOT NULL | nullable fields only | not required |
 
