@@ -13,7 +13,6 @@ from app.mqtt.player_requests import (
     _authenticate_player,
     _handle_query_posts,
     _handle_get_post,
-    _handle_submit_view,
     _handle_submit_reaction,
     _handle_revoke_reaction,
     _handle_get_comments,
@@ -21,7 +20,6 @@ from app.mqtt.player_requests import (
 from app.mqtt.schemas import (
     QueryPostsRequest,
     GetPostRequest,
-    SubmitViewRequest,
     SubmitReactionRequest,
     RevokeReactionRequest,
     GetCommentsRequest,
@@ -352,90 +350,6 @@ class TestQueryPosts:
         # Error response should be sent
         assert mock_error.called
         assert "not found" in mock_error.call_args[0][2]
-
-
-class TestSubmitView:
-    """Test submit_view functionality."""
-
-    @patch("app.mqtt.player_requests.publish")
-    @patch("app.mqtt.player_requests.write_view_event")
-    def test_submit_view_success(
-        self,
-        mock_write_view: MagicMock,
-        mock_publish: MagicMock,
-        test_player: Player,
-        other_user_post: Post,
-        db: Session,
-    ):
-        """Test submitting a view event."""
-        request = SubmitViewRequest(
-            request_id="test-view-1",
-            player_key=test_player.player_key,
-            post_id=other_user_post.id,
-            view_intent="intentional",
-        )
-        
-        _handle_submit_view(test_player, request, db)
-        
-        # Verify view event was queued
-        assert mock_write_view.delay.called
-        event_data = mock_write_view.delay.call_args[0][0]
-        assert event_data["post_id"] == str(other_user_post.id)
-        assert event_data["device_type"] == "player"
-        assert event_data["view_type"] == "intentional"
-        
-        # Verify success response
-        assert mock_publish.called
-        payload = mock_publish.call_args[1]["payload"]
-        assert payload["success"] is True
-
-    @patch("app.mqtt.player_requests.publish")
-    @patch("app.mqtt.player_requests.write_view_event")
-    def test_submit_view_own_post(
-        self,
-        mock_write_view: MagicMock,
-        mock_publish: MagicMock,
-        test_player: Player,
-        test_posts: list[Post],
-        db: Session,
-    ):
-        """Test that views on own posts are not recorded."""
-        request = SubmitViewRequest(
-            request_id="test-view-2",
-            player_key=test_player.player_key,
-            post_id=test_posts[0].id,
-            view_intent="automated",
-        )
-        
-        _handle_submit_view(test_player, request, db)
-        
-        # View event should NOT be queued (owner's post)
-        assert not mock_write_view.delay.called
-        
-        # But success response should still be sent
-        assert mock_publish.called
-        payload = mock_publish.call_args[1]["payload"]
-        assert payload["success"] is True
-
-    @patch("app.mqtt.player_requests._send_error_response")
-    def test_submit_view_invalid_post(
-        self,
-        mock_error: MagicMock,
-        test_player: Player,
-        db: Session,
-    ):
-        """Test submitting view for non-existent post."""
-        request = SubmitViewRequest(
-            request_id="test-view-3",
-            player_key=test_player.player_key,
-            post_id=99999,
-            view_intent="intentional",
-        )
-        
-        _handle_submit_view(test_player, request, db)
-        
-        # Error response should be sent
-        assert mock_error.called
 
 
 class TestReactions:

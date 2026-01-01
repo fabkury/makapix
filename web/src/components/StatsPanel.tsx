@@ -431,7 +431,7 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
           display: flex;
           align-items: center;
           justify-content: center;
-          z-index: 1000;
+          z-index: 20000;
           padding: 20px;
           backdrop-filter: blur(4px);
         }

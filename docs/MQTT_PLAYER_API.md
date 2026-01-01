@@ -59,6 +59,10 @@ Query N posts from a channel with sorting and pagination.
 - `random`: Random order with optional seed for reproducibility
 
 **Response Schema:**
+
+The response contains a list of posts, where each post is either an artwork or a playlist. The `kind` field indicates the post type.
+
+**Artwork Post:**
 ```json
 {
   "request_id": "unique-request-id",
@@ -66,19 +70,44 @@ Query N posts from a channel with sorting and pagination.
   "posts": [
     {
       "post_id": 123,
+      "kind": "artwork",
+      "owner_handle": "artist123",
+      "created_at": "2025-12-08T17:00:00Z",
+      "metadata_modified_at": "2025-12-08T17:00:00Z",
       "storage_key": "uuid",
-      "title": "Cool Pixel Art",
       "art_url": "https://...",
-      "canvas": "64x64",
       "width": 64,
       "height": 64,
       "frame_count": 1,
-      "has_transparency": false,
-      "owner_handle": "artist123",
-      "created_at": "2025-12-08T17:00:00Z"
+      "transparency_actual": false,
+      "alpha_actual": false,
+      "artwork_modified_at": "2025-12-08T17:00:00Z",
+      "dwell_time_ms": 30000
     }
   ],
-  "next_cursor": "50",  // null if no more results
+  "next_cursor": "50",
+  "has_more": false,
+  "error": null
+}
+```
+
+**Playlist Post:**
+```json
+{
+  "request_id": "unique-request-id",
+  "success": true,
+  "posts": [
+    {
+      "post_id": 456,
+      "kind": "playlist",
+      "owner_handle": "artist123",
+      "created_at": "2025-12-08T17:00:00Z",
+      "metadata_modified_at": "2025-12-08T17:00:00Z",
+      "total_artworks": 10,
+      "dwell_time_ms": 30000
+    }
+  ],
+  "next_cursor": null,
   "has_more": false,
   "error": null
 }
@@ -221,7 +250,64 @@ request = {
 }
 ```
 
-### 2. Submit View
+### 2. Get Post
+
+Fetch a single post by ID.
+
+**Request Schema:**
+```json
+{
+  "request_id": "unique-request-id",
+  "request_type": "get_post",
+  "player_key": "player-uuid",
+  "post_id": 123
+}
+```
+
+**Response Schema:**
+
+Returns a single post object (artwork or playlist) with the same structure as `query_posts`.
+
+```json
+{
+  "request_id": "unique-request-id",
+  "success": true,
+  "post": {
+    "post_id": 123,
+    "kind": "artwork",
+    "owner_handle": "artist123",
+    "created_at": "2025-12-08T17:00:00Z",
+    "metadata_modified_at": "2025-12-08T17:00:00Z",
+    "storage_key": "uuid",
+    "art_url": "https://...",
+    "width": 64,
+    "height": 64,
+    "frame_count": 1,
+    "transparency_actual": false,
+    "alpha_actual": false,
+    "artwork_modified_at": "2025-12-08T17:00:00Z",
+    "dwell_time_ms": 30000
+  },
+  "error": null
+}
+```
+
+**Error Codes:**
+- `not_found`: Post with given ID does not exist
+- `not_visible`: Post exists but is not visible
+- `not_available`: Post is hidden by user or moderator
+
+**Example:**
+```python
+request = {
+    "request_id": "get-post-1",
+    "request_type": "get_post",
+    "player_key": "your-player-uuid",
+    "post_id": 123
+}
+```
+
+### 3. Submit View
 
 Record a view event for an artwork. Views are classified by intent and tracked for analytics.
 
@@ -267,7 +353,7 @@ request = {
 }
 ```
 
-### 3. Submit Reaction
+### 4. Submit Reaction
 
 Add an emoji reaction to a post.
 
@@ -309,7 +395,7 @@ request = {
 }
 ```
 
-### 4. Revoke Reaction
+### 5. Revoke Reaction
 
 Remove a previously submitted emoji reaction.
 
@@ -349,7 +435,7 @@ request = {
 }
 ```
 
-### 5. Get Comments
+### 6. Get Comments
 
 Retrieve comments for a post with pagination.
 
@@ -553,6 +639,15 @@ python3 scripts/validate_mqtt_player_api.py \
 The script will run through all API operations and report success/failure for each.
 
 ## Changelog
+
+### Version 1.2 (2025-12-31)
+- Added `get_post` operation to fetch a single post by ID
+- Post responses now include `kind` field ("artwork" or "playlist") to distinguish post types
+- Artwork posts now include `transparency_actual` and `alpha_actual` fields (replaced `has_transparency`)
+- Artwork posts now include `metadata_modified_at`, `artwork_modified_at`, and `dwell_time_ms` fields
+- Removed redundant `canvas` field from artwork posts (use `width` and `height` instead)
+- Playlist posts return metadata only (`total_artworks`, `dwell_time_ms`) without nested artworks
+- Removed Playlist Expansion (PE) parameter - playlists no longer include artwork arrays
 
 ### Version 1.1 (2025-12-31)
 - Added AMP field filtering (criteria) to query_posts operation

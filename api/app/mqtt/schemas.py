@@ -242,12 +242,6 @@ class QueryPostsRequest(PlayerRequestBase):
         le=50,
         description="Number of posts to return (1-50)"
     )
-    PE: int | None = Field(
-        None,
-        ge=0,
-        le=1023,
-        description="Playlist Expansion (0 = all). If omitted, server defaults to 1.",
-    )
     criteria: list[FilterCriterion] = Field(
         default_factory=list,
         description="AMP field criteria for filtering (0-64 items, AND-ed together)",
@@ -266,29 +260,11 @@ class ArtworkPostPayload(BaseModel):
 
     storage_key: str
     art_url: str
-    canvas: str
     width: int
     height: int
     frame_count: int
-    has_transparency: bool
-    artwork_modified_at: datetime
-    dwell_time_ms: int
-
-
-class PlaylistArtworkPayload(BaseModel):
-    """Artwork-like object used inside playlist posts."""
-
-    post_id: int
-    storage_key: str
-    art_url: str
-    canvas: str
-    width: int
-    height: int
-    frame_count: int
-    has_transparency: bool
-    owner_handle: str
-    created_at: datetime
-    metadata_modified_at: datetime
+    transparency_actual: bool
+    alpha_actual: bool
     artwork_modified_at: datetime
     dwell_time_ms: int
 
@@ -304,7 +280,6 @@ class PlaylistPostPayload(BaseModel):
 
     total_artworks: int
     dwell_time_ms: int
-    artworks: list[PlaylistArtworkPayload]
 
 
 PlayerPostPayload = Annotated[
@@ -329,12 +304,6 @@ class GetPostRequest(PlayerRequestBase):
 
     request_type: Literal["get_post"] = "get_post"
     post_id: int = Field(..., description="Post ID to fetch")
-    PE: int | None = Field(
-        None,
-        ge=0,
-        le=1023,
-        description="Playlist Expansion (0 = all). If omitted, server defaults to 1.",
-    )
 
 
 class GetPostResponse(BaseModel):

@@ -19,21 +19,15 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { 
-    href: '/editor', 
-    icon: '🖌️', 
-    label: 'Create',
-    matchPaths: ['/editor']
+  {
+    href: '/contribute',
+    icon: '🖌️',
+    label: 'Contribute',
+    matchPaths: ['/contribute', '/editor', '/submit', '/divoom-import']
   },
-  { 
-    href: '/submit', 
-    icon: '➕', 
-    label: 'Submit',
-    matchPaths: ['/submit']
-  },
-  { 
-    href: '/recommended', 
-    icon: '⭐', 
+  {
+    href: '/recommended',
+    icon: '⭐',
     label: 'Recommended',
     matchPaths: ['/recommended']
   },
@@ -335,10 +329,10 @@ export default function Layout({ children, title, description }: LayoutProps) {
                   markWelcomeAsInternalNav();
                   router.push('/welcome');
                 }
-                // Editor requires authentication
-                if (item.href === '/editor' && !isLoggedIn) {
+                // Contribute requires authentication
+                if (item.href === '/contribute' && !isLoggedIn) {
                   e.preventDefault();
-                  router.push('/auth?redirect=/editor');
+                  router.push('/auth?redirect=/contribute');
                 }
               };
               return (
