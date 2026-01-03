@@ -3,7 +3,7 @@
 Extracts comprehensive metadata including:
 - Dimensions and file format
 - Animation frame data
-- Bit depth and unique colors
+- Unique colors
 - Transparency metadata and actual transparency
 """
 
@@ -27,8 +27,7 @@ class AMPMetadata:
     file_bytes: int
 
     # Format
-    file_format: str  # "png", "gif", "webp"
-    bit_depth: int  # Per-channel bit depth (e.g., 8, 16)
+    file_format: str  # "png", "gif", "webp", "bmp"
 
     # Animation
     frame_count: int
@@ -65,9 +64,6 @@ def extract_metadata(file_path: Path, img: Image.Image) -> AMPMetadata:
     # File format (normalize to lowercase)
     file_format = _normalize_format(img.format)
 
-    # Bit depth per channel
-    bit_depth = _get_bit_depth(img)
-
     # Animation metadata
     frame_count = _get_frame_count(img)
     shortest_duration_ms, longest_duration_ms = _get_frame_durations(img, frame_count)
@@ -89,7 +85,6 @@ def extract_metadata(file_path: Path, img: Image.Image) -> AMPMetadata:
         height=height,
         file_bytes=file_bytes,
         file_format=file_format,
-        bit_depth=bit_depth,
         frame_count=frame_count,
         shortest_duration_ms=shortest_duration_ms,
         longest_duration_ms=longest_duration_ms,
@@ -102,9 +97,14 @@ def extract_metadata(file_path: Path, img: Image.Image) -> AMPMetadata:
 
 
 def _normalize_format(fmt: str | None) -> str:
-    """Normalize Pillow format to lowercase standard."""
+    """
+    Normalize Pillow format to lowercase standard.
+
+    Raises:
+        ValueError: If format cannot be determined or is not supported.
+    """
     if not fmt:
-        return "unknown"
+        raise ValueError("Cannot determine file format")
     fmt_lower = fmt.lower()
     # Map common variants
     if fmt_lower in ("png", "gif", "webp", "bmp"):
@@ -112,69 +112,7 @@ def _normalize_format(fmt: str | None) -> str:
     # BMP variants
     if fmt_lower in ("dib", "bitmap"):
         return "bmp"
-    return fmt_lower
-
-
-def _get_bit_depth(img: Image.Image) -> int:
-    """
-    Determine per-channel bit depth from image mode.
-
-    For mixed-mode animations, returns the highest bit depth.
-    """
-    mode = img.mode
-
-    # Standard 8-bit per channel modes
-    if mode in ("RGB", "RGBA", "L", "LA", "P", "PA"):
-        return 8
-
-    # 16-bit modes
-    if mode in ("I;16", "I;16L", "I;16B"):
-        return 16
-
-    # 32-bit integer mode
-    if mode == "I":
-        return 32
-
-    # 32-bit float mode
-    if mode == "F":
-        return 32
-
-    # CMYK (8-bit per channel)
-    if mode == "CMYK":
-        return 8
-
-    # For animated images, check if different frames have different modes
-    # (WebP can have mixed lossy/lossless frames)
-    try:
-        if hasattr(img, "n_frames") and img.n_frames > 1:
-            max_depth = 8  # Start with common default
-            original_frame = img.tell() if hasattr(img, "tell") else 0
-
-            for frame_idx in range(min(img.n_frames, MAX_FRAMES_TO_SCAN)):
-                img.seek(frame_idx)
-                frame_mode = img.mode
-                frame_depth = _get_depth_for_mode(frame_mode)
-                max_depth = max(max_depth, frame_depth)
-
-            # Restore original frame
-            img.seek(original_frame)
-            return max_depth
-    except Exception:
-        pass
-
-    # Default to 8-bit if unknown
-    return 8
-
-
-def _get_depth_for_mode(mode: str) -> int:
-    """Get bit depth for a specific mode."""
-    if mode in ("RGB", "RGBA", "L", "LA", "P", "PA", "CMYK"):
-        return 8
-    if mode in ("I;16", "I;16L", "I;16B"):
-        return 16
-    if mode in ("I", "F"):
-        return 32
-    return 8
+    raise ValueError(f"Unsupported file format: {fmt}")
 
 
 def _get_frame_count(img: Image.Image) -> int:

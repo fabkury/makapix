@@ -170,14 +170,13 @@ The `query_posts` operation supports optional filtering by AMP (Artwork Metadata
 | `frame_count` | numeric | no | Animation frame count (1 for static) |
 | `min_frame_duration_ms` | numeric | yes | Shortest frame duration (ms), NULL for static |
 | `max_frame_duration_ms` | numeric | yes | Longest frame duration (ms), NULL for static |
-| `bit_depth` | numeric | yes | Per-channel bit depth (8, 16, 32) |
-| `unique_colors` | numeric | yes | Max unique colors in any frame |
+| `unique_colors` | numeric | yes | Max unique colors in any frame, NULL for playlists |
 | `transparency_meta` | boolean | no | File metadata claims transparency |
 | `alpha_meta` | boolean | no | File metadata claims alpha channel |
 | `transparency_actual` | boolean | no | Actual transparent pixels found (alpha != 255) |
 | `alpha_actual` | boolean | no | Semi-transparent pixels found (alpha not in {0, 255}) |
-| `file_format` | enum | no | Image format (derived from mime_type) |
-| `mime_type` | string | yes | MIME type (e.g., "image/png") |
+| `file_format` | enum | yes | Image format (png, gif, webp, bmp), NULL for playlists |
+| `kind` | enum | no | Post type: "artwork" or "playlist" |
 
 **Operators:**
 
@@ -195,11 +194,14 @@ The `query_posts` operation supports optional filtering by AMP (Artwork Metadata
 | `is_not_null` | IS NOT NULL | nullable fields only | not required |
 
 **Valid `file_format` Values:**
-- `"png"` - PNG images (MIME: image/png)
-- `"gif"` - GIF images, may be animated (MIME: image/gif)
-- `"webp"` - WebP images, may be animated (MIME: image/webp)
-- `"bmp"` - BMP images (MIME: image/bmp)
-- `"unknown"` - Format could not be determined (MIME is NULL or unrecognized)
+- `"png"` - PNG images
+- `"gif"` - GIF images, may be animated
+- `"webp"` - WebP images, may be animated
+- `"bmp"` - BMP images
+
+**Valid `kind` Values:**
+- `"artwork"` - Single artwork post
+- `"playlist"` - Playlist containing multiple artworks
 
 **Example: Find static PNG/BMP images 64-128px wide without transparency:**
 ```python
@@ -639,6 +641,14 @@ python3 scripts/validate_mqtt_player_api.py \
 The script will run through all API operations and report success/failure for each.
 
 ## Changelog
+
+### Version 1.3 (2026-01-03)
+- Removed `bit_depth` field from queryable fields (no longer extracted)
+- Removed `mime_type` field from queryable fields (replaced by `file_format`)
+- Added `kind` as queryable field to filter by post type ("artwork" or "playlist")
+- Removed `"unknown"` from valid `file_format` values (server rejects unrecognized formats)
+- Updated `unique_colors` description: NULL for playlists
+- 12 queryable fields: width, height, file_bytes, frame_count, min/max_frame_duration_ms, unique_colors, transparency_meta, alpha_meta, transparency_actual, alpha_actual, file_format, kind
 
 ### Version 1.2 (2025-12-31)
 - Added `get_post` operation to fetch a single post by ID

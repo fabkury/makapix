@@ -27,7 +27,23 @@ MAX_FILE_SIZE_BYTES = MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES
 # Maximum canvas dimensions: 256x256
 MAX_CANVAS_SIZE = 256
 
-# Allowed image MIME types
+# File format to extension mapping
+FORMAT_TO_EXT = {
+    "png": ".png",
+    "gif": ".gif",
+    "webp": ".webp",
+    "bmp": ".bmp",
+}
+
+# File format to MIME type mapping (for content-type headers)
+FORMAT_TO_MIME = {
+    "png": "image/png",
+    "gif": "image/gif",
+    "webp": "image/webp",
+    "bmp": "image/bmp",
+}
+
+# Legacy: Allowed MIME types for upload validation (until frontend migrates)
 ALLOWED_MIME_TYPES = {
     "image/png": ".png",
     "image/gif": ".gif",
@@ -92,27 +108,27 @@ def get_artwork_file_path(artwork_id: UUID, extension: str) -> Path:
 def save_artwork_to_vault(
     artwork_id: UUID,
     file_content: bytes,
-    mime_type: str,
+    file_format: str,
 ) -> Path:
     """
     Save an artwork image to the vault.
-    
+
     Args:
         artwork_id: The UUID of the artwork (post ID)
         file_content: The raw bytes of the image file
-        mime_type: The MIME type of the image (image/png, image/jpeg, image/gif)
-    
+        file_format: The file format (png, gif, webp, bmp)
+
     Returns:
         The path where the file was saved
-    
+
     Raises:
-        ValueError: If the MIME type is not allowed
+        ValueError: If the file format is not allowed
         IOError: If there's an error writing the file
     """
-    if mime_type not in ALLOWED_MIME_TYPES:
-        raise ValueError(f"MIME type '{mime_type}' is not allowed. Allowed types: {list(ALLOWED_MIME_TYPES.keys())}")
-    
-    extension = ALLOWED_MIME_TYPES[mime_type]
+    if file_format not in FORMAT_TO_EXT:
+        raise ValueError(f"File format '{file_format}' is not allowed. Allowed formats: {list(FORMAT_TO_EXT.keys())}")
+
+    extension = FORMAT_TO_EXT[file_format]
     file_path = get_artwork_file_path(artwork_id, extension)
     
     # Create the directory structure if it doesn't exist

@@ -39,14 +39,13 @@ class CriteriaField(str, Enum):
     FRAME_COUNT = "frame_count"
     MIN_FRAME_DURATION_MS = "min_frame_duration_ms"
     MAX_FRAME_DURATION_MS = "max_frame_duration_ms"
-    BIT_DEPTH = "bit_depth"
     UNIQUE_COLORS = "unique_colors"
     TRANSPARENCY_META = "transparency_meta"
     ALPHA_META = "alpha_meta"
     TRANSPARENCY_ACTUAL = "transparency_actual"
     ALPHA_ACTUAL = "alpha_actual"
     FILE_FORMAT = "file_format"
-    MIME_TYPE = "mime_type"
+    KIND = "kind"
 
 
 class FileFormatValue(str, Enum):
@@ -56,7 +55,13 @@ class FileFormatValue(str, Enum):
     GIF = "gif"
     WEBP = "webp"
     BMP = "bmp"
-    UNKNOWN = "unknown"
+
+
+class KindValue(str, Enum):
+    """Valid kind values for kind field."""
+
+    ARTWORK = "artwork"
+    PLAYLIST = "playlist"
 
 
 # Field type categorizations
@@ -67,7 +72,6 @@ NUMERIC_FIELDS = {
     "frame_count",
     "min_frame_duration_ms",
     "max_frame_duration_ms",
-    "bit_depth",
     "unique_colors",
 }
 
@@ -80,15 +84,14 @@ BOOLEAN_FIELDS = {
 
 STRING_ENUM_FIELDS = {
     "file_format",
-    "mime_type",
+    "kind",
 }
 
 NULLABLE_FIELDS = {
     "min_frame_duration_ms",
     "max_frame_duration_ms",
-    "bit_depth",
     "unique_colors",
-    "mime_type",
+    "file_format",
 }
 
 # Valid operators per field type
@@ -171,6 +174,20 @@ class FilterCriterion(BaseModel):
                     if self.value not in valid_formats:
                         raise ValueError(
                             f"Invalid file_format: {self.value}. Valid: {sorted(valid_formats)}"
+                        )
+            elif field_name == "kind":
+                # Validate kind enum values
+                valid_kinds = {e.value for e in KindValue}
+                if op_name in ("in", "not_in"):
+                    invalid = [v for v in self.value if v not in valid_kinds]
+                    if invalid:
+                        raise ValueError(
+                            f"Invalid kind values: {invalid}. Valid: {sorted(valid_kinds)}"
+                        )
+                else:
+                    if self.value not in valid_kinds:
+                        raise ValueError(
+                            f"Invalid kind: {self.value}. Valid: {sorted(valid_kinds)}"
                         )
 
         return self

@@ -17,6 +17,23 @@ from celery import Celery
 logger = logging.getLogger(__name__)
 
 
+# MIME type to file format mapping
+_MIME_TO_FORMAT = {
+    "image/png": "png",
+    "image/gif": "gif",
+    "image/webp": "webp",
+    "image/bmp": "bmp",
+    "image/x-ms-bmp": "bmp",
+}
+
+
+def _mime_to_format(mime_type: str | None) -> str | None:
+    """Convert MIME type to file format."""
+    if not mime_type:
+        return None
+    return _MIME_TO_FORMAT.get(mime_type)
+
+
 def generate_artwork_html(manifest: dict, artwork_files: List[str], owner: str, repo: str, api_base_url: str, post_ids: List[str], widget_base_url: str) -> str:
     """Generate standalone HTML page showcasing the artwork."""
     artworks = manifest.get("artworks", [])
@@ -742,14 +759,13 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
                 frame_count=1,
                 min_frame_duration_ms=None,
                 max_frame_duration_ms=None,
-                bit_depth=None,
                 unique_colors=None,
                 transparency_meta=False,
                 alpha_meta=False,
                 transparency_actual=False,
                 alpha_actual=False,
                 hash=artwork.get("sha256"),  # Store hash from manifest
-                mime_type=artwork.get("mime_type"),  # Store MIME type from manifest
+                file_format=_mime_to_format(artwork.get("mime_type")),  # Derive format from manifest mime_type
                 metadata_modified_at=now,
                 artwork_modified_at=now,
                 dwell_time_ms=30000,

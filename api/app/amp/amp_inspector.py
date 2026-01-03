@@ -159,7 +159,6 @@ def main() -> int:
             "height": metadata.height,
             "file_bytes": metadata.file_bytes,
             "file_format": metadata.file_format,
-            "bit_depth": metadata.bit_depth,
             "frame_count": metadata.frame_count,
             "shortest_duration_ms": metadata.shortest_duration_ms,
             "longest_duration_ms": metadata.longest_duration_ms,

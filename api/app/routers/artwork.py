@@ -23,24 +23,26 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Artwork"])
 
 
-def get_post_file_path_from_storage_key(storage_key: UUID, mime_type: str | None) -> Path:
+def get_post_file_path_from_storage_key(storage_key: UUID, file_format: str | None) -> Path:
     """
     Get the file path for a post from its storage_key (UUID).
-    
+
     Args:
         storage_key: The UUID storage key
-        mime_type: The MIME type (e.g., "image/png") to determine extension
-        
+        file_format: The file format (e.g., "png", "gif") to determine extension
+
     Returns:
         Path to the file in the vault
     """
-    # Determine extension from mime_type
-    if mime_type and mime_type in ALLOWED_MIME_TYPES:
-        extension = ALLOWED_MIME_TYPES[mime_type]
+    from ..vault import FORMAT_TO_EXT
+
+    # Determine extension from file_format
+    if file_format and file_format in FORMAT_TO_EXT:
+        extension = FORMAT_TO_EXT[file_format]
     else:
-        # Default to .png if mime_type is not available
+        # Default to .png if file_format is not available
         extension = ".png"
-    
+
     return get_artwork_file_path(storage_key, extension)
 
 
@@ -135,17 +137,21 @@ def download_by_sqid(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
     
     # Get file path
-    file_path = get_post_file_path_from_storage_key(post.storage_key, post.mime_type)
-    
+    file_path = get_post_file_path_from_storage_key(post.storage_key, post.file_format)
+
     if not file_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
-    
+
     # Determine filename for download
     filename = f"{post.title or 'artwork'}{file_path.suffix}"
-    
+
+    # Get MIME type from file_format
+    from ..vault import FORMAT_TO_MIME
+    media_type = FORMAT_TO_MIME.get(post.file_format, "image/png") if post.file_format else "image/png"
+
     return FileResponse(
         path=str(file_path),
-        media_type=post.mime_type or "image/png",
+        media_type=media_type,
         filename=filename,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
@@ -169,19 +175,23 @@ def download_by_storage_key(
     # Check visibility
     if not can_access_post(post, current_user):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
-    
+
     # Get file path
-    file_path = get_post_file_path_from_storage_key(post.storage_key, post.mime_type)
-    
+    file_path = get_post_file_path_from_storage_key(post.storage_key, post.file_format)
+
     if not file_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
-    
+
     # Determine filename for download
     filename = f"{post.title or 'artwork'}{file_path.suffix}"
-    
+
+    # Get MIME type from file_format
+    from ..vault import FORMAT_TO_MIME
+    media_type = FORMAT_TO_MIME.get(post.file_format, "image/png") if post.file_format else "image/png"
+
     return FileResponse(
         path=str(file_path),
-        media_type=post.mime_type or "image/png",
+        media_type=media_type,
         filename=filename,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

@@ -161,7 +161,6 @@ def backfill_post(db: SessionLocal, post: Post, dry_run: bool = False) -> tuple[
         return True, None
     
     # Update post with AMP metadata
-    post.bit_depth = metadata.get("bit_depth")
     post.unique_colors = metadata.get("unique_colors")
     post.max_frame_duration_ms = metadata.get("longest_duration_ms")
     post.transparency_meta = metadata.get("transparency_meta", False)

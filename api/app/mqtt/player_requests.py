@@ -185,17 +185,6 @@ def _trim_posts_payload_to_limit(payload: dict[str, Any]) -> dict[str, Any]:
     return trimmed
 
 
-# file_format to mime_type mapping for criteria filtering
-FILE_FORMAT_TO_MIME = {
-    "png": "image/png",
-    "gif": "image/gif",
-    "webp": "image/webp",
-    "bmp": "image/bmp",
-}
-
-KNOWN_MIME_TYPES = set(FILE_FORMAT_TO_MIME.values())
-
-
 def _apply_criteria_filters(
     query,
     criteria: list[FilterCriterion],
@@ -221,13 +210,13 @@ def _apply_criteria_filters(
         "frame_count": models.Post.frame_count,
         "min_frame_duration_ms": models.Post.min_frame_duration_ms,
         "max_frame_duration_ms": models.Post.max_frame_duration_ms,
-        "bit_depth": models.Post.bit_depth,
         "unique_colors": models.Post.unique_colors,
         "transparency_meta": models.Post.transparency_meta,
         "alpha_meta": models.Post.alpha_meta,
         "transparency_actual": models.Post.transparency_actual,
         "alpha_actual": models.Post.alpha_actual,
-        "mime_type": models.Post.mime_type,
+        "file_format": models.Post.file_format,
+        "kind": models.Post.kind,
     }
 
     filters = []
@@ -236,15 +225,6 @@ def _apply_criteria_filters(
         field_name = criterion.field.value
         op = criterion.op.value
         value = criterion.value
-
-        # Handle file_format specially - map to mime_type queries
-        if field_name == "file_format":
-            try:
-                filter_expr = _build_file_format_filter(op, value)
-                filters.append(filter_expr)
-            except ValueError as e:
-                return None, f"Criterion {i}: {str(e)}"
-            continue
 
         column = field_to_column.get(field_name)
         if column is None:
@@ -281,66 +261,6 @@ def _apply_criteria_filters(
         query = query.filter(and_(*filters))
 
     return query, None
-
-
-def _build_file_format_filter(op: str, value: str | list[str] | None):
-    """
-    Build a SQLAlchemy filter for file_format criteria.
-
-    file_format is derived from mime_type at query time:
-    - "png" -> mime_type = "image/png"
-    - "unknown" -> mime_type IS NULL OR mime_type NOT IN known types
-
-    Args:
-        op: Operator (eq, neq, in, not_in)
-        value: file_format value(s)
-
-    Returns:
-        SQLAlchemy filter expression
-    """
-    mime_col = models.Post.mime_type
-
-    def format_to_condition(fmt: str):
-        """Convert a single file_format value to a filter condition."""
-        if fmt == "unknown":
-            # "unknown" means mime_type is NULL or not in known types
-            return or_(mime_col.is_(None), ~mime_col.in_(KNOWN_MIME_TYPES))
-        else:
-            mime = FILE_FORMAT_TO_MIME.get(fmt)
-            if mime is None:
-                raise ValueError(f"Invalid file_format: {fmt}")
-            return mime_col == mime
-
-    if op == "eq":
-        return format_to_condition(value)
-    elif op == "neq":
-        if value == "unknown":
-            # NOT unknown = mime_type IS NOT NULL AND mime_type IN known types
-            return and_(mime_col.isnot(None), mime_col.in_(KNOWN_MIME_TYPES))
-        else:
-            mime = FILE_FORMAT_TO_MIME.get(value)
-            if mime is None:
-                raise ValueError(f"Invalid file_format: {value}")
-            return mime_col != mime
-    elif op == "in":
-        # OR together conditions for each format in the list
-        conditions = [format_to_condition(fmt) for fmt in value]
-        return or_(*conditions)
-    elif op == "not_in":
-        # AND together negated conditions for each format
-        conditions = []
-        for fmt in value:
-            if fmt == "unknown":
-                # NOT unknown = mime_type IS NOT NULL AND mime_type IN known types
-                conditions.append(and_(mime_col.isnot(None), mime_col.in_(KNOWN_MIME_TYPES)))
-            else:
-                mime = FILE_FORMAT_TO_MIME.get(fmt)
-                if mime is None:
-                    raise ValueError(f"Invalid file_format: {fmt}")
-                conditions.append(mime_col != mime)
-        return and_(*conditions)
-    else:
-        raise ValueError(f"Operator '{op}' not supported for file_format")
 
 
 def _handle_query_posts(

@@ -198,7 +198,6 @@ class Post(BaseModel):
     max_frame_duration_ms: int | None = (
         None  # Maximum frame duration (ms), NULL for static
     )
-    bit_depth: int | None = None  # Per-channel bit depth (e.g., 8, 16)
     unique_colors: int | None = None  # Max unique colors in any single frame
     transparency_meta: bool = False  # File metadata claims transparency capability
     alpha_meta: bool = False  # File metadata claims alpha channel

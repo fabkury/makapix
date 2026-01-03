@@ -257,9 +257,6 @@ class Post(Base):
     max_frame_duration_ms = Column(
         Integer, nullable=True
     )  # Maximum frame duration (ms), NULL for static
-    bit_depth = Column(
-        Integer, nullable=True
-    )  # Per-channel bit depth (e.g., 8, 16)
     unique_colors = Column(
         Integer, nullable=True
     )  # Max unique colors in any single frame
@@ -278,9 +275,9 @@ class Post(Base):
     hash = Column(
         String(64), nullable=True, unique=True
     )  # SHA256 hash of the artwork bytes (dedupe + mismatch detection)
-    mime_type = Column(
-        String(50), nullable=True
-    )  # MIME type (image/png, image/jpeg, image/gif)
+    file_format = Column(
+        String(20), nullable=True
+    )  # File format: png, gif, webp, bmp
 
     # Visibility & moderation
     visible = Column(Boolean, nullable=False, default=True, index=True)

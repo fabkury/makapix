@@ -234,7 +234,6 @@ def create_post(
         frame_count=1,
         min_frame_duration_ms=None,
         max_frame_duration_ms=None,
-        bit_depth=None,
         unique_colors=None,
         transparency_meta=False,
         alpha_meta=False,
@@ -361,21 +360,11 @@ async def upload_artwork(
         frame_count = metadata["frame_count"]
         min_frame_duration_ms = metadata.get("shortest_duration_ms")
         max_frame_duration_ms = metadata.get("longest_duration_ms")
-        bit_depth = metadata.get("bit_depth")
         unique_colors = metadata.get("unique_colors")
         transparency_meta = metadata.get("transparency_meta", False)
         alpha_meta = metadata.get("alpha_meta", False)
         transparency_actual = metadata.get("transparency_actual", False)
         alpha_actual = metadata.get("alpha_actual", False)
-        
-        # Map file format to MIME type
-        format_to_mime = {
-            "png": "image/png",
-            "gif": "image/gif",
-            "webp": "image/webp",
-            "bmp": "image/bmp",
-        }
-        mime_type = format_to_mime.get(file_format, "image/png")
         
     finally:
         # Clean up temporary file
@@ -431,14 +420,13 @@ async def upload_artwork(
         frame_count=frame_count,
         min_frame_duration_ms=min_frame_duration_ms,
         max_frame_duration_ms=max_frame_duration_ms,
-        bit_depth=bit_depth,
         unique_colors=unique_colors,
         transparency_meta=transparency_meta,
         alpha_meta=alpha_meta,
         transparency_actual=transparency_actual,
         alpha_actual=alpha_actual,
         hash=file_hash,
-        mime_type=mime_type,
+        file_format=file_format,
         public_visibility=public_visibility,
         metadata_modified_at=now,
         artwork_modified_at=now,
@@ -476,8 +464,9 @@ async def upload_artwork(
 
     # Save to vault using the storage_key
     try:
-        extension = ALLOWED_MIME_TYPES[mime_type]
-        save_artwork_to_vault(post.storage_key, file_content, mime_type)
+        from ..vault import FORMAT_TO_EXT
+        extension = FORMAT_TO_EXT[file_format]
+        save_artwork_to_vault(post.storage_key, file_content, file_format)
 
         # Update the art_url to point to the vault
         art_url = get_artwork_url(post.storage_key, extension)
@@ -1227,7 +1216,6 @@ async def replace_artwork(
         frame_count = metadata["frame_count"]
         min_frame_duration_ms = metadata.get("shortest_duration_ms")
         max_frame_duration_ms = metadata.get("longest_duration_ms")
-        bit_depth = metadata.get("bit_depth")
         unique_colors = metadata.get("unique_colors")
         transparency_meta = metadata.get("transparency_meta", False)
         alpha_meta = metadata.get("alpha_meta", False)
@@ -1263,19 +1251,6 @@ async def replace_artwork(
                 detail="Artwork already exists",
             )
 
-        format_to_mime = {
-            "png": "image/png",
-            "gif": "image/gif",
-            "webp": "image/webp",
-            "bmp": "image/bmp",
-        }
-        mime_type = format_to_mime.get(file_format, "image/png")
-        if mime_type not in ALLOWED_MIME_TYPES:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid file type: {mime_type}. Allowed: PNG, GIF, WebP, BMP",
-            )
-
     finally:
         try:
             os.unlink(tmp_path)
@@ -1283,7 +1258,8 @@ async def replace_artwork(
             logger.warning(f"Failed to delete temp file {tmp_path}: {e}")
 
     # Compute new art_url (may change extension if format changes)
-    new_extension = ALLOWED_MIME_TYPES[mime_type]
+    from ..vault import FORMAT_TO_EXT
+    new_extension = FORMAT_TO_EXT[file_format]
     new_art_url = get_artwork_url(post.storage_key, new_extension)
 
     # Update post first (flush) so UNIQUE constraint blocks races before vault write
@@ -1299,14 +1275,13 @@ async def replace_artwork(
     post.frame_count = frame_count
     post.min_frame_duration_ms = min_frame_duration_ms
     post.max_frame_duration_ms = max_frame_duration_ms
-    post.bit_depth = bit_depth
     post.unique_colors = unique_colors
     post.transparency_meta = transparency_meta
     post.alpha_meta = alpha_meta
     post.transparency_actual = transparency_actual
     post.alpha_actual = alpha_actual
     post.hash = file_hash
-    post.mime_type = mime_type
+    post.file_format = file_format
     post.metadata_modified_at = now
     post.artwork_modified_at = now
 
@@ -1324,14 +1299,14 @@ async def replace_artwork(
         old_ext = None
         if old_art_url:
             old_ext = "." + old_art_url.rsplit(".", 1)[-1].lower()
-        if old_ext and old_ext != new_extension and old_ext in ALLOWED_MIME_TYPES.values():
+        if old_ext and old_ext != new_extension and old_ext in FORMAT_TO_EXT.values():
             delete_artwork_from_vault(post.storage_key, old_ext)
     except Exception as e:
         logger.warning(f"Failed to delete old artwork file for post {post.id}: {e}")
 
     # Overwrite vault file at storage_key
     try:
-        save_artwork_to_vault(post.storage_key, file_content, mime_type)
+        save_artwork_to_vault(post.storage_key, file_content, file_format)
         db.commit()
         db.refresh(post)
     except Exception as e:
