@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/router';
+import Link from 'next/link';
 import Layout from '../components/Layout';
 import { authenticatedFetch, clearTokens } from '../lib/api';
 
@@ -419,11 +420,15 @@ export default function SubmitPage() {
                 <label htmlFor="file-upload" className="upload-label">
                   <span className="upload-icon">📁</span>
                   <span className="upload-text">Drop image here or click to select</span>
-                  <span className="upload-hint">PNG, GIF, WebP, or BMP • Max {formatMiB(MAX_FILE_SIZE_BYTES)} • See size rules below</span>
+                  <span className="upload-hint">PNG, GIF, WebP, or BMP • Max {formatMiB(MAX_FILE_SIZE_BYTES)}</span>
                 </label>
               )}
             </div>
-            
+
+            <div className="size-rules-link">
+              <Link href="/size_rules">See size rules</Link>
+            </div>
+
             {/* Validation Errors */}
             {validationErrors.length > 0 && (
               <div className="validation-errors">
@@ -588,6 +593,21 @@ export default function SubmitPage() {
         .upload-hint {
           font-size: 0.85rem;
           color: var(--text-muted);
+        }
+
+        .size-rules-link {
+          text-align: center;
+          margin-top: 12px;
+        }
+
+        .size-rules-link :global(a) {
+          color: var(--accent-cyan);
+          text-decoration: none;
+          font-size: 0.9rem;
+        }
+
+        .size-rules-link :global(a:hover) {
+          text-decoration: underline;
         }
 
         /* File Preview */

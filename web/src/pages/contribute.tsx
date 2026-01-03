@@ -42,7 +42,10 @@ export default function ContributePage() {
     <Layout title="Contribute" description="Submit your pixel art">
       <div className="contribute-container">
         <h1 className="page-title">Contribute</h1>
-        <p className="page-subtitle">Choose how you want to submit your artwork</p>
+        <p className="page-subtitle">
+          Choose how you want to submit your artwork.{' '}
+          <Link href="/size_rules" className="size-rules-link">See size rules.</Link>
+        </p>
 
         <div className="options-grid">
           <Link href="/editor" className="option-card">
@@ -91,6 +94,15 @@ export default function ContributePage() {
           color: var(--text-secondary);
           text-align: center;
           margin-bottom: 32px;
+        }
+
+        .page-subtitle :global(.size-rules-link) {
+          color: var(--accent-cyan);
+          text-decoration: none;
+        }
+
+        .page-subtitle :global(.size-rules-link:hover) {
+          text-decoration: underline;
         }
 
         .options-grid {
