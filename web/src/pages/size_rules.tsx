@@ -16,6 +16,8 @@ export default function SizeRulesPage() {
         <section className="rules-section">
           <h2>Supported Formats</h2>
           <p>PNG, GIF, WebP, and BMP files are accepted.</p>
+          <p>Transparency and alpha are allowed in PNG, GIF and WebP.</p>
+          <p>GIF and WebP are allowed to be animated. APNG is not supported.</p>
         </section>
 
         <section className="rules-section">

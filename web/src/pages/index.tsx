@@ -4,8 +4,10 @@ import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import CardGrid from '../components/CardGrid';
 import PlayerBar from '../components/PlayerBarDynamic';
+import { FilterButton } from '../components/FilterButton';
 import { authenticatedFetch, clearTokens } from '../lib/api';
 import { usePlayerBarOptional } from '../contexts/PlayerBarContext';
+import { useFilters, FilterConfig } from '../hooks/useFilters';
 import { calculatePageSize } from '../utils/gridUtils';
 
 interface PostOwner {
@@ -40,21 +42,23 @@ interface PageResponse<T> {
 export default function HomePage() {
   const router = useRouter();
   const playerBarContext = usePlayerBarOptional();
+  const { filters, setFilters, buildApiQuery, hasActiveFilters } = useFilters();
   const [posts, setPosts] = useState<Post[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  
+
   const observerTarget = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const hasMoreRef = useRef(true);
   const nextCursorRef = useRef<string | null>(null);
   const initialLoadRef = useRef(false);
   const pageSizeRef = useRef(20); // Will be set on mount
-  
-  const API_BASE_URL = typeof window !== 'undefined' 
+  const filtersRef = useRef(filters); // Track filters for comparison
+
+  const API_BASE_URL = typeof window !== 'undefined'
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
     : '';
 
@@ -98,19 +102,29 @@ export default function HomePage() {
     if (loadingRef.current || (cursor !== null && !hasMoreRef.current)) {
       return;
     }
-    
+
     // Check if user is still authenticated
     const token = localStorage.getItem('access_token');
     if (!token) {
       return;
     }
-    
+
     loadingRef.current = true;
     setLoading(true);
     setError(null);
-    
+
     try {
-      const url = `${API_BASE_URL}/api/post?limit=${pageSizeRef.current}&sort=created_at&order=desc${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      // Build query string with filters
+      const baseParams: Record<string, string> = {
+        limit: String(pageSizeRef.current),
+      };
+      // Only add default sort if not specified in filters
+      if (!filters.sortBy) {
+        baseParams.sort = 'created_at';
+        baseParams.order = 'desc';
+      }
+      const queryString = buildApiQuery(baseParams);
+      const url = `${API_BASE_URL}/api/post?${queryString}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       const response = await authenticatedFetch(url);
       
       if (response.status === 401) {
@@ -157,7 +171,32 @@ export default function HomePage() {
       loadingRef.current = false;
       setLoading(false);
     }
-  }, [API_BASE_URL, router]);
+  }, [API_BASE_URL, router, buildApiQuery, filters.sortBy]);
+
+  // Handle filter changes - reset and reload
+  const handleFilterChange = useCallback((newFilters: FilterConfig) => {
+    setFilters(newFilters);
+  }, [setFilters]);
+
+  // Reset posts when filters change
+  useEffect(() => {
+    // Compare with previous filters to detect changes
+    const prevFilters = filtersRef.current;
+    const filtersChanged = JSON.stringify(prevFilters) !== JSON.stringify(filters);
+
+    if (filtersChanged && isAuthenticated) {
+      filtersRef.current = filters;
+      // Reset pagination state
+      setPosts([]);
+      setNextCursor(null);
+      nextCursorRef.current = null;
+      hasMoreRef.current = true;
+      setHasMore(true);
+      initialLoadRef.current = false;
+      // Reload posts with new filters
+      loadPosts();
+    }
+  }, [filters, isAuthenticated, loadPosts]);
 
   // Initial load
   useEffect(() => {
@@ -209,6 +248,12 @@ export default function HomePage() {
 
   return (
     <Layout title="Recent Pixel Art" description="Discover the latest pixel art creations">
+      <FilterButton
+        onFilterChange={handleFilterChange}
+        initialFilters={filters}
+        isLoading={loading}
+      />
+
       <div className="feed-container">
         {error && (
           <div className="error-message">
@@ -216,6 +261,13 @@ export default function HomePage() {
             <button onClick={() => loadPosts()} className="retry-button">
               Retry
             </button>
+          </div>
+        )}
+
+        {posts.length === 0 && loading && (
+          <div className="loading-state">
+            <div className="loading-spinner"></div>
+            <p>Loading posts...</p>
           </div>
         )}
 
@@ -297,6 +349,17 @@ export default function HomePage() {
         .empty-icon {
           font-size: 4rem;
           margin-bottom: 1rem;
+        }
+
+        .loading-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 4rem 2rem;
+          text-align: center;
+          color: var(--text-muted);
+          gap: 16px;
         }
 
         .load-more-trigger {

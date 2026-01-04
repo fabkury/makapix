@@ -4,8 +4,10 @@ import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
 import CardGrid from '../../components/CardGrid';
 import PlayerBar from '../../components/PlayerBarDynamic';
+import { FilterButton } from '../../components/FilterButton';
 import { authenticatedFetch, clearTokens } from '../../lib/api';
 import { usePlayerBarOptional } from '../../contexts/PlayerBarContext';
+import { useFilters, FilterConfig } from '../../hooks/useFilters';
 import { calculatePageSize } from '../../utils/gridUtils';
 
 interface PostOwner {
@@ -39,18 +41,20 @@ export default function HashtagPage() {
   const router = useRouter();
   const { tag } = router.query;
   const playerBarContext = usePlayerBarOptional();
-  
+  const { filters, setFilters, buildApiQuery } = useFilters();
+
   const [posts, setPosts] = useState<Post[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
-  
+
   const observerTarget = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const hasMoreRef = useRef(true);
   const nextCursorRef = useRef<string | null>(null);
   const pageSizeRef = useRef(20); // Will be set on mount
+  const filtersRef = useRef(filters);
 
   const API_BASE_URL = typeof window !== 'undefined'
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
@@ -91,13 +95,23 @@ export default function HashtagPage() {
 
   const loadPosts = useCallback(async (hashtag: string, cursor: string | null = null) => {
     if (loadingRef.current || (!hasMoreRef.current && cursor !== null) || !hashtag) return;
-    
+
     loadingRef.current = true;
     setLoading(true);
     setError(null);
-    
+
     try {
-      const url = `${API_BASE_URL}/api/post?hashtag=${encodeURIComponent(hashtag)}&limit=${pageSizeRef.current}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      // Build query string with filters
+      const baseParams: Record<string, string> = {
+        hashtag: hashtag,
+        limit: String(pageSizeRef.current),
+      };
+      if (!filters.sortBy) {
+        baseParams.sort = 'created_at';
+        baseParams.order = 'desc';
+      }
+      const queryString = buildApiQuery(baseParams);
+      const url = `${API_BASE_URL}/api/post?${queryString}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       const response = await authenticatedFetch(url);
       
       if (response.status === 401) {
@@ -130,7 +144,12 @@ export default function HashtagPage() {
       loadingRef.current = false;
       setLoading(false);
     }
-  }, [API_BASE_URL, router]);
+  }, [API_BASE_URL, router, buildApiQuery, filters.sortBy]);
+
+  // Handle filter changes
+  const handleFilterChange = useCallback((newFilters: FilterConfig) => {
+    setFilters(newFilters);
+  }, [setFilters]);
 
   // Load posts when tag changes
   useEffect(() => {
@@ -143,6 +162,22 @@ export default function HashtagPage() {
       loadPosts(tag);
     }
   }, [tag, loadPosts]);
+
+  // Reset posts when filters change
+  useEffect(() => {
+    const prevFilters = filtersRef.current;
+    const filtersChanged = JSON.stringify(prevFilters) !== JSON.stringify(filters);
+
+    if (filtersChanged && tag && typeof tag === 'string') {
+      filtersRef.current = filters;
+      setPosts([]);
+      setNextCursor(null);
+      nextCursorRef.current = null;
+      hasMoreRef.current = true;
+      setHasMore(true);
+      loadPosts(tag);
+    }
+  }, [filters, tag, loadPosts]);
 
   // Intersection Observer for infinite scroll
   useEffect(() => {
@@ -174,6 +209,12 @@ export default function HashtagPage() {
 
   return (
     <Layout title={`#${hashtagName}`} description={`Pixel art tagged with #${hashtagName}`}>
+      <FilterButton
+        onFilterChange={handleFilterChange}
+        initialFilters={filters}
+        isLoading={loading}
+      />
+
       <div className="feed-container">
         <div className="hashtag-header">
           <span className="hashtag-symbol">#</span>
@@ -189,6 +230,13 @@ export default function HashtagPage() {
             <button onClick={() => hashtagName && loadPosts(hashtagName)} className="retry-button">
               Retry
             </button>
+          </div>
+        )}
+
+        {posts.length === 0 && loading && hashtagName && (
+          <div className="loading-state">
+            <div className="loading-spinner"></div>
+            <p>Loading posts...</p>
           </div>
         )}
 
@@ -313,6 +361,17 @@ export default function HashtagPage() {
           font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
           font-weight: 700;
           opacity: 0.3;
+        }
+
+        .loading-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 4rem 2rem;
+          text-align: center;
+          color: var(--text-muted);
+          gap: 16px;
         }
 
         .load-more-trigger {

@@ -73,6 +73,27 @@ def list_posts(
     limit: int = Query(50, ge=1, le=200),
     sort: str | None = "created_at",
     order: str = Query("desc", regex="^(asc|desc)$"),
+    # Filter parameters for FilterButton component
+    width_min: int | None = Query(None, ge=1, le=256),
+    width_max: int | None = Query(None, ge=1, le=256),
+    height_min: int | None = Query(None, ge=1, le=256),
+    height_max: int | None = Query(None, ge=1, le=256),
+    file_bytes_min: int | None = Query(None, ge=0),
+    file_bytes_max: int | None = Query(None, ge=0),
+    frame_count_min: int | None = Query(None, ge=1),
+    frame_count_max: int | None = Query(None, ge=1),
+    unique_colors_min: int | None = Query(None, ge=1),
+    unique_colors_max: int | None = Query(None, ge=1),
+    reactions_min: int | None = Query(None, ge=0),
+    reactions_max: int | None = Query(None, ge=0),
+    comments_min: int | None = Query(None, ge=0),
+    comments_max: int | None = Query(None, ge=0),
+    created_after: str | None = Query(None),  # ISO date string
+    created_before: str | None = Query(None),  # ISO date string
+    has_transparency: bool | None = None,
+    has_semitransparency: bool | None = None,
+    file_format: list[str] | None = Query(None),  # PNG, GIF, WEBP, BMP
+    kind: list[str] | None = Query(None),  # static, animated
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> schemas.Page[schemas.Post]:
@@ -133,18 +154,121 @@ def list_posts(
     if hashtag:
         query = query.filter(models.Post.hashtags.contains([hashtag]))
 
+    # Dimension filters
+    if width_min is not None:
+        query = query.filter(models.Post.width >= width_min)
+    if width_max is not None:
+        query = query.filter(models.Post.width <= width_max)
+    if height_min is not None:
+        query = query.filter(models.Post.height >= height_min)
+    if height_max is not None:
+        query = query.filter(models.Post.height <= height_max)
+
+    # File size filter
+    if file_bytes_min is not None:
+        query = query.filter(models.Post.file_bytes >= file_bytes_min)
+    if file_bytes_max is not None:
+        query = query.filter(models.Post.file_bytes <= file_bytes_max)
+
+    # Frame count filter
+    if frame_count_min is not None:
+        query = query.filter(models.Post.frame_count >= frame_count_min)
+    if frame_count_max is not None:
+        query = query.filter(models.Post.frame_count <= frame_count_max)
+
+    # Unique colors filter
+    if unique_colors_min is not None:
+        query = query.filter(models.Post.unique_colors >= unique_colors_min)
+    if unique_colors_max is not None:
+        query = query.filter(models.Post.unique_colors <= unique_colors_max)
+
+    # Date filters
+    if created_after is not None:
+        from datetime import datetime
+        try:
+            after_date = datetime.fromisoformat(created_after.replace('Z', '+00:00'))
+            query = query.filter(models.Post.created_at >= after_date)
+        except ValueError:
+            pass  # Invalid date format, skip filter
+    if created_before is not None:
+        from datetime import datetime
+        try:
+            before_date = datetime.fromisoformat(created_before.replace('Z', '+00:00'))
+            query = query.filter(models.Post.created_at <= before_date)
+        except ValueError:
+            pass  # Invalid date format, skip filter
+
+    # Boolean filters for transparency
+    if has_transparency is not None:
+        query = query.filter(models.Post.transparency_actual == has_transparency)
+    if has_semitransparency is not None:
+        query = query.filter(models.Post.alpha_actual == has_semitransparency)
+
+    # File format filter (multi-select)
+    if file_format is not None and len(file_format) > 0:
+        # Normalize to lowercase for comparison
+        normalized_formats = [f.lower() for f in file_format]
+        query = query.filter(models.Post.file_format.in_(normalized_formats))
+
+    # Kind filter (static vs animated based on frame_count)
+    if kind is not None and len(kind) > 0:
+        from sqlalchemy import or_
+        kind_conditions = []
+        if "static" in kind:
+            kind_conditions.append(models.Post.frame_count == 1)
+        if "animated" in kind:
+            kind_conditions.append(models.Post.frame_count > 1)
+        if kind_conditions:
+            query = query.filter(or_(*kind_conditions))
+
+    # Reactions/Comments filters require subqueries
+    if reactions_min is not None or reactions_max is not None:
+        from sqlalchemy import func
+        reaction_count_subq = (
+            db.query(func.count(models.Reaction.id))
+            .filter(models.Reaction.post_id == models.Post.id)
+            .correlate(models.Post)
+            .scalar_subquery()
+        )
+        if reactions_min is not None:
+            query = query.filter(reaction_count_subq >= reactions_min)
+        if reactions_max is not None:
+            query = query.filter(reaction_count_subq <= reactions_max)
+
+    if comments_min is not None or comments_max is not None:
+        from sqlalchemy import func
+        comment_count_subq = (
+            db.query(func.count(models.Comment.id))
+            .filter(models.Comment.post_id == models.Post.id)
+            .correlate(models.Post)
+            .scalar_subquery()
+        )
+        if comments_min is not None:
+            query = query.filter(comment_count_subq >= comments_min)
+        if comments_max is not None:
+            query = query.filter(comment_count_subq <= comments_max)
+
     # Apply cursor pagination
     sort_desc = order == "desc"
     query = apply_cursor_filter(
         query, models.Post, cursor, sort or "created_at", sort_desc=sort_desc
     )
 
-    # Order and limit
-    if sort == "created_at":
-        if order == "desc":
-            query = query.order_by(models.Post.created_at.desc())
-        else:
-            query = query.order_by(models.Post.created_at.asc())
+    # Map sort field to model attribute and apply ordering
+    sort_field_map = {
+        "created_at": models.Post.created_at,
+        "creation_date": models.Post.created_at,  # Alias
+        "width": models.Post.width,
+        "height": models.Post.height,
+        "file_bytes": models.Post.file_bytes,
+        "frame_count": models.Post.frame_count,
+        "unique_colors": models.Post.unique_colors,
+    }
+    sort_column = sort_field_map.get(sort or "created_at", models.Post.created_at)
+    if order == "desc":
+        query = query.order_by(sort_column.desc())
+    else:
+        query = query.order_by(sort_column.asc())
 
     # Fetch limit + 1 to check if there are more results
     posts = query.limit(limit + 1).all()

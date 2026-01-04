@@ -4,8 +4,10 @@ import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
 import CardGrid from '../../components/CardGrid';
 import PlayerBar from '../../components/PlayerBarDynamic';
+import { FilterButton } from '../../components/FilterButton';
 import { authenticatedFetch, authenticatedRequestJson, authenticatedPostJson, clearTokens, logout } from '../../lib/api';
 import { usePlayerBarOptional } from '../../contexts/PlayerBarContext';
+import { useFilters, FilterConfig } from '../../hooks/useFilters';
 import { calculatePageSize } from '../../utils/gridUtils';
 
 interface User {
@@ -53,7 +55,8 @@ export default function UserProfilePage() {
   const router = useRouter();
   const { id } = router.query;
   const playerBarContext = usePlayerBarOptional();
-  
+  const { filters, setFilters, buildApiQuery } = useFilters();
+
   const [user, setUser] = useState<User | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [blogPosts, setBlogPosts] = useState<any[]>([]);
@@ -88,6 +91,7 @@ export default function UserProfilePage() {
   const hasMoreRef = useRef(true);
   const nextCursorRef = useRef<string | null>(null);
   const pageSizeRef = useRef(20); // Will be set on mount
+  const filtersRef = useRef(filters);
 
   const API_BASE_URL = typeof window !== 'undefined'
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
@@ -187,16 +191,31 @@ export default function UserProfilePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  // Handle filter changes
+  const handleFilterChange = useCallback((newFilters: FilterConfig) => {
+    setFilters(newFilters);
+  }, [setFilters]);
+
   // Load user's posts
   const loadPosts = useCallback(async (cursor: string | null = null) => {
     if (!id || typeof id !== 'string') return;
     if (loadingRef.current || (cursor !== null && !hasMoreRef.current)) return;
-    
+
     loadingRef.current = true;
     setPostsLoading(true);
-    
+
     try {
-      const url = `${API_BASE_URL}/api/post?owner_id=${user?.id || id}&limit=${pageSizeRef.current}&sort=created_at&order=desc${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      // Build query string with filters
+      const baseParams: Record<string, string> = {
+        owner_id: user?.id ? String(user.id) : id,
+        limit: String(pageSizeRef.current),
+      };
+      if (!filters.sortBy) {
+        baseParams.sort = 'created_at';
+        baseParams.order = 'desc';
+      }
+      const queryString = buildApiQuery(baseParams);
+      const url = `${API_BASE_URL}/api/post?${queryString}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       const response = await authenticatedFetch(url);
       
       if (!response.ok) {
@@ -222,7 +241,7 @@ export default function UserProfilePage() {
       loadingRef.current = false;
       setPostsLoading(false);
     }
-  }, [id, user?.id, API_BASE_URL]);
+  }, [id, user?.id, API_BASE_URL, buildApiQuery, filters.sortBy]);
 
   // Load posts when user is loaded
   useEffect(() => {
@@ -230,6 +249,22 @@ export default function UserProfilePage() {
       loadPosts();
     }
   }, [user, loadPosts]);
+
+  // Reset posts when filters change
+  useEffect(() => {
+    const prevFilters = filtersRef.current;
+    const filtersChanged = JSON.stringify(prevFilters) !== JSON.stringify(filters);
+
+    if (filtersChanged && user) {
+      filtersRef.current = filters;
+      setPosts([]);
+      setNextCursor(null);
+      nextCursorRef.current = null;
+      hasMoreRef.current = true;
+      setHasMore(true);
+      loadPosts();
+    }
+  }, [filters, user, loadPosts]);
 
   // Load blog posts when user is loaded
   useEffect(() => {
@@ -630,6 +665,12 @@ export default function UserProfilePage() {
 
   return (
     <Layout title={user.handle} description={user.bio || `${user.handle}'s profile on Makapix Club`}>
+      <FilterButton
+        onFilterChange={handleFilterChange}
+        initialFilters={filters}
+        isLoading={loading}
+      />
+
       <div className="profile-container">
         <div className="profile-header-wrapper">
           <div className="profile-header">
@@ -907,6 +948,13 @@ export default function UserProfilePage() {
         )}
 
         <div className="artworks-section">
+          {posts.length === 0 && postsLoading && (
+            <div className="loading-state">
+              <div className="loading-spinner-small"></div>
+              <p>Loading posts...</p>
+            </div>
+          )}
+
           {posts.length === 0 && !postsLoading && (
             <div className="empty-state">
               <span className="empty-icon">🎨</span>
@@ -1527,6 +1575,17 @@ export default function UserProfilePage() {
           font-size: 4rem;
           margin-bottom: 1rem;
           opacity: 0.5;
+        }
+
+        .loading-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 4rem 2rem;
+          text-align: center;
+          color: var(--text-muted);
+          gap: 16px;
         }
 
         .load-more-trigger {
