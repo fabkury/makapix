@@ -38,7 +38,7 @@ export default function SocialNotificationBadge() {
             alt=""
             width={32}
             height={32}
-            className="pixel-art"
+            className="notification-img"
             aria-hidden="true"
           />
           {unreadCount > 0 && (

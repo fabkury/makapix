@@ -280,7 +280,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
                   src="/button/makapix-club/mpx-logo-32px-1x.png"
                   srcSet="/button/makapix-club/mpx-logo-32px-1x.png 1x, /button/makapix-club/mpx-logo-40px-1_25x.png 1.25x, /button/makapix-club/mpx-logo-48px-1_5x.png 1.5x, /button/makapix-club/mpx-logo-56px-1_75x.png 1.75x, /button/makapix-club/mpx-logo-64px-2x.png 2x, /button/makapix-club/mpx-logo-72px-2_25x.png 2.25x, /button/makapix-club/mpx-logo-80px-2_5x.png 2.5x, /button/makapix-club/mpx-logo-88px-2_75x.png 2.75x, /button/makapix-club/mpx-logo-96px-3x.png 3x, /button/makapix-club/mpx-logo-104px-3_25x.png 3.25x, /button/makapix-club/mpx-logo-112px-3_5x.png 3.5x, /button/makapix-club/mpx-logo-128px-4x.png 4x"
                   alt="Makapix Club"
-                  className="logo pixel-art"
+                  className="logo"
                 />
               </div>
             </Link>
@@ -358,7 +358,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
                       alt=""
                       width={32}
                       height={32}
-                      className="nav-icon-img pixel-art"
+                      className="nav-icon-img"
                       aria-hidden="true"
                     />
                   ) : (
@@ -468,6 +468,8 @@ export default function Layout({ children, title, description }: LayoutProps) {
           object-fit: cover;
           /* Profile picture in the top header should be a square */
           border-radius: 0;
+          /* User avatars are pixel art and should be rendered with sharp edges */
+          image-rendering: pixelated;
         }
 
         .header-left :global(a.user-profile-link:hover) .user-icon {
