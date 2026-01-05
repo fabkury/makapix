@@ -13,7 +13,9 @@ interface LayoutProps {
 
 interface NavItem {
   href: string;
-  icon: string;
+  icon?: string;
+  iconSrc?: string;
+  iconSrcSet?: string;
   label: string;
   matchPaths?: string[];
 }
@@ -21,25 +23,28 @@ interface NavItem {
 const navItems: NavItem[] = [
   {
     href: '/contribute',
-    icon: '🖌️',
+    iconSrc: '/button/contribute/btn004-contribute-32px-1x.png',
+    iconSrcSet: '/button/contribute/btn004-contribute-32px-1x.png 1x, /button/contribute/btn004-contribute-40px-1_25x.png 1.25x, /button/contribute/btn004-contribute-48px-1_5x.png 1.5x, /button/contribute/btn004-contribute-56px-1_75x.png 1.75x, /button/contribute/btn004-contribute-64px-2x.png 2x, /button/contribute/btn004-contribute-72px-2_25x.png 2.25x, /button/contribute/btn004-contribute-80px-2_5x.png 2.5x, /button/contribute/btn004-contribute-88px-2_75x.png 2.75x, /button/contribute/btn004-contribute-96px-3x.png 3x, /button/contribute/btn004-contribute-104px-3_25x.png 3.25x, /button/contribute/btn004-contribute-112px-3_5x.png 3.5x, /button/contribute/btn004-contribute-128px-4x.png 4x',
     label: 'Contribute',
     matchPaths: ['/contribute', '/editor', '/submit', '/divoom-import']
   },
   {
     href: '/recommended',
-    icon: '⭐',
+    iconSrc: '/button/promoted/btn002-promoted-32px-1x.png',
+    iconSrcSet: '/button/promoted/btn002-promoted-32px-1x.png 1x, /button/promoted/btn002-promoted-40px-1_25x.png 1.25x, /button/promoted/btn002-promoted-48px-1_5x.png 1.5x, /button/promoted/btn002-promoted-56px-1_75x.png 1.75x, /button/promoted/btn002-promoted-64px-2x.png 2x, /button/promoted/btn002-promoted-72px-2_25x.png 2.25x, /button/promoted/btn002-promoted-80px-2_5x.png 2.5x, /button/promoted/btn002-promoted-88px-2_75x.png 2.75x, /button/promoted/btn002-promoted-96px-3x.png 3x, /button/promoted/btn002-promoted-104px-3_25x.png 3.25x, /button/promoted/btn002-promoted-112px-3_5x.png 3.5x, /button/promoted/btn002-promoted-128px-4x.png 4x',
     label: 'Recommended',
     matchPaths: ['/recommended']
   },
-  { 
-    href: '/', 
-    icon: '🐣', 
+  {
+    href: '/',
+    icon: '🐣',
     label: 'Recent',
     matchPaths: ['/', '/recent', '/posts']
   },
-  { 
-    href: '/search', 
-    icon: '🔍', 
+  {
+    href: '/search',
+    iconSrc: '/button/search/btn003-search-32px-1x.png',
+    iconSrcSet: '/button/search/btn003-search-32px-1x.png 1x, /button/search/btn003-search-40px-1_25x.png 1.25x, /button/search/btn003-search-48px-1_5x.png 1.5x, /button/search/btn003-search-56px-1_75x.png 1.75x, /button/search/btn003-search-64px-2x.png 2x, /button/search/btn003-search-72px-2_25x.png 2.25x, /button/search/btn003-search-80px-2_5x.png 2.5x, /button/search/btn003-search-88px-2_75x.png 2.75x, /button/search/btn003-search-96px-3x.png 3x, /button/search/btn003-search-104px-3_25x.png 3.25x, /button/search/btn003-search-112px-3_5x.png 3.5x, /button/search/btn003-search-128px-4x.png 4x',
     label: 'Search',
     matchPaths: ['/search', '/hashtags', '/users']
   },
@@ -271,10 +276,11 @@ export default function Layout({ children, title, description }: LayoutProps) {
               suppressHydrationWarning
             >
               <div className="logo-container">
-                <img 
-                  src="/brand/logo-32p.webp" 
-                  alt="Makapix Club" 
-                  className="logo"
+                <img
+                  src="/button/makapix-club/mpx-logo-32px-1x.png"
+                  srcSet="/button/makapix-club/mpx-logo-32px-1x.png 1x, /button/makapix-club/mpx-logo-40px-1_25x.png 1.25x, /button/makapix-club/mpx-logo-48px-1_5x.png 1.5x, /button/makapix-club/mpx-logo-56px-1_75x.png 1.75x, /button/makapix-club/mpx-logo-64px-2x.png 2x, /button/makapix-club/mpx-logo-72px-2_25x.png 2.25x, /button/makapix-club/mpx-logo-80px-2_5x.png 2.5x, /button/makapix-club/mpx-logo-88px-2_75x.png 2.75x, /button/makapix-club/mpx-logo-96px-3x.png 3x, /button/makapix-club/mpx-logo-104px-3_25x.png 3.25x, /button/makapix-club/mpx-logo-112px-3_5x.png 3.5x, /button/makapix-club/mpx-logo-128px-4x.png 4x"
+                  alt="Makapix Club"
+                  className="logo pixel-art"
                 />
               </div>
             </Link>
@@ -345,9 +351,21 @@ export default function Layout({ children, title, description }: LayoutProps) {
                   aria-current={active ? 'page' : undefined}
                   suppressHydrationWarning
                 >
-                  <span className={`nav-icon ${item.icon === '#' ? 'nav-icon-hash' : ''}`}>
-                    {item.icon}
-                  </span>
+                  {item.iconSrc ? (
+                    <img
+                      src={item.iconSrc}
+                      srcSet={item.iconSrcSet}
+                      alt=""
+                      width={32}
+                      height={32}
+                      className="nav-icon-img pixel-art"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <span className={`nav-icon ${item.icon === '#' ? 'nav-icon-hash' : ''}`}>
+                      {item.icon}
+                    </span>
+                  )}
                 </Link>
               );
             })}
@@ -402,11 +420,11 @@ export default function Layout({ children, title, description }: LayoutProps) {
         }
 
         .logo-container {
-          width: 40px;
-          height: 40px;
-          border-radius: 50%;
+          width: 32px;
+          height: 32px;
+          border-radius: 0;
           overflow: hidden;
-          background: var(--bg-tertiary);
+          background: transparent;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -552,6 +570,20 @@ export default function Layout({ children, title, description }: LayoutProps) {
           filter: grayscale(0);
         }
 
+        .nav :global(img.nav-icon-img) {
+          display: block;
+          filter: grayscale(0.3);
+          transition: filter var(--transition-fast);
+        }
+
+        .nav :global(a.nav-item:hover) :global(img.nav-icon-img) {
+          filter: grayscale(0) brightness(1.2);
+        }
+
+        .nav :global(a.nav-item-active) :global(img.nav-icon-img) {
+          filter: grayscale(0) brightness(1.3) drop-shadow(0 0 4px rgba(0, 212, 255, 0.6));
+        }
+
         .nav-icon-hash {
           font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
           font-weight: 700;
@@ -598,8 +630,8 @@ export default function Layout({ children, title, description }: LayoutProps) {
           }
 
           .logo-container {
-            width: 36px;
-            height: 36px;
+            width: 32px;
+            height: 32px;
           }
         }
       `}</style>

@@ -9,6 +9,10 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { useSocialNotificationsSafe } from "../contexts/SocialNotificationsContext";
 
+const SRCSET_ENABLED = "/button/social-notification/btn001-social-notification-enabled-32px-1x.png 1x, /button/social-notification/btn001-social-notification-enabled-40px-1_25x.png 1.25x, /button/social-notification/btn001-social-notification-enabled-48px-1_5x.png 1.5x, /button/social-notification/btn001-social-notification-enabled-56px-1_75x.png 1.75x, /button/social-notification/btn001-social-notification-enabled-64px-2x.png 2x, /button/social-notification/btn001-social-notification-enabled-72px-2_25x.png 2.25x, /button/social-notification/btn001-social-notification-enabled-80px-2_5x.png 2.5x, /button/social-notification/btn001-social-notification-enabled-88px-2_75x.png 2.75x, /button/social-notification/btn001-social-notification-enabled-96px-3x.png 3x, /button/social-notification/btn001-social-notification-enabled-104px-3_25x.png 3.25x, /button/social-notification/btn001-social-notification-enabled-112px-3_5x.png 3.5x, /button/social-notification/btn001-social-notification-enabled-128px-4x.png 4x";
+
+const SRCSET_DISABLED = "/button/social-notification/btn001-social-notification-disabled-32px-1x.png 1x, /button/social-notification/btn001-social-notification-disabled-40px-1_25x.png 1.25x, /button/social-notification/btn001-social-notification-disabled-48px-1_5x.png 1.5x, /button/social-notification/btn001-social-notification-disabled-56px-1_75x.png 1.75x, /button/social-notification/btn001-social-notification-disabled-64px-2x.png 2x, /button/social-notification/btn001-social-notification-disabled-72px-2_25x.png 2.25x, /button/social-notification/btn001-social-notification-disabled-80px-2_5x.png 2.5x, /button/social-notification/btn001-social-notification-disabled-88px-2_75x.png 2.75x, /button/social-notification/btn001-social-notification-disabled-96px-3x.png 3x, /button/social-notification/btn001-social-notification-disabled-104px-3_25x.png 3.25x, /button/social-notification/btn001-social-notification-disabled-112px-3_5x.png 3.5x, /button/social-notification/btn001-social-notification-disabled-128px-4x.png 4x";
+
 export default function SocialNotificationBadge() {
   const router = useRouter();
   const { unreadCount } = useSocialNotificationsSafe();
@@ -28,8 +32,9 @@ export default function SocialNotificationBadge() {
         <div className="notification-icon">
           <img
             src={unreadCount > 0
-              ? "/button/btn001-social-notification.gif"
-              : "/button/btn001-social-notification-disabled.gif"}
+              ? "/button/social-notification/btn001-social-notification-enabled-32px-1x.png"
+              : "/button/social-notification/btn001-social-notification-disabled-32px-1x.png"}
+            srcSet={unreadCount > 0 ? SRCSET_ENABLED : SRCSET_DISABLED}
             alt=""
             width={32}
             height={32}

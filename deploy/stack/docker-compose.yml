@@ -188,6 +188,30 @@ services:
       - caddy_net
 
   # ---------------------------------------------------------------------------
+  # Pixelc Editor - Pixel art editor at pixelc.makapix.club
+  # ---------------------------------------------------------------------------
+  pixelc:
+    build:
+      context: /opt/Pixelc
+      dockerfile: Dockerfile
+    container_name: makapix-pixelc
+    restart: unless-stopped
+    labels:
+      # Caddy auto-routing via label
+      caddy: pixelc.makapix.club
+      caddy.encode: "gzip zstd"
+      # Security headers
+      caddy.header.X-Content-Type-Options: "nosniff"
+      caddy.header.Cross-Origin-Opener-Policy: "same-origin"
+      caddy.header.Cross-Origin-Embedder-Policy: "require-corp"
+      # Allow iframe embedding from dev.makapix.club
+      caddy.header.Content-Security-Policy: "frame-ancestors 'self' https://dev.makapix.club"
+      # Reverse proxy to container's Caddy
+      caddy.reverse_proxy: "{{upstreams 80}}"
+    networks:
+      - caddy_net
+
+  # ---------------------------------------------------------------------------
   # Redis Cache - For caching and rate limiting
   # ---------------------------------------------------------------------------
   redis:

@@ -194,9 +194,10 @@ export default function PlayerBar() {
             title={buttonTitle}
           >
             <img
-              src="/button/send-to-player-128p.webp"
+              src="/button/send-to-player/btn005-send-to-player-32px-1x.png"
+              srcSet="/button/send-to-player/btn005-send-to-player-32px-1x.png 1x, /button/send-to-player/btn005-send-to-player-40px-1_25x.png 1.25x, /button/send-to-player/btn005-send-to-player-48px-1_5x.png 1.5x, /button/send-to-player/btn005-send-to-player-56px-1_75x.png 1.75x, /button/send-to-player/btn005-send-to-player-64px-2x.png 2x, /button/send-to-player/btn005-send-to-player-72px-2_25x.png 2.25x, /button/send-to-player/btn005-send-to-player-80px-2_5x.png 2.5x, /button/send-to-player/btn005-send-to-player-88px-2_75x.png 2.75x, /button/send-to-player/btn005-send-to-player-96px-3x.png 3x, /button/send-to-player/btn005-send-to-player-104px-3_25x.png 3.25x, /button/send-to-player/btn005-send-to-player-112px-3_5x.png 3.5x, /button/send-to-player/btn005-send-to-player-128px-4x.png 4x"
               alt="Send to Player"
-              className="send-icon"
+              className="send-icon pixel-art"
             />
           </button>
         </div>
@@ -290,9 +291,9 @@ export default function PlayerBar() {
         }
 
         .send-icon {
-          width: 48px;
-          height: 48px;
-          image-rendering: auto;
+          width: 32px;
+          height: 32px;
+          image-rendering: pixelated;
           pointer-events: none;
         }
 

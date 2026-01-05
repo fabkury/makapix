@@ -46,7 +46,8 @@ export default function SubmitPage() {
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [fromPiskel, setFromPiskel] = useState(false);
-  
+  const [fromPixelc, setFromPixelc] = useState(false);
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [hashtags, setHashtags] = useState('');
@@ -192,6 +193,54 @@ export default function SubmitPage() {
       sessionStorage.removeItem('piskel_export');
     } catch (err) {
       console.error('Failed to load Piskel export:', err);
+    }
+  }, [router.query.from, validateFile, validateImageDimensions]);
+
+  // Check for Pixelc export data
+  useEffect(() => {
+    if (router.query.from !== 'pixelc') return;
+
+    try {
+      const exportDataStr = sessionStorage.getItem('pixelc_export');
+      if (!exportDataStr) return;
+
+      const exportData = JSON.parse(exportDataStr);
+
+      // Check if data is recent (within 5 minutes)
+      if (Date.now() - exportData.timestamp > 5 * 60 * 1000) {
+        sessionStorage.removeItem('pixelc_export');
+        return;
+      }
+
+      setFromPixelc(true);
+
+      // Convert base64 back to File
+      const byteString = atob(exportData.imageData.split(',')[1]);
+      const mimeType = exportData.imageData.split(',')[0].split(':')[1].split(';')[0];
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+      }
+      const blob = new Blob([ab], { type: mimeType });
+      const ext = mimeType === 'image/gif' ? 'gif' : 'png';
+      const file = new File([blob], `${exportData.name || 'artwork'}.${ext}`, { type: mimeType });
+
+      // Set file and preview
+      setSelectedFile(file);
+      setPreviewUrl(exportData.imageData);
+      setImageDimensions({ width: exportData.width, height: exportData.height });
+      setTitle(exportData.name || '');
+
+      // Validate
+      const fileErrors = validateFile(file);
+      const dimErrors = validateImageDimensions(exportData.width, exportData.height);
+      setValidationErrors([...fileErrors, ...dimErrors]);
+
+      // Clear the stored data
+      sessionStorage.removeItem('pixelc_export');
+    } catch (err) {
+      console.error('Failed to load Pixelc export:', err);
     }
   }, [router.query.from, validateFile, validateImageDimensions]);
 
@@ -345,6 +394,12 @@ export default function SubmitPage() {
         {fromPiskel && (
           <div className="piskel-notice">
             <span>✨ Artwork from Piskel ready to publish!</span>
+          </div>
+        )}
+
+        {fromPixelc && (
+          <div className="piskel-notice">
+            <span>🖌️ Artwork from Pixelc ready to publish!</span>
           </div>
         )}
 
