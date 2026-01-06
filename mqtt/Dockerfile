@@ -3,13 +3,13 @@ FROM eclipse-mosquitto:2.0
 RUN apk add --no-cache bash openssl mosquitto-clients
 
 COPY mqtt/mosquitto.conf /mosquitto/config/mosquitto.conf
-COPY mqtt/aclfile /mosquitto/config/aclfile
+COPY mqtt/config/acls /mosquitto/config/acls
 COPY mqtt/scripts/gen-certs.sh /mosquitto/config/scripts/gen-certs.sh
 COPY mqtt/scripts/gen-passwd.sh /mosquitto/config/scripts/gen-passwd.sh
 
 RUN chmod +x /mosquitto/config/scripts/gen-certs.sh && \
     chmod +x /mosquitto/config/scripts/gen-passwd.sh && \
-    chown mosquitto:mosquitto /mosquitto/config/aclfile && \
-    chmod 600 /mosquitto/config/aclfile
+    chown mosquitto:mosquitto /mosquitto/config/acls && \
+    chmod 600 /mosquitto/config/acls
 
 ENTRYPOINT ["/mosquitto/config/scripts/gen-certs.sh"]

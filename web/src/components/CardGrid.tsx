@@ -5,6 +5,9 @@ import { setNavigationContext, NavigationSource } from '../lib/navigation-contex
 import SelectedArtworkOverlay from './SelectedArtworkOverlay';
 import { usePlayerBarOptional } from '../contexts/PlayerBarContext';
 
+// Set to true to enable animated edge glow effects around the grid.
+const GLOW_ENABLED = false;
+
 // Global timestamp for synchronized glow animations across all CardGrid instances.
 // All glow animations use this as their reference point so they stay in phase.
 const GLOW_ANIMATION_DURATION_MS = 16000; // 16s animation cycle
@@ -58,6 +61,7 @@ export default function CardGrid({ posts, API_BASE_URL: _API_BASE_URL, source, c
   // This negative delay "jumps" the animation to the correct position in the cycle.
   const [glowAnimationDelay, setGlowAnimationDelay] = useState('0s');
   useEffect(() => {
+    if (!GLOW_ENABLED) return;
     const elapsed = performance.now() - glowAnimationStartTime;
     const delayMs = -(elapsed % GLOW_ANIMATION_DURATION_MS);
     setGlowAnimationDelay(`${delayMs}ms`);
@@ -241,10 +245,12 @@ export default function CardGrid({ posts, API_BASE_URL: _API_BASE_URL, source, c
       pack.style.setProperty('--ragged-glow-opacity', hasRaggedRight ? '0.9' : '0');
 
       // Add bottom glow to the last C artwork-cards (C = number of columns)
-      cards.forEach((el) => el.classList.remove('bottom-glow'));
-      const start = Math.max(0, cards.length - nextColumnCount);
-      for (let i = start; i < cards.length; i++) {
-        cards[i]?.classList.add('bottom-glow');
+      if (GLOW_ENABLED) {
+        cards.forEach((el) => el.classList.remove('bottom-glow'));
+        const start = Math.max(0, cards.length - nextColumnCount);
+        for (let i = start; i < cards.length; i++) {
+          cards[i]?.classList.add('bottom-glow');
+        }
       }
     };
 
@@ -273,9 +279,13 @@ export default function CardGrid({ posts, API_BASE_URL: _API_BASE_URL, source, c
       style={{ '--glow-sync-delay': glowAnimationDelay } as React.CSSProperties}
     >
       <div className="card-grid-pack" ref={packRef}>
-        <div className="edge-glow edge-glow-left" />
-        <div className="edge-glow edge-glow-right" />
-        <div className="edge-glow edge-glow-ragged" />
+        {GLOW_ENABLED && (
+          <>
+            <div className="edge-glow edge-glow-left" />
+            <div className="edge-glow edge-glow-right" />
+            <div className="edge-glow edge-glow-ragged" />
+          </>
+        )}
 
         <div className="card-grid" ref={gridRef}>
           {posts.map((post, index) => {
