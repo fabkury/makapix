@@ -408,6 +408,7 @@ async def upload_artwork(
     title: str = Form(..., min_length=1, max_length=200),
     description: str | None = Form(None, max_length=5000),
     hashtags: str = Form(""),  # Comma-separated hashtags
+    hidden_by_user: str = Form("false"),  # User can choose to hide their artwork
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> schemas.ArtworkUploadResponse:
@@ -523,6 +524,9 @@ async def upload_artwork(
     # Determine public visibility based on user's auto_public_approval privilege
     public_visibility = getattr(current_user, "auto_public_approval", False)
 
+    # Parse hidden_by_user from form (string "true"/"false" to bool)
+    user_hidden = hidden_by_user.lower() in ("true", "1", "yes")
+
     # Generate UUID for storage_key
     storage_key = uuid.uuid4()
 
@@ -552,6 +556,7 @@ async def upload_artwork(
         hash=file_hash,
         file_format=file_format,
         public_visibility=public_visibility,
+        hidden_by_user=user_hidden,
         metadata_modified_at=now,
         artwork_modified_at=now,
         dwell_time_ms=30000,
