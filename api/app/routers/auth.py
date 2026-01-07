@@ -212,10 +212,10 @@ def register(
     """
     email = payload.email.lower().strip()
     
-    # Rate limiting: 5 registrations per hour per IP
+    # Rate limiting: 3 registrations per hour per IP
     client_ip = get_client_ip(request)
     rate_limit_key = f"ratelimit:register:{client_ip}"
-    allowed, remaining = check_rate_limit(rate_limit_key, limit=5, window_seconds=3600)
+    allowed, remaining = check_rate_limit(rate_limit_key, limit=3, window_seconds=3600)
     
     if not allowed:
         raise HTTPException(
@@ -502,6 +502,13 @@ def change_handle(
     
     Note: The site owner's handle cannot be changed via the API.
     """
+    # Require email verification to change handle
+    if not current_user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email verification required to change handle.",
+        )
+
     # Prevent owner from changing their handle
     if "owner" in current_user.roles:
         raise HTTPException(

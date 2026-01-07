@@ -4,7 +4,6 @@ import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
 import CommentsAndReactions from '../../components/CommentsAndReactions';
 import StatsPanel from '../../components/StatsPanel';
-import SendToPlayerModal from '../../components/SendToPlayerModal';
 import { authenticatedFetch, authenticatedRequestJson, authenticatedPostJson, clearTokens } from '../../lib/api';
 import { 
   getNavigationContext, 
@@ -16,7 +15,6 @@ import {
   NavigationContextPost 
 } from '../../lib/navigation-context';
 import { useSwipeNavigation } from '../../hooks/useSwipeNavigation';
-import { listPlayers, Player, sendPlayerCommand } from '../../lib/api';
 
 interface Post {
   id: number;
@@ -66,10 +64,6 @@ export default function PostPage() {
   // Stats panel state
   const [showStats, setShowStats] = useState(false);
   
-  // Player state
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [showSendModal, setShowSendModal] = useState(false);
-  const [isQuickSendingToPlayer, setIsQuickSendingToPlayer] = useState(false);
   
   // Image error state
   const [imageError, setImageError] = useState(false);
@@ -129,13 +123,6 @@ export default function PostPage() {
             const roles = userData.user.roles || userData.roles || [];
             setIsModerator(roles.includes('moderator') || roles.includes('owner'));
             
-            // Load players if user is authenticated
-            try {
-              const playersData = await listPlayers(userData.user.public_sqid);
-              setPlayers(playersData.items);
-            } catch (err) {
-              // Silently fail - user might not have players
-            }
           }
         } catch (err) {
           setCurrentUser(null);
@@ -153,35 +140,6 @@ export default function PostPage() {
     fetchPost();
   }, [sqid, API_BASE_URL]);
 
-  const handleSendToPlayerClick = async () => {
-    if (!currentUser || !post) return;
-
-    // If user has exactly one registered player, bypass the selection modal and send directly.
-    if (players.length === 1) {
-      const onlyPlayer = players[0];
-
-      if (onlyPlayer.connection_status !== 'online') {
-        alert('Your player is offline. Connect it to send artwork.');
-        return;
-      }
-
-      setIsQuickSendingToPlayer(true);
-      try {
-        await sendPlayerCommand(currentUser.public_sqid, onlyPlayer.id, {
-          command_type: 'show_artwork',
-          post_id: post.id,
-        });
-      } catch (err: any) {
-        alert(err?.message || 'Failed to send artwork to player.');
-      } finally {
-        setIsQuickSendingToPlayer(false);
-      }
-      return;
-    }
-
-    // 2+ players: keep existing behavior (let the user choose).
-    setShowSendModal(true);
-  };
 
   // Check if device is mobile
   useEffect(() => {
@@ -948,19 +906,6 @@ export default function PostPage() {
               </div>
             )}
 
-            {/* Send to Player button - visible to authenticated users with online players */}
-            {currentUser && players.some(p => p.connection_status === 'online') && (
-              <div className="player-action">
-                <button
-                  onClick={handleSendToPlayerClick}
-                  className="action-button player"
-                  title="Send to Player"
-                  disabled={isQuickSendingToPlayer}
-                >
-                  {isQuickSendingToPlayer ? 'Sending...' : '🖼️ Send to Player'}
-                </button>
-              </div>
-            )}
 
             {isOwner && !isEditing && (
               <div className="owner-actions">
@@ -1111,16 +1056,6 @@ export default function PostPage() {
         onClose={() => setShowStats(false)}
       />
 
-      {/* Send to Player Modal */}
-      {currentUser && post && (
-        <SendToPlayerModal
-          isOpen={showSendModal}
-          onClose={() => setShowSendModal(false)}
-          players={players}
-          sqid={currentUser.public_sqid}
-          postId={post.id}
-        />
-      )}
 
 
       <style jsx>{`
@@ -1315,16 +1250,6 @@ export default function PostPage() {
           box-shadow: 0 0 12px rgba(180, 78, 255, 0.3);
         }
 
-        .action-button.player {
-          background: rgba(78, 159, 255, 0.2);
-          color: #4e9fff;
-        }
-
-        .action-button.player:hover:not(:disabled) {
-          background: rgba(78, 159, 255, 0.3);
-          box-shadow: 0 0 12px rgba(78, 159, 255, 0.3);
-        }
-
         .action-button.piskel-edit {
           background: rgba(255, 165, 0, 0.2);
           color: #ffa500;
@@ -1336,18 +1261,6 @@ export default function PostPage() {
         }
 
         .stats-action {
-          margin-top: 16px;
-          padding-top: 16px;
-          border-top: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .player-action {
-          margin-top: 16px;
-          padding-top: 16px;
-          border-top: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .player-action {
           margin-top: 16px;
           padding-top: 16px;
           border-top: 1px solid rgba(255, 255, 255, 0.05);

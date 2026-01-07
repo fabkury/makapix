@@ -48,7 +48,7 @@ class User(Base):
         String(255), unique=True, nullable=False, index=True
     )  # Email must be unique
     email_verified = Column(Boolean, nullable=False, default=False, index=True)
-    
+
     # Onboarding
     welcome_completed = Column(Boolean, nullable=False, default=False, index=True)
 
@@ -273,11 +273,11 @@ class Post(Base):
         Boolean, nullable=False, default=False
     )  # True if any pixel anywhere has alpha not in {0, 255}
     hash = Column(
-        String(64), nullable=True, unique=True
+        String(64), nullable=True
     )  # SHA256 hash of the artwork bytes (dedupe + mismatch detection)
-    file_format = Column(
-        String(20), nullable=True
-    )  # File format: png, gif, webp, bmp
+    # Note: Uniqueness is enforced via partial index uq_posts_hash_active
+    # (only for non-deleted posts)
+    file_format = Column(String(20), nullable=True)  # File format: png, gif, webp, bmp
 
     # Visibility & moderation
     visible = Column(Boolean, nullable=False, default=True, index=True)
@@ -287,6 +287,12 @@ class Post(Base):
     public_visibility = Column(
         Boolean, nullable=False, default=False, index=True
     )  # Controls visibility in Recent Artworks, search, etc.
+
+    # User deletion (soft delete with scheduled hard delete)
+    deleted_by_user = Column(Boolean, nullable=False, default=False, index=True)
+    deleted_by_user_date = Column(
+        DateTime(timezone=True), nullable=True, index=True
+    )  # When user deleted (for 7-day cleanup)
 
     # Promotion
     promoted = Column(Boolean, nullable=False, default=False, index=True)
@@ -341,8 +347,12 @@ class PlaylistPost(Base):
 
     __tablename__ = "playlist_posts"
 
-    post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), primary_key=True)
-    legacy_playlist_id = Column(UUID(as_uuid=True), unique=True, nullable=True, index=True)
+    post_id = Column(
+        Integer, ForeignKey("posts.id", ondelete="CASCADE"), primary_key=True
+    )
+    legacy_playlist_id = Column(
+        UUID(as_uuid=True), unique=True, nullable=True, index=True
+    )
 
     # Relationships
     post = relationship("Post", backref="playlist_post", foreign_keys=[post_id])
@@ -354,18 +364,26 @@ class PlaylistItem(Base):
     __tablename__ = "playlist_items"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    playlist_post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
-    artwork_post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    playlist_post_id = Column(
+        Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    artwork_post_id = Column(
+        Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     position = Column(Integer, nullable=False)
     dwell_time_ms = Column(Integer, nullable=False, default=30000)
-    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
 
     # Relationships
     playlist_post = relationship("Post", foreign_keys=[playlist_post_id])
     artwork_post = relationship("Post", foreign_keys=[artwork_post_id])
 
     __table_args__ = (
-        UniqueConstraint("playlist_post_id", "position", name="uq_playlist_items_playlist_position"),
+        UniqueConstraint(
+            "playlist_post_id", "position", name="uq_playlist_items_playlist_position"
+        ),
         Index("ix_playlist_items_playlist_position", playlist_post_id, position),
     )
 
@@ -830,7 +848,7 @@ class ViewEvent(Base):
         UUID(as_uuid=True),
         ForeignKey("players.id", ondelete="SET NULL"),
         nullable=True,
-        index=True
+        index=True,
     )  # Player that submitted this view
     local_datetime = Column(
         String(50), nullable=True
@@ -1179,7 +1197,10 @@ class BlogPostViewEvent(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     blog_post_id = Column(
-        Integer, ForeignKey("blog_posts.id", ondelete="CASCADE"), nullable=False, index=True
+        Integer,
+        ForeignKey("blog_posts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     viewer_user_id = Column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
@@ -1218,7 +1239,9 @@ class BlogPostViewEvent(Base):
         passive_deletes=True,
     )
 
-    __table_args__ = (Index("ix_blog_post_view_events_post_created", blog_post_id, created_at.desc()),)
+    __table_args__ = (
+        Index("ix_blog_post_view_events_post_created", blog_post_id, created_at.desc()),
+    )
 
 
 class BlogPostStatsDaily(Base):
@@ -1228,7 +1251,10 @@ class BlogPostStatsDaily(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     blog_post_id = Column(
-        Integer, ForeignKey("blog_posts.id", ondelete="CASCADE"), nullable=False, index=True
+        Integer,
+        ForeignKey("blog_posts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     date = Column(Date, nullable=False, index=True)
 
@@ -1260,7 +1286,9 @@ class BlogPostStatsDaily(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("blog_post_id", "date", name="uq_blog_post_stats_daily_post_date"),
+        UniqueConstraint(
+            "blog_post_id", "date", name="uq_blog_post_stats_daily_post_date"
+        ),
         Index("ix_blog_post_stats_daily_post_date", blog_post_id, date),
     )
 
@@ -1319,6 +1347,8 @@ class SocialNotification(Base):
     )
 
     # Relationships
-    user = relationship("User", foreign_keys=[user_id], back_populates="social_notifications")
+    user = relationship(
+        "User", foreign_keys=[user_id], back_populates="social_notifications"
+    )
     actor = relationship("User", foreign_keys=[actor_id])
     post = relationship("Post")

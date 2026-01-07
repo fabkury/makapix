@@ -12,7 +12,12 @@ from .. import models, schemas
 from ..auth import get_current_user, get_current_user_optional
 from ..cache import cache_get, cache_set
 from ..deps import get_db
-from ..pagination import apply_cursor_filter, create_page_response, encode_cursor, decode_cursor
+from ..pagination import (
+    apply_cursor_filter,
+    create_page_response,
+    encode_cursor,
+    decode_cursor,
+)
 from ..services.post_stats import annotate_posts_with_counts, get_user_liked_post_ids
 
 logger = logging.getLogger(__name__)
@@ -38,28 +43,32 @@ def search_all(
 ) -> schemas.SearchResults:
     """
     Multi-type search using PostgreSQL trigram similarity.
-    
+
     Supports searching users, posts, and hashtags with relevance ranking.
     Uses cursor-based pagination for efficient results.
     """
     if not q or not q.strip():
         return schemas.SearchResults(items=[], next_cursor=None)
-    
+
     q_normalized = q.strip().lower()
-    results: list[schemas.SearchResultUser | schemas.SearchResultPost | schemas.SearchResultPlaylist] = []
-    
+    results: list[
+        schemas.SearchResultUser
+        | schemas.SearchResultPost
+        | schemas.SearchResultPlaylist
+    ] = []
+
     # Determine if user can see hidden/non-conformant content
     is_moderator = "moderator" in current_user.roles or "owner" in current_user.roles
-    
+
     # Search users with trigram similarity (search by handle only)
     if "users" in types:
         user_query = db.query(
             models.User,
-            func.similarity(models.User.handle, q_normalized).label("similarity")
+            func.similarity(models.User.handle, q_normalized).label("similarity"),
         ).filter(
             func.similarity(models.User.handle, q_normalized) > 0.1,
         )
-        
+
         # Apply visibility filters
         if not is_moderator:
             user_query = user_query.filter(
@@ -68,51 +77,58 @@ def search_all(
                 models.User.non_conformant == False,
                 models.User.deactivated == False,
             )
-        
+
         # Apply cursor pagination (using similarity as sort field)
         if cursor:
             cursor_data = decode_cursor(cursor)
             if cursor_data:
                 last_id, last_similarity = cursor_data
                 user_query = user_query.filter(
-                    func.similarity(models.User.handle, q_normalized) < float(last_similarity) if last_similarity else True
+                    func.similarity(models.User.handle, q_normalized)
+                    < float(last_similarity)
+                    if last_similarity
+                    else True
                 )
-        
+
         # Order by similarity descending, then by ID
         users_with_similarity = (
-            user_query
-            .order_by(
+            user_query.order_by(
                 func.similarity(models.User.handle, q_normalized).desc(),
-                models.User.id.desc()
+                models.User.id.desc(),
             )
             .limit((limit // len(types)) + 1)
             .all()
         )
-        
-        for user_obj, similarity_score in users_with_similarity[:limit // len(types)]:
+
+        for user_obj, similarity_score in users_with_similarity[: limit // len(types)]:
             results.append(
-                schemas.SearchResultUser(user=schemas.UserPublic.model_validate(user_obj))
+                schemas.SearchResultUser(
+                    user=schemas.UserPublic.model_validate(user_obj)
+                )
             )
-    
+
     # Search posts with trigram similarity
     if "posts" in types:
         post_query = db.query(
             models.Post,
             func.greatest(
                 func.similarity(models.Post.title, q_normalized),
-                func.coalesce(func.similarity(models.Post.description, q_normalized), 0.0)
-            ).label("similarity")
+                func.coalesce(
+                    func.similarity(models.Post.description, q_normalized), 0.0
+                ),
+            ).label("similarity"),
         ).filter(
             or_(
                 func.similarity(models.Post.title, q_normalized) > 0.1,
                 func.similarity(models.Post.description, q_normalized) > 0.1,
             )
         )
-        
+
         # Apply visibility filters
         post_query = post_query.filter(
             models.Post.visible == True,
             models.Post.public_visibility == True,  # Only show publicly visible posts
+            models.Post.deleted_by_user == False,  # Exclude user-deleted posts
         )
         if not is_moderator:
             post_query = post_query.filter(
@@ -120,7 +136,7 @@ def search_all(
                 models.Post.non_conformant == False,
             )
         post_query = post_query.filter(models.Post.hidden_by_user == False)
-        
+
         # Apply cursor pagination
         if cursor:
             cursor_data = decode_cursor(cursor)
@@ -129,34 +145,42 @@ def search_all(
                 post_query = post_query.filter(
                     func.greatest(
                         func.similarity(models.Post.title, q_normalized),
-                        func.coalesce(func.similarity(models.Post.description, q_normalized), 0.0)
-                    ) < float(last_similarity) if last_similarity else True
+                        func.coalesce(
+                            func.similarity(models.Post.description, q_normalized), 0.0
+                        ),
+                    )
+                    < float(last_similarity)
+                    if last_similarity
+                    else True
                 )
-        
+
         # Order by similarity descending, then by created_at
         posts_with_similarity = (
-            post_query
-            .order_by(
+            post_query.order_by(
                 func.greatest(
                     func.similarity(models.Post.title, q_normalized),
-                    func.coalesce(func.similarity(models.Post.description, q_normalized), 0.0)
+                    func.coalesce(
+                        func.similarity(models.Post.description, q_normalized), 0.0
+                    ),
                 ).desc(),
-                models.Post.created_at.desc()
+                models.Post.created_at.desc(),
             )
             .limit((limit // len(types)) + 1)
             .all()
         )
-        
+
         # Extract post objects and add counts
-        post_objs = [post_obj for post_obj, _ in posts_with_similarity[:limit // len(types)]]
+        post_objs = [
+            post_obj for post_obj, _ in posts_with_similarity[: limit // len(types)]
+        ]
         if post_objs:
             annotate_posts_with_counts(db, post_objs, current_user.id)
-        
+
         for post_obj in post_objs:
             results.append(
                 schemas.SearchResultPost(post=schemas.Post.model_validate(post_obj))
             )
-    
+
     # Search hashtags (check if query matches any hashtag)
     if "hashtags" in types or q_normalized.startswith("#"):
         hashtag = q_normalized.lstrip("#")
@@ -164,11 +188,13 @@ def search_all(
             post_query = db.query(models.Post).filter(
                 models.Post.hashtags.contains([hashtag])
             )
-            
+
             # Apply visibility filters
             post_query = post_query.filter(
                 models.Post.visible == True,
-                models.Post.public_visibility == True,  # Only show publicly visible posts
+                models.Post.public_visibility
+                == True,  # Only show publicly visible posts
+                models.Post.deleted_by_user == False,  # Exclude user-deleted posts
             )
             if not is_moderator:
                 post_query = post_query.filter(
@@ -176,19 +202,23 @@ def search_all(
                     models.Post.non_conformant == False,
                 )
             post_query = post_query.filter(models.Post.hidden_by_user == False)
-            
+
             # Limit results
-            hashtag_posts = post_query.order_by(models.Post.created_at.desc()).limit(limit // len(types)).all()
-            
+            hashtag_posts = (
+                post_query.order_by(models.Post.created_at.desc())
+                .limit(limit // len(types))
+                .all()
+            )
+
             # Add counts
             if hashtag_posts:
                 annotate_posts_with_counts(db, hashtag_posts, current_user.id)
-            
+
             for post_obj in hashtag_posts:
                 results.append(
                     schemas.SearchResultPost(post=schemas.Post.model_validate(post_obj))
                 )
-    
+
     # Generate next cursor if we have more results
     next_cursor = None
     if len(results) > limit:
@@ -196,11 +226,13 @@ def search_all(
         # For mixed results, create cursor from the last item
         if results:
             last_result = results[-1]
-            if hasattr(last_result, 'post') and last_result.post:
-                next_cursor = encode_cursor(str(last_result.post.id), last_result.post.created_at.isoformat())
-            elif hasattr(last_result, 'user') and last_result.user:
+            if hasattr(last_result, "post") and last_result.post:
+                next_cursor = encode_cursor(
+                    str(last_result.post.id), last_result.post.created_at.isoformat()
+                )
+            elif hasattr(last_result, "user") and last_result.user:
                 next_cursor = encode_cursor(str(last_result.user.id))
-    
+
     return schemas.SearchResults(items=results, next_cursor=next_cursor)
 
 
@@ -215,41 +247,42 @@ async def list_hashtags(
 ) -> schemas.HashtagList:
     """
     List hashtags with popularity counts.
-    
+
     Aggregates hashtags from all visible posts and counts occurrences.
     Supports search filtering and sorting by popularity or recent activity.
     Cached for 10 minutes since popularity changes slowly.
     """
     # Create cache key based on query parameters
     cache_key = f"hashtags:list:{q or 'all'}:{sort}:{cursor or 'first'}:{limit}"
-    
+
     # Try to get from cache
     cached_result = cache_get(cache_key)
     if cached_result:
         return schemas.HashtagList(**cached_result)
-    
+
     # Build base query for visible posts
     base_query = db.query(models.Post).filter(
         models.Post.visible == True,
         models.Post.hidden_by_mod == False,
         models.Post.non_conformant == False,
         models.Post.public_visibility == True,  # Only show publicly visible posts
+        models.Post.deleted_by_user == False,  # Exclude user-deleted posts
     )
-    
+
     # Apply search filter if provided
     if q:
         q_normalized = q.strip().lower()
         # Use PostgreSQL array search - check if any hashtag matches
         base_query = base_query.filter(
-            func.array_to_string(models.Post.hashtags, '|').ilike(f"%{q_normalized}%")
+            func.array_to_string(models.Post.hashtags, "|").ilike(f"%{q_normalized}%")
         )
-    
+
     # Get all posts that match filters
     matching_posts = base_query.all()
-    
+
     # Aggregate hashtags with counts
     hashtag_counts: dict[str, dict[str, any]] = {}
-    
+
     for post in matching_posts:
         for hashtag in post.hashtags:
             if hashtag not in hashtag_counts:
@@ -262,17 +295,17 @@ async def list_hashtags(
             # Update most recent timestamp
             if post.created_at > hashtag_counts[hashtag]["most_recent"]:
                 hashtag_counts[hashtag]["most_recent"] = post.created_at
-    
+
     # Convert to list and sort
     hashtag_items = list(hashtag_counts.values())
-    
+
     if sort == "alphabetical":
         hashtag_items.sort(key=lambda x: x["tag"].lower())
     elif sort == "popularity":
         hashtag_items.sort(key=lambda x: (-x["count"], x["tag"]))
     else:  # recent
         hashtag_items.sort(key=lambda x: (-x["most_recent"].timestamp(), x["tag"]))
-    
+
     # Apply cursor pagination (simple offset-based for now, since we're working with aggregated data)
     start_idx = 0
     if cursor:
@@ -284,30 +317,34 @@ async def list_hashtags(
                 if item["tag"] == last_id:
                     start_idx = idx + 1
                     break
-    
+
     # Slice results
-    paginated_items = hashtag_items[start_idx:start_idx + limit + 1]
-    
+    paginated_items = hashtag_items[start_idx : start_idx + limit + 1]
+
     # Create response items
     response_items = [
         schemas.HashtagItem(tag=item["tag"], count=item["count"])
         for item in paginated_items[:limit]
     ]
-    
+
     # Generate next cursor
     next_cursor = None
     if len(paginated_items) > limit:
         next_cursor = encode_cursor(paginated_items[limit]["tag"])
-    
+
     response = schemas.HashtagList(items=response_items, next_cursor=next_cursor)
-    
+
     # Cache for 10 minutes - hashtag counts change slowly
     cache_set(cache_key, response.model_dump(), ttl=HASHTAG_LIST_CACHE_TTL)
-    
+
     return response
 
 
-@router.get("/hashtags/{tag}/posts", response_model=schemas.Page[schemas.Post], tags=["Hashtags"])
+@router.get(
+    "/hashtags/{tag}/posts",
+    response_model=schemas.Page[schemas.Post],
+    tags=["Hashtags"],
+)
 async def list_hashtag_posts(
     tag: str,
     cursor: str | None = None,
@@ -317,17 +354,19 @@ async def list_hashtag_posts(
 ) -> schemas.Page[schemas.Post]:
     """
     List posts with a specific hashtag.
-    
+
     Uses cursor-based pagination for efficient infinite scroll.
     Cached for 5 minutes to reduce database load.
     """
     # Normalize hashtag (lowercase, strip)
     tag_normalized = tag.strip().lower()
-    
+
     # Create cache key
-    is_moderator = current_user and ("moderator" in current_user.roles or "owner" in current_user.roles)
+    is_moderator = current_user and (
+        "moderator" in current_user.roles or "owner" in current_user.roles
+    )
     cache_key = f"hashtags:posts:{tag_normalized}:{'mod' if is_moderator else 'user'}:{cursor or 'first'}:{limit}"
-    
+
     # Try to get from cache
     cached_result = cache_get(cache_key)
     if cached_result:
@@ -339,50 +378,55 @@ async def list_hashtag_posts(
             for item in response.items:
                 item.user_has_liked = item.id in liked_ids
         return response
-    
+
     query = db.query(models.Post).filter(
         models.Post.hashtags.contains([tag_normalized])
     )
-    
+
     # Apply visibility filters
     query = query.filter(
         models.Post.visible == True,
         models.Post.hidden_by_mod == False,
         models.Post.hidden_by_user == False,
         models.Post.public_visibility == True,  # Only show publicly visible posts
+        models.Post.deleted_by_user == False,  # Exclude user-deleted posts
     )
-    
+
     # Hide non-conformant posts unless current user is moderator/owner
     if not is_moderator:
         query = query.filter(models.Post.non_conformant == False)
-    
+
     # Apply cursor pagination
-    query = apply_cursor_filter(query, models.Post, cursor, "created_at", sort_desc=True)
-    
+    query = apply_cursor_filter(
+        query, models.Post, cursor, "created_at", sort_desc=True
+    )
+
     # Order and limit
     query = query.order_by(models.Post.created_at.desc())
-    
+
     # Fetch limit + 1 to check if there are more results
     posts = query.limit(limit + 1).all()
-    
+
     # Add reaction and comment counts, and user liked status
     annotate_posts_with_counts(db, posts, current_user.id if current_user else None)
-    
+
     # Create paginated response
     page_data = create_page_response(posts, limit, cursor, "created_at")
-    
+
     response = schemas.Page(
         items=[schemas.Post.model_validate(p) for p in page_data["items"]],
         next_cursor=page_data["next_cursor"],
     )
-    
+
     # Cache for 5 minutes
     cache_set(cache_key, response.model_dump(), ttl=HASHTAG_POSTS_CACHE_TTL)
-    
+
     return response
 
 
-@router.get("/hashtags/stats", response_model=schemas.HashtagStatsList, tags=["Hashtags"])
+@router.get(
+    "/hashtags/stats", response_model=schemas.HashtagStatsList, tags=["Hashtags"]
+)
 async def list_hashtags_with_stats(
     q: str | None = None,
     sort: str = Query("popularity", regex="^(alphabetical|popularity|recent)$"),
@@ -393,38 +437,39 @@ async def list_hashtags_with_stats(
 ) -> schemas.HashtagStatsList:
     """
     List hashtags with detailed statistics (reactions, comments, artwork count).
-    
+
     Aggregates hashtags from all visible posts and counts occurrences along with
     total reactions and comments across all posts with that hashtag.
     Supports search filtering and sorting by popularity or recent activity.
     Cached for 10 minutes since statistics change slowly.
-    
+
     Used for the hashtag search results page with card-roller layout.
     """
     # Create cache key based on query parameters
     cache_key = f"hashtags:stats:{q or 'all'}:{sort}:{cursor or 'first'}:{limit}"
-    
+
     # Try to get from cache
     cached_result = cache_get(cache_key)
     if cached_result:
         return schemas.HashtagStatsList(**cached_result)
-    
+
     # Build base query for visible posts
     base_query = db.query(models.Post).filter(
         models.Post.visible == True,
         models.Post.hidden_by_mod == False,
         models.Post.non_conformant == False,
         models.Post.public_visibility == True,  # Only show publicly visible posts
+        models.Post.deleted_by_user == False,  # Exclude user-deleted posts
     )
-    
+
     # Apply search filter if provided
     if q:
         q_normalized = q.strip().lower()
         # Use PostgreSQL array search - check if any hashtag matches
         base_query = base_query.filter(
-            func.array_to_string(models.Post.hashtags, '|').ilike(f"%{q_normalized}%")
+            func.array_to_string(models.Post.hashtags, "|").ilike(f"%{q_normalized}%")
         )
-    
+
     # Get all posts that match filters
     # NOTE: This loads all matching posts into memory for aggregation.
     # For sites with very large numbers of posts (10k+ per hashtag), consider:
@@ -433,49 +478,47 @@ async def list_hashtags_with_stats(
     # - Using SQL window functions for server-side aggregation
     # The current approach is simple and works well for moderate datasets.
     matching_posts = base_query.all()
-    
+
     # Get post IDs for statistics queries
     post_ids = [post.id for post in matching_posts]
-    
+
     # Get reaction counts per post
     reaction_counts_per_post = {}
     if post_ids:
         reaction_data = (
             db.query(
-                models.Reaction.post_id,
-                func.count(models.Reaction.id).label("count")
+                models.Reaction.post_id, func.count(models.Reaction.id).label("count")
             )
             .filter(models.Reaction.post_id.in_(post_ids))
             .group_by(models.Reaction.post_id)
             .all()
         )
         reaction_counts_per_post = {post_id: count for post_id, count in reaction_data}
-    
+
     # Get comment counts per post
     comment_counts_per_post = {}
     if post_ids:
         comment_data = (
             db.query(
-                models.Comment.post_id,
-                func.count(models.Comment.id).label("count")
+                models.Comment.post_id, func.count(models.Comment.id).label("count")
             )
             .filter(
                 models.Comment.post_id.in_(post_ids),
                 models.Comment.hidden_by_mod == False,
-                models.Comment.deleted_by_owner == False
+                models.Comment.deleted_by_owner == False,
             )
             .group_by(models.Comment.post_id)
             .all()
         )
         comment_counts_per_post = {post_id: count for post_id, count in comment_data}
-    
+
     # Aggregate hashtags with counts and statistics
     hashtag_stats: dict[str, dict[str, any]] = {}
-    
+
     for post in matching_posts:
         post_reactions = reaction_counts_per_post.get(post.id, 0)
         post_comments = comment_counts_per_post.get(post.id, 0)
-        
+
         for hashtag in post.hashtags:
             if hashtag not in hashtag_stats:
                 hashtag_stats[hashtag] = {
@@ -491,17 +534,17 @@ async def list_hashtags_with_stats(
             # Update most recent timestamp
             if post.created_at > hashtag_stats[hashtag]["most_recent"]:
                 hashtag_stats[hashtag]["most_recent"] = post.created_at
-    
+
     # Convert to list and sort
     hashtag_items = list(hashtag_stats.values())
-    
+
     if sort == "alphabetical":
         hashtag_items.sort(key=lambda x: x["tag"].lower())
     elif sort == "popularity":
         hashtag_items.sort(key=lambda x: (-x["artwork_count"], x["tag"]))
     else:  # recent
         hashtag_items.sort(key=lambda x: (-x["most_recent"].timestamp(), x["tag"]))
-    
+
     # Apply cursor pagination (simple offset-based for now, since we're working with aggregated data)
     start_idx = 0
     if cursor:
@@ -513,31 +556,31 @@ async def list_hashtags_with_stats(
                 if item["tag"] == last_id:
                     start_idx = idx + 1
                     break
-    
+
     # Slice results
-    paginated_items = hashtag_items[start_idx:start_idx + limit + 1]
-    
+    paginated_items = hashtag_items[start_idx : start_idx + limit + 1]
+
     # Create response items
     response_items = [
         schemas.HashtagStats(
             tag=item["tag"],
             reaction_count=item["reaction_count"],
             comment_count=item["comment_count"],
-            artwork_count=item["artwork_count"]
+            artwork_count=item["artwork_count"],
         )
         for item in paginated_items[:limit]
     ]
-    
+
     # Generate next cursor
     next_cursor = None
     if len(paginated_items) > limit:
         next_cursor = encode_cursor(paginated_items[limit]["tag"])
-    
+
     response = schemas.HashtagStatsList(items=response_items, next_cursor=next_cursor)
-    
+
     # Cache for 10 minutes - aggregated statistics change slowly
     cache_set(cache_key, response.model_dump(), ttl=HASHTAG_STATS_CACHE_TTL)
-    
+
     return response
 
 
@@ -550,16 +593,20 @@ def feed_promoted(
 ) -> schemas.Page[schemas.Post]:
     """
     Promoted posts feed with infinite scroll support.
-    
+
     Returns promoted posts ordered by creation date (newest first).
     Uses cursor-based pagination for efficient infinite scroll.
     Cached for 5 minutes to reduce database load.
     """
     # Create cache key based on cursor and limit
     # Include moderator flag in cache key since they see different results
-    is_moderator = current_user and ("moderator" in current_user.roles or "owner" in current_user.roles)
-    cache_key = f"feed:promoted:{'mod' if is_moderator else 'user'}:{cursor or 'first'}:{limit}"
-    
+    is_moderator = current_user and (
+        "moderator" in current_user.roles or "owner" in current_user.roles
+    )
+    cache_key = (
+        f"feed:promoted:{'mod' if is_moderator else 'user'}:{cursor or 'first'}:{limit}"
+    )
+
     # Try to get from cache
     cached_result = cache_get(cache_key)
     if cached_result:
@@ -571,43 +618,51 @@ def feed_promoted(
             for item in response.items:
                 item.user_has_liked = item.id in liked_ids
         return response
-    
+
     from sqlalchemy.orm import joinedload
-    query = db.query(models.Post).options(joinedload(models.Post.owner)).filter(
+
+    query = (
+        db.query(models.Post)
+        .options(joinedload(models.Post.owner))
+        .filter(
             models.Post.promoted == True,
             models.Post.visible == True,
             models.Post.hidden_by_mod == False,
             models.Post.hidden_by_user == False,
             models.Post.public_visibility == True,  # Only show publicly visible posts
+            models.Post.deleted_by_user == False,  # Exclude user-deleted posts
         )
-    
+    )
+
     # Hide non-conformant posts unless current user is moderator/owner
     if not is_moderator:
         query = query.filter(models.Post.non_conformant == False)
-    
+
     # Apply cursor pagination
-    query = apply_cursor_filter(query, models.Post, cursor, "created_at", sort_desc=True)
-    
+    query = apply_cursor_filter(
+        query, models.Post, cursor, "created_at", sort_desc=True
+    )
+
     # Order and limit
     query = query.order_by(models.Post.created_at.desc())
-    
+
     # Fetch limit + 1 to check if there are more results
     posts = query.limit(limit + 1).all()
-    
+
     # Add reaction and comment counts, and user liked status
     annotate_posts_with_counts(db, posts, current_user.id if current_user else None)
-    
+
     # Create paginated response
     page_data = create_page_response(posts, limit, cursor, "created_at")
-    
+
     response = schemas.Page(
         items=[schemas.Post.model_validate(p) for p in page_data["items"]],
         next_cursor=page_data["next_cursor"],
     )
-    
+
     # Cache for 5 minutes
     cache_set(cache_key, response.model_dump(), ttl=PROMOTED_FEED_CACHE_TTL)
-    
+
     return response
 
 
@@ -620,7 +675,7 @@ def feed_following(
 ) -> schemas.Page[schemas.Post]:
     """
     Feed from followed users.
-    
+
     TODO: Implement join with follows table
     TODO: Implement cursor pagination
     TODO: Consider caching or pre-computed feed
@@ -632,10 +687,10 @@ def feed_following(
         .filter(models.Follow.follower_id == current_user.id)
         .all()
     ]
-    
+
     if not following_ids:
         return schemas.Page(items=[], next_cursor=None)
-    
+
     posts = (
         db.query(models.Post)
         .filter(
@@ -643,15 +698,16 @@ def feed_following(
             models.Post.visible == True,
             models.Post.hidden_by_mod == False,
             models.Post.public_visibility == True,  # Only show publicly visible posts
+            models.Post.deleted_by_user == False,  # Exclude user-deleted posts
         )
         .order_by(models.Post.created_at.desc())
         .limit(limit)
         .all()
     )
-    
+
     # Add reaction and comment counts, and user liked status
     annotate_posts_with_counts(db, posts, current_user.id)
-    
+
     return schemas.Page(
         items=[schemas.Post.model_validate(p) for p in posts],
         next_cursor=None,

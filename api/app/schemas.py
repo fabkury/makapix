@@ -66,7 +66,22 @@ class Config(BaseModel):
     max_comments_per_post: int = 1000
     max_emojis_per_user_per_post: int = 5
     max_hashtags_per_post: int = 64
-    allowed_canvases: list[str] = ["8x8", "8x16", "16x8", "8x32", "32x8", "16x16", "16x32", "32x16", "32x32", "32x64", "64x32", "64x64", "64x128", "128x64"]
+    allowed_canvases: list[str] = [
+        "8x8",
+        "8x16",
+        "16x8",
+        "8x32",
+        "32x8",
+        "16x16",
+        "16x32",
+        "32x16",
+        "32x32",
+        "32x64",
+        "64x32",
+        "64x64",
+        "64x128",
+        "128x64",
+    ]
     # Note: Sizes from 128x128 to 256x256 (inclusive) are also allowed but not listed here
     # All 90-degree rotations of the listed sizes are allowed (e.g., 8x16 and 16x8 are both valid)
     # Artwork size limits are expressed in raw bytes (never KiB).
@@ -117,7 +132,9 @@ class UserFull(UserPublic):
 
     email: str | None = None
     email_verified: bool = False
-    welcome_completed: bool = False  # True if user has completed onboarding welcome flow
+    welcome_completed: bool = (
+        False  # True if user has completed onboarding welcome flow
+    )
     banned_until: datetime | None = None
     roles: list[Literal["user", "moderator", "owner"]] = Field(default_factory=list)
     auto_public_approval: bool = (
@@ -213,6 +230,10 @@ class Post(BaseModel):
     non_conformant: bool
     public_visibility: bool = (
         False  # Controls visibility in Recent Artworks, search, etc.
+    )
+    deleted_by_user: bool = False  # User requested deletion
+    deleted_by_user_date: datetime | None = (
+        None  # When user deleted (for 7-day cleanup)
     )
     promoted: bool
     promoted_category: str | None = None
@@ -780,7 +801,7 @@ class PlayerRenewCertResponse(BaseModel):
 
 class OnlinePlayerInfo(BaseModel):
     """Online player information for moderator dashboard."""
-    
+
     id: UUID
     name: str | None = None
     device_model: str | None = None
@@ -791,7 +812,7 @@ class OnlinePlayerInfo(BaseModel):
 
 class OnlinePlayersResponse(BaseModel):
     """Response with list of currently online players."""
-    
+
     online_players: list[OnlinePlayerInfo]
     total_online: int
 
@@ -812,13 +833,15 @@ class TLSCertBundle(BaseModel):
 
 class OAuthTokens(BaseModel):
     """OAuth token response.
-    
+
     Note: refresh_token is now stored in HttpOnly cookie and not returned in response body.
     This field is optional for backward compatibility during migration.
     """
 
     token: str
-    refresh_token: str | None = None  # Now stored in HttpOnly cookie, not returned in body
+    refresh_token: str | None = (
+        None  # Now stored in HttpOnly cookie, not returned in body
+    )
     user_id: int
     user_key: UUID  # UUID for legacy URL building
     public_sqid: str | None = None  # Sqids for canonical URLs
@@ -838,7 +861,7 @@ class GithubExchangeRequest(BaseModel):
 
 class RefreshTokenRequest(BaseModel):
     """Token refresh request.
-    
+
     DEPRECATED: Refresh tokens are now read from HttpOnly cookies, not request body.
     This schema is kept for backward compatibility but is no longer used by the refresh endpoint.
     """
@@ -1469,7 +1492,7 @@ class SitewideStatsResponse(BaseModel):
 
 class ArtistStatsResponse(BaseModel):
     """Aggregated statistics for an artist across all their posts."""
-    
+
     user_id: int
     user_key: str
     total_posts: int
@@ -1477,7 +1500,7 @@ class ArtistStatsResponse(BaseModel):
     total_views: int
     unique_viewers: int
     views_by_country: dict[str, int]  # Top 10 countries
-    views_by_device: dict[str, int]   # desktop, mobile, tablet, player
+    views_by_device: dict[str, int]  # desktop, mobile, tablet, player
     # Aggregated reactions and comments
     total_reactions: int
     reactions_by_emoji: dict[str, int]
@@ -1498,7 +1521,7 @@ class ArtistStatsResponse(BaseModel):
 
 class PostStatsListItem(BaseModel):
     """Simplified post statistics for list view in artist dashboard."""
-    
+
     post_id: int
     public_sqid: str
     title: str
@@ -1518,7 +1541,7 @@ class PostStatsListItem(BaseModel):
 
 class ArtistDashboardResponse(BaseModel):
     """Complete artist dashboard with aggregated stats and post list."""
-    
+
     artist_stats: ArtistStatsResponse
     posts: list[PostStatsListItem]
     total_posts: int

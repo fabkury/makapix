@@ -6,6 +6,7 @@ import { authenticatedFetch, clearTokens } from '../lib/api';
 import type { DivoomGalleryInfo, DivoomSession } from '../lib/divoom/divoomApi';
 import { divoomLogin, downloadDivoomDat, fetchMyUploads, DivoomApiError } from '../lib/divoom/divoomApi';
 import { PyodideDecoder } from '../lib/divoom/pyodideDecoder';
+import { Checkbox } from '../components/ui/checkbox';
 
 // SharedArrayBuffer requires COOP/COEP headers which are only applied on full page loads.
 // Client-side navigation (router.push) retains the previous page's security context.
@@ -39,13 +40,24 @@ interface UploadedArtwork {
   public_visibility: boolean;
 }
 
+interface BatchResult {
+  galleryId: number;
+  title: string;
+  success: boolean;
+  postSqid?: string;
+  errorMessage?: string;
+  timestamp: number;
+}
+
+type BatchState = 'ready' | 'running' | 'paused';
+
 const PAGE_SIZE = 20;
 const MAX_TITLE_LEN = 200;
 const MAX_DESC_LEN = 5000;
 const MAX_REFRESH_BLOCKS = 200; // safety guard against infinite loops
 const SHORT_PAGE_RETRIES = 2;
 const MAX_CONSECUTIVE_NO_NEW_PAGES = 5; // stop if API keeps returning duplicates
-const STALL_ABORT_MS = 4000;
+const STALL_ABORT_MS = 7000;
 
 function yieldToBrowser(): Promise<void> {
   // Allow React to paint during long fetch loops
@@ -109,6 +121,17 @@ function mapDivoomFileSizeLabel(fileSize: unknown): string {
 
 function getNameForItem(item: DivoomGalleryInfo): string {
   return (item.FileName || '').trim() || `Divoom #${item.GalleryId}`;
+}
+
+function formatDuration(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (minutes < 60) return `${minutes}m ${secs}s`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${hours}h ${mins}m`;
 }
 
 function stableSort<T>(arr: T[], compare: (a: T, b: T) => number): T[] {
@@ -184,10 +207,6 @@ export default function DivoomImportPage() {
   const [sortCriteria, setSortCriteria] = useState<SortCriterion[]>([{ field: 'uploaded', dir: 'desc' }]);
   const [jumpPageInput, setJumpPageInput] = useState('');
 
-  // Single selection across pages
-  const [selected, setSelected] = useState<DivoomGalleryInfo | null>(null);
-  const selectedId = selected?.GalleryId ?? null;
-
   // Decode + preview
   const decoder = useMemo(() => new PyodideDecoder(), []);
   const datCache = useRef<Map<number, Uint8Array>>(new Map());
@@ -208,6 +227,36 @@ export default function DivoomImportPage() {
   const [uploadNotice, setUploadNotice] = useState<string | null>(null);
   const [uploadedArtwork, setUploadedArtwork] = useState<UploadedArtwork | null>(null);
   const [lastUploadedGalleryId, setLastUploadedGalleryId] = useState<number | null>(null);
+
+  // Multi-select for batch processing
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  // Derive single selected item when exactly one checkbox is selected
+  const selected = useMemo(() => {
+    if (selectedIds.size !== 1) return null;
+    const id = Array.from(selectedIds)[0];
+    return allItems.find(item => item.GalleryId === id) ?? null;
+  }, [selectedIds, allItems]);
+
+  // Batch processing state
+  const [batchState, setBatchState] = useState<BatchState>('ready');
+  const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
+  const [uploadedGalleryIds, setUploadedGalleryIds] = useState<Set<number>>(new Set());
+  const [batchStartTime, setBatchStartTime] = useState<number | null>(null);
+
+  // Current batch item preview
+  const [currentBatchItem, setCurrentBatchItem] = useState<DivoomGalleryInfo | null>(null);
+  const [currentBatchPreviewUrl, setCurrentBatchPreviewUrl] = useState<string | null>(null);
+  const [currentBatchDecodeMeta, setCurrentBatchDecodeMeta] = useState<{ frames: number; speed: number; w: number; h: number } | null>(null);
+
+  // Abort controller for batch pause
+  const batchAbortRef = useRef<AbortController | null>(null);
+
+  // Log container ref for auto-scroll
+  const logContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Batch confirmation dialog
+  const [showBatchConfirmation, setShowBatchConfirmation] = useState(false);
 
   const API_BASE_URL =
     typeof window !== 'undefined'
@@ -253,7 +302,7 @@ export default function DivoomImportPage() {
       setAllItems([]);
       setItemsLoaded(false);
       setItemsProgress(null);
-      setSelected(null);
+      setSelectedIds(new Set());
       setPreviewUrl(null);
       setDecodeMeta(null);
       setTitle('');
@@ -483,61 +532,123 @@ export default function DivoomImportPage() {
     setPage(target);
   }, [jumpPageInput, totalPages]);
 
-  const handleSelect = useCallback(
-    async (item: DivoomGalleryInfo) => {
-      setSelected(item);
-      setUploadedArtwork(null);
-      setUploadError(null);
-      setUploadNotice(null);
-      setDecodeError(null);
-
-      // Prefill (editable)
-      setTitle(safeTitleFromItem(item));
-      setDescription(String(item.Content ?? '').slice(0, MAX_DESC_LEN));
-      setHashtags(tagsToHashtagString(item.FileTagArray));
-
-      // Decode preview (lossless animated WebP)
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-        setPreviewUrl(null);
+  // Toggle checkbox for multi-select (batch processing)
+  const handleToggleCheckbox = useCallback((galleryId: number, checked: boolean) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(galleryId);
+      } else {
+        next.delete(galleryId);
       }
-      setDecodeMeta(null);
-      setDecoding(true);
-      try {
-        if (typeof (globalThis as any).SharedArrayBuffer === 'undefined') {
-          throw new Error(
-            'SharedArrayBuffer is not available in this browser context. Please reload the page (it requires COOP/COEP headers), or use a browser/device that supports SharedArrayBuffer.',
-          );
-        }
-        const gid = item.GalleryId;
-        let webp = webpCache.current.get(gid);
-        if (!webp) {
-          let dat = datCache.current.get(gid);
-          if (!dat) {
-            dat = await downloadDivoomDat(item.FileId);
-            datCache.current.set(gid, dat);
-          }
-          const decoded = await decoder.decodeToWebp(dat);
-          webp = decoded.webp;
-          webpCache.current.set(gid, webp);
-          setDecodeMeta({
-            frames: decoded.totalFrames,
-            speed: decoded.speed,
-            w: decoded.columnCount * 16,
-            h: decoded.rowCount * 16,
-          });
-        }
-        const blob = new Blob([toArrayBuffer(webp)], { type: 'image/webp' });
-        const url = URL.createObjectURL(blob);
-        setPreviewUrl(url);
-      } catch (err) {
-        setDecodeError((err as Error).message);
-      } finally {
-        setDecoding(false);
+      return next;
+    });
+  }, []);
+
+  // Select all items in current page
+  const handleSelectAllPage = useCallback(() => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      for (const item of pageItems) {
+        next.add(item.GalleryId);
       }
-    },
-    [decoder, previewUrl],
-  );
+      return next;
+    });
+  }, [pageItems]);
+
+  // Unselect all items in current page
+  const handleUnselectAllPage = useCallback(() => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      for (const item of pageItems) {
+        next.delete(item.GalleryId);
+      }
+      return next;
+    });
+  }, [pageItems]);
+
+  // Select all items across all pages (filtered)
+  const handleSelectAllPages = useCallback(() => {
+    setSelectedIds(new Set(filteredSorted.map(item => item.GalleryId)));
+  }, [filteredSorted]);
+
+  // Unselect all items across all pages
+  const handleUnselectAllPages = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  // Row click toggles checkbox selection
+  const handleRowClick = useCallback((item: DivoomGalleryInfo) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(item.GalleryId)) {
+        next.delete(item.GalleryId);
+      } else {
+        next.add(item.GalleryId);
+      }
+      return next;
+    });
+  }, []);
+
+  // Decode preview when single item is selected
+  const decodeSelectedItem = useCallback(async (item: DivoomGalleryInfo) => {
+    setUploadedArtwork(null);
+    setUploadError(null);
+    setUploadNotice(null);
+    setDecodeError(null);
+
+    // Prefill form fields
+    setTitle(safeTitleFromItem(item));
+    setDescription(String(item.Content ?? '').slice(0, MAX_DESC_LEN));
+    setHashtags(tagsToHashtagString(item.FileTagArray));
+
+    // Decode preview (lossless animated WebP)
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
+    setDecodeMeta(null);
+    setDecoding(true);
+    try {
+      if (typeof (globalThis as any).SharedArrayBuffer === 'undefined') {
+        throw new Error(
+          'SharedArrayBuffer is not available in this browser context. Please reload the page (it requires COOP/COEP headers), or use a browser/device that supports SharedArrayBuffer.',
+        );
+      }
+      const gid = item.GalleryId;
+      let webp = webpCache.current.get(gid);
+      if (!webp) {
+        let dat = datCache.current.get(gid);
+        if (!dat) {
+          dat = await downloadDivoomDat(item.FileId);
+          datCache.current.set(gid, dat);
+        }
+        const decoded = await decoder.decodeToWebp(dat);
+        webp = decoded.webp;
+        webpCache.current.set(gid, webp);
+        setDecodeMeta({
+          frames: decoded.totalFrames,
+          speed: decoded.speed,
+          w: decoded.columnCount * 16,
+          h: decoded.rowCount * 16,
+        });
+      }
+      const blob = new Blob([toArrayBuffer(webp)], { type: 'image/webp' });
+      const url = URL.createObjectURL(blob);
+      setPreviewUrl(url);
+    } catch (err) {
+      setDecodeError((err as Error).message);
+    } finally {
+      setDecoding(false);
+    }
+  }, [decoder, previewUrl]);
+
+  // Trigger decode when single selection changes
+  useEffect(() => {
+    if (selected) {
+      decodeSelectedItem(selected);
+    }
+  }, [selected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogoutDivoom = useCallback(() => {
     // NO persistence: wipe everything in-memory only.
@@ -550,7 +661,7 @@ export default function DivoomImportPage() {
     setItemsLoaded(false);
     setItemsProgress(null);
     setPage(1);
-    setSelected(null);
+    setSelectedIds(new Set());
     setDecoding(false);
     setDecodeError(null);
     setDecodeMeta(null);
@@ -572,13 +683,29 @@ export default function DivoomImportPage() {
     setOnlyNew(false);
     setSortCriteria([{ field: 'uploaded', dir: 'desc' }]);
     setJumpPageInput('');
-  }, [cancelLoadingArtworks, previewUrl]);
+    // Reset batch processing state
+    setSelectedIds(new Set());
+    setBatchState('ready');
+    setBatchResults([]);
+    setUploadedGalleryIds(new Set());
+    setBatchStartTime(null);
+    setCurrentBatchItem(null);
+    if (currentBatchPreviewUrl) {
+      URL.revokeObjectURL(currentBatchPreviewUrl);
+    }
+    setCurrentBatchPreviewUrl(null);
+    setCurrentBatchDecodeMeta(null);
+    if (batchAbortRef.current) {
+      batchAbortRef.current.abort();
+      batchAbortRef.current = null;
+    }
+  }, [cancelLoadingArtworks, previewUrl, currentBatchPreviewUrl]);
 
   const canSubmit =
     !!selected &&
     !decoding &&
     !!previewUrl &&
-    selectedId !== lastUploadedGalleryId &&
+    selected.GalleryId !== lastUploadedGalleryId &&
     title.trim().length > 0 &&
     title.trim().length <= MAX_TITLE_LEN &&
     description.length <= MAX_DESC_LEN &&
@@ -651,6 +778,210 @@ export default function DivoomImportPage() {
       setUploading(false);
     }
   }, [API_BASE_URL, description, hashtags, lastUploadedGalleryId, router, selected, title]);
+
+  // Auto-scroll batch log to bottom
+  useEffect(() => {
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [batchResults]);
+
+  // Cleanup batch preview URL on unmount
+  useEffect(() => {
+    return () => {
+      if (currentBatchPreviewUrl) URL.revokeObjectURL(currentBatchPreviewUrl);
+    };
+  }, [currentBatchPreviewUrl]);
+
+  // Compute batch statistics
+  const batchSuccessCount = useMemo(() => batchResults.filter(r => r.success).length, [batchResults]);
+  const batchFailedCount = useMemo(() => batchResults.filter(r => !r.success).length, [batchResults]);
+  const pendingBatchCount = useMemo(() => {
+    // Selected items that haven't been uploaded yet
+    return Array.from(selectedIds).filter(id => !uploadedGalleryIds.has(id)).length;
+  }, [selectedIds, uploadedGalleryIds]);
+
+  // ETA calculation
+  const calculateEta = useCallback((): string => {
+    if (!batchStartTime || batchResults.length === 0) return 'Calculating...';
+
+    const elapsed = Date.now() - batchStartTime;
+    const avgPerItem = elapsed / batchResults.length;
+    const remaining = pendingBatchCount;
+    const etaMs = remaining * avgPerItem;
+
+    if (etaMs < 60000) {
+      return `~${Math.ceil(etaMs / 1000)} seconds`;
+    } else if (etaMs < 3600000) {
+      return `~${Math.ceil(etaMs / 60000)} minutes`;
+    } else {
+      const hours = Math.floor(etaMs / 3600000);
+      const mins = Math.ceil((etaMs % 3600000) / 60000);
+      return `~${hours}h ${mins}m`;
+    }
+  }, [batchStartTime, batchResults.length, pendingBatchCount]);
+
+  // Batch processing function
+  const processBatch = useCallback(async () => {
+    if (batchState === 'running') return;
+
+    const controller = new AbortController();
+    batchAbortRef.current = controller;
+
+    // Build queue: selected items not yet uploaded, in reverse order (last to first)
+    // This preserves creation date order when default sort is "newest first"
+    const queue = filteredSorted.filter(
+      item => selectedIds.has(item.GalleryId) && !uploadedGalleryIds.has(item.GalleryId)
+    ).reverse();
+
+    if (queue.length === 0) return;
+
+    setBatchState('running');
+    if (!batchStartTime) {
+      setBatchStartTime(Date.now());
+    }
+
+    for (const item of queue) {
+      // Check for abort (pause requested)
+      if (controller.signal.aborted) {
+        setBatchState('paused');
+        break;
+      }
+
+      setCurrentBatchItem(item);
+      const itemTitle = safeTitleFromItem(item);
+
+      try {
+        // Check for SharedArrayBuffer availability
+        if (typeof (globalThis as any).SharedArrayBuffer === 'undefined') {
+          throw new Error('SharedArrayBuffer not available. Please reload the page.');
+        }
+
+        // 1. Decode the artwork
+        const gid = item.GalleryId;
+        let webp = webpCache.current.get(gid);
+        if (!webp) {
+          let dat = datCache.current.get(gid);
+          if (!dat) {
+            dat = await downloadDivoomDat(item.FileId);
+            if (controller.signal.aborted) {
+              setBatchState('paused');
+              break;
+            }
+            datCache.current.set(gid, dat);
+          }
+          const decoded = await decoder.decodeToWebp(dat);
+          if (controller.signal.aborted) {
+            setBatchState('paused');
+            break;
+          }
+          webp = decoded.webp;
+          webpCache.current.set(gid, webp);
+
+          // Update batch preview
+          setCurrentBatchDecodeMeta({
+            frames: decoded.totalFrames,
+            speed: decoded.speed,
+            w: decoded.columnCount * 16,
+            h: decoded.rowCount * 16,
+          });
+        }
+
+        // Update preview URL
+        const blob = new Blob([toArrayBuffer(webp)], { type: 'image/webp' });
+        const url = URL.createObjectURL(blob);
+        setCurrentBatchPreviewUrl(prev => {
+          if (prev) URL.revokeObjectURL(prev);
+          return url;
+        });
+
+        // Check file size
+        if (webp.length > MAX_FILE_SIZE_BYTES) {
+          throw new Error(`File too large: ${formatMiB(webp.length)}`);
+        }
+
+        // 2. Upload to Makapix
+        const file = new File([toArrayBuffer(webp)], `${itemTitle}.webp`, { type: 'image/webp' });
+        const formData = new FormData();
+        formData.append('image', file);
+        formData.append('title', itemTitle);
+        formData.append('description', String(item.Content ?? '').slice(0, MAX_DESC_LEN).trim());
+        formData.append('hashtags', tagsToHashtagString(item.FileTagArray));
+
+        const response = await authenticatedFetch(`${API_BASE_URL}/api/post/upload`, {
+          method: 'POST',
+          body: formData,
+          signal: controller.signal,
+        });
+
+        if (controller.signal.aborted) {
+          setBatchState('paused');
+          break;
+        }
+
+        if (response.status === 401) {
+          clearTokens();
+          throw new Error('Authentication expired. Please log in again.');
+        }
+
+        if (response.status === 409) {
+          // Duplicate - mark as uploaded to avoid retrying
+          setUploadedGalleryIds(prev => new Set(prev).add(gid));
+          throw new Error('Artwork already exists on Makapix');
+        }
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ detail: 'Upload failed' }));
+          throw new Error(errorData.detail || 'Upload failed');
+        }
+
+        const data = await response.json();
+
+        // 3. Record success
+        setBatchResults(prev => [...prev, {
+          galleryId: gid,
+          title: itemTitle,
+          success: true,
+          postSqid: data.post.public_sqid,
+          timestamp: Date.now(),
+        }]);
+        setUploadedGalleryIds(prev => new Set(prev).add(gid));
+
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') {
+          setBatchState('paused');
+          break;
+        }
+
+        // Record failure, auto-continue
+        setBatchResults(prev => [...prev, {
+          galleryId: item.GalleryId,
+          title: itemTitle,
+          success: false,
+          errorMessage: (err as Error).message,
+          timestamp: Date.now(),
+        }]);
+      }
+    }
+
+    // Batch complete (if not aborted)
+    if (!controller.signal.aborted) {
+      setBatchState('ready');
+    }
+    batchAbortRef.current = null;
+  }, [batchState, filteredSorted, selectedIds, uploadedGalleryIds, batchStartTime, decoder, API_BASE_URL]);
+
+  // Pause batch processing
+  const handlePauseBatch = useCallback(() => {
+    if (batchAbortRef.current) {
+      batchAbortRef.current.abort();
+    }
+  }, []);
+
+  // Resume batch processing
+  const handleResumeBatch = useCallback(() => {
+    processBatch();
+  }, [processBatch]);
 
   // Show loading while forcing reload for cross-origin isolation
   if (isReloading) {
@@ -732,7 +1063,10 @@ export default function DivoomImportPage() {
 
         <section className="panel panel2-bar">
           <div className="panel2-content">
-            <h2 className="panel-title">2. Choose an artwork ({allItems.length} artworks)</h2>
+            <h2 className="panel-title">
+              2. Choose artworks ({allItems.length} artworks)
+              {selectedIds.size > 0 && <span className="selection-badge">{selectedIds.size} selected</span>}
+            </h2>
             {!divoomSession ? (
               <div className="muted">Sign in above to load your uploads.</div>
             ) : (
@@ -753,75 +1087,144 @@ export default function DivoomImportPage() {
 
                 {!itemsLoading && itemsLoaded && allItems.length > 0 && (
                   <>
-                    <div className="panel2-controls">
-                      <label className="search-label">
-                        Search
-                        <input
-                          type="text"
-                          value={searchName}
-                          onChange={(e) => setSearchName(e.target.value)}
-                          placeholder="Filter by name…"
-                        />
-                      </label>
+                    {/* Row 1: Search */}
+                    <div className="control-row">
+                      <label className="control-label">Search</label>
+                      <input
+                        type="text"
+                        className="search-input"
+                        value={searchName}
+                        onChange={(e) => setSearchName(e.target.value)}
+                        placeholder="Filter by name…"
+                      />
+                    </div>
 
-                      <label className="check">
-                        <input
-                          type="checkbox"
-                          checked={onlyRecommended}
-                          onChange={(e) => setOnlyRecommended(e.target.checked)}
-                        />
-                        Rec&apos;d
-                      </label>
-
-                      <label className="check">
-                        <input type="checkbox" checked={onlyNew} onChange={(e) => setOnlyNew(e.target.checked)} />
-                        New
-                      </label>
-
-                      <div className="sort-info">
-                        Sort: <strong>{sortLabel}</strong>
+                    {/* Row 2: Filter badges */}
+                    <div className="control-row">
+                      <label className="control-label">Filters</label>
+                      <div className="filter-badges">
+                        <button
+                          type="button"
+                          className={`filter-badge ${onlyRecommended ? 'active' : ''}`}
+                          onClick={() => setOnlyRecommended(!onlyRecommended)}
+                        >
+                          Recommended
+                        </button>
+                        <button
+                          type="button"
+                          className={`filter-badge ${onlyNew ? 'active' : ''}`}
+                          onClick={() => setOnlyNew(!onlyNew)}
+                        >
+                          New
+                        </button>
                       </div>
                     </div>
 
-                    <div className="pager">
-                      <button
-                        type="button"
-                        className="btn-secondary"
-                        onClick={() => setPage((p) => Math.max(1, p - 1))}
-                        disabled={page <= 1}
-                      >
-                        Previous
-                      </button>
-                      <div className="pager-info">
-                        Page <strong>{page}</strong> of <strong>{totalPages}</strong>
+                    {/* Row 3: Selection tools */}
+                    <div className="control-row">
+                      <label className="control-label">Selection</label>
+                      <div className="selection-buttons">
+                        <button type="button" className="btn-selection" onClick={handleSelectAllPage}>
+                          Select page
+                        </button>
+                        <button type="button" className="btn-selection" onClick={handleUnselectAllPage}>
+                          Unselect page
+                        </button>
+                        <button type="button" className="btn-selection" onClick={handleSelectAllPages}>
+                          Select all ({filteredSorted.length})
+                        </button>
+                        <button type="button" className="btn-selection" onClick={handleUnselectAllPages}>
+                          Unselect all
+                        </button>
                       </div>
-                      <div className="pager-jump">
+                    </div>
+
+                    {/* Row 4: Sort */}
+                    <div className="control-row">
+                      <label className="control-label">Sort</label>
+                      <div className="sort-buttons">
+                        <button
+                          type="button"
+                          className={`sort-btn ${sortCriteria[0]?.field === 'name' ? 'active' : ''}`}
+                          onClick={() => toggleSort('name')}
+                        >
+                          Name {sortCriteria[0]?.field === 'name' && (sortCriteria[0].dir === 'asc' ? '↑' : '↓')}
+                        </button>
+                        <button
+                          type="button"
+                          className={`sort-btn ${sortCriteria[0]?.field === 'uploaded' ? 'active' : ''}`}
+                          onClick={() => toggleSort('uploaded')}
+                        >
+                          Uploaded {sortCriteria[0]?.field === 'uploaded' && (sortCriteria[0].dir === 'asc' ? '↑' : '↓')}
+                        </button>
+                        <button
+                          type="button"
+                          className={`sort-btn ${sortCriteria[0]?.field === 'size' ? 'active' : ''}`}
+                          onClick={() => toggleSort('size')}
+                        >
+                          Size {sortCriteria[0]?.field === 'size' && (sortCriteria[0].dir === 'asc' ? '↑' : '↓')}
+                        </button>
+                        <button
+                          type="button"
+                          className={`sort-btn ${sortCriteria[0]?.field === 'likes' ? 'active' : ''}`}
+                          onClick={() => toggleSort('likes')}
+                        >
+                          Likes {sortCriteria[0]?.field === 'likes' && (sortCriteria[0].dir === 'asc' ? '↑' : '↓')}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Row 5: Page info + jump */}
+                    <div className="control-row">
+                      <label className="control-label">Page</label>
+                      <div className="page-info-row">
+                        <span className="page-info-text">
+                          Page <strong>{page}</strong> of <strong>{totalPages}</strong>
+                        </span>
                         <input
                           type="number"
+                          className="page-jump-input"
                           min={1}
                           max={totalPages}
                           value={jumpPageInput}
                           onChange={(e) => setJumpPageInput(e.target.value)}
-                          placeholder="Page #"
+                          placeholder="#"
                         />
-                        <button type="button" className="btn-secondary" onClick={handleJumpToPage}>
+                        <button type="button" className="btn-selection" onClick={handleJumpToPage}>
                           Go
                         </button>
                       </div>
-                      <button
-                        type="button"
-                        className="btn-secondary"
-                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                        disabled={page >= totalPages}
-                      >
-                        Next
-                      </button>
                     </div>
 
+                    {/* Row 6: Navigation buttons */}
+                    <div className="control-row">
+                      <label className="control-label">Navigate</label>
+                      <div className="nav-buttons">
+                        <button
+                          type="button"
+                          className="btn-nav"
+                          onClick={() => setPage((p) => Math.max(1, p - 1))}
+                          disabled={page <= 1}
+                        >
+                          ← Previous
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-nav"
+                          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                          disabled={page >= totalPages}
+                        >
+                          Next →
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Row 7: Table */}
                     <div className="table-wrap">
                       <table>
                         <thead>
                           <tr>
+                            <th className="col-checkbox"></th>
                             <th
                               className="col-title sortable"
                               role="button"
@@ -861,18 +1264,24 @@ export default function DivoomImportPage() {
                             pageItems.map((item) => (
                               <tr
                                 key={item.GalleryId}
-                                className={`clickable-row ${item.GalleryId === selectedId ? 'active' : ''}`}
-                                onClick={() => handleSelect(item)}
+                                className={`clickable-row ${selectedIds.has(item.GalleryId) ? 'checked' : ''}`}
+                                onClick={() => handleRowClick(item)}
                                 role="button"
                                 tabIndex={0}
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter' || e.key === ' ') {
                                     e.preventDefault();
-                                    handleSelect(item);
+                                    handleRowClick(item);
                                   }
                                 }}
-                                aria-label={`Select ${getNameForItem(item)}`}
+                                aria-label={`Toggle selection for ${getNameForItem(item)}`}
                               >
+                                <td className="col-checkbox" onClick={(e) => e.stopPropagation()}>
+                                  <Checkbox
+                                    checked={selectedIds.has(item.GalleryId)}
+                                    onCheckedChange={(checked) => handleToggleCheckbox(item.GalleryId, !!checked)}
+                                  />
+                                </td>
                                 <td className="col-title" title={getNameForItem(item)}>
                                   {getNameForItem(item)}
                                 </td>
@@ -883,7 +1292,7 @@ export default function DivoomImportPage() {
                             ))
                           ) : (
                             <tr>
-                              <td colSpan={4} className="muted">
+                              <td colSpan={5} className="muted">
                                 No items on this page.
                               </td>
                             </tr>
@@ -906,9 +1315,167 @@ export default function DivoomImportPage() {
             <div className="muted">Your artworks are still loading. Please wait for panel 2 to finish.</div>
           ) : allItems.length === 0 ? (
             <div className="muted">No artworks found.</div>
+          ) : selectedIds.size >= 2 ? (
+            /* Batch submit UI - 2 or more artworks selected */
+            <div className="batch-submit-pane">
+              {/* Control Section */}
+              <div className="batch-controls">
+                {batchState === 'ready' && !showBatchConfirmation && (
+                  <button
+                    type="button"
+                    className="submit-btn"
+                    onClick={() => {
+                      // Show confirmation for first batch start; after that (resume), go direct
+                      if (batchResults.length === 0) {
+                        setShowBatchConfirmation(true);
+                      } else {
+                        processBatch();
+                      }
+                    }}
+                    disabled={pendingBatchCount === 0}
+                  >
+                    Submit {pendingBatchCount} artworks
+                  </button>
+                )}
+                {batchState === 'ready' && showBatchConfirmation && (
+                  <div className="batch-confirm-dialog">
+                    <p>
+                      You are about to submit <strong>{pendingBatchCount}</strong> artwork{pendingBatchCount !== 1 ? 's' : ''} to Makapix Club.
+                      This may take several minutes.
+                    </p>
+                    <div className="confirm-buttons">
+                      <button
+                        type="button"
+                        className="submit-btn"
+                        onClick={() => {
+                          setShowBatchConfirmation(false);
+                          processBatch();
+                        }}
+                      >
+                        Confirm & Start
+                      </button>
+                      <button
+                        type="button"
+                        className="cancel-btn"
+                        onClick={() => setShowBatchConfirmation(false)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {batchState === 'running' && (
+                  <button type="button" className="submit-btn pause-btn" onClick={handlePauseBatch}>
+                    Pause
+                  </button>
+                )}
+                {batchState === 'paused' && (
+                  <button type="button" className="submit-btn resume-btn" onClick={handleResumeBatch}>
+                    Resume submitting {pendingBatchCount}...
+                  </button>
+                )}
+              </div>
+
+              {/* Progress Section */}
+              {(batchState === 'running' || batchState === 'paused' || batchResults.length > 0) && (
+                <div className="batch-progress">
+                  <div className="progress-bar">
+                    <div
+                      className="progress-fill"
+                      style={{ width: `${((batchSuccessCount + batchFailedCount) / selectedIds.size) * 100}%` }}
+                    />
+                  </div>
+                  <div className="progress-stats">
+                    <span>{batchSuccessCount + batchFailedCount} / {selectedIds.size} processed</span>
+                    {batchState === 'running' && <span>ETA: {calculateEta()}</span>}
+                    {batchState === 'paused' && <span className="paused-label">Paused</span>}
+                  </div>
+                </div>
+              )}
+
+              {/* Two-Column Layout: Preview + Log */}
+              <div className="batch-grid">
+                {/* Left: Preview Pane */}
+                <div className="preview-box">
+                  {currentBatchPreviewUrl ? (
+                    <img src={currentBatchPreviewUrl} alt="Current artwork" className="preview-image pixel-art" />
+                  ) : (
+                    <div className="preview-placeholder">
+                      {batchState === 'ready' && batchResults.length === 0 ? 'Awaiting start' : batchState === 'running' ? 'Decoding...' : 'Batch paused'}
+                    </div>
+                  )}
+                  <div className="preview-meta">
+                    {currentBatchPreviewUrl && currentBatchItem && (
+                      <>
+                        <div className="preview-title">
+                          <strong>{safeTitleFromItem(currentBatchItem)}</strong>
+                          <span className="badge">#{currentBatchItem.GalleryId}</span>
+                        </div>
+                        {currentBatchDecodeMeta && (
+                          <div className="muted">
+                            {currentBatchDecodeMeta.w}×{currentBatchDecodeMeta.h} · {currentBatchDecodeMeta.frames} frames · {currentBatchDecodeMeta.speed} ms
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right: Console Log */}
+                <div className="batch-log">
+                  <div className="log-container" ref={logContainerRef}>
+                    {batchResults.length === 0 ? (
+                      <div className="log-empty">Log will appear here when processing starts.</div>
+                    ) : (
+                      batchResults.map((result, idx) => (
+                        <div
+                          key={`${result.galleryId}-${idx}`}
+                          className={`log-entry ${result.success ? 'success' : 'error'}`}
+                        >
+                          {result.success ? (
+                            <>
+                              <span className="log-icon">✓</span>
+                              <span className="log-text">
+                                {result.title} —{' '}
+                                <a href={`/p/${result.postSqid}`} target="_blank" rel="noopener noreferrer">
+                                  View post
+                                </a>
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="log-icon">✗</span>
+                              <span className="log-text">{result.title}: {result.errorMessage}</span>
+                            </>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Completion Stats (shown when batch finishes) */}
+              {batchState === 'ready' && batchResults.length > 0 && pendingBatchCount === 0 && (
+                <div className="batch-complete-stats">
+                  <strong>Batch Complete</strong>
+                  <div className="stats-row">
+                    <span className="stat success">{batchSuccessCount} uploaded</span>
+                    <span className="stat error">{batchFailedCount} failed</span>
+                    {batchStartTime && (
+                      <span className="stat">Total time: {formatDuration(Date.now() - batchStartTime)}</span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           ) : !selected ? (
-            <div className="muted">Select one artwork above to preview and submit it.</div>
+            /* No artwork selected */
+            <div className="muted">
+              Select an artwork to preview, or select multiple for batch upload.
+            </div>
           ) : (
+            /* Individual submit UI - 0 or 1 artwork selected */
             <>
               <div className="preview-grid">
                 <div className="preview-box">
@@ -977,7 +1544,7 @@ export default function DivoomImportPage() {
                   {uploadError && <div className="status error">{uploadError}</div>}
 
                   <button type="button" className="submit-btn" onClick={handleSubmitToMakapix} disabled={!canSubmit}>
-                    {uploading ? 'Uploading…' : '🚀 Submit'}
+                    {uploading ? 'Uploading…' : 'Submit'}
                   </button>
 
                   {uploadedArtwork && (
@@ -1178,69 +1745,168 @@ export default function DivoomImportPage() {
           cursor: not-allowed;
         }
 
-        .pager {
+        /* Panel 2 vertical control rows */
+        .control-row {
           display: flex;
           align-items: center;
-          justify-content: space-between;
           gap: 12px;
           margin-bottom: 12px;
-        }
-        .pager-info {
-          color: var(--text-secondary);
-        }
-        .pager-jump {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        .pager-jump input {
-          width: 86px;
-          padding: 10px 12px;
-          background: var(--bg-secondary);
-          border: 1px solid var(--bg-tertiary);
+          padding: 10px 14px;
+          background: rgba(255, 255, 255, 0.02);
           border-radius: 10px;
-          color: var(--text-primary);
+          border: 1px solid rgba(255, 255, 255, 0.04);
         }
 
-        .panel2-controls {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 12px;
-          align-items: end;
-          margin-bottom: 12px;
-        }
-        .search-label {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          color: var(--text-secondary);
-          font-size: 0.9rem;
-          font-weight: 500;
-          flex: 1 1 280px;
-          min-width: 240px;
-        }
-        .search-label input {
-          padding: 12px 14px;
-          background: var(--bg-secondary);
-          border: 1px solid var(--bg-tertiary);
-          border-radius: 10px;
-          color: var(--text-primary);
-          transition: all var(--transition-fast);
-        }
-        .check {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          color: var(--text-secondary);
-          font-size: 0.9rem;
-          user-select: none;
-        }
-        .sort-info {
+        .control-label {
           color: var(--text-muted);
           font-size: 0.85rem;
-          margin-left: auto;
-          flex: 1 1 220px;
-          text-align: right;
+          font-weight: 600;
+          min-width: 70px;
+          flex-shrink: 0;
+        }
+
+        .search-input {
+          flex: 1;
+          padding: 10px 14px;
+          background: var(--bg-secondary);
+          border: 1px solid var(--bg-tertiary);
+          border-radius: 8px;
+          color: var(--text-primary);
+          font-size: 0.9rem;
+          transition: all var(--transition-fast);
+        }
+
+        .search-input:focus {
+          outline: none;
+          border-color: var(--accent-cyan);
+          box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+        }
+
+        /* Filter badges */
+        .filter-badges {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .filter-badge {
+          padding: 6px 14px;
+          border-radius: 999px;
+          background: var(--bg-tertiary);
+          color: var(--text-secondary);
+          font-size: 0.85rem;
+          font-weight: 500;
+          transition: all var(--transition-fast);
+          border: 1px solid transparent;
+        }
+
+        .filter-badge:hover {
+          background: rgba(0, 212, 255, 0.1);
+          color: var(--accent-cyan);
+        }
+
+        .filter-badge.active {
+          background: rgba(0, 212, 255, 0.15);
+          color: var(--accent-cyan);
+          border-color: var(--accent-cyan);
+        }
+
+        /* Selection buttons */
+        .selection-buttons {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .btn-selection {
+          padding: 6px 12px;
+          border-radius: 8px;
+          background: var(--bg-tertiary);
+          color: var(--text-secondary);
+          font-size: 0.8rem;
+          transition: all var(--transition-fast);
+        }
+
+        .btn-selection:hover {
+          background: rgba(0, 212, 255, 0.12);
+          color: var(--accent-cyan);
+        }
+
+        /* Sort buttons */
+        .sort-buttons {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .sort-btn {
+          padding: 6px 12px;
+          border-radius: 8px;
+          background: var(--bg-tertiary);
+          color: var(--text-secondary);
+          font-size: 0.8rem;
+          transition: all var(--transition-fast);
+        }
+
+        .sort-btn:hover {
+          background: rgba(180, 78, 255, 0.12);
+          color: var(--accent-purple);
+        }
+
+        .sort-btn.active {
+          background: rgba(180, 78, 255, 0.15);
+          color: var(--accent-purple);
+          font-weight: 600;
+        }
+
+        /* Page info row */
+        .page-info-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .page-info-text {
+          color: var(--text-secondary);
+          font-size: 0.9rem;
+        }
+
+        .page-jump-input {
+          width: 60px;
+          padding: 6px 10px;
+          background: var(--bg-secondary);
+          border: 1px solid var(--bg-tertiary);
+          border-radius: 8px;
+          color: var(--text-primary);
+          font-size: 0.85rem;
+          text-align: center;
+        }
+
+        /* Navigation buttons */
+        .nav-buttons {
+          display: flex;
+          gap: 12px;
+        }
+
+        .btn-nav {
+          padding: 8px 16px;
+          border-radius: 8px;
+          background: var(--bg-tertiary);
+          color: var(--text-secondary);
+          font-size: 0.85rem;
+          font-weight: 500;
+          transition: all var(--transition-fast);
+        }
+
+        .btn-nav:hover:not(:disabled) {
+          background: rgba(0, 212, 255, 0.12);
+          color: var(--accent-cyan);
+        }
+
+        .btn-nav:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
         }
 
         .table-wrap {
@@ -1272,9 +1938,6 @@ export default function DivoomImportPage() {
         th.sortable {
           cursor: pointer;
           user-select: none;
-        }
-        tr.active td {
-          background: rgba(0, 212, 255, 0.06);
         }
 
         tr.clickable-row {
@@ -1443,6 +2106,240 @@ export default function DivoomImportPage() {
           text-decoration: underline;
         }
 
+        /* Checkbox column */
+        .col-checkbox {
+          width: 40px;
+          text-align: center;
+          padding: 8px !important;
+        }
+
+        /* Radix Checkbox styles (since Tailwind isn't available) */
+        .col-checkbox :global(button) {
+          width: 16px;
+          height: 16px;
+          border: 1px solid rgba(255, 255, 255, 0.4);
+          border-radius: 3px;
+          background: transparent;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          vertical-align: middle;
+          padding: 0;
+        }
+        .col-checkbox :global(button:hover) {
+          border-color: rgba(255, 255, 255, 0.6);
+        }
+        .col-checkbox :global(button[data-state="checked"]) {
+          background: var(--accent-cyan);
+          border-color: var(--accent-cyan);
+        }
+        .col-checkbox :global(button[data-state="checked"] svg) {
+          color: #000;
+        }
+        .col-checkbox :global(button svg) {
+          width: 12px;
+          height: 12px;
+        }
+
+        tr.checked td {
+          background: rgba(0, 212, 255, 0.04);
+        }
+
+        /* Selection badge in panel title */
+        .selection-badge {
+          display: inline-block;
+          margin-left: 12px;
+          padding: 4px 10px;
+          font-size: 0.8rem;
+          font-weight: 600;
+          background: rgba(0, 212, 255, 0.15);
+          color: var(--accent-cyan);
+          border-radius: 999px;
+        }
+
+        /* Batch submit pane */
+        .batch-submit-pane {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+
+        .batch-controls {
+          display: flex;
+          gap: 12px;
+          align-items: center;
+        }
+
+        .pause-btn {
+          background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+        }
+
+        .resume-btn {
+          background: linear-gradient(135deg, #22c55e, #16a34a) !important;
+        }
+
+        /* Batch confirmation dialog */
+        .batch-confirm-dialog {
+          background: var(--bg-secondary);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 16px;
+          max-width: 400px;
+        }
+        .batch-confirm-dialog p {
+          margin: 0 0 16px;
+          color: var(--text-primary);
+          line-height: 1.5;
+        }
+        .confirm-buttons {
+          display: flex;
+          gap: 12px;
+        }
+        .cancel-btn {
+          padding: 10px 20px;
+          border-radius: 6px;
+          font-weight: 600;
+          border: 1px solid var(--border);
+          background: transparent;
+          color: var(--text-secondary);
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .cancel-btn:hover {
+          background: var(--bg-tertiary);
+          color: var(--text-primary);
+        }
+
+        /* Progress bar */
+        .batch-progress {
+          padding: 12px 0;
+        }
+
+        .progress-bar {
+          height: 8px;
+          background: var(--bg-tertiary);
+          border-radius: 4px;
+          overflow: hidden;
+        }
+
+        .progress-fill {
+          height: 100%;
+          background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));
+          border-radius: 4px;
+          transition: width 0.3s ease;
+        }
+
+        .progress-stats {
+          display: flex;
+          justify-content: space-between;
+          margin-top: 8px;
+          color: var(--text-secondary);
+          font-size: 0.9rem;
+        }
+
+        .paused-label {
+          color: #f59e0b;
+          font-weight: 600;
+        }
+
+        /* Two-column grid: preview + log */
+        .batch-grid {
+          display: grid;
+          grid-template-columns: 320px 1fr;
+          gap: 16px;
+          min-height: 300px;
+        }
+
+        /* Console-like log */
+        .batch-log {
+          background: var(--bg-tertiary);
+          border-radius: 14px;
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          overflow: hidden;
+        }
+
+        .log-container {
+          height: 300px;
+          overflow-y: auto;
+          padding: 12px;
+          font-family: monospace;
+          font-size: 0.85rem;
+        }
+
+        .log-empty {
+          color: var(--text-muted);
+          text-align: center;
+          padding: 20px;
+        }
+
+        .log-entry {
+          display: flex;
+          gap: 8px;
+          padding: 6px 0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+          align-items: flex-start;
+        }
+
+        .log-entry:last-child {
+          border-bottom: none;
+        }
+
+        .log-icon {
+          flex-shrink: 0;
+          width: 18px;
+          text-align: center;
+        }
+
+        .log-entry.success .log-icon {
+          color: #22c55e;
+        }
+
+        .log-entry.error .log-icon {
+          color: #ef4444;
+        }
+
+        .log-entry.error .log-text {
+          color: #ef4444;
+        }
+
+        .log-text {
+          flex: 1;
+          word-break: break-word;
+        }
+
+        .log-entry a {
+          color: var(--accent-cyan);
+          text-decoration: underline;
+        }
+
+        /* Completion stats */
+        .batch-complete-stats {
+          background: rgba(34, 197, 94, 0.08);
+          border: 1px solid rgba(34, 197, 94, 0.2);
+          border-radius: 12px;
+          padding: 16px;
+        }
+
+        .stats-row {
+          display: flex;
+          gap: 24px;
+          margin-top: 8px;
+          flex-wrap: wrap;
+        }
+
+        .stat {
+          color: var(--text-secondary);
+        }
+
+        .stat.success {
+          color: #22c55e;
+        }
+
+        .stat.error {
+          color: #ef4444;
+        }
+
         @media (max-width: 840px) {
           .grid-form {
             grid-template-columns: 1fr;
@@ -1453,12 +2350,41 @@ export default function DivoomImportPage() {
           .preview-grid {
             grid-template-columns: 1fr;
           }
+          .batch-grid {
+            grid-template-columns: 1fr;
+          }
           table {
             table-layout: auto;
           }
-          .sort-info {
-            text-align: left;
+          .selection-badge {
+            display: block;
             margin-left: 0;
+            margin-top: 8px;
+          }
+          /* Panel 2 responsive */
+          .control-row {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+          }
+          .control-label {
+            min-width: auto;
+          }
+          .search-input {
+            width: 100%;
+          }
+          .filter-badges,
+          .selection-buttons,
+          .sort-buttons,
+          .page-info-row,
+          .nav-buttons {
+            width: 100%;
+          }
+          .nav-buttons {
+            justify-content: space-between;
+          }
+          .btn-nav {
+            flex: 1;
           }
         }
       `}</style>

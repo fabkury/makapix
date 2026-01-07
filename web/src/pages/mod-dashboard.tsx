@@ -407,7 +407,7 @@ export default function ModDashboardPage() {
       return;
     }
     try {
-      await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}`, {
+      await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/permanent`, {
         method: 'DELETE',
       });
       await loadRecentPosts(true);
@@ -654,7 +654,7 @@ export default function ModDashboardPage() {
                         {post.promoted && <button onClick={() => demotePost(post.id)} className="action-btn" title="Demote">⬇️</button>}
                         {!post.hidden_by_mod && <button onClick={() => hidePost(post.id)} className="action-btn" title="Hide">🙈</button>}
                         {post.hidden_by_mod && <button onClick={() => unhidePost(post.id)} className="action-btn success" title="Unhide">👁️</button>}
-                        {post.hidden_by_mod && <button onClick={() => deletePostPermanently(post.id)} className="action-btn danger" title="Delete">🗑️</button>}
+                        <button onClick={() => deletePostPermanently(post.id)} className="action-btn danger" title="Delete">🗑️</button>
                       </div>
                     </div>
                   ))}

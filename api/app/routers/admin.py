@@ -9,7 +9,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..auth import require_moderator, require_owner, ensure_not_owner_self, ensure_not_owner, ensure_authenticated_user
+from ..auth import (
+    require_moderator,
+    require_owner,
+    ensure_not_owner_self,
+    ensure_not_owner,
+    ensure_authenticated_user,
+)
 from ..deps import get_db
 from ..utils.audit import log_moderation_action
 from ..pagination import apply_cursor_filter, create_page_response
@@ -30,25 +36,27 @@ def ban_user(
 ) -> schemas.BanResponse:
     """
     Ban user (moderator only).
-    
+
     TODO: Log in audit log
     TODO: Send notification to user
     TODO: Hide all user's content
     """
     from datetime import datetime, timedelta, timezone
-    
+
     # Look up by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
     until = None
     if payload.duration_days:
         until = datetime.now(timezone.utc) + timedelta(days=payload.duration_days)
-    
+
     user.banned_until = until
     db.commit()
-    
+
     # Log to audit
     log_moderation_action(
         db=db,
@@ -59,7 +67,7 @@ def ban_user(
         reason_code=payload.reason_code,
         note=payload.note or payload.reason,
     )
-    
+
     return schemas.BanResponse(status="banned", until=until)
 
 
@@ -75,11 +83,13 @@ def unban_user(
     # Look up by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
     user.banned_until = None
     db.commit()
-    
+
     # Log to audit
     log_moderation_action(
         db=db,
@@ -102,31 +112,33 @@ def promote_moderator(
 ) -> schemas.PromoteModeratorResponse:
     """
     Promote user to moderator (owner only).
-    
+
     Only authenticated users (with github_user_id) can be promoted.
     Owner cannot be demoted from moderator role.
     """
     # Look up by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
     # Ensure user is authenticated
     ensure_authenticated_user(user, db)
-    
+
     # Ensure not trying to modify owner's own moderator status
     ensure_not_owner_self(user, _owner)
-    
+
     # Owner always has moderator role - ensure it's present
     if "owner" in user.roles and "moderator" not in user.roles:
         user.roles = user.roles + ["moderator"]
         db.commit()
         return schemas.PromoteModeratorResponse(user_id=user.id, role="moderator")
-    
+
     if "moderator" not in user.roles:
         user.roles = user.roles + ["moderator"]
         db.commit()
-        
+
         # Log to audit
         log_moderation_action(
             db=db,
@@ -135,7 +147,7 @@ def promote_moderator(
             target_type="user",
             target_id=user.id,
         )
-    
+
     return schemas.PromoteModeratorResponse(user_id=user.id, role="moderator")
 
 
@@ -150,29 +162,31 @@ def demote_moderator(
 ) -> None:
     """
     Demote moderator to user (owner only).
-    
+
     Owner cannot be demoted from moderator role.
     Owner role cannot be removed.
     """
     # Look up by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
     # Prevent demoting owner from moderator
     if "owner" in user.roles:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Owner cannot be demoted from moderator role"
+            detail="Owner cannot be demoted from moderator role",
         )
-    
+
     # Prevent modifying own roles
     ensure_not_owner_self(user, _owner)
-    
+
     if "moderator" in user.roles:
         user.roles = [r for r in user.roles if r != "moderator"]
         db.commit()
-        
+
         # Log to audit
         log_moderation_action(
             db=db,
@@ -195,11 +209,13 @@ def hide_user(
     # Look up by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
     user.hidden_by_mod = True
     db.commit()
-    
+
     # Log to audit
     log_moderation_action(
         db=db,
@@ -222,11 +238,13 @@ def unhide_user(
     # Look up by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
     user.hidden_by_mod = False
     db.commit()
-    
+
     # Log to audit
     log_moderation_action(
         db=db,
@@ -249,7 +267,7 @@ def grant_auto_approval(
 ) -> schemas.AutoApprovalResponse:
     """
     Grant auto-approval privilege to a user (moderator only).
-    
+
     Users with this privilege have their uploaded artworks automatically
     approved for public visibility, appearing immediately in Recent Artworks
     and search results without requiring moderator review.
@@ -257,11 +275,13 @@ def grant_auto_approval(
     # Look up by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
     user.auto_public_approval = True
     db.commit()
-    
+
     # Log to audit
     log_moderation_action(
         db=db,
@@ -270,7 +290,7 @@ def grant_auto_approval(
         target_type="user",
         target_id=user.id,
     )
-    
+
     return schemas.AutoApprovalResponse(user_id=user.id, auto_public_approval=True)
 
 
@@ -285,18 +305,20 @@ def revoke_auto_approval(
 ) -> schemas.AutoApprovalResponse:
     """
     Revoke auto-approval privilege from a user (moderator only).
-    
+
     After revocation, the user's newly uploaded artworks will require
     moderator approval before appearing in Recent Artworks and search results.
     """
     # Look up by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
     user.auto_public_approval = False
     db.commit()
-    
+
     # Log to audit
     log_moderation_action(
         db=db,
@@ -305,7 +327,7 @@ def revoke_auto_approval(
         target_type="user",
         target_id=user.id,
     )
-    
+
     return schemas.AutoApprovalResponse(user_id=user.id, auto_public_approval=False)
 
 
@@ -320,16 +342,18 @@ def recent_profiles(
     Recent user profiles (moderator only).
     """
     query = db.query(models.User)
-    
+
     # Apply cursor pagination
-    query = apply_cursor_filter(query, models.User, cursor, "created_at", sort_desc=True)
-    
+    query = apply_cursor_filter(
+        query, models.User, cursor, "created_at", sort_desc=True
+    )
+
     # Order and limit
     query = query.order_by(models.User.created_at.desc()).limit(limit + 1)
     users = query.all()
-    
+
     page_data = create_page_response(users, limit, cursor)
-    
+
     return schemas.Page(
         items=[schemas.UserFull.model_validate(u) for u in page_data["items"]],
         next_cursor=page_data["next_cursor"],
@@ -345,7 +369,7 @@ def pending_approval(
 ) -> schemas.Page[schemas.Post]:
     """
     List posts pending public visibility approval (moderator only).
-    
+
     Returns posts where public_visibility is False, ordered by creation date (newest first).
     These are artworks uploaded by users without auto_public_approval privilege
     that need moderator review before appearing in Recent Artworks and search results.
@@ -354,17 +378,20 @@ def pending_approval(
         models.Post.public_visibility == False,
         models.Post.hidden_by_user == False,
         models.Post.hidden_by_mod == False,
+        models.Post.deleted_by_user == False,  # Exclude user-deleted posts
     )
-    
+
     # Apply cursor pagination
-    query = apply_cursor_filter(query, models.Post, cursor, "created_at", sort_desc=True)
-    
+    query = apply_cursor_filter(
+        query, models.Post, cursor, "created_at", sort_desc=True
+    )
+
     # Order and limit
     query = query.order_by(models.Post.created_at.desc()).limit(limit + 1)
     posts = query.all()
-    
+
     page_data = create_page_response(posts, limit, cursor)
-    
+
     return schemas.Page(
         items=[schemas.Post.model_validate(p) for p in page_data["items"]],
         next_cursor=page_data["next_cursor"],
@@ -382,16 +409,18 @@ def recent_posts(
     Recent posts (moderator only).
     """
     query = db.query(models.Post)
-    
+
     # Apply cursor pagination
-    query = apply_cursor_filter(query, models.Post, cursor, "created_at", sort_desc=True)
-    
+    query = apply_cursor_filter(
+        query, models.Post, cursor, "created_at", sort_desc=True
+    )
+
     # Order and limit
     query = query.order_by(models.Post.created_at.desc()).limit(limit + 1)
     posts = query.all()
-    
+
     page_data = create_page_response(posts, limit, cursor)
-    
+
     return schemas.Page(
         items=[schemas.Post.model_validate(p) for p in page_data["items"]],
         next_cursor=page_data["next_cursor"],
@@ -410,11 +439,11 @@ def get_audit_log(
 ) -> schemas.Page[schemas.AuditLogEntry]:
     """
     Get audit log (moderator only).
-    
+
     Supports filtering by actor_id, action, and target_type.
     """
     query = db.query(models.AuditLog)
-    
+
     # Apply filters
     if actor_id:
         query = query.filter(models.AuditLog.actor_id == actor_id)
@@ -422,16 +451,18 @@ def get_audit_log(
         query = query.filter(models.AuditLog.action == action)
     if target_type:
         query = query.filter(models.AuditLog.target_type == target_type)
-    
+
     # Apply cursor pagination
-    query = apply_cursor_filter(query, models.AuditLog, cursor, "created_at", sort_desc=True)
-    
+    query = apply_cursor_filter(
+        query, models.AuditLog, cursor, "created_at", sort_desc=True
+    )
+
     # Order and limit
     query = query.order_by(models.AuditLog.created_at.desc()).limit(limit + 1)
     logs = query.all()
-    
+
     page_data = create_page_response(logs, limit, cursor)
-    
+
     return schemas.Page(
         items=[schemas.AuditLogEntry.model_validate(log) for log in page_data["items"]],
         next_cursor=page_data["next_cursor"],
@@ -447,24 +478,27 @@ def list_authenticated_users(
 ) -> schemas.Page[schemas.UserFull]:
     """
     List authenticated users (owner only).
-    
+
     Returns users with at least one auth identity, ordered alphabetically by handle.
     """
     from ..models import AuthIdentity
+
     # Get user IDs that have at least one auth identity
     authenticated_user_ids = db.query(AuthIdentity.user_id).distinct().subquery()
-    query = db.query(models.User).filter(models.User.id.in_(db.query(authenticated_user_ids.c.user_id)))
-    
+    query = db.query(models.User).filter(
+        models.User.id.in_(db.query(authenticated_user_ids.c.user_id))
+    )
+
     # Apply cursor pagination (handle-based, alphabetical)
     # Note: Using handle as sort field for alphabetical ordering
     query = apply_cursor_filter(query, models.User, cursor, "handle", sort_desc=False)
-    
+
     # Order alphabetically by handle
     query = query.order_by(models.User.handle.asc()).limit(limit + 1)
     users = query.all()
-    
+
     page_data = create_page_response(users, limit, cursor, sort_field="handle")
-    
+
     return schemas.Page(
         items=[schemas.UserFull.model_validate(u) for u in page_data["items"]],
         next_cursor=page_data["next_cursor"],
@@ -480,25 +514,31 @@ def list_anonymous_users(
 ) -> schemas.Page[schemas.UserPublic]:
     """
     List non-authenticated users (owner only).
-    
+
     Returns users without any auth identity, ordered alphabetically by handle.
     """
     from ..models import AuthIdentity
+
     # Get user IDs that have at least one auth identity
     authenticated_user_ids = db.query(AuthIdentity.user_id).distinct().subquery()
-    query = db.query(models.User).filter(~models.User.id.in_(db.query(authenticated_user_ids.c.user_id)))
-    
+    query = db.query(models.User).filter(
+        ~models.User.id.in_(db.query(authenticated_user_ids.c.user_id))
+    )
+
     # Apply cursor pagination (handle-based, alphabetical)
     query = apply_cursor_filter(query, models.User, cursor, "handle", sort_desc=False)
-    
+
     # Order alphabetically by handle
     query = query.order_by(models.User.handle.asc()).limit(limit + 1)
     users = query.all()
-    
+
     page_data = create_page_response(users, limit, cursor, sort_field="handle")
-    
+
     return schemas.Page(
-        items=[schemas.UserPublic.model_validate(u, from_attributes=True) for u in page_data["items"]],
+        items=[
+            schemas.UserPublic.model_validate(u, from_attributes=True)
+            for u in page_data["items"]
+        ],
         next_cursor=page_data["next_cursor"],
     )
 
@@ -511,26 +551,26 @@ def get_sitewide_stats(
 ) -> schemas.SitewideStatsResponse:
     """
     Get comprehensive sitewide statistics (moderator only).
-    
+
     Returns event-level granularity for the past 7 days, then daily aggregates
     until the past 30 days. Includes hourly breakdown for the last 24 hours.
-    
+
     Statistics are cached in Redis for 5 minutes.
     """
     from ..services.site_stats import get_sitewide_stats, SiteStatsService
-    
+
     if refresh:
         service = SiteStatsService(db)
         service.invalidate_cache()
-    
+
     stats = get_sitewide_stats(db)
-    
+
     if stats is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to compute sitewide statistics"
+            detail="Failed to compute sitewide statistics",
         )
-    
+
     # Convert to response schema
     return schemas.SitewideStatsResponse(
         total_page_views_30d=stats.total_page_views_30d,
@@ -542,16 +582,14 @@ def get_sitewide_stats(
         total_page_views_30d_authenticated=stats.total_page_views_30d_authenticated,
         unique_visitors_30d_authenticated=stats.unique_visitors_30d_authenticated,
         daily_views=[
-            schemas.DailyCount(date=dv.date, count=dv.count)
-            for dv in stats.daily_views
+            schemas.DailyCount(date=dv.date, count=dv.count) for dv in stats.daily_views
         ],
         daily_signups=[
             schemas.DailyCount(date=ds.date, count=ds.count)
             for ds in stats.daily_signups
         ],
         daily_posts=[
-            schemas.DailyCount(date=dp.date, count=dp.count)
-            for dp in stats.daily_posts
+            schemas.DailyCount(date=dp.date, count=dp.count) for dp in stats.daily_posts
         ],
         daily_views_authenticated=[
             schemas.DailyCount(date=dv.date, count=dv.count)
@@ -592,33 +630,38 @@ def get_online_players(
 ) -> schemas.OnlinePlayersResponse:
     """
     Get list of currently online players (moderator only).
-    
+
     Returns players with connection_status='online'.
     """
     # Query online players
-    online_players = db.query(models.Player).filter(
-        models.Player.connection_status == "online"
-    ).order_by(models.Player.last_seen_at.desc()).all()
-    
+    online_players = (
+        db.query(models.Player)
+        .filter(models.Player.connection_status == "online")
+        .order_by(models.Player.last_seen_at.desc())
+        .all()
+    )
+
     # Get owner handles
     owner_ids = [p.owner_id for p in online_players if p.owner_id]
     owners = {}
     if owner_ids:
         users = db.query(models.User).filter(models.User.id.in_(owner_ids)).all()
         owners = {u.id: u.handle for u in users}
-    
+
     # Build response
     player_infos = []
     for player in online_players:
-        player_infos.append(schemas.OnlinePlayerInfo(
-            id=player.id,
-            name=player.name,
-            device_model=player.device_model,
-            firmware_version=player.firmware_version,
-            last_seen_at=player.last_seen_at,
-            owner_handle=owners.get(player.owner_id) if player.owner_id else None,
-        ))
-    
+        player_infos.append(
+            schemas.OnlinePlayerInfo(
+                id=player.id,
+                name=player.name,
+                device_model=player.device_model,
+                firmware_version=player.firmware_version,
+                last_seen_at=player.last_seen_at,
+                owner_handle=owners.get(player.owner_id) if player.owner_id else None,
+            )
+        )
+
     return schemas.OnlinePlayersResponse(
         online_players=player_infos,
         total_online=len(player_infos),

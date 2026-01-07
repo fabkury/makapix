@@ -105,7 +105,10 @@ def list_posts(
     query = (
         db.query(models.Post)
         .options(joinedload(models.Post.owner))
-        .filter(models.Post.kind == "artwork")
+        .filter(
+            models.Post.kind == "artwork",
+            models.Post.deleted_by_user == False,  # Exclude user-deleted posts
+        )
     )
 
     is_moderator = "moderator" in current_user.roles or "owner" in current_user.roles
@@ -185,15 +188,17 @@ def list_posts(
     # Date filters
     if created_after is not None:
         from datetime import datetime
+
         try:
-            after_date = datetime.fromisoformat(created_after.replace('Z', '+00:00'))
+            after_date = datetime.fromisoformat(created_after.replace("Z", "+00:00"))
             query = query.filter(models.Post.created_at >= after_date)
         except ValueError:
             pass  # Invalid date format, skip filter
     if created_before is not None:
         from datetime import datetime
+
         try:
-            before_date = datetime.fromisoformat(created_before.replace('Z', '+00:00'))
+            before_date = datetime.fromisoformat(created_before.replace("Z", "+00:00"))
             query = query.filter(models.Post.created_at <= before_date)
         except ValueError:
             pass  # Invalid date format, skip filter
@@ -213,6 +218,7 @@ def list_posts(
     # Kind filter (static vs animated based on frame_count)
     if kind is not None and len(kind) > 0:
         from sqlalchemy import or_
+
         kind_conditions = []
         if "static" in kind:
             kind_conditions.append(models.Post.frame_count == 1)
@@ -224,6 +230,7 @@ def list_posts(
     # Reactions/Comments filters require subqueries
     if reactions_min is not None or reactions_max is not None:
         from sqlalchemy import func
+
         reaction_count_subq = (
             db.query(func.count(models.Reaction.id))
             .filter(models.Reaction.post_id == models.Post.id)
@@ -237,6 +244,7 @@ def list_posts(
 
     if comments_min is not None or comments_max is not None:
         from sqlalchemy import func
+
         comment_count_subq = (
             db.query(func.count(models.Comment.id))
             .filter(models.Comment.post_id == models.Post.id)
@@ -303,15 +311,15 @@ def create_post(
     """
     # Parse canvas dimensions from "WxH" format
     try:
-        width_str, height_str = payload.canvas.split('x')
+        width_str, height_str = payload.canvas.split("x")
         width = int(width_str)
         height = int(height_str)
     except (ValueError, AttributeError):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid canvas format '{payload.canvas}'. Expected format: WIDTHxHEIGHT (e.g., '64x64')"
+            detail=f"Invalid canvas format '{payload.canvas}'. Expected format: WIDTHxHEIGHT (e.g., '64x64')",
         )
-    
+
     # Validate canvas dimensions using the same validation logic as image uploads
     is_valid, error = validate_image_dimensions(width, height)
     if not is_valid:
@@ -333,14 +341,15 @@ def create_post(
         normalized_tag = tag.strip().lower()
         if normalized_tag and normalized_tag not in normalized_hashtags:
             normalized_hashtags.append(normalized_tag)
-    
+
     # Limit hashtags to 64
     normalized_hashtags = normalized_hashtags[:64]
-    
+
     # Generate UUID for storage_key
     storage_key = uuid.uuid4()
 
     from datetime import datetime, timezone
+
     now = datetime.now(timezone.utc)
 
     post = models.Post(
@@ -435,11 +444,11 @@ async def upload_artwork(
     ext = ""
     if "." in filename:
         ext = "." + filename.lower().split(".")[-1]
-    
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp_file:
         tmp_file.write(file_content)
         tmp_path = tmp_file.name
-    
+
     try:
         # Call AMP inspector to validate and extract metadata
         result = subprocess.run(
@@ -455,27 +464,31 @@ async def upload_artwork(
             timeout=30,
             check=False,
         )
-        
+
         # Parse JSON output
         try:
             amp_result = json.loads(result.stdout)
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse AMP inspector output: {e}\nOutput: {result.stdout}")
+            logger.error(
+                f"Failed to parse AMP inspector output: {e}\nOutput: {result.stdout}"
+            )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to process image. Please try again.",
             )
-        
+
         # Check if AMP inspection succeeded
         if not amp_result.get("success"):
             error_info = amp_result.get("error", {})
-            error_message = error_info.get("message", "Unknown error during image inspection")
+            error_message = error_info.get(
+                "message", "Unknown error during image inspection"
+            )
             logger.warning(f"AMP inspection failed: {error_message}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=error_message,
             )
-        
+
         # Extract metadata from AMP result
         metadata = amp_result["metadata"]
         width = metadata["width"]
@@ -490,7 +503,7 @@ async def upload_artwork(
         alpha_meta = metadata.get("alpha_meta", False)
         transparency_actual = metadata.get("transparency_actual", False)
         alpha_actual = metadata.get("alpha_actual", False)
-        
+
     finally:
         # Clean up temporary file
         try:
@@ -517,10 +530,10 @@ async def upload_artwork(
                 normalized_tag = normalized_tag[1:]
             if normalized_tag and normalized_tag not in parsed_hashtags:
                 parsed_hashtags.append(normalized_tag)
-    
+
     # Limit hashtags to 64
     parsed_hashtags = parsed_hashtags[:64]
-    
+
     # Determine public visibility based on user's auto_public_approval privilege
     public_visibility = getattr(current_user, "auto_public_approval", False)
 
@@ -532,6 +545,7 @@ async def upload_artwork(
 
     # Create the post record first to get the ID
     from datetime import datetime, timezone
+
     now = datetime.now(timezone.utc)
     post = models.Post(
         storage_key=storage_key,
@@ -561,11 +575,15 @@ async def upload_artwork(
         artwork_modified_at=now,
         dwell_time_ms=30000,
     )
-    # Fast-path duplicate check (user-friendly error); UNIQUE constraint is the
+    # Fast-path duplicate check (user-friendly error); partial unique index is the
     # authoritative protection against races.
     existing = (
         db.query(models.Post)
-        .filter(models.Post.kind == "artwork", models.Post.hash == file_hash)
+        .filter(
+            models.Post.kind == "artwork",
+            models.Post.hash == file_hash,
+            models.Post.deleted_by_user == False,  # Only check non-deleted posts
+        )
         .first()
     )
     if existing:
@@ -594,6 +612,7 @@ async def upload_artwork(
     # Save to vault using the storage_key
     try:
         from ..vault import FORMAT_TO_EXT
+
         extension = FORMAT_TO_EXT[file_format]
         save_artwork_to_vault(post.storage_key, file_content, file_format)
 
@@ -682,6 +701,7 @@ def list_recent_posts(
             models.Post.hidden_by_mod == False,
             models.Post.hidden_by_user == False,
             models.Post.public_visibility == True,  # Only show publicly visible posts
+            models.Post.deleted_by_user == False,  # Exclude user-deleted posts
         )
     )
 
@@ -810,6 +830,7 @@ def update_post(
         post.hidden_by_mod = payload.hidden_by_mod
 
     from datetime import datetime, timezone
+
     post.metadata_modified_at = datetime.now(timezone.utc)
 
     db.commit()
@@ -827,8 +848,8 @@ def delete_post(
     """
     Delete post (soft delete).
 
-    TODO: Implement soft delete (set visible=False)
-    TODO: Validate ownership before allowing delete
+    Sets deleted_by_user=True and schedules for permanent deletion after 7 days.
+    The artwork hash is immediately freed for re-upload.
     """
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post:
@@ -838,6 +859,15 @@ def delete_post(
 
     require_ownership(post.owner_id, current_user)
 
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+
+    # Mark as deleted by user (frees hash for re-upload)
+    post.deleted_by_user = True
+    post.deleted_by_user_date = now
+
+    # Keep existing visibility flags for backward compatibility
     post.visible = False
     post.hidden_by_user = True
     db.commit()
@@ -860,11 +890,20 @@ def undelete_post_by_moderator(
 ) -> None:
     """
     Undelete post (moderator only).
+
+    Note: Posts that have been deleted by the user cannot be restored.
     """
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        )
+
+    # Prevent restoring user-deleted posts
+    if post.deleted_by_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User-deleted posts cannot be restored",
         )
 
     post.visible = True
@@ -928,20 +967,12 @@ def permanent_delete_post(
     """
     Permanently delete a post (moderator only).
 
-    This action cannot be undone. The post must be hidden before it can be permanently deleted.
-    This also removes the artwork image from the vault.
+    This action cannot be undone. This also removes the artwork image from the vault.
     """
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
-        )
-
-    # Only allow permanent deletion of hidden posts
-    if not post.hidden_by_mod and not post.hidden_by_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Post must be hidden before it can be permanently deleted",
         )
 
     # Delete the artwork from vault if it exists
@@ -1056,12 +1087,19 @@ def unhide_post(
     """
     Unhide post.
 
-    TODO: Validate that user is owner or moderator
+    Note: Posts that have been deleted by the user cannot be restored.
     """
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        )
+
+    # Prevent restoring deleted posts
+    if post.deleted_by_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Deleted posts cannot be restored",
         )
 
     # Check if user is owner or moderator
@@ -1371,6 +1409,7 @@ async def replace_artwork(
                 models.Post.kind == "artwork",
                 models.Post.hash == file_hash,
                 models.Post.id != post.id,
+                models.Post.deleted_by_user == False,  # Only check non-deleted posts
             )
             .first()
         )
@@ -1388,6 +1427,7 @@ async def replace_artwork(
 
     # Compute new art_url (may change extension if format changes)
     from ..vault import FORMAT_TO_EXT
+
     new_extension = FORMAT_TO_EXT[file_format]
     new_art_url = get_artwork_url(post.storage_key, new_extension)
 

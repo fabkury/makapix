@@ -47,11 +47,11 @@ _request_client_lock = threading.Lock()
 def _authenticate_player(player_key: UUID, db: Session) -> models.Player | None:
     """
     Authenticate player and return player record with owner relationship.
-    
+
     Args:
         player_key: Player's unique key
         db: Database session
-        
+
     Returns:
         Player instance if authenticated and registered, None otherwise
     """
@@ -64,15 +64,15 @@ def _authenticate_player(player_key: UUID, db: Session) -> models.Player | None:
         )
         .first()
     )
-    
+
     if not player:
         logger.warning(f"Player authentication failed for key: {player_key}")
         return None
-    
+
     if not player.owner:
         logger.warning(f"Player {player_key} has no owner")
         return None
-    
+
     return player
 
 
@@ -84,7 +84,7 @@ def _send_error_response(
 ) -> None:
     """
     Send error response to player via MQTT.
-    
+
     Args:
         player_key: Player's unique key
         request_id: Request ID for correlation
@@ -92,13 +92,13 @@ def _send_error_response(
         error_code: Optional error code
     """
     response_topic = f"makapix/player/{player_key}/response/{request_id}"
-    
+
     error_response = ErrorResponse(
         request_id=request_id,
         error=error_message,
         error_code=error_code,
     )
-    
+
     publish(
         topic=response_topic,
         payload=error_response.model_dump(mode="json"),
@@ -113,7 +113,9 @@ DEFAULT_DWELL_MS = 30000
 
 def _payload_size_bytes(payload: dict[str, Any]) -> int:
     # Minified JSON to better match the real on-wire size.
-    return len(json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+    return len(
+        json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    )
 
 
 def _build_artwork_payload(post: models.Post) -> ArtworkPostPayload:
@@ -131,7 +133,9 @@ def _build_artwork_payload(post: models.Post) -> ArtworkPostPayload:
         transparency_actual=bool(getattr(post, "transparency_actual", False)),
         alpha_actual=bool(getattr(post, "alpha_actual", False)),
         artwork_modified_at=post.artwork_modified_at,
-        dwell_time_ms=int(getattr(post, "dwell_time_ms", DEFAULT_DWELL_MS) or DEFAULT_DWELL_MS),
+        dwell_time_ms=int(
+            getattr(post, "dwell_time_ms", DEFAULT_DWELL_MS) or DEFAULT_DWELL_MS
+        ),
     )
 
 
@@ -154,7 +158,10 @@ def _build_playlist_payload(
         created_at=playlist_post.created_at,
         metadata_modified_at=playlist_post.metadata_modified_at,
         total_artworks=int(total_artworks),
-        dwell_time_ms=int(getattr(playlist_post, "dwell_time_ms", DEFAULT_DWELL_MS) or DEFAULT_DWELL_MS),
+        dwell_time_ms=int(
+            getattr(playlist_post, "dwell_time_ms", DEFAULT_DWELL_MS)
+            or DEFAULT_DWELL_MS
+        ),
     )
 
 
@@ -270,7 +277,7 @@ def _handle_query_posts(
 ) -> None:
     """
     Handle query_posts request.
-    
+
     Args:
         player: Authenticated player instance
         request: Parsed request
@@ -278,10 +285,12 @@ def _handle_query_posts(
     """
     try:
         # Build base query (include both artwork and playlist posts)
-        query = db.query(models.Post).options(joinedload(models.Post.owner)).filter(
-            models.Post.kind.in_(["artwork", "playlist"])
+        query = (
+            db.query(models.Post)
+            .options(joinedload(models.Post.owner))
+            .filter(models.Post.kind.in_(["artwork", "playlist"]))
         )
-        
+
         # Apply channel filter
         if request.channel == "promoted":
             query = query.filter(models.Post.promoted.is_(True))
@@ -292,9 +301,17 @@ def _handle_query_posts(
             # Query arbitrary user's posts by handle or sqid
             target_user = None
             if request.user_handle:
-                target_user = db.query(models.User).filter(models.User.handle == request.user_handle).first()
+                target_user = (
+                    db.query(models.User)
+                    .filter(models.User.handle == request.user_handle)
+                    .first()
+                )
             elif request.user_sqid:
-                target_user = db.query(models.User).filter(models.User.public_sqid == request.user_sqid).first()
+                target_user = (
+                    db.query(models.User)
+                    .filter(models.User.public_sqid == request.user_sqid)
+                    .first()
+                )
             else:
                 _send_error_response(
                     player.player_key,
@@ -303,7 +320,7 @@ def _handle_query_posts(
                     "missing_user_identifier",
                 )
                 return
-            
+
             if not target_user:
                 identifier = request.user_handle or request.user_sqid
                 _send_error_response(
@@ -313,7 +330,7 @@ def _handle_query_posts(
                     "user_not_found",
                 )
                 return
-            
+
             query = query.filter(models.Post.owner_id == target_user.id)
         elif request.channel == "hashtag":
             # Query posts by hashtag
@@ -325,7 +342,7 @@ def _handle_query_posts(
                     "missing_hashtag",
                 )
                 return
-            
+
             # Normalize hashtag (lowercase, strip) to match how they're stored
             hashtag_normalized = request.hashtag.strip().lower()
             if not hashtag_normalized:
@@ -336,16 +353,21 @@ def _handle_query_posts(
                     "invalid_hashtag",
                 )
                 return
-            
+
             query = query.filter(models.Post.hashtags.contains([hashtag_normalized]))
         elif request.channel == "artwork":
             # Protocol compatibility: do not exclude playlists (per server policy).
             pass
         # "all" requires no additional filter
-        
+
         # Apply visibility filters (respect user privileges)
-        is_moderator = "moderator" in player.owner.roles or "owner" in player.owner.roles
-        
+        is_moderator = (
+            "moderator" in player.owner.roles or "owner" in player.owner.roles
+        )
+
+        # Always exclude user-deleted posts
+        query = query.filter(~models.Post.deleted_by_user)
+
         if not is_moderator:
             query = query.filter(
                 models.Post.visible,
@@ -378,13 +400,14 @@ def _handle_query_posts(
                 # PostgreSQL-specific random ordering with seed
                 # Use parameterized query to prevent SQL injection
                 from sqlalchemy import text
+
                 seed_value = (request.random_seed % 1000000) / 1000000.0
                 db.execute(text("SELECT setseed(:seed)"), {"seed": seed_value})
             query = query.order_by(func.random())
         else:
             # "server_order" - use id order (insertion order)
             query = query.order_by(models.Post.id.desc())
-        
+
         # Apply cursor pagination if provided
         # For simplicity, using offset-based pagination encoded as cursor
         offset = 0
@@ -393,22 +416,22 @@ def _handle_query_posts(
                 offset = int(request.cursor)
             except ValueError:
                 logger.warning(f"Invalid cursor: {request.cursor}")
-        
+
         query = query.offset(offset).limit(request.limit + 1)  # +1 to check if more
-        
+
         # Execute query
         posts = query.all()
-        
+
         # Check if there are more results
         has_more = len(posts) > request.limit
         if has_more:
-            posts = posts[:request.limit]
-        
+            posts = posts[: request.limit]
+
         # Calculate next cursor
         next_cursor = None
         if has_more:
             next_cursor = str(offset + request.limit)
-        
+
         # Build response payload posts
         payload_posts: list[PlayerPostPayload] = []
         for post in posts:
@@ -416,29 +439,33 @@ def _handle_query_posts(
                 payload_posts.append(_build_artwork_payload(post))
             elif post.kind == "playlist":
                 payload_posts.append(_build_playlist_payload(post, db))
-        
+
         response = QueryPostsResponse(
             request_id=request.request_id,
             posts=payload_posts,
             next_cursor=next_cursor,
             has_more=has_more,
         )
-        
+
         # Enforce payload size limit (128KiB)
         response_dict = response.model_dump(mode="json")
         response_dict = _trim_posts_payload_to_limit(response_dict)
 
         # Send response
-        response_topic = f"makapix/player/{player.player_key}/response/{request.request_id}"
+        response_topic = (
+            f"makapix/player/{player.player_key}/response/{request.request_id}"
+        )
         publish(
             topic=response_topic,
             payload=response_dict,
             qos=1,
             retain=False,
         )
-        
-        logger.info(f"Sent query_posts response to player {player.player_key}: {len(payload_posts)} posts")
-        
+
+        logger.info(
+            f"Sent query_posts response to player {player.player_key}: {len(payload_posts)} posts"
+        )
+
     except Exception as e:
         logger.error(f"Error handling query_posts: {e}", exc_info=True)
         _send_error_response(
@@ -471,8 +498,20 @@ def _handle_get_post(
             )
             return
 
+        # Check if post was deleted by user
+        if post.deleted_by_user:
+            _send_error_response(
+                player.player_key,
+                request.request_id,
+                "Post has been deleted",
+                "deleted",
+            )
+            return
+
         # Visibility (same logic as query_posts)
-        is_moderator = "moderator" in player.owner.roles or "owner" in player.owner.roles
+        is_moderator = (
+            "moderator" in player.owner.roles or "owner" in player.owner.roles
+        )
         if not post.visible:
             _send_error_response(
                 player.player_key,
@@ -519,7 +558,9 @@ def _handle_get_post(
 
         response_dict = response.model_dump(mode="json")
 
-        response_topic = f"makapix/player/{player.player_key}/response/{request.request_id}"
+        response_topic = (
+            f"makapix/player/{player.player_key}/response/{request.request_id}"
+        )
         publish(
             topic=response_topic,
             payload=response_dict,
@@ -535,6 +576,7 @@ def _handle_get_post(
             "internal_error",
         )
 
+
 def _handle_submit_reaction(
     player: models.Player,
     request: SubmitReactionRequest,
@@ -542,7 +584,7 @@ def _handle_submit_reaction(
 ) -> None:
     """
     Handle submit_reaction request.
-    
+
     Args:
         player: Authenticated player instance
         request: Parsed request
@@ -559,10 +601,10 @@ def _handle_submit_reaction(
                 "invalid_emoji",
             )
             return
-        
+
         # Check if post exists
         post = db.query(models.Post).filter(models.Post.id == request.post_id).first()
-        
+
         if not post:
             _send_error_response(
                 player.player_key,
@@ -571,7 +613,17 @@ def _handle_submit_reaction(
                 "not_found",
             )
             return
-        
+
+        # Check if post was deleted by user
+        if post.deleted_by_user:
+            _send_error_response(
+                player.player_key,
+                request.request_id,
+                "Post has been deleted",
+                "deleted",
+            )
+            return
+
         # Check if reaction already exists (idempotent)
         existing = (
             db.query(models.Reaction)
@@ -582,11 +634,13 @@ def _handle_submit_reaction(
             )
             .first()
         )
-        
+
         if existing:
             # Already exists, return success
             response = SubmitReactionResponse(request_id=request.request_id)
-            response_topic = f"makapix/player/{player.player_key}/response/{request.request_id}"
+            response_topic = (
+                f"makapix/player/{player.player_key}/response/{request.request_id}"
+            )
             publish(
                 topic=response_topic,
                 payload=response.model_dump(mode="json"),
@@ -595,7 +649,7 @@ def _handle_submit_reaction(
             )
             logger.debug(f"Reaction already exists for post {request.post_id}")
             return
-        
+
         # Check reaction limit (max 5 per user per post)
         reaction_count = (
             db.query(func.count(models.Reaction.id))
@@ -605,7 +659,7 @@ def _handle_submit_reaction(
             )
             .scalar()
         )
-        
+
         if reaction_count >= 5:
             _send_error_response(
                 player.player_key,
@@ -614,7 +668,7 @@ def _handle_submit_reaction(
                 "reaction_limit_exceeded",
             )
             return
-        
+
         # Create reaction
         reaction = models.Reaction(
             post_id=request.post_id,
@@ -623,19 +677,23 @@ def _handle_submit_reaction(
         )
         db.add(reaction)
         db.commit()
-        
+
         # Send success response
         response = SubmitReactionResponse(request_id=request.request_id)
-        response_topic = f"makapix/player/{player.player_key}/response/{request.request_id}"
+        response_topic = (
+            f"makapix/player/{player.player_key}/response/{request.request_id}"
+        )
         publish(
             topic=response_topic,
             payload=response.model_dump(mode="json"),
             qos=1,
             retain=False,
         )
-        
-        logger.info(f"Added reaction '{emoji}' to post {request.post_id} from player {player.player_key}")
-        
+
+        logger.info(
+            f"Added reaction '{emoji}' to post {request.post_id} from player {player.player_key}"
+        )
+
     except Exception as e:
         logger.error(f"Error handling submit_reaction: {e}", exc_info=True)
         db.rollback()
@@ -654,7 +712,7 @@ def _handle_revoke_reaction(
 ) -> None:
     """
     Handle revoke_reaction request.
-    
+
     Args:
         player: Authenticated player instance
         request: Parsed request
@@ -671,25 +729,29 @@ def _handle_revoke_reaction(
             )
             .first()
         )
-        
+
         if reaction:
             db.delete(reaction)
             db.commit()
-            logger.info(f"Revoked reaction '{request.emoji}' from post {request.post_id} for player {player.player_key}")
+            logger.info(
+                f"Revoked reaction '{request.emoji}' from post {request.post_id} for player {player.player_key}"
+            )
         else:
             # Idempotent - return success even if reaction didn't exist
             logger.debug(f"No reaction to revoke for post {request.post_id}")
-        
+
         # Send success response
         response = RevokeReactionResponse(request_id=request.request_id)
-        response_topic = f"makapix/player/{player.player_key}/response/{request.request_id}"
+        response_topic = (
+            f"makapix/player/{player.player_key}/response/{request.request_id}"
+        )
         publish(
             topic=response_topic,
             payload=response.model_dump(mode="json"),
             qos=1,
             retain=False,
         )
-        
+
     except Exception as e:
         logger.error(f"Error handling revoke_reaction: {e}", exc_info=True)
         db.rollback()
@@ -708,7 +770,7 @@ def _handle_get_comments(
 ) -> None:
     """
     Handle get_comments request.
-    
+
     Args:
         player: Authenticated player instance
         request: Parsed request
@@ -721,18 +783,20 @@ def _handle_get_comments(
             .options(joinedload(models.Comment.author))
             .filter(models.Comment.post_id == request.post_id)
         )
-        
+
         # Filter by moderation status
-        is_moderator = "moderator" in player.owner.roles or "owner" in player.owner.roles
+        is_moderator = (
+            "moderator" in player.owner.roles or "owner" in player.owner.roles
+        )
         if not is_moderator:
             query = query.filter(~models.Comment.hidden_by_mod)
-        
+
         # Filter by depth (max 2)
         query = query.filter(models.Comment.depth <= 2)
-        
+
         # Order by creation time
         query = query.order_by(models.Comment.created_at.asc())
-        
+
         # Apply cursor pagination
         offset = 0
         if request.cursor:
@@ -740,22 +804,22 @@ def _handle_get_comments(
                 offset = int(request.cursor)
             except ValueError:
                 logger.warning(f"Invalid cursor: {request.cursor}")
-        
+
         query = query.offset(offset).limit(request.limit + 1)  # +1 to check if more
-        
+
         # Execute query
         comments = query.all()
-        
+
         # Check if there are more results
         has_more = len(comments) > request.limit
         if has_more:
-            comments = comments[:request.limit]
-        
+            comments = comments[: request.limit]
+
         # Calculate next cursor
         next_cursor = None
         if has_more:
             next_cursor = str(offset + request.limit)
-        
+
         # Build comment summaries
         # Note: Deleted comments are filtered in a simplified way here.
         # A full implementation would require checking if deleted comments have children
@@ -769,7 +833,7 @@ def _handle_get_comments(
             # 3. Mark deleted comments with a placeholder message
             if comment.deleted_by_owner:
                 continue
-            
+
             comment_summaries.append(
                 CommentSummary(
                     comment_id=comment.id,
@@ -782,7 +846,7 @@ def _handle_get_comments(
                     deleted=comment.deleted_by_owner,
                 )
             )
-        
+
         # Build response
         response = GetCommentsResponse(
             request_id=request.request_id,
@@ -790,18 +854,22 @@ def _handle_get_comments(
             next_cursor=next_cursor,
             has_more=has_more,
         )
-        
+
         # Send response
-        response_topic = f"makapix/player/{player.player_key}/response/{request.request_id}"
+        response_topic = (
+            f"makapix/player/{player.player_key}/response/{request.request_id}"
+        )
         publish(
             topic=response_topic,
             payload=response.model_dump(mode="json"),
             qos=1,
             retain=False,
         )
-        
-        logger.info(f"Sent comments response to player {player.player_key}: {len(comment_summaries)} comments")
-        
+
+        logger.info(
+            f"Sent comments response to player {player.player_key}: {len(comment_summaries)} comments"
+        )
+
     except Exception as e:
         logger.error(f"Error handling get_comments: {e}", exc_info=True)
         _send_error_response(
@@ -812,27 +880,34 @@ def _handle_get_comments(
         )
 
 
-def _on_request_message(client: mqtt_client.Client, userdata: Any, msg: mqtt_client.MQTTMessage) -> None:
+def _on_request_message(
+    client: mqtt_client.Client, userdata: Any, msg: mqtt_client.MQTTMessage
+) -> None:
     """
     Handle incoming player request messages.
-    
+
     Topic pattern: makapix/player/{player_key}/request/{request_id}
     """
     try:
         # Parse topic to extract player_key
         parts = msg.topic.split("/")
-        if len(parts) != 5 or parts[0] != "makapix" or parts[1] != "player" or parts[3] != "request":
+        if (
+            len(parts) != 5
+            or parts[0] != "makapix"
+            or parts[1] != "player"
+            or parts[3] != "request"
+        ):
             logger.warning(f"Invalid request topic format: {msg.topic}")
             return
-        
+
         player_key_str = parts[2]
-        
+
         try:
             player_key = UUID(player_key_str)
         except ValueError:
             logger.warning(f"Invalid player_key in topic: {player_key_str}")
             return
-        
+
         # Parse payload
         try:
             payload = json.loads(msg.payload.decode("utf-8"))
@@ -846,20 +921,22 @@ def _on_request_message(client: mqtt_client.Client, userdata: Any, msg: mqtt_cli
                 "invalid_json",
             )
             return
-        
+
         request_type = payload.get("request_type")
         request_id = payload.get("request_id", "unknown")
-        
+
         if not request_type:
             logger.warning("Request missing request_type")
-            _send_error_response(player_key, request_id, "Missing request_type", "invalid_request")
+            _send_error_response(
+                player_key, request_id, "Missing request_type", "invalid_request"
+            )
             return
-        
+
         # Authenticate player
         db: Session = next(get_session())
         try:
             player = _authenticate_player(player_key, db)
-            
+
             if not player:
                 _send_error_response(
                     player_key,
@@ -868,7 +945,7 @@ def _on_request_message(client: mqtt_client.Client, userdata: Any, msg: mqtt_cli
                     "authentication_failed",
                 )
                 return
-            
+
             # Route request to appropriate handler
             if request_type == "query_posts":
                 request_obj = QueryPostsRequest(**payload)
@@ -893,7 +970,7 @@ def _on_request_message(client: mqtt_client.Client, userdata: Any, msg: mqtt_cli
                     f"Unknown request type: {request_type}",
                     "unknown_request_type",
                 )
-        
+
         except Exception as e:
             logger.error(f"Error processing request: {e}", exc_info=True)
             _send_error_response(
@@ -904,7 +981,7 @@ def _on_request_message(client: mqtt_client.Client, userdata: Any, msg: mqtt_cli
             )
         finally:
             db.close()
-    
+
     except Exception as e:
         logger.error(f"Unexpected error in request handler: {e}", exc_info=True)
 
@@ -912,25 +989,25 @@ def _on_request_message(client: mqtt_client.Client, userdata: Any, msg: mqtt_cli
 def start_request_subscriber() -> None:
     """Start MQTT subscriber for player requests."""
     global _request_client
-    
+
     with _request_client_lock:
         if _request_client is not None and _request_client.is_connected():
             logger.info("Request subscriber already running")
             return
-        
+
         try:
             client = mqtt_client.Client(
                 callback_api_version=mqtt_client.CallbackAPIVersion.VERSION2,
                 client_id=f"player-request-subscriber-{os.getpid()}",
                 protocol=mqtt_client.MQTTv5,
             )
-            
+
             # Set username/password for api-server
             username = os.getenv("MQTT_USERNAME", "api-server")
             password = os.getenv("MQTT_PASSWORD", "")
             if username:
                 client.username_pw_set(username, password)
-            
+
             # Internal connection uses port 1883 (no TLS required within Docker network)
             use_tls = os.getenv("MQTT_TLS_ENABLED", "false").lower() == "true"
             if use_tls:
@@ -941,7 +1018,7 @@ def start_request_subscriber() -> None:
                     client.tls_set()
                     client.tls_insecure_set(True)
                     logger.warning("MQTT TLS insecure mode enabled (development only)")
-            
+
             def on_connect(client, userdata, flags, reason_code, properties):
                 if reason_code == 0:
                     logger.info("Player request subscriber connected to MQTT broker")
@@ -950,25 +1027,27 @@ def start_request_subscriber() -> None:
                     logger.info("Subscribed to makapix/player/+/request/+")
                 else:
                     logger.error(f"Request subscriber connection failed: {reason_code}")
-            
-            def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
+
+            def on_disconnect(
+                client, userdata, disconnect_flags, reason_code, properties
+            ):
                 logger.warning(f"Request subscriber disconnected: {reason_code}")
-            
+
             client.on_connect = on_connect
             client.on_disconnect = on_disconnect
             client.on_message = _on_request_message
-            
+
             # Use internal port 1883
             host = os.getenv("MQTT_BROKER_HOST", "mqtt")
             port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
-            
+
             logger.info(f"Connecting request subscriber to {host}:{port}")
             client.connect(host, port, keepalive=60)
             client.loop_start()
-            
+
             _request_client = client
             logger.info("Player request subscriber started")
-            
+
         except Exception as e:
             logger.error(f"Failed to start request subscriber: {e}", exc_info=True)
 
@@ -976,7 +1055,7 @@ def start_request_subscriber() -> None:
 def stop_request_subscriber() -> None:
     """Stop MQTT subscriber for player requests."""
     global _request_client
-    
+
     with _request_client_lock:
         if _request_client:
             _request_client.loop_stop()

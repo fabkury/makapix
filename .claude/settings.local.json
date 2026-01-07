@@ -15,7 +15,9 @@
       "Bash(docker system:*)",
       "Bash(docker images:*)",
       "Bash(docker builder prune:*)",
-      "Bash(npm cache clean:*)"
+      "Bash(npm cache clean:*)",
+      "Bash(source .env)",
+      "Bash(echo:*)"
     ],
     "deny": [],
     "ask": []
