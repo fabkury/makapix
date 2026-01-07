@@ -200,10 +200,10 @@ export default function HomePage() {
 
   // Initial load
   useEffect(() => {
-    if (API_BASE_URL && isAuthenticated) {
+    if (isAuthenticated) {
       loadPosts();
     }
-  }, [API_BASE_URL, isAuthenticated, loadPosts]);
+  }, [isAuthenticated, loadPosts]);
 
   // Intersection Observer for infinite scroll
   useEffect(() => {
@@ -279,8 +279,8 @@ export default function HomePage() {
         )}
 
         {posts.length > 0 && (
-          <CardGrid 
-            posts={posts} 
+          <CardGrid
+            posts={posts}
             API_BASE_URL={API_BASE_URL}
             source={{ type: 'recent' }}
             cursor={nextCursor}

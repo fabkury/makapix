@@ -86,13 +86,16 @@ export default function RecommendedPage() {
     if (loadingRef.current || (cursor !== null && !hasMoreRef.current)) {
       return;
     }
-    
+
     loadingRef.current = true;
     setLoading(true);
     setError(null);
-    
+
     try {
-      const url = `${API_BASE_URL}/api/feed/promoted?limit=${pageSizeRef.current}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      let url = `${API_BASE_URL}/api/feed/promoted?limit=${pageSizeRef.current}`;
+      if (cursor) {
+        url += `&cursor=${encodeURIComponent(cursor)}`;
+      }
       const response = await authenticatedFetch(url);
       
       if (response.status === 401) {
@@ -195,8 +198,8 @@ export default function RecommendedPage() {
         )}
 
         {posts.length > 0 && (
-          <CardGrid 
-            posts={posts} 
+          <CardGrid
+            posts={posts}
             API_BASE_URL={API_BASE_URL}
             source={{ type: 'recommended' }}
             cursor={nextCursor}

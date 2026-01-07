@@ -933,8 +933,8 @@ export default function UserProfilePage() {
           )}
 
           {posts.length > 0 && (
-            <CardGrid 
-              posts={posts} 
+            <CardGrid
+              posts={posts}
               API_BASE_URL={API_BASE_URL}
               source={{ type: 'profile', id: user ? String(user.id) : undefined }}
               cursor={nextCursor}

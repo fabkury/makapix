@@ -43,7 +43,13 @@ interface CardGridProps {
   prevCursor?: string | null;
 }
 
-export default function CardGrid({ posts, API_BASE_URL: _API_BASE_URL, source, cursor = null, prevCursor }: CardGridProps) {
+export default function CardGrid({
+  posts,
+  API_BASE_URL: _API_BASE_URL,
+  source,
+  cursor = null,
+  prevCursor,
+}: CardGridProps) {
   const router = useRouter();
   const playerBarContext = usePlayerBarOptional();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -56,7 +62,7 @@ export default function CardGrid({ posts, API_BASE_URL: _API_BASE_URL, source, c
   const [columnCount, setColumnCount] = useState(1);
   const [superPostId, setSuperPostId] = useState<number | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  
+
   // Calculate synchronized animation delay so all glows stay in phase.
   // This negative delay "jumps" the animation to the correct position in the cycle.
   const [glowAnimationDelay, setGlowAnimationDelay] = useState('0s');
@@ -333,10 +339,12 @@ export default function CardGrid({ posts, API_BASE_URL: _API_BASE_URL, source, c
             getOriginRectForIndex={getOriginRectForIndex}
             onClose={() => setSelectedIndex(null)}
             onNavigateToPost={(idx) => {
+              const post = posts[idx];
+              if (!post) return;
+
+              // Store navigation context for swipe navigation on post page
               handlePostClick(idx);
-              const sqid = posts[idx]?.public_sqid;
-              if (!sqid) return;
-              router.push(`/p/${sqid}`);
+              router.push(`/p/${post.public_sqid}`);
             }}
           />
         )}

@@ -335,6 +335,10 @@ export default function SelectedArtworkOverlay({
   const pressStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const likeInFlightRef = useRef(false);
 
+  // For History API back button handling
+  const closedByPopstateRef = useRef(false);
+  const dismissToOriginAndCloseRef = useRef<() => Promise<void>>(() => Promise.resolve());
+
   const post = posts[selectedIndex];
 
   // Get current origin rect fresh from DOM (can change when scrolling/resizing)
@@ -643,6 +647,36 @@ export default function SelectedArtworkOverlay({
     await Promise.all([flyBack, fadeOut, headerSlideOut, footerSlideUp]);
     onClose();
   }, [backdropControls, clearPressTimer, controls, footerControls, getCurrentOriginRect, headerControls, headerPosition, initialOriginRect, onClose, reduceMotion]);
+
+  // Keep ref updated with latest dismissToOriginAndClose
+  useEffect(() => {
+    dismissToOriginAndCloseRef.current = dismissToOriginAndClose;
+  }, [dismissToOriginAndClose]);
+
+  // Handle browser back button (Android back gesture, etc.)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    // Push a history state when overlay opens
+    history.pushState({ overlayOpen: true }, '');
+
+    const handlePopstate = () => {
+      // Back button was pressed - close the overlay
+      closedByPopstateRef.current = true;
+      void dismissToOriginAndCloseRef.current();
+    };
+
+    window.addEventListener('popstate', handlePopstate);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopstate);
+      // If we're unmounting but NOT due to popstate (e.g., ESC, backdrop click, swipe, or navigation),
+      // we need to clean up the history entry we pushed
+      if (!closedByPopstateRef.current) {
+        history.back();
+      }
+    };
+  }, []);
 
   const snapBackToTarget = useCallback(async () => {
     setPhase('flying-in');

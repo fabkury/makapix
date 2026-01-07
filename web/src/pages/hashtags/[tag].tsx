@@ -153,14 +153,14 @@ export default function HashtagPage() {
 
   // Load posts when tag changes
   useEffect(() => {
-    if (tag && typeof tag === 'string') {
-      setPosts([]);
-      setNextCursor(null);
-      nextCursorRef.current = null;
-      hasMoreRef.current = true;
-      setHasMore(true);
-      loadPosts(tag);
-    }
+    if (!tag || typeof tag !== 'string') return;
+
+    setPosts([]);
+    setNextCursor(null);
+    nextCursorRef.current = null;
+    hasMoreRef.current = true;
+    setHasMore(true);
+    loadPosts(tag);
   }, [tag, loadPosts]);
 
   // Reset posts when filters change
@@ -254,8 +254,8 @@ export default function HashtagPage() {
         )}
 
         {posts.length > 0 && (
-          <CardGrid 
-            posts={posts} 
+          <CardGrid
+            posts={posts}
             API_BASE_URL={API_BASE_URL}
             source={{ type: 'hashtag', id: hashtagName }}
             cursor={nextCursor}
