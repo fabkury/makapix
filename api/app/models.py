@@ -1352,3 +1352,68 @@ class SocialNotification(Base):
     )
     actor = relationship("User", foreign_keys=[actor_id])
     post = relationship("Post")
+
+
+# ============================================================================
+# POST MANAGEMENT DASHBOARD (PMD)
+# ============================================================================
+
+
+class BatchDownloadRequest(Base):
+    """
+    Batch Download Request (BDR) for PMD.
+
+    Tracks user requests to download multiple artworks as a ZIP file.
+    ZIP files are stored in /vault/bdr/{user_sqid}/{id}.zip
+
+    NOTE: Playlist posts are excluded from PMD at this time. This feature
+    is deferred to a future release. The server-side query filters out
+    posts with kind='playlist'.
+    """
+
+    __tablename__ = "batch_download_requests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    # Request parameters
+    post_ids = Column(ARRAY(Integer), nullable=False)  # List of post IDs to include
+    include_comments = Column(Boolean, nullable=False, default=False)
+    include_reactions = Column(Boolean, nullable=False, default=False)
+    send_email = Column(Boolean, nullable=False, default=False)
+
+    # Status tracking
+    # Possible statuses: pending, processing, ready, failed, expired
+    status = Column(String(20), nullable=False, default="pending", index=True)
+    error_message = Column(Text, nullable=True)  # Error details if status='failed'
+
+    # File information (populated when ready)
+    file_path = Column(
+        String(500), nullable=True
+    )  # Relative path: bdr/{user_sqid}/{id}.zip
+    file_size_bytes = Column(BigInteger, nullable=True)
+    artwork_count = Column(Integer, nullable=False)  # Number of artworks requested
+
+    # Timestamps
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+    started_at = Column(DateTime(timezone=True), nullable=True)  # When processing started
+    completed_at = Column(
+        DateTime(timezone=True), nullable=True
+    )  # When ready/failed
+    expires_at = Column(
+        DateTime(timezone=True), nullable=True, index=True
+    )  # When download link expires
+
+    # Relationships
+    user = relationship(
+        "User", backref=backref("batch_download_requests", passive_deletes=True)
+    )
+
+    __table_args__ = (
+        Index("ix_bdr_user_created", user_id, created_at.desc()),
+        Index("ix_bdr_status_expires", status, expires_at),
+    )

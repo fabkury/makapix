@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 from typing import Any, Generic, Literal, TypeVar
 from uuid import UUID
 
@@ -1616,3 +1617,99 @@ class SocialNotificationUnreadCount(BaseModel):
     """Response for unread notification count."""
 
     unread_count: int
+
+
+# ============================================================================
+# POST MANAGEMENT DASHBOARD (PMD) SCHEMAS
+# ============================================================================
+
+
+class PMDPostItem(BaseModel):
+    """Single post item for PMD table."""
+
+    id: int
+    public_sqid: str
+    title: str
+    description: str | None = None
+    created_at: datetime
+    width: int
+    height: int
+    frame_count: int
+    file_format: str | None = None
+    file_bytes: int | None = None
+    art_url: str
+    hidden_by_user: bool
+    reaction_count: int
+    comment_count: int
+    view_count: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PMDPostsResponse(BaseModel):
+    """Response for PMD posts list."""
+
+    items: list[PMDPostItem]
+    next_cursor: str | None = None
+    total_count: int
+
+
+class BatchActionType(str, Enum):
+    """Batch action types for PMD."""
+
+    HIDE = "hide"
+    UNHIDE = "unhide"
+    DELETE = "delete"
+
+
+class BatchActionRequest(BaseModel):
+    """Request for batch post action."""
+
+    action: BatchActionType
+    post_ids: list[int] = Field(..., min_length=1, max_length=128)
+
+
+class BatchActionResponse(BaseModel):
+    """Response for batch post action."""
+
+    success: bool
+    affected_count: int
+    message: str
+
+
+class CreateBDRRequest(BaseModel):
+    """Request to create a batch download request."""
+
+    post_ids: list[int] = Field(..., min_length=1, max_length=128)
+    include_comments: bool = False
+    include_reactions: bool = False
+    send_email: bool = False
+
+
+class CreateBDRResponse(BaseModel):
+    """Response for batch download request creation."""
+
+    id: str
+    status: str
+    artwork_count: int
+    created_at: datetime
+    message: str
+
+
+class BDRItem(BaseModel):
+    """Batch download request item."""
+
+    id: str
+    status: str  # pending, processing, ready, failed, expired
+    artwork_count: int
+    created_at: datetime
+    completed_at: datetime | None = None
+    expires_at: datetime | None = None
+    error_message: str | None = None
+    download_url: str | None = None
+
+
+class BDRListResponse(BaseModel):
+    """Response for batch download request list."""
+
+    items: list[BDRItem]

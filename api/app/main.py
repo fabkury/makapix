@@ -26,6 +26,7 @@ from .routers import (
     mqtt,
     player,
     playlists,
+    pmd,
     posts,
     profiles,
     reactions,
@@ -211,6 +212,7 @@ app.include_router(tracking.router)
 app.include_router(relay.router)
 app.include_router(mqtt.router)
 app.include_router(legacy.router)
+app.include_router(pmd.router)
 
 
 # Mount vault directory for serving uploaded artwork images

@@ -818,14 +818,17 @@ export default function UserProfilePage() {
                   <Link href={`/u/${user.public_sqid}/player`} className="players-btn">
                     📺 Players
                   </Link>
-                  <button 
+                  <button
                     className="edit-profile-btn"
                     onClick={handleEditClick}
                     aria-label="Edit profile"
                   >
                     ✏️
                   </button>
-                  <button 
+                  <Link href={`/u/${user.public_sqid}/posts`} className="pmd-btn" title="Post Management Dashboard">
+                    🗂️
+                  </Link>
+                  <button
                     className="logout-btn"
                     onClick={handleLogout}
                     aria-label="Log out"
@@ -1182,6 +1185,26 @@ export default function UserProfilePage() {
 
         .edit-profile-btn:hover {
           background: var(--accent-cyan);
+          transform: scale(1.05);
+        }
+
+        .pmd-btn {
+          background: var(--bg-tertiary);
+          border: none;
+          border-radius: 8px;
+          padding: 10px 16px;
+          font-size: 1.3rem;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--text-secondary);
+          text-decoration: none;
+        }
+
+        .pmd-btn:hover {
+          background: var(--accent-purple);
           transform: scale(1.05);
         }
 
