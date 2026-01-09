@@ -50,12 +50,12 @@ export function usePMDSSE({
   }, [onError]);
 
   const connect = useCallback(() => {
-    // Don't connect if disabled or already connected
-    if (!enabled || eventSourceRef.current) {
+    // Don't connect if disabled, already connected, or on server
+    if (!enabled || eventSourceRef.current || typeof window === 'undefined') {
       return;
     }
 
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin;
     const url = `${API_BASE_URL}/api/pmd/bdr/sse`;
 
     try {
@@ -132,7 +132,7 @@ export function usePMDSSE({
   }, [enabled, connect, disconnect]);
 
   return {
-    isConnected: eventSourceRef.current?.readyState === EventSource.OPEN,
+    isConnected: typeof window !== 'undefined' && eventSourceRef.current?.readyState === EventSource.OPEN,
     reconnect: connect,
     disconnect,
   };

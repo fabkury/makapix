@@ -157,12 +157,14 @@ services:
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://cache:6379/0}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://cache:6379/0}
       MQTT_CA_FILE: ${MQTT_CA_FILE:-/certs/ca.crt}
+      VAULT_LOCATION: ${VAULT_LOCATION}
     command: python /workspace/worker/worker.py
     volumes:
       - ./api:/workspace/api
       - ./worker:/workspace/worker
       - api_pip_cache:/root/.cache/pip
       - ./mqtt/certs:/certs:ro
+      - ${VAULT_HOST_PATH}:${VAULT_LOCATION}
     depends_on:
       cache:
         condition: service_healthy

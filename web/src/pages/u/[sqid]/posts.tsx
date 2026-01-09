@@ -240,12 +240,76 @@ export default function PostManagementDashboard() {
     [API_BASE_URL]
   );
 
+  // Single post hide/unhide toggle
+  const handleToggleHide = useCallback(
+    async (postId: number) => {
+      const post = posts.find((p) => p.id === postId);
+      if (!post) return;
+
+      const action = post.hidden_by_user ? 'unhide' : 'hide';
+
+      try {
+        const response = await authenticatedFetch(`${API_BASE_URL}/api/pmd/action`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, post_ids: [postId] }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.detail || 'Action failed');
+        }
+
+        // Update local state
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.id === postId ? { ...p, hidden_by_user: !p.hidden_by_user } : p
+          )
+        );
+      } catch (err) {
+        console.error('Toggle hide error:', err);
+        alert(err instanceof Error ? err.message : 'Action failed');
+      }
+    },
+    [API_BASE_URL, posts]
+  );
+
+  // Single post delete
+  const handleDeleteSingle = useCallback(
+    async (postId: number) => {
+      try {
+        const response = await authenticatedFetch(`${API_BASE_URL}/api/pmd/action`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', post_ids: [postId] }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.detail || 'Action failed');
+        }
+
+        // Update local state
+        setPosts((prev) => prev.filter((p) => p.id !== postId));
+        // Clear from selection if selected
+        setSelectedIds((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(postId);
+          return newSet;
+        });
+      } catch (err) {
+        console.error('Delete error:', err);
+        alert(err instanceof Error ? err.message : 'Action failed');
+      }
+    },
+    [API_BASE_URL]
+  );
+
   // BDR request handler
   const handleRequestDownload = useCallback(
     async (
       postIds: number[],
-      includeComments: boolean,
-      includeReactions: boolean,
+      includeCommentsAndReactions: boolean,
       sendEmail: boolean
     ) => {
       setActionLoading(true);
@@ -256,8 +320,8 @@ export default function PostManagementDashboard() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             post_ids: postIds,
-            include_comments: includeComments,
-            include_reactions: includeReactions,
+            include_comments: includeCommentsAndReactions,
+            include_reactions: includeCommentsAndReactions,
             send_email: sendEmail,
           }),
         });
@@ -268,7 +332,6 @@ export default function PostManagementDashboard() {
         }
 
         const result = await response.json();
-        alert(result.message);
 
         // Add to local BDR list
         setBdrs((prev) => [
@@ -378,6 +441,8 @@ export default function PostManagementDashboard() {
             setCurrentPage={setCurrentPage}
             itemsPerPage={itemsPerPage}
             loading={loadingMore}
+            onToggleHide={handleToggleHide}
+            onDelete={handleDeleteSingle}
           />
 
           <BulkActionsPanel
@@ -396,7 +461,7 @@ export default function PostManagementDashboard() {
 
       <style jsx>{`
         .pmd-container {
-          max-width: 1400px;
+          max-width: 1024px;
           margin: 0 auto;
           padding: 24px;
         }
@@ -434,6 +499,23 @@ export default function PostManagementDashboard() {
           border-radius: 8px;
           border: 1px solid rgba(255, 255, 255, 0.1);
           overflow: hidden;
+        }
+
+        @media (max-width: 1024px) {
+          .pmd-container {
+            padding: 0;
+          }
+
+          .pmd-header {
+            padding: 16px;
+            margin-bottom: 0;
+          }
+
+          .pmd-main {
+            border-radius: 0;
+            border-left: none;
+            border-right: none;
+          }
         }
       `}</style>
     </Layout>

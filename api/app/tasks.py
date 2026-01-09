@@ -2493,20 +2493,32 @@ def process_bdr_job(self, bdr_id: str) -> dict[str, Any]:
                     artwork_filename = f"{post.public_sqid}{ext}"
 
                     # Download artwork file
-                    if post.art_url.startswith("/vault/"):
-                        # Local vault file
+                    if post.art_url.startswith("/api/vault/"):
+                        # Local vault file via API path
+                        relative_path = post.art_url.replace("/api/vault/", "")
+                        source_path = vault_base / relative_path
+                        if source_path.exists():
+                            shutil.copy(source_path, artworks_dir / artwork_filename)
+                        else:
+                            logger.warning(f"Vault file not found: {source_path}")
+                            continue
+                    elif post.art_url.startswith("/vault/"):
+                        # Local vault file via direct path
                         source_path = vault_base / post.art_url.lstrip("/vault/")
                         if source_path.exists():
                             shutil.copy(source_path, artworks_dir / artwork_filename)
                         else:
                             logger.warning(f"Vault file not found: {source_path}")
                             continue
-                    else:
+                    elif post.art_url.startswith("http://") or post.art_url.startswith("https://"):
                         # Remote URL (GitHub Pages, etc.)
                         with httpx.Client(timeout=30) as client:
                             response = client.get(post.art_url)
                             response.raise_for_status()
                             (artworks_dir / artwork_filename).write_bytes(response.content)
+                    else:
+                        logger.warning(f"Unknown art_url format: {post.art_url}")
+                        continue
 
                     # Add to metadata
                     metadata["artworks"].append({

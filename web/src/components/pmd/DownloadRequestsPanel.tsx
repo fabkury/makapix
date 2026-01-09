@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { BDRItem } from '../../hooks/usePMDSSE';
+import { authenticatedFetch } from '../../lib/api';
 
 interface DownloadRequestsPanelProps {
   bdrs: BDRItem[];
@@ -33,6 +35,43 @@ const getStatusConfig = (status: BDRItem['status']) => {
 };
 
 export function DownloadRequestsPanel({ bdrs }: DownloadRequestsPanelProps) {
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  const API_BASE_URL =
+    typeof window !== 'undefined'
+      ? process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin
+      : '';
+
+  const handleDownload = async (bdr: BDRItem) => {
+    if (!bdr.download_url) return;
+
+    setDownloadingId(bdr.id);
+    try {
+      const response = await authenticatedFetch(`${API_BASE_URL}${bdr.download_url}`);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Download failed' }));
+        throw new Error(errorData.detail || 'Download failed');
+      }
+
+      // Get the blob and trigger download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `makapix-artworks-${bdr.id.slice(0, 8)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('Download error:', err);
+      alert(err instanceof Error ? err.message : 'Download failed');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   if (bdrs.length === 0) {
     return null;
   }
@@ -82,13 +121,13 @@ export function DownloadRequestsPanel({ bdrs }: DownloadRequestsPanelProps) {
 
               <div className="request-actions">
                 {bdr.status === 'ready' && bdr.download_url && (
-                  <a
-                    href={bdr.download_url}
+                  <button
                     className="download-btn"
-                    download
+                    onClick={() => handleDownload(bdr)}
+                    disabled={downloadingId === bdr.id}
                   >
-                    Download ZIP
-                  </a>
+                    {downloadingId === bdr.id ? 'Downloading...' : 'Download ZIP'}
+                  </button>
                 )}
                 {bdr.status === 'pending' && (
                   <span className="action-note">Queued for processing...</span>
@@ -227,15 +266,22 @@ export function DownloadRequestsPanel({ bdrs }: DownloadRequestsPanelProps) {
           color: white;
           padding: 10px 20px;
           border-radius: 6px;
-          text-decoration: none;
+          border: none;
           font-size: 0.85rem;
           font-weight: 500;
+          cursor: pointer;
           transition: all 0.15s ease;
         }
 
-        .download-btn:hover {
+        .download-btn:hover:not(:disabled) {
           opacity: 0.9;
           transform: translateY(-1px);
+        }
+
+        .download-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+          transform: none;
         }
 
         .action-note {
@@ -265,6 +311,15 @@ export function DownloadRequestsPanel({ bdrs }: DownloadRequestsPanelProps) {
 
         @keyframes spin {
           to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 1024px) {
+          .download-requests-panel {
+            border-radius: 0;
+            border-left: none;
+            border-right: none;
+            margin-top: 0;
+          }
         }
 
         @media (max-width: 640px) {

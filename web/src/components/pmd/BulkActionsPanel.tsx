@@ -8,8 +8,7 @@ interface BulkActionsPanelProps {
   onDelete: () => void;
   onRequestDownload: (
     postIds: number[],
-    includeComments: boolean,
-    includeReactions: boolean,
+    includeCommentsAndReactions: boolean,
     sendEmail: boolean
   ) => void;
   loading: boolean;
@@ -24,9 +23,12 @@ export function BulkActionsPanel({
   onRequestDownload,
   loading,
 }: BulkActionsPanelProps) {
-  const [includeComments, setIncludeComments] = useState(false);
-  const [includeReactions, setIncludeReactions] = useState(false);
+  const [includeCommentsAndReactions, setIncludeCommentsAndReactions] = useState(true);
   const [sendEmail, setSendEmail] = useState(false);
+
+  const isDisabled = selectedCount === 0;
+  const isDeleteDisabled = selectedCount === 0 || selectedCount > 32;
+  const isDownloadDisabled = selectedCount === 0 || selectedCount > 128;
 
   const handleDeleteClick = () => {
     if (selectedCount > 32) {
@@ -45,80 +47,92 @@ export function BulkActionsPanel({
     }
     onRequestDownload(
       Array.from(selectedIds),
-      includeComments,
-      includeReactions,
+      includeCommentsAndReactions,
       sendEmail
     );
   };
 
   return (
     <div className="bulk-actions-panel">
-      <div className="selection-info">
-        <span className="count">{selectedCount}</span> post{selectedCount !== 1 ? 's' : ''} selected
+      {/* Selection state */}
+      <div className="selection-section">
+        <h3>Selection</h3>
+        <div className="selection-info">
+          {selectedCount > 0 ? (
+            <>
+              <span className="count">{selectedCount}</span> artwork
+              {selectedCount !== 1 ? 's' : ''} selected
+            </>
+          ) : (
+            <>No artworks selected</>
+          )}
+        </div>
       </div>
 
+      {/* Batch actions */}
       <div className="actions-section">
         <h3>Batch Actions</h3>
         <div className="action-buttons">
           <button
             className="action-btn"
             onClick={onHide}
-            disabled={selectedCount === 0 || loading}
+            disabled={isDisabled || loading}
             title="Hide selected posts from public view"
           >
-            Hide
+            🙈 Hide
           </button>
           <button
             className="action-btn"
             onClick={onUnhide}
-            disabled={selectedCount === 0 || loading}
+            disabled={isDisabled || loading}
             title="Make selected posts visible again"
           >
-            Unhide
+            👁️ Unhide
           </button>
           <button
             className="action-btn danger"
             onClick={handleDeleteClick}
-            disabled={selectedCount === 0 || selectedCount > 32 || loading}
+            disabled={isDeleteDisabled || loading}
             title={selectedCount > 32 ? 'Max 32 posts per delete' : 'Delete selected posts'}
           >
-            Delete {selectedCount > 32 && '(max 32)'}
+            🗑️ Delete {selectedCount > 32 && '(max 32)'}
           </button>
         </div>
       </div>
 
+      {/* Batch download */}
       <div className="download-section">
         <h3>Batch Download</h3>
+        <ul className="download-info">
+          <li>Selected artworks will be put into one zip file for download.</li>
+          <li>Maximum 128 artworks per batch and 8 batches per day.</li>
+          <li>Most requests are ready within minutes.</li>
+          <li>Once the link is available, it lasts for 7 days.</li>
+        </ul>
         <div className="download-options">
           <label className="checkbox-label">
             <input
               type="checkbox"
-              checked={includeComments}
-              onChange={(e) => setIncludeComments(e.target.checked)}
+              checked={includeCommentsAndReactions}
+              onChange={(e) => setIncludeCommentsAndReactions(e.target.checked)}
+              disabled={isDisabled}
             />
-            Include comments
-          </label>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={includeReactions}
-              onChange={(e) => setIncludeReactions(e.target.checked)}
-            />
-            Include reactions
+            Include received comments and reactions
           </label>
           <label className="checkbox-label">
             <input
               type="checkbox"
               checked={sendEmail}
               onChange={(e) => setSendEmail(e.target.checked)}
+              disabled={isDisabled}
             />
-            Email me when ready
+            Send me an e-mail when the link is ready
           </label>
         </div>
         <button
           className="action-btn primary"
           onClick={handleDownloadClick}
-          disabled={selectedCount === 0 || selectedCount > 128 || loading}
+          disabled={isDownloadDisabled || loading}
           title={selectedCount > 128 ? 'Max 128 posts per download' : 'Request download ZIP'}
         >
           {loading ? (
@@ -127,10 +141,9 @@ export function BulkActionsPanel({
               Processing...
             </>
           ) : (
-            <>Request Download {selectedCount > 128 && '(max 128)'}</>
+            <>📥 Request Download {selectedCount > 128 && '(max 128)'}</>
           )}
         </button>
-        <p className="limit-info">Daily limit: 8 requests per day</p>
       </div>
 
       <style jsx>{`
@@ -140,28 +153,36 @@ export function BulkActionsPanel({
           background: var(--bg-secondary);
         }
 
-        .selection-info {
-          font-size: 0.9rem;
-          color: var(--text-secondary);
-          margin-bottom: 16px;
+        .selection-section,
+        .actions-section,
+        .download-section {
+          margin-bottom: 20px;
         }
 
-        .selection-info .count {
-          font-weight: 600;
-          color: var(--accent-cyan);
-          font-size: 1.1rem;
+        .download-section {
+          margin-bottom: 0;
+          padding-top: 16px;
+          border-top: 1px solid rgba(255, 255, 255, 0.05);
         }
 
         h3 {
-          font-size: 0.85rem;
-          color: var(--text-secondary);
+          font-size: 0.75rem;
+          color: var(--text-muted);
           text-transform: uppercase;
           margin: 0 0 12px 0;
           font-weight: 600;
+          letter-spacing: 0.5px;
         }
 
-        .actions-section {
-          margin-bottom: 20px;
+        .selection-info {
+          font-size: 0.9rem;
+          color: var(--text-secondary);
+        }
+
+        .selection-info .count {
+          font-weight: 700;
+          font-size: 1.25rem;
+          color: var(--accent-cyan);
         }
 
         .action-buttons {
@@ -216,22 +237,29 @@ export function BulkActionsPanel({
           transform: translateY(-1px);
         }
 
-        .download-section {
-          padding-top: 16px;
-          border-top: 1px solid rgba(255, 255, 255, 0.05);
+        .download-info {
+          margin: 0 0 16px 0;
+          padding-left: 20px;
+          font-size: 0.85rem;
+          color: var(--text-secondary);
+          line-height: 1.6;
+        }
+
+        .download-info li {
+          margin-bottom: 4px;
         }
 
         .download-options {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+          gap: 10px;
           margin-bottom: 16px;
         }
 
         .checkbox-label {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 10px;
           font-size: 0.85rem;
           color: var(--text-secondary);
           cursor: pointer;
@@ -241,17 +269,16 @@ export function BulkActionsPanel({
           color: var(--text-primary);
         }
 
-        .checkbox-label input[type="checkbox"] {
-          width: 16px;
-          height: 16px;
+        .checkbox-label input[type='checkbox'] {
+          width: 18px;
+          height: 18px;
           cursor: pointer;
           accent-color: var(--accent-cyan);
         }
 
-        .limit-info {
-          font-size: 0.75rem;
-          color: var(--text-muted);
-          margin: 8px 0 0;
+        .checkbox-label input[type='checkbox']:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
         }
 
         .spinner {
@@ -264,7 +291,9 @@ export function BulkActionsPanel({
         }
 
         @keyframes spin {
-          to { transform: rotate(360deg); }
+          to {
+            transform: rotate(360deg);
+          }
         }
 
         @media (max-width: 640px) {

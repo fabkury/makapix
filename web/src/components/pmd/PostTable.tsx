@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import Image from 'next/image';
 
 export interface PMDPost {
@@ -27,16 +27,54 @@ interface PostTableProps {
   setCurrentPage: (page: number) => void;
   itemsPerPage: number;
   loading: boolean;
+  onToggleHide: (id: number) => void;
+  onDelete: (id: number) => void;
 }
 
-type SortKey = 'title' | 'created_at' | 'width' | 'height' | 'frame_count' | 'file_format' | 'file_bytes' | 'reaction_count' | 'comment_count' | 'view_count' | 'hidden_by_user';
+type SortKey =
+  | 'title'
+  | 'description'
+  | 'created_at'
+  | 'width'
+  | 'height'
+  | 'frame_count'
+  | 'file_format'
+  | 'file_bytes'
+  | 'reaction_count'
+  | 'comment_count'
+  | 'view_count'
+  | 'hidden_by_user';
 type SortOrder = 'asc' | 'desc';
 
-const formatBytes = (bytes: number | null): string => {
-  if (bytes === null) return '-';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+// Format file size in binary prefixes (KiB, MiB)
+const formatFileSize = (bytes: number | null): string => {
+  if (bytes === null || bytes === undefined) return '-';
+  const kib = 1024;
+  const mib = kib * 1024;
+  if (bytes >= mib) {
+    return `${Math.round((bytes / mib) * 10) / 10} MiB`;
+  } else if (bytes >= kib) {
+    return `${Math.round(bytes / kib)} KiB`;
+  }
+  return `${bytes} B`;
+};
+
+// Format numbers with metric prefixes
+const formatMetricNumber = (num: number): string => {
+  if (num < 1000) return num.toString();
+  const units = [
+    { value: 1e12, symbol: 'T' },
+    { value: 1e9, symbol: 'B' },
+    { value: 1e6, symbol: 'M' },
+    { value: 1e3, symbol: 'K' },
+  ];
+  for (const unit of units) {
+    if (num >= unit.value) {
+      const scaled = num / unit.value;
+      return parseFloat(scaled.toPrecision(3)) + unit.symbol;
+    }
+  }
+  return num.toString();
 };
 
 const formatDate = (dateStr: string): string => {
@@ -56,28 +94,82 @@ export function PostTable({
   setCurrentPage,
   itemsPerPage,
   loading,
+  onToggleHide,
+  onDelete,
 }: PostTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('created_at');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [goToPageInput, setGoToPageInput] = useState('');
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+
+  // Column widths state for resizing
+  const [columnWidths, setColumnWidths] = useState({
+    checkbox: 40,
+    visibility: 50,
+    thumbnail: 48,
+    title: 200,
+    description: 250,
+    date: 110,
+    frames: 50,
+    format: 60,
+    size: 80,
+    width: 50,
+    height: 50,
+    reactions: 50,
+    comments: 50,
+    views: 50,
+    delete: 50,
+  });
+
+  // Resize handling
+  const resizingColumn = useRef<string | null>(null);
+  const startX = useRef(0);
+  const startWidth = useRef(0);
+
+  const handleResizeMouseDown = (e: React.MouseEvent, columnKey: string) => {
+    resizingColumn.current = columnKey;
+    startX.current = e.clientX;
+    startWidth.current = columnWidths[columnKey as keyof typeof columnWidths];
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizingColumn.current) return;
+      const diff = e.clientX - startX.current;
+      const newWidth = Math.max(40, startWidth.current + diff);
+      setColumnWidths((prev) => ({
+        ...prev,
+        [resizingColumn.current!]: newWidth,
+      }));
+    };
+
+    const handleMouseUp = () => {
+      resizingColumn.current = null;
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
 
   // Sort posts
   const sortedPosts = useMemo(() => {
     const sorted = [...posts].sort((a, b) => {
-      let aVal = a[sortKey];
-      let bVal = b[sortKey];
+      let aVal: any = a[sortKey];
+      let bVal: any = b[sortKey];
 
-      // Handle nulls
-      if (aVal === null) aVal = '' as any;
-      if (bVal === null) bVal = '' as any;
+      if (aVal === null) aVal = '';
+      if (bVal === null) bVal = '';
 
-      // String comparison for text fields
       if (typeof aVal === 'string' && typeof bVal === 'string') {
-        return sortOrder === 'asc'
-          ? aVal.localeCompare(bVal)
-          : bVal.localeCompare(aVal);
+        return sortOrder === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
       }
 
-      // Numeric comparison
       const aNum = Number(aVal);
       const bNum = Number(bVal);
       return sortOrder === 'asc' ? aNum - bNum : bNum - aNum;
@@ -91,27 +183,34 @@ export function PostTable({
   const paginatedPosts = sortedPosts.slice(startIndex, startIndex + itemsPerPage);
 
   // Selection handlers
-  const handleSelectAll = () => {
-    const pageIds = paginatedPosts.map((p) => p.id);
-    const allSelected = pageIds.every((id) => selectedIds.has(id));
-
-    const newSelected = new Set(selectedIds);
-    if (allSelected) {
-      pageIds.forEach((id) => newSelected.delete(id));
+  const handleSelectOne = (id: number, checked: boolean) => {
+    const newSet = new Set(selectedIds);
+    if (checked) {
+      newSet.add(id);
     } else {
-      pageIds.forEach((id) => newSelected.add(id));
+      newSet.delete(id);
     }
-    setSelectedIds(newSelected);
+    setSelectedIds(newSet);
   };
 
-  const handleSelect = (id: number) => {
-    const newSelected = new Set(selectedIds);
-    if (newSelected.has(id)) {
-      newSelected.delete(id);
-    } else {
-      newSelected.add(id);
-    }
-    setSelectedIds(newSelected);
+  const handleSelectAllCurrentPage = () => {
+    const newSet = new Set(selectedIds);
+    paginatedPosts.forEach((p) => newSet.add(p.id));
+    setSelectedIds(newSet);
+  };
+
+  const handleUnselectAllCurrentPage = () => {
+    const newSet = new Set(selectedIds);
+    paginatedPosts.forEach((p) => newSet.delete(p.id));
+    setSelectedIds(newSet);
+  };
+
+  const handleSelectAllPages = () => {
+    setSelectedIds(new Set(posts.map((p) => p.id)));
+  };
+
+  const handleUnselectAllPages = () => {
+    setSelectedIds(new Set());
   };
 
   const handleSort = (key: SortKey) => {
@@ -123,237 +222,634 @@ export function PostTable({
     }
   };
 
-  const allPageSelected = paginatedPosts.length > 0 && paginatedPosts.every((p) => selectedIds.has(p.id));
+  const handleGoToPage = () => {
+    const pageNum = parseInt(goToPageInput);
+    if (!isNaN(pageNum) && pageNum >= 1 && pageNum <= totalPages) {
+      setCurrentPage(pageNum - 1);
+      setGoToPageInput('');
+    }
+  };
+
+  const handleDeleteClick = (id: number) => {
+    setDeleteConfirmId(id);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (deleteConfirmId !== null) {
+      onDelete(deleteConfirmId);
+      setDeleteConfirmId(null);
+    }
+  };
+
+  const allPageSelected =
+    paginatedPosts.length > 0 && paginatedPosts.every((p) => selectedIds.has(p.id));
+  const somePageSelected =
+    paginatedPosts.some((p) => selectedIds.has(p.id)) && !allPageSelected;
+
+  const SortIndicator = ({ column }: { column: SortKey }) =>
+    sortKey === column ? (
+      <span className="sort-indicator">{sortOrder === 'asc' ? '▲' : '▼'}</span>
+    ) : null;
+
+  const totalWidth = Object.values(columnWidths).reduce((a, b) => a + b, 0);
 
   return (
     <div className="post-table-container">
-      <div className="table-header">
-        <div className="th checkbox">
+      {/* Selection Controls */}
+      <div className="selection-controls">
+        <div className="badge-group">
+          <button className="badge" onClick={handleSelectAllCurrentPage}>
+            Select all
+          </button>
+          <button className="badge" onClick={handleUnselectAllCurrentPage}>
+            Unselect all
+          </button>
+          <button className="badge" onClick={handleSelectAllPages}>
+            Select all (all pages)
+          </button>
+          <button className="badge" onClick={handleUnselectAllPages}>
+            Unselect all (all pages)
+          </button>
+        </div>
+        <div className="goto-controls">
           <input
-            type="checkbox"
-            checked={allPageSelected}
-            onChange={handleSelectAll}
-            title="Select all on this page"
+            type="number"
+            min="1"
+            max={totalPages}
+            value={goToPageInput}
+            onChange={(e) => setGoToPageInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleGoToPage();
+            }}
+            placeholder="Page #"
+            className="goto-input"
           />
-        </div>
-        <div className="th visibility" onClick={() => handleSort('hidden_by_user')}>
-          Vis {sortKey === 'hidden_by_user' && (sortOrder === 'asc' ? '▲' : '▼')}
-        </div>
-        <div className="th thumb">Img</div>
-        <div className="th title" onClick={() => handleSort('title')}>
-          Title {sortKey === 'title' && (sortOrder === 'asc' ? '▲' : '▼')}
-        </div>
-        <div className="th date" onClick={() => handleSort('created_at')}>
-          Date {sortKey === 'created_at' && (sortOrder === 'asc' ? '▲' : '▼')}
-        </div>
-        <div className="th frames" onClick={() => handleSort('frame_count')}>
-          Frames {sortKey === 'frame_count' && (sortOrder === 'asc' ? '▲' : '▼')}
-        </div>
-        <div className="th format" onClick={() => handleSort('file_format')}>
-          Fmt {sortKey === 'file_format' && (sortOrder === 'asc' ? '▲' : '▼')}
-        </div>
-        <div className="th size" onClick={() => handleSort('file_bytes')}>
-          Size {sortKey === 'file_bytes' && (sortOrder === 'asc' ? '▲' : '▼')}
-        </div>
-        <div className="th dims" onClick={() => handleSort('width')}>
-          W {sortKey === 'width' && (sortOrder === 'asc' ? '▲' : '▼')}
-        </div>
-        <div className="th dims" onClick={() => handleSort('height')}>
-          H {sortKey === 'height' && (sortOrder === 'asc' ? '▲' : '▼')}
-        </div>
-        <div className="th reactions" onClick={() => handleSort('reaction_count')}>
-          Reacts {sortKey === 'reaction_count' && (sortOrder === 'asc' ? '▲' : '▼')}
-        </div>
-        <div className="th comments" onClick={() => handleSort('comment_count')}>
-          Cmts {sortKey === 'comment_count' && (sortOrder === 'asc' ? '▲' : '▼')}
-        </div>
-        <div className="th views" onClick={() => handleSort('view_count')}>
-          Views {sortKey === 'view_count' && (sortOrder === 'asc' ? '▲' : '▼')}
+          <button className="goto-btn" onClick={handleGoToPage} disabled={!goToPageInput}>
+            Go to page
+          </button>
         </div>
       </div>
 
-      <div className="table-body">
-        {paginatedPosts.map((post) => (
-          <div
-            key={post.id}
-            className={`table-row ${post.hidden_by_user ? 'hidden-post' : ''} ${
-              selectedIds.has(post.id) ? 'selected' : ''
-            }`}
-          >
-            <div className="td checkbox">
-              <input
-                type="checkbox"
-                checked={selectedIds.has(post.id)}
-                onChange={() => handleSelect(post.id)}
-              />
-            </div>
-            <div className="td visibility">
-              {post.hidden_by_user ? '👁️‍🗨️' : '👁️'}
-            </div>
-            <div className="td thumb">
-              <Image
-                src={post.art_url}
-                alt={post.title}
-                width={40}
-                height={40}
-                className="thumbnail"
-                unoptimized
-              />
-            </div>
-            <div className="td title" title={post.title}>
-              <a href={`/art/${post.public_sqid}`} target="_blank" rel="noopener noreferrer">
-                {post.title || 'Untitled'}
-              </a>
-            </div>
-            <div className="td date">{formatDate(post.created_at)}</div>
-            <div className="td frames">{post.frame_count}</div>
-            <div className="td format">{post.file_format?.toUpperCase() || '-'}</div>
-            <div className="td size">{formatBytes(post.file_bytes)}</div>
-            <div className="td dims">{post.width}</div>
-            <div className="td dims">{post.height}</div>
-            <div className="td reactions">{post.reaction_count}</div>
-            <div className="td comments">{post.comment_count}</div>
-            <div className="td views">{post.view_count}</div>
-          </div>
-        ))}
-
-        {loading && (
-          <div className="loading-row">
-            <div className="loading-spinner"></div>
-            Loading more posts...
-          </div>
-        )}
-
-        {!loading && paginatedPosts.length === 0 && (
-          <div className="empty-row">No posts found</div>
-        )}
+      {/* Table wrapper for synchronized scrolling */}
+      <div className="table-wrapper">
+        <table style={{ minWidth: `${totalWidth}px` }}>
+          <thead>
+            <tr>
+              {/* Checkbox */}
+              <th style={{ width: `${columnWidths.checkbox}px` }}>
+                <input
+                  type="checkbox"
+                  checked={allPageSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = somePageSelected;
+                  }}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      handleSelectAllCurrentPage();
+                    } else {
+                      handleUnselectAllCurrentPage();
+                    }
+                  }}
+                  title="Select all on this page"
+                />
+                <div
+                  className="resize-handle"
+                  onMouseDown={(e) => handleResizeMouseDown(e, 'checkbox')}
+                />
+              </th>
+              {/* Visibility */}
+              <th
+                style={{ width: `${columnWidths.visibility}px` }}
+                onClick={() => handleSort('hidden_by_user')}
+                className="sortable"
+              >
+                👁️
+                <SortIndicator column="hidden_by_user" />
+                <div
+                  className="resize-handle"
+                  onMouseDown={(e) => handleResizeMouseDown(e, 'visibility')}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </th>
+              {/* Thumbnail */}
+              <th style={{ width: `${columnWidths.thumbnail}px` }}>
+                <div
+                  className="resize-handle"
+                  onMouseDown={(e) => handleResizeMouseDown(e, 'thumbnail')}
+                />
+              </th>
+              {/* Title */}
+              <th
+                style={{ width: `${columnWidths.title}px` }}
+                onClick={() => handleSort('title')}
+                className="sortable text-left"
+              >
+                Title
+                <SortIndicator column="title" />
+                <div
+                  className="resize-handle"
+                  onMouseDown={(e) => handleResizeMouseDown(e, 'title')}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </th>
+              {/* Description */}
+              <th
+                style={{ width: `${columnWidths.description}px` }}
+                onClick={() => handleSort('description')}
+                className="sortable text-left"
+              >
+                Description
+                <SortIndicator column="description" />
+                <div
+                  className="resize-handle"
+                  onMouseDown={(e) => handleResizeMouseDown(e, 'description')}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </th>
+              {/* Date */}
+              <th
+                style={{ width: `${columnWidths.date}px` }}
+                onClick={() => handleSort('created_at')}
+                className="sortable"
+              >
+                Date
+                <SortIndicator column="created_at" />
+                <div
+                  className="resize-handle"
+                  onMouseDown={(e) => handleResizeMouseDown(e, 'date')}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </th>
+              {/* Frames */}
+              <th
+                style={{ width: `${columnWidths.frames}px` }}
+                onClick={() => handleSort('frame_count')}
+                className="sortable"
+                title="Frames"
+              >
+                🖼️
+                <SortIndicator column="frame_count" />
+                <div
+                  className="resize-handle"
+                  onMouseDown={(e) => handleResizeMouseDown(e, 'frames')}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </th>
+              {/* Format */}
+              <th
+                style={{ width: `${columnWidths.format}px` }}
+                onClick={() => handleSort('file_format')}
+                className="sortable"
+                title="Format"
+              >
+                📄
+                <SortIndicator column="file_format" />
+                <div
+                  className="resize-handle"
+                  onMouseDown={(e) => handleResizeMouseDown(e, 'format')}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </th>
+              {/* Size */}
+              <th
+                style={{ width: `${columnWidths.size}px` }}
+                onClick={() => handleSort('file_bytes')}
+                className="sortable"
+                title="File size"
+              >
+                💾
+                <SortIndicator column="file_bytes" />
+                <div
+                  className="resize-handle"
+                  onMouseDown={(e) => handleResizeMouseDown(e, 'size')}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </th>
+              {/* Width */}
+              <th
+                style={{ width: `${columnWidths.width}px` }}
+                onClick={() => handleSort('width')}
+                className="sortable"
+                title="Width"
+              >
+                ↔️
+                <SortIndicator column="width" />
+                <div
+                  className="resize-handle"
+                  onMouseDown={(e) => handleResizeMouseDown(e, 'width')}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </th>
+              {/* Height */}
+              <th
+                style={{ width: `${columnWidths.height}px` }}
+                onClick={() => handleSort('height')}
+                className="sortable"
+                title="Height"
+              >
+                ↕️
+                <SortIndicator column="height" />
+                <div
+                  className="resize-handle"
+                  onMouseDown={(e) => handleResizeMouseDown(e, 'height')}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </th>
+              {/* Reactions */}
+              <th
+                style={{ width: `${columnWidths.reactions}px` }}
+                onClick={() => handleSort('reaction_count')}
+                className="sortable"
+                title="Reactions"
+              >
+                ⚡
+                <SortIndicator column="reaction_count" />
+                <div
+                  className="resize-handle"
+                  onMouseDown={(e) => handleResizeMouseDown(e, 'reactions')}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </th>
+              {/* Comments */}
+              <th
+                style={{ width: `${columnWidths.comments}px` }}
+                onClick={() => handleSort('comment_count')}
+                className="sortable"
+                title="Comments"
+              >
+                💬
+                <SortIndicator column="comment_count" />
+                <div
+                  className="resize-handle"
+                  onMouseDown={(e) => handleResizeMouseDown(e, 'comments')}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </th>
+              {/* Views */}
+              <th
+                style={{ width: `${columnWidths.views}px` }}
+                onClick={() => handleSort('view_count')}
+                className="sortable"
+                title="Views"
+              >
+                👁️
+                <SortIndicator column="view_count" />
+                <div
+                  className="resize-handle"
+                  onMouseDown={(e) => handleResizeMouseDown(e, 'views')}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </th>
+              {/* Delete */}
+              <th style={{ width: `${columnWidths.delete}px` }} title="Delete">
+                🗑️
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {paginatedPosts.map((post) => (
+              <tr key={post.id} className={`${post.hidden_by_user ? 'hidden-post' : ''} ${selectedIds.has(post.id) ? 'selected' : ''}`}>
+                {/* Checkbox */}
+                <td style={{ width: `${columnWidths.checkbox}px` }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(post.id)}
+                    onChange={(e) => handleSelectOne(post.id, e.target.checked)}
+                  />
+                </td>
+                {/* Visibility toggle */}
+                <td style={{ width: `${columnWidths.visibility}px` }}>
+                  <button
+                    className="icon-btn"
+                    onClick={() => onToggleHide(post.id)}
+                    title={post.hidden_by_user ? 'Unhide post' : 'Hide post'}
+                  >
+                    {post.hidden_by_user ? '🙈' : '👁️'}
+                  </button>
+                </td>
+                {/* Thumbnail */}
+                <td style={{ width: `${columnWidths.thumbnail}px` }}>
+                  <Image
+                    src={post.art_url}
+                    alt={post.title}
+                    width={32}
+                    height={32}
+                    className="thumbnail"
+                    unoptimized
+                  />
+                </td>
+                {/* Title */}
+                <td style={{ width: `${columnWidths.title}px` }} className="text-left" title={post.title}>
+                  <a href={`/art/${post.public_sqid}`} target="_blank" rel="noopener noreferrer">
+                    {post.title || 'Untitled'}
+                  </a>
+                </td>
+                {/* Description */}
+                <td
+                  style={{ width: `${columnWidths.description}px` }}
+                  className="text-left description-cell"
+                  title={post.description || ''}
+                >
+                  {post.description || ''}
+                </td>
+                {/* Date */}
+                <td style={{ width: `${columnWidths.date}px` }}>{formatDate(post.created_at)}</td>
+                {/* Frames */}
+                <td style={{ width: `${columnWidths.frames}px` }}>{post.frame_count}</td>
+                {/* Format */}
+                <td style={{ width: `${columnWidths.format}px` }}>
+                  {post.file_format?.toUpperCase() || '-'}
+                </td>
+                {/* Size */}
+                <td style={{ width: `${columnWidths.size}px` }}>{formatFileSize(post.file_bytes)}</td>
+                {/* Width */}
+                <td style={{ width: `${columnWidths.width}px` }}>{post.width}</td>
+                {/* Height */}
+                <td style={{ width: `${columnWidths.height}px` }}>{post.height}</td>
+                {/* Reactions */}
+                <td style={{ width: `${columnWidths.reactions}px` }}>
+                  {formatMetricNumber(post.reaction_count)}
+                </td>
+                {/* Comments */}
+                <td style={{ width: `${columnWidths.comments}px` }}>
+                  {formatMetricNumber(post.comment_count)}
+                </td>
+                {/* Views */}
+                <td style={{ width: `${columnWidths.views}px` }}>
+                  {formatMetricNumber(post.view_count)}
+                </td>
+                {/* Delete */}
+                <td style={{ width: `${columnWidths.delete}px` }}>
+                  <button
+                    className="icon-btn delete-btn"
+                    onClick={() => handleDeleteClick(post.id)}
+                    title="Delete post"
+                  >
+                    🗑️
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {loading && (
+              <tr className="loading-row">
+                <td colSpan={15}>
+                  <div className="loading-content">
+                    <div className="loading-spinner"></div>
+                    Loading more posts...
+                  </div>
+                </td>
+              </tr>
+            )}
+            {!loading && paginatedPosts.length === 0 && (
+              <tr className="empty-row">
+                <td colSpan={15}>No posts found</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="pagination">
+      <div className="pagination">
+        <div className="pagination-info">
+          Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, sortedPosts.length)} of{' '}
+          {sortedPosts.length} posts
+        </div>
+        <div className="pagination-controls">
           <button
             onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
             disabled={currentPage === 0}
             className="page-btn"
           >
-            Previous
+            ← Previous
           </button>
           <span className="page-info">
-            Page {currentPage + 1} of {totalPages}
+            Page {currentPage + 1} of {totalPages || 1}
           </span>
           <button
             onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
             disabled={currentPage >= totalPages - 1}
             className="page-btn"
           >
-            Next
+            Next →
           </button>
+        </div>
+      </div>
+
+      {/* Delete Confirmation Dialog */}
+      {deleteConfirmId !== null && (
+        <div className="dialog-overlay" onClick={() => setDeleteConfirmId(null)}>
+          <div className="dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>Delete Post</h3>
+            <p>
+              Are you sure you want to delete this post? It will be permanently removed after 7 days.
+            </p>
+            <div className="dialog-buttons">
+              <button className="dialog-btn cancel" onClick={() => setDeleteConfirmId(null)}>
+                Cancel
+              </button>
+              <button className="dialog-btn confirm" onClick={handleDeleteConfirm}>
+                Delete
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
       <style jsx>{`
         .post-table-container {
           width: 100%;
-          overflow-x: auto;
         }
 
-        .table-header {
+        .selection-controls {
           display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 12px 16px;
           background: var(--bg-tertiary);
           border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-          padding: 12px 8px;
-          font-size: 0.75rem;
-          font-weight: 600;
-          color: var(--text-secondary);
-          text-transform: uppercase;
-          position: sticky;
-          top: 0;
-          z-index: 10;
         }
 
-        .th {
+        .badge-group {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .badge {
+          display: inline-flex;
+          align-items: center;
+          padding: 6px 12px;
+          border-radius: 16px;
+          font-size: 0.8rem;
+          font-weight: 500;
           cursor: pointer;
-          user-select: none;
-          padding: 0 4px;
-          white-space: nowrap;
+          transition: all 0.15s ease;
+          background: var(--bg-secondary);
+          color: var(--text-secondary);
+          border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .th:hover {
+        .badge:hover {
+          background: var(--bg-primary);
+          color: var(--text-primary);
+          border-color: var(--accent-cyan);
+        }
+
+        .goto-controls {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .goto-input {
+          width: 80px;
+          padding: 6px 10px;
+          border-radius: 4px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          background: var(--bg-secondary);
+          color: var(--text-primary);
+          font-size: 0.85rem;
+        }
+
+        .goto-input::placeholder {
+          color: var(--text-muted);
+        }
+
+        .goto-btn {
+          padding: 6px 12px;
+          border-radius: 4px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          background: var(--bg-secondary);
+          color: var(--text-primary);
+          font-size: 0.85rem;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .goto-btn:hover:not(:disabled) {
+          border-color: var(--accent-cyan);
           color: var(--accent-cyan);
         }
 
-        .th.checkbox,
-        .th.thumb {
-          cursor: default;
+        .goto-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
 
-        .th.checkbox { width: 40px; flex-shrink: 0; }
-        .th.visibility { width: 50px; flex-shrink: 0; }
-        .th.thumb { width: 48px; flex-shrink: 0; }
-        .th.title { flex: 1; min-width: 150px; }
-        .th.date { width: 100px; flex-shrink: 0; }
-        .th.frames { width: 60px; flex-shrink: 0; }
-        .th.format { width: 60px; flex-shrink: 0; }
-        .th.size { width: 80px; flex-shrink: 0; }
-        .th.dims { width: 50px; flex-shrink: 0; }
-        .th.reactions { width: 60px; flex-shrink: 0; }
-        .th.comments { width: 60px; flex-shrink: 0; }
-        .th.views { width: 60px; flex-shrink: 0; }
-
-        .table-body {
+        .table-wrapper {
+          overflow-x: auto;
           max-height: 600px;
           overflow-y: auto;
         }
 
-        .table-row {
-          display: flex;
-          align-items: center;
-          padding: 8px;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-          font-size: 0.85rem;
-          transition: background 0.15s ease;
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          table-layout: fixed;
         }
 
-        .table-row:hover {
+        thead {
+          position: sticky;
+          top: 0;
+          z-index: 10;
           background: var(--bg-tertiary);
         }
 
-        .table-row.selected {
+        th {
+          position: relative;
+          padding: 10px 8px;
+          font-size: 0.75rem;
+          font-weight: 600;
+          color: var(--text-secondary);
+          text-align: center;
+          white-space: nowrap;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+          user-select: none;
+        }
+
+        th.sortable {
+          cursor: pointer;
+        }
+
+        th.sortable:hover {
+          color: var(--accent-cyan);
+          background: var(--bg-secondary);
+        }
+
+        th.text-left {
+          text-align: left;
+        }
+
+        .sort-indicator {
+          margin-left: 4px;
+          font-size: 0.65rem;
+        }
+
+        .resize-handle {
+          position: absolute;
+          right: 0;
+          top: 0;
+          bottom: 0;
+          width: 4px;
+          background: rgba(255, 255, 255, 0.1);
+          cursor: col-resize;
+          opacity: 0;
+          transition: opacity 0.15s ease;
+        }
+
+        th:hover .resize-handle {
+          opacity: 1;
+        }
+
+        .resize-handle:hover {
+          background: var(--accent-cyan);
+        }
+
+        td {
+          padding: 6px 8px;
+          font-size: 0.85rem;
+          color: var(--text-primary);
+          text-align: center;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        td.text-left {
+          text-align: left;
+        }
+
+        td.description-cell {
+          color: var(--text-secondary);
+        }
+
+        tr {
+          transition: background 0.15s ease;
+        }
+
+        tbody tr:hover {
+          background: var(--bg-tertiary);
+        }
+
+        tr.selected {
           background: rgba(0, 212, 255, 0.1);
         }
 
-        .table-row.hidden-post {
+        tr.hidden-post {
           opacity: 0.5;
           background: rgba(255, 255, 255, 0.02);
         }
 
-        .td {
-          padding: 0 4px;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        .td.checkbox { width: 40px; flex-shrink: 0; }
-        .td.visibility { width: 50px; flex-shrink: 0; }
-        .td.thumb { width: 48px; flex-shrink: 0; }
-        .td.title { flex: 1; min-width: 150px; }
-        .td.date { width: 100px; flex-shrink: 0; color: var(--text-secondary); }
-        .td.frames { width: 60px; flex-shrink: 0; }
-        .td.format { width: 60px; flex-shrink: 0; }
-        .td.size { width: 80px; flex-shrink: 0; }
-        .td.dims { width: 50px; flex-shrink: 0; }
-        .td.reactions { width: 60px; flex-shrink: 0; }
-        .td.comments { width: 60px; flex-shrink: 0; }
-        .td.views { width: 60px; flex-shrink: 0; }
-
-        .td.title a {
+        td a {
           color: var(--text-primary);
           text-decoration: none;
         }
 
-        .td.title a:hover {
+        td a:hover {
           color: var(--accent-cyan);
         }
 
@@ -363,20 +859,42 @@ export function PostTable({
           object-fit: contain;
         }
 
-        input[type="checkbox"] {
+        input[type='checkbox'] {
           width: 16px;
           height: 16px;
           cursor: pointer;
           accent-color: var(--accent-cyan);
         }
 
-        .loading-row,
-        .empty-row {
+        .icon-btn {
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          font-size: 1rem;
+          padding: 4px;
+          border-radius: 4px;
+          transition: background 0.15s ease;
+        }
+
+        .icon-btn:hover {
+          background: rgba(255, 255, 255, 0.1);
+        }
+
+        .delete-btn:hover {
+          background: rgba(239, 68, 68, 0.2);
+        }
+
+        .loading-row td,
+        .empty-row td {
+          padding: 24px;
+          text-align: center;
+          color: var(--text-secondary);
+        }
+
+        .loading-content {
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 24px;
-          color: var(--text-secondary);
           gap: 8px;
         }
 
@@ -390,16 +908,30 @@ export function PostTable({
         }
 
         @keyframes spin {
-          to { transform: rotate(360deg); }
+          to {
+            transform: rotate(360deg);
+          }
         }
 
         .pagination {
           display: flex;
+          flex-wrap: wrap;
           align-items: center;
-          justify-content: center;
+          justify-content: space-between;
           gap: 16px;
           padding: 16px;
           border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .pagination-info {
+          font-size: 0.85rem;
+          color: var(--text-secondary);
+        }
+
+        .pagination-controls {
+          display: flex;
+          align-items: center;
+          gap: 12px;
         }
 
         .page-btn {
@@ -426,6 +958,93 @@ export function PostTable({
         .page-info {
           color: var(--text-secondary);
           font-size: 0.85rem;
+        }
+
+        /* Delete Confirmation Dialog */
+        .dialog-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.7);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+        }
+
+        .dialog {
+          background: var(--bg-secondary);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 8px;
+          padding: 24px;
+          max-width: 400px;
+          width: 90%;
+        }
+
+        .dialog h3 {
+          margin: 0 0 12px;
+          color: var(--text-primary);
+          font-size: 1.1rem;
+        }
+
+        .dialog p {
+          margin: 0 0 20px;
+          color: var(--text-secondary);
+          font-size: 0.9rem;
+          line-height: 1.5;
+        }
+
+        .dialog-buttons {
+          display: flex;
+          gap: 12px;
+          justify-content: flex-end;
+        }
+
+        .dialog-btn {
+          padding: 10px 20px;
+          border-radius: 6px;
+          font-size: 0.85rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .dialog-btn.cancel {
+          background: var(--bg-tertiary);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          color: var(--text-primary);
+        }
+
+        .dialog-btn.cancel:hover {
+          border-color: var(--accent-cyan);
+        }
+
+        .dialog-btn.confirm {
+          background: #ef4444;
+          border: none;
+          color: white;
+        }
+
+        .dialog-btn.confirm:hover {
+          background: #dc2626;
+        }
+
+        @media (max-width: 768px) {
+          .selection-controls {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+
+          .goto-controls {
+            width: 100%;
+          }
+
+          .pagination {
+            flex-direction: column;
+            gap: 12px;
+          }
         }
       `}</style>
     </div>
