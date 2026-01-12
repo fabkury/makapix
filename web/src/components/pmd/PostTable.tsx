@@ -540,7 +540,7 @@ export function PostTable({
                 </td>
                 {/* Title */}
                 <td style={{ width: `${columnWidths.title}px` }} className="text-left" title={post.title}>
-                  <a href={`/art/${post.public_sqid}`} target="_blank" rel="noopener noreferrer">
+                  <a href={`/p/${post.public_sqid}`} target="_blank" rel="noopener noreferrer">
                     {post.title || 'Untitled'}
                   </a>
                 </td>
@@ -741,8 +741,7 @@ export function PostTable({
 
         .table-wrapper {
           overflow-x: auto;
-          max-height: 600px;
-          overflow-y: auto;
+          overflow-y: hidden;
         }
 
         table {
@@ -752,9 +751,9 @@ export function PostTable({
         }
 
         thead {
-          position: sticky;
-          top: 0;
-          z-index: 10;
+          display: table;
+          width: 100%;
+          table-layout: fixed;
           background: var(--bg-tertiary);
         }
 
@@ -809,14 +808,16 @@ export function PostTable({
         }
 
         td {
-          padding: 6px 8px;
+          padding: 0 8px;
+          height: 34px;
           font-size: 0.85rem;
           color: var(--text-primary);
           text-align: center;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+          border-bottom: none;
+          vertical-align: middle;
         }
 
         td.text-left {
@@ -827,7 +828,23 @@ export function PostTable({
           color: var(--text-secondary);
         }
 
-        tr {
+        tbody {
+          display: block;
+          height: 576px; /* 16 rows * 34px + 32px buffer */
+          overflow: hidden;
+        }
+
+        thead tr {
+          display: table;
+          width: 100%;
+          table-layout: fixed;
+        }
+
+        tbody tr {
+          display: table;
+          width: 100%;
+          table-layout: fixed;
+          height: 34px;
           transition: background 0.15s ease;
         }
 

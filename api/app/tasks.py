@@ -419,6 +419,11 @@ celery_app.conf.update(
             "schedule": 86400.0,  # Daily (in seconds)
             "options": {"queue": "default"},
         },
+        "renew-crl-if-needed": {
+            "task": "app.tasks.renew_crl_if_needed",
+            "schedule": 86400.0,  # Daily (in seconds)
+            "options": {"queue": "default"},
+        },
     },
     timezone="UTC",
 )
@@ -2713,3 +2718,70 @@ def cleanup_expired_bdrs(self) -> dict[str, Any]:
         return {"status": "error", "message": str(e)}
     finally:
         db.close()
+
+
+@celery_app.task(name="app.tasks.renew_crl_if_needed", bind=True)
+def renew_crl_if_needed(self) -> dict[str, Any]:
+    """
+    Renew the MQTT Certificate Revocation List (CRL) if it's approaching expiration.
+
+    The CRL is used by Mosquitto to verify client certificates. If the CRL expires,
+    all client connections will be rejected. This task proactively renews the CRL
+    when it's within 7 days of expiration.
+
+    Should run daily (configured in beat_schedule).
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from .mqtt.crl_init import get_crl_expiration, renew_crl
+
+    try:
+        logger.info("Checking CRL expiration status")
+
+        # Get current CRL expiration
+        expiration = get_crl_expiration()
+
+        if expiration is None:
+            logger.warning("CRL not found or invalid, creating new one")
+            new_expiration = renew_crl()
+            if new_expiration:
+                return {
+                    "status": "success",
+                    "action": "created",
+                    "new_expiration": new_expiration.isoformat(),
+                }
+            else:
+                return {"status": "error", "message": "Failed to create CRL"}
+
+        # Check if CRL is within 7 days of expiration
+        now = datetime.now(timezone.utc)
+        days_until_expiry = (expiration - now).days
+
+        logger.info(f"CRL expires in {days_until_expiry} days ({expiration.isoformat()})")
+
+        if days_until_expiry <= 7:
+            logger.info("CRL is within 7 days of expiration, renewing...")
+            new_expiration = renew_crl()
+            if new_expiration:
+                logger.info(f"CRL renewed successfully, new expiration: {new_expiration.isoformat()}")
+                return {
+                    "status": "success",
+                    "action": "renewed",
+                    "old_expiration": expiration.isoformat(),
+                    "new_expiration": new_expiration.isoformat(),
+                    "days_until_old_expiry": days_until_expiry,
+                }
+            else:
+                logger.error("Failed to renew CRL")
+                return {"status": "error", "message": "Failed to renew CRL"}
+        else:
+            return {
+                "status": "success",
+                "action": "none",
+                "expiration": expiration.isoformat(),
+                "days_until_expiry": days_until_expiry,
+            }
+
+    except Exception as e:
+        logger.error(f"Error in renew_crl_if_needed task: {e}", exc_info=True)
+        return {"status": "error", "message": str(e)}

@@ -1165,7 +1165,8 @@ export default function UserProfilePage() {
         }
 
         .edit-profile-btn,
-        .logout-btn {
+        .logout-btn,
+        :global(.pmd-btn) {
           background: var(--bg-tertiary);
           border: none;
           border-radius: 8px;
@@ -1177,9 +1178,11 @@ export default function UserProfilePage() {
           align-items: center;
           justify-content: center;
           color: var(--text-secondary);
+          text-decoration: none;
         }
 
-        .edit-profile-btn {
+        .edit-profile-btn,
+        :global(.pmd-btn) {
           font-size: 1.3rem;
         }
 
@@ -1188,22 +1191,7 @@ export default function UserProfilePage() {
           transform: scale(1.05);
         }
 
-        .pmd-btn {
-          background: var(--bg-tertiary);
-          border: none;
-          border-radius: 8px;
-          padding: 10px 16px;
-          font-size: 1.3rem;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: var(--text-secondary);
-          text-decoration: none;
-        }
-
-        .pmd-btn:hover {
+        :global(.pmd-btn:hover) {
           background: var(--accent-purple);
           transform: scale(1.05);
         }
