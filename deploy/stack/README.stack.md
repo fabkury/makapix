@@ -13,12 +13,12 @@ This directory contains the Docker Compose configuration for deploying the Makap
 ## ⚠️ IMPORTANT: Production vs Local Development
 
 This stack runs the web application in **PRODUCTION MODE** (optimized build).
-This is different from local development which uses **DEV MODE** (hot reload).
+This is different from local development which uses **DEV MODE** (hot reload). **DEV MODE** MUST NOT BE USED UNLESS THE USER REQUESTS IT VERY EXPLICITLY.
 
-| Environment | Compose File | Web Mode | Container Name | Notes |
-|------------|--------------|----------|----------------|-------|
-| **VPS (this stack)** | `deploy/stack/docker-compose.yml` | Production | `makapix-web` | Uses `npm run build` + standalone server |
-| **Local development** | Root `docker-compose.yml` | Development | `makapix-web-1` | Uses `npm run dev` with hot reload |
+| Environment | Compose File | Web Mode | Container Name | Notes | Important! |
+|------------|--------------|----------|----------------|-------|---|
+| **VPS (this stack)** | `deploy/stack/docker-compose.yml` | Production | `makapix-web` | Uses `npm run build` + standalone server | Default choice |
+| **Local development** | Root `docker-compose.yml` | Development | `makapix-web-1` | Uses `npm run dev` with hot reload | ONLY IF USER ASKS EXPLICITLY |
 
 ### Why Production Mode on dev.makapix.club?
 
@@ -37,7 +37,7 @@ This is different from local development which uses **DEV MODE** (hot reload).
 
 ## Development Workflow
 
-1. **Local Development**: Work on `localhost` using the main `docker-compose.yml` in the repo root
+1. **Local Development**: Work on `localhost` using the main `docker-compose.yml` in the repo root -- DO NOT USE THIS UNLESS VERY EXPLICITLY TOLD TO DO SO.
 2. **Staging Deployment**: Deploy to `dev.makapix.club` for testing (this stack)
 3. **Production**: When ready, "flip the switch" to serve the full app at `makapix.club`
 
