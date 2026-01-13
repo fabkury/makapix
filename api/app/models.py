@@ -42,6 +42,7 @@ class User(Base):
     )  # Sqids-encoded public ID (set after insert)
     handle = Column(String(50), unique=True, nullable=False, index=True)
     bio = Column(Text, nullable=True)
+    tagline = Column(String(48), nullable=True)  # Short one-liner under username
     website = Column(String(500), nullable=True)
     avatar_url = Column(String(500), nullable=True)
     email = Column(
@@ -114,6 +115,12 @@ class User(Base):
         foreign_keys="SocialNotification.user_id",
         back_populates="user",
         cascade="all, delete-orphan",
+    )
+    highlights = relationship(
+        "UserHighlight",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="UserHighlight.position",
     )
 
 
@@ -526,6 +533,26 @@ class CategoryFollow(Base):
 # ============================================================================
 
 
+class BadgeDefinition(Base):
+    """Definition of available badges with metadata."""
+
+    __tablename__ = "badge_definitions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    badge = Column(String(50), unique=True, nullable=False, index=True)
+    label = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    icon_url_64 = Column(String(500), nullable=False)  # 64x64 icon URL
+    icon_url_16 = Column(String(500), nullable=True)  # 16x16 icon URL (for tag badges)
+    is_tag_badge = Column(
+        Boolean, nullable=False, default=False
+    )  # If true, displayed under username
+
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class BadgeGrant(Base):
     """Badge awarded to a user."""
 
@@ -546,6 +573,33 @@ class BadgeGrant(Base):
 
     __table_args__ = (
         UniqueConstraint("user_id", "badge", name="uq_badge_grant_user_badge"),
+    )
+
+
+class UserHighlight(Base):
+    """User's highlighted/featured posts displayed on profile."""
+
+    __tablename__ = "user_highlights"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    post_id = Column(
+        Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    position = Column(Integer, nullable=False)  # Display order (0-based)
+
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    # Relationships
+    user = relationship("User", back_populates="highlights")
+    post = relationship("Post")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "post_id", name="uq_user_highlights_user_post"),
+        UniqueConstraint("user_id", "position", name="uq_user_highlights_user_position"),
+        Index("ix_user_highlights_user_position", user_id, position),
     )
 
 

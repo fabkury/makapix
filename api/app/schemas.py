@@ -113,6 +113,7 @@ class UserPublic(BaseModel):
     )
     handle: str
     bio: str | None = None
+    tagline: str | None = None  # Short one-liner displayed under username (max 48 chars)
     website: str | None = None
     # Avatar URL may be an external absolute URL (GitHub) or a site-relative vault URL
     # (e.g. /api/vault/avatar/...). We store raw strings to support relative URLs.
@@ -156,6 +157,7 @@ class UserUpdate(BaseModel):
 
     handle: str | None = Field(None, min_length=1, max_length=32)
     bio: str | None = Field(None, max_length=1000)
+    tagline: str | None = Field(None, max_length=48)  # Short one-liner
     website: str | None = Field(None, max_length=500)
     avatar_url: str | None = None
     hidden_by_user: bool | None = None
@@ -679,12 +681,24 @@ class ReportUpdate(BaseModel):
 
 
 class BadgeDefinition(BaseModel):
-    """Badge definition."""
+    """Badge definition with full metadata."""
 
     badge: str
     label: str
-    icon_url: HttpUrl | None = None
-    description: str
+    description: str | None = None
+    icon_url_64: str  # 64x64 icon URL for profile display
+    icon_url_16: str | None = None  # 16x16 icon URL for tag badges
+    is_tag_badge: bool = False  # If true, displayed under username
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TagBadgeInfo(BaseModel):
+    """Tag badge information for display under username."""
+
+    badge: str
+    label: str
+    icon_url_16: str  # 16x16 icon URL
 
 
 class BadgeGrantRequest(BaseModel):
@@ -1713,3 +1727,133 @@ class BDRListResponse(BaseModel):
     """Response for batch download request list."""
 
     items: list[BDRItem]
+
+
+# ============================================================================
+# USER PROFILE SCHEMAS
+# ============================================================================
+
+
+class UserProfileStats(BaseModel):
+    """User profile statistics."""
+
+    total_posts: int  # Total artwork posts
+    total_reactions_received: int  # Total reactions on all posts
+    total_views: int  # Total views across all posts
+    follower_count: int  # Number of followers
+
+
+class UserHighlightItem(BaseModel):
+    """Single highlight item for user profile."""
+
+    id: int
+    post_id: int
+    position: int
+    post_public_sqid: str
+    post_title: str
+    post_art_url: str
+    post_width: int
+    post_height: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserHighlightsResponse(BaseModel):
+    """Response for user highlights list."""
+
+    items: list[UserHighlightItem]
+    total: int
+
+
+class AddHighlightRequest(BaseModel):
+    """Request to add a post to highlights."""
+
+    post_id: int
+
+
+class AddHighlightResponse(BaseModel):
+    """Response for add highlight request."""
+
+    id: int
+    position: int
+
+
+class ReorderHighlightsRequest(BaseModel):
+    """Request to reorder highlights."""
+
+    post_ids: list[int] = Field(..., min_length=1, max_length=128)
+
+
+class UserProfileEnhanced(BaseModel):
+    """Enhanced user profile with stats and tag badges for profile page."""
+
+    # Basic user info
+    id: int
+    user_key: UUID
+    public_sqid: str | None = None
+    handle: str
+    bio: str | None = None
+    tagline: str | None = None
+    website: str | None = None
+    avatar_url: str | None = None
+    badges: list[BadgeGrant] = []
+    reputation: int
+    hidden_by_user: bool
+    hidden_by_mod: bool
+    non_conformant: bool
+    deactivated: bool
+    created_at: datetime
+
+    # Enhanced fields
+    tag_badges: list[TagBadgeInfo] = []  # Tag badges to display under username
+    stats: UserProfileStats  # Aggregated statistics
+    is_following: bool = False  # Whether current user follows this user
+    is_own_profile: bool = False  # Whether this is the viewer's own profile
+    highlights: list[UserHighlightItem] = []  # Featured posts
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FollowResponse(BaseModel):
+    """Response for follow/unfollow actions."""
+
+    following: bool
+    follower_count: int
+
+
+class FollowersResponse(BaseModel):
+    """Response for listing followers."""
+
+    items: list[UserPublic]
+    next_cursor: str | None = None
+    total: int
+
+
+class FollowingResponse(BaseModel):
+    """Response for listing following."""
+
+    items: list[UserPublic]
+    next_cursor: str | None = None
+    total: int
+
+
+class ReactedPostItem(BaseModel):
+    """A post the user reacted to."""
+
+    id: int
+    public_sqid: str
+    title: str
+    art_url: str
+    width: int
+    height: int
+    owner_handle: str
+    reacted_at: datetime
+    emoji: str  # The emoji used in the reaction
+
+
+class ReactedPostsResponse(BaseModel):
+    """Response for user's reacted posts."""
+
+    items: list[ReactedPostItem]
+    next_cursor: str | None = None

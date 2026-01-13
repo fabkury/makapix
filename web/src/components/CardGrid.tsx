@@ -94,6 +94,18 @@ export default function CardGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedIndex, posts]);
 
+  // Close overlay on route change to ensure proper navigation
+  useEffect(() => {
+    const handleRouteChange = () => {
+      setSelectedIndex(null);
+    };
+
+    router.events.on('routeChangeStart', handleRouteChange);
+    return () => {
+      router.events.off('routeChangeStart', handleRouteChange);
+    };
+  }, [router.events]);
+
   // Choose one "super post" per component mount (surrogate for backend flag).
   useEffect(() => {
     if (superPostId !== null) return;

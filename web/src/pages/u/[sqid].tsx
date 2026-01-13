@@ -5,24 +5,25 @@ import Layout from '../../components/Layout';
 import CardGrid from '../../components/CardGrid';
 import PlayerBar from '../../components/PlayerBarDynamic';
 import { FilterButton } from '../../components/FilterButton';
-import { authenticatedFetch, authenticatedRequestJson, authenticatedPostJson, clearTokens, logout } from '../../lib/api';
+import { authenticatedFetch, clearTokens } from '../../lib/api';
 import { usePlayerBarOptional } from '../../contexts/PlayerBarContext';
 import { useFilters, FilterConfig } from '../../hooks/useFilters';
 import { calculatePageSize } from '../../utils/gridUtils';
-
-interface User {
-  id: number;
-  user_key: string;
-  public_sqid: string | null;
-  handle: string;
-  bio?: string;
-  avatar_url?: string;
-  reputation: number;
-  created_at: string;
-  roles?: string[];
-  auto_public_approval?: boolean;
-  banned_until?: string | null;
-}
+import {
+  TagBadges,
+  ProfileStats,
+  FollowButton,
+  GiftButton,
+  OwnerPanel,
+  HighlightsGallery,
+  ProfileTabs,
+  MarkdownBio,
+  BadgesOverlay,
+} from '../../components/profile';
+import {
+  UserProfileEnhanced,
+  BadgeGrant,
+} from '../../types/profile';
 
 interface PostOwner {
   id: string;
@@ -57,38 +58,53 @@ export default function UserProfilePage() {
   const playerBarContext = usePlayerBarOptional();
   const { filters, setFilters, buildApiQuery } = useFilters();
 
-  const [user, setUser] = useState<User | null>(null);
+  // Profile state
+  const [profile, setProfile] = useState<UserProfileEnhanced | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [reactedPosts, setReactedPosts] = useState<Post[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [reactedNextCursor, setReactedNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [postsLoading, setPostsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
-  
+  const [hasMoreReacted, setHasMoreReacted] = useState(true);
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'gallery' | 'favourites'>('gallery');
+
+  // Badge overlay state
+  const [showBadgesOverlay, setShowBadgesOverlay] = useState(false);
+
   // Edit mode state
   const [isEditing, setIsEditing] = useState(false);
   const [editHandle, setEditHandle] = useState('');
   const [editBio, setEditBio] = useState('');
+  const [editTagline, setEditTagline] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [avatarUploadError, setAvatarUploadError] = useState<string | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [isAvatarDragOver, setIsAvatarDragOver] = useState(false);
-  const [isOwnProfile, setIsOwnProfile] = useState(false);
-  const [isOwner, setIsOwner] = useState(false);
   const [isModerator, setIsModerator] = useState(false);
   const [isViewerOwner, setIsViewerOwner] = useState(false);
-  
+  const [isOwner, setIsOwner] = useState(false);
+
   // Handle availability check state
   const [handleStatus, setHandleStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
   const [handleMessage, setHandleMessage] = useState<string>('');
-  
+
+  // Follow state
+  const [isFollowing, setIsFollowing] = useState(false);
+
   const observerTarget = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const hasMoreRef = useRef(true);
+  const hasMoreReactedRef = useRef(true);
   const nextCursorRef = useRef<string | null>(null);
-  const pageSizeRef = useRef(20); // Will be set on mount
+  const reactedNextCursorRef = useRef<string | null>(null);
+  const pageSizeRef = useRef(20);
   const filtersRef = useRef(filters);
 
   const API_BASE_URL = typeof window !== 'undefined'
@@ -100,23 +116,23 @@ export default function UserProfilePage() {
     pageSizeRef.current = calculatePageSize();
   }, []);
 
-  // Fetch user profile
+  // Fetch enhanced user profile
   useEffect(() => {
     if (!sqid || typeof sqid !== 'string') return;
 
-    const fetchUser = async () => {
+    const fetchProfile = async () => {
       setLoading(true);
       setError(null);
-      
+
       try {
-        const response = await authenticatedFetch(`${API_BASE_URL}/api/user/u/${sqid}`);
-        
+        const response = await authenticatedFetch(`${API_BASE_URL}/api/user/u/${sqid}/profile`);
+
         if (response.status === 401) {
           // Token refresh failed - treat as unauthenticated
-          setIsOwnProfile(false);
           setIsModerator(false);
+          setIsViewerOwner(false);
         }
-        
+
         if (!response.ok) {
           if (response.status === 404) {
             setError('User not found');
@@ -126,93 +142,77 @@ export default function UserProfilePage() {
           setLoading(false);
           return;
         }
-        
-        const data = await response.json();
-        setUser(data);
+
+        const data: UserProfileEnhanced = await response.json();
+        setProfile(data);
         setEditHandle(data.handle);
         setEditBio(data.bio || '');
-        setIsOwner(data.roles?.includes('owner') || false);
-        
-        // Check if current viewer is the owner and/or a moderator
-        try {
-          const meResponse = await authenticatedFetch(`${API_BASE_URL}/api/auth/me`);
-          
-          if (meResponse.ok) {
-            const meData = await meResponse.json();
-            const roles = meData.roles || [];
-            setIsModerator(roles.includes('moderator') || roles.includes('owner'));
-            setIsViewerOwner(roles.includes('owner'));
-            
-            // Use actual authenticated user ID to determine ownership (not localStorage)
-            const authenticatedUserId = meData.user?.id;
-            setIsOwnProfile(authenticatedUserId === data.id);
-            
-            // Sync localStorage with actual user data
-            if (meData.user?.id) {
-              localStorage.setItem('user_id', String(meData.user.id));
+        setEditTagline(data.tagline || '');
+        setIsOwner(data.badges?.some((b: BadgeGrant) => b.badge === 'owner') || false);
+        setIsFollowing(data.is_following);
+
+        // Check viewer moderator status
+        if (!data.is_own_profile) {
+          try {
+            const meResponse = await authenticatedFetch(`${API_BASE_URL}/api/auth/me`);
+            if (meResponse.ok) {
+              const meData = await meResponse.json();
+              const roles = meData.roles || [];
+              setIsModerator(roles.includes('moderator') || roles.includes('owner'));
+              setIsViewerOwner(roles.includes('owner'));
+            } else {
+              setIsModerator(false);
+              setIsViewerOwner(false);
             }
-            if (meData.user?.public_sqid) {
-              localStorage.setItem('public_sqid', meData.user.public_sqid);
-            }
-          } else {
-            setIsOwnProfile(false);
+          } catch (err) {
+            console.error('Error checking moderator status:', err);
             setIsModerator(false);
             setIsViewerOwner(false);
           }
-        } catch (err) {
-          console.error('Error checking moderator status:', err);
-          setIsOwnProfile(false);
-          setIsModerator(false);
-          setIsViewerOwner(false);
         }
       } catch (err) {
         setError('Failed to load profile');
-        console.error('Error fetching user:', err);
+        console.error('Error fetching profile:', err);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchUser();
+    fetchProfile();
   }, [sqid, API_BASE_URL]);
 
   // Set current channel for PlayerBar
   useEffect(() => {
-    if (playerBarContext && user && sqid && typeof sqid === 'string') {
+    if (playerBarContext && profile && sqid && typeof sqid === 'string') {
       playerBarContext.setCurrentChannel({
-        displayName: user.handle,
+        displayName: profile.handle,
         userSqid: sqid,
       });
     }
-    // Clear channel on unmount
     return () => {
       if (playerBarContext) {
         playerBarContext.setCurrentChannel(null);
       }
     };
-    // Note: We intentionally exclude playerBarContext from dependencies.
-    // The context's setCurrentChannel is stable (from useState), and including
-    // the entire context object would cause infinite re-renders that block navigation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, sqid]);
+  }, [profile, sqid]);
 
-  // Load user's posts
   // Handle filter changes
   const handleFilterChange = useCallback((newFilters: FilterConfig) => {
     setFilters(newFilters);
   }, [setFilters]);
 
+  // Load user's posts
   const loadPosts = useCallback(async (cursor: string | null = null) => {
-    if (!user) return;
+    if (!profile) return;
     if (loadingRef.current || (cursor !== null && !hasMoreRef.current)) return;
 
     loadingRef.current = true;
     setPostsLoading(true);
 
     try {
-      // Build query string with filters
       const baseParams: Record<string, string> = {
-        owner_id: user.user_key,
+        owner_id: profile.user_key,
         limit: String(pageSizeRef.current),
       };
       if (!filters.sortBy) {
@@ -222,19 +222,19 @@ export default function UserProfilePage() {
       const queryString = buildApiQuery(baseParams);
       const url = `${API_BASE_URL}/api/post?${queryString}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       const response = await authenticatedFetch(url);
-      
+
       if (!response.ok) {
         throw new Error('Failed to load posts');
       }
-      
+
       const data: PageResponse<Post> = await response.json();
-      
+
       if (cursor) {
         setPosts(prev => [...prev, ...data.items]);
       } else {
         setPosts(data.items);
       }
-      
+
       setNextCursor(data.next_cursor);
       nextCursorRef.current = data.next_cursor;
       const hasMoreValue = data.next_cursor !== null;
@@ -246,21 +246,65 @@ export default function UserProfilePage() {
       loadingRef.current = false;
       setPostsLoading(false);
     }
-  }, [user, API_BASE_URL, buildApiQuery, filters.sortBy]);
+  }, [profile, API_BASE_URL, buildApiQuery, filters.sortBy]);
 
-  // Load posts when user is loaded
+  // Load reacted posts (favourites)
+  const loadReactedPosts = useCallback(async (cursor: string | null = null) => {
+    if (!profile) return;
+    if (loadingRef.current || (cursor !== null && !hasMoreReactedRef.current)) return;
+
+    loadingRef.current = true;
+    setPostsLoading(true);
+
+    try {
+      const url = `${API_BASE_URL}/api/user/u/${profile.public_sqid}/reacted-posts?limit=${pageSizeRef.current}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const response = await authenticatedFetch(url);
+
+      if (!response.ok) {
+        throw new Error('Failed to load reacted posts');
+      }
+
+      const data: PageResponse<Post> = await response.json();
+
+      if (cursor) {
+        setReactedPosts(prev => [...prev, ...data.items]);
+      } else {
+        setReactedPosts(data.items);
+      }
+
+      setReactedNextCursor(data.next_cursor);
+      reactedNextCursorRef.current = data.next_cursor;
+      const hasMoreValue = data.next_cursor !== null;
+      hasMoreReactedRef.current = hasMoreValue;
+      setHasMoreReacted(hasMoreValue);
+    } catch (err) {
+      console.error('Error loading reacted posts:', err);
+    } finally {
+      loadingRef.current = false;
+      setPostsLoading(false);
+    }
+  }, [profile, API_BASE_URL]);
+
+  // Load posts when profile is loaded
   useEffect(() => {
-    if (user) {
+    if (profile) {
       loadPosts();
     }
-  }, [user, loadPosts]);
+  }, [profile, loadPosts]);
+
+  // Load reacted posts when switching to favourites tab
+  useEffect(() => {
+    if (profile && activeTab === 'favourites' && reactedPosts.length === 0) {
+      loadReactedPosts();
+    }
+  }, [profile, activeTab, reactedPosts.length, loadReactedPosts]);
 
   // Reset posts when filters change
   useEffect(() => {
     const prevFilters = filtersRef.current;
     const filtersChanged = JSON.stringify(prevFilters) !== JSON.stringify(filters);
 
-    if (filtersChanged && user) {
+    if (filtersChanged && profile) {
       filtersRef.current = filters;
       setPosts([]);
       setNextCursor(null);
@@ -269,13 +313,19 @@ export default function UserProfilePage() {
       setHasMore(true);
       loadPosts();
     }
-  }, [filters, user, loadPosts]);
+  }, [filters, profile, loadPosts]);
+
+  // Handle tab change
+  const handleTabChange = (tab: 'gallery' | 'favourites') => {
+    setActiveTab(tab);
+  };
 
   // Handle entering edit mode
   const handleEditClick = () => {
-    if (user) {
-      setEditHandle(user.handle);
-      setEditBio(user.bio || '');
+    if (profile) {
+      setEditHandle(profile.handle);
+      setEditBio(profile.bio || '');
+      setEditTagline(profile.tagline || '');
       setSaveError(null);
       setAvatarUploadError(null);
       setHandleStatus('idle');
@@ -286,9 +336,10 @@ export default function UserProfilePage() {
 
   // Handle canceling edit mode
   const handleCancelEdit = () => {
-    if (user) {
-      setEditHandle(user.handle);
-      setEditBio(user.bio || '');
+    if (profile) {
+      setEditHandle(profile.handle);
+      setEditBio(profile.bio || '');
+      setEditTagline(profile.tagline || '');
       setSaveError(null);
       setAvatarUploadError(null);
       setHandleStatus('idle');
@@ -296,7 +347,7 @@ export default function UserProfilePage() {
       setIsEditing(false);
     }
   };
-  
+
   // Check handle availability
   const checkHandleAvailability = async () => {
     if (!editHandle.trim()) {
@@ -304,25 +355,23 @@ export default function UserProfilePage() {
       setHandleMessage('Handle cannot be empty');
       return;
     }
-    
+
     setHandleStatus('checking');
     setHandleMessage('');
-    
+
     try {
       const response = await authenticatedFetch(`${API_BASE_URL}/api/auth/check-handle-availability`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ handle: editHandle.trim() }),
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to check handle availability');
       }
-      
+
       const data = await response.json();
-      
+
       if (data.available) {
         setHandleStatus('available');
         setHandleMessage(data.message);
@@ -336,23 +385,23 @@ export default function UserProfilePage() {
       setHandleMessage('Failed to check availability');
     }
   };
-  
+
   // Reset handle status when handle changes
   useEffect(() => {
-    if (user && editHandle !== user.handle) {
+    if (profile && editHandle !== profile.handle) {
       setHandleStatus('idle');
       setHandleMessage('');
     }
-  }, [editHandle, user]);
+  }, [editHandle, profile]);
 
   const uploadAvatarFile = async (file: File) => {
-    if (!user) return;
+    if (!profile) return;
     setAvatarUploadError(null);
     setIsUploadingAvatar(true);
     try {
       const form = new FormData();
       form.append('image', file);
-      const res = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}/avatar`, {
+      const res = await authenticatedFetch(`${API_BASE_URL}/api/user/${profile.user_key}/avatar`, {
         method: 'POST',
         body: form,
       });
@@ -367,7 +416,7 @@ export default function UserProfilePage() {
         return;
       }
       const updatedUser = await res.json();
-      setUser(updatedUser);
+      setProfile(prev => prev ? { ...prev, avatar_url: updatedUser.avatar_url } : prev);
       window.dispatchEvent(
         new CustomEvent('makapix:user-updated', { detail: { avatar_url: updatedUser.avatar_url ?? null } })
       );
@@ -381,11 +430,11 @@ export default function UserProfilePage() {
   };
 
   const removeAvatar = async () => {
-    if (!user) return;
+    if (!profile) return;
     setAvatarUploadError(null);
     setIsUploadingAvatar(true);
     try {
-      const res = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}/avatar`, {
+      const res = await authenticatedFetch(`${API_BASE_URL}/api/user/${profile.user_key}/avatar`, {
         method: 'DELETE',
       });
       if (res.status === 401) {
@@ -399,7 +448,7 @@ export default function UserProfilePage() {
         return;
       }
       const updatedUser = await res.json();
-      setUser(updatedUser);
+      setProfile(prev => prev ? { ...prev, avatar_url: updatedUser.avatar_url } : prev);
       window.dispatchEvent(
         new CustomEvent('makapix:user-updated', { detail: { avatar_url: updatedUser.avatar_url ?? null } })
       );
@@ -414,45 +463,44 @@ export default function UserProfilePage() {
 
   // Handle saving profile changes
   const handleSaveProfile = async () => {
-    if (!user) return;
-    
+    if (!profile) return;
+
     setIsSaving(true);
     setSaveError(null);
-    
+
     try {
-      const payload: { handle?: string; bio?: string; avatar_url?: string | null } = {};
-      
-      // Only include handle if it changed
-      if (editHandle.trim() !== user.handle) {
+      const payload: { handle?: string; bio?: string; tagline?: string } = {};
+
+      if (editHandle.trim() !== profile.handle) {
         payload.handle = editHandle.trim();
       }
-      
-      // Only include bio if it changed
-      if (editBio !== (user.bio || '')) {
+
+      if (editBio !== (profile.bio || '')) {
         payload.bio = editBio;
       }
 
-      // If nothing changed, just exit edit mode
+      if (editTagline !== (profile.tagline || '')) {
+        payload.tagline = editTagline;
+      }
+
       if (Object.keys(payload).length === 0) {
         setIsEditing(false);
         setIsSaving(false);
         return;
       }
-      
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}`, {
+
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${profile.user_key}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      
+
       if (response.status === 401) {
         clearTokens();
         router.push('/auth');
         return;
       }
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         if (response.status === 409) {
@@ -465,9 +513,14 @@ export default function UserProfilePage() {
         setIsSaving(false);
         return;
       }
-      
+
       const updatedUser = await response.json();
-      setUser(updatedUser);
+      setProfile(prev => prev ? {
+        ...prev,
+        handle: updatedUser.handle,
+        bio: updatedUser.bio,
+        tagline: updatedUser.tagline,
+      } : prev);
       setIsEditing(false);
     } catch (err) {
       console.error('Error saving profile:', err);
@@ -477,28 +530,18 @@ export default function UserProfilePage() {
     }
   };
 
-  // Handle logout with confirmation
-  const handleLogout = async () => {
-    if (window.confirm('Are you sure you want to log out?')) {
-      // Call logout API to revoke refresh token and clear cookie
-      await logout();
-      router.push('/');
-    }
-  };
-
-  // Trust/Distrust functions for moderators
+  // Moderation functions
   const trustUser = async () => {
-    if (!user) return;
+    if (!profile) return;
     try {
-      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${user.user_key}/auto-approval`, {
+      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${profile.user_key}/auto-approval`, {
         method: 'POST',
       });
-      
-      // Refresh user data
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}`);
+      // Refresh profile
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/u/${profile.public_sqid}/profile`);
       if (response.ok) {
-        const updatedUser = await response.json();
-        setUser(updatedUser);
+        const data = await response.json();
+        setProfile(data);
       }
     } catch (error) {
       console.error('Error trusting user:', error);
@@ -506,43 +549,36 @@ export default function UserProfilePage() {
   };
 
   const distrustUser = async () => {
-    if (!user) return;
+    if (!profile) return;
     try {
-      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${user.user_key}/auto-approval`, {
+      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${profile.user_key}/auto-approval`, {
         method: 'DELETE',
       });
-      
-      // Refresh user data
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}`);
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/u/${profile.public_sqid}/profile`);
       if (response.ok) {
-        const updatedUser = await response.json();
-        setUser(updatedUser);
+        const data = await response.json();
+        setProfile(data);
       }
     } catch (error) {
       console.error('Error distrusting user:', error);
     }
   };
 
-  // Ban/Unban functions for moderators
   const banUser = async () => {
-    if (!user) return;
+    if (!profile) return;
     if (!confirm('Are you sure you want to ban this user? Bans persist until revoked by a moderator.')) {
       return;
     }
     try {
-      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${user.user_key}/ban`, {
+      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${profile.user_key}/ban`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ duration_days: null })
       });
-      
-      // Refresh user data
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}`);
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/u/${profile.public_sqid}/profile`);
       if (response.ok) {
-        const updatedUser = await response.json();
-        setUser(updatedUser);
+        const data = await response.json();
+        setProfile(data);
       }
     } catch (error) {
       console.error('Error banning user:', error);
@@ -550,20 +586,18 @@ export default function UserProfilePage() {
   };
 
   const unbanUser = async () => {
-    if (!user) return;
+    if (!profile) return;
     if (!confirm('Are you sure you want to unban this user?')) {
       return;
     }
     try {
-      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${user.user_key}/ban`, {
+      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${profile.user_key}/ban`, {
         method: 'DELETE',
       });
-      
-      // Refresh user data
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${user.user_key}`);
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/u/${profile.public_sqid}/profile`);
       if (response.ok) {
-        const updatedUser = await response.json();
-        setUser(updatedUser);
+        const data = await response.json();
+        setProfile(data);
       }
     } catch (error) {
       console.error('Error unbanning user:', error);
@@ -572,15 +606,23 @@ export default function UserProfilePage() {
 
   // Intersection Observer for infinite scroll
   useEffect(() => {
-    if (!user || posts.length === 0 || !hasMoreRef.current) return;
-    
+    if (!profile) return;
+
+    const currentPosts = activeTab === 'gallery' ? posts : reactedPosts;
+    const currentHasMore = activeTab === 'gallery' ? hasMoreRef.current : hasMoreReactedRef.current;
+
+    if (currentPosts.length === 0 || !currentHasMore) return;
+
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMoreRef.current && !loadingRef.current) {
-          loadPosts(nextCursorRef.current);
+        if (entries[0].isIntersecting && !loadingRef.current) {
+          if (activeTab === 'gallery' && hasMoreRef.current) {
+            loadPosts(nextCursorRef.current);
+          } else if (activeTab === 'favourites' && hasMoreReactedRef.current) {
+            loadReactedPosts(reactedNextCursorRef.current);
+          }
         }
       },
-      // Document scrolling: observe relative to viewport
       { threshold: 0.1, root: null }
     );
 
@@ -594,7 +636,7 @@ export default function UserProfilePage() {
         observer.unobserve(currentTarget);
       }
     };
-  }, [user, posts.length, loadPosts]);
+  }, [profile, posts.length, reactedPosts.length, activeTab, loadPosts, loadReactedPosts]);
 
   if (loading) {
     return (
@@ -623,7 +665,7 @@ export default function UserProfilePage() {
     );
   }
 
-  if (error || !user) {
+  if (error || !profile) {
     return (
       <Layout title="Not Found">
         <div className="error-container">
@@ -650,7 +692,7 @@ export default function UserProfilePage() {
             color: var(--text-primary);
             margin-bottom: 1rem;
           }
-          .back-link {
+          :global(.back-link) {
             color: var(--accent-cyan);
             font-size: 1rem;
           }
@@ -659,299 +701,283 @@ export default function UserProfilePage() {
     );
   }
 
+  const currentPosts = activeTab === 'gallery' ? posts : reactedPosts;
+  const currentHasMore = activeTab === 'gallery' ? hasMore : hasMoreReacted;
+
   return (
-    <Layout title={user.handle} description={user.bio || `${user.handle}'s profile on Makapix Club`}>
+    <Layout title={profile.handle} description={profile.bio || `${profile.handle}'s profile on Makapix Club`}>
       <FilterButton
         onFilterChange={handleFilterChange}
         initialFilters={filters}
         isLoading={loading}
       />
       <div className="profile-container">
+        {/* Profile Header */}
         <div className="profile-header-wrapper">
           <div className="profile-header">
-            <div className="profile-header-left">
-            <div className="avatar-container">
-              {user.avatar_url ? (
-                <img src={user.avatar_url} alt={user.handle} className="avatar" />
-              ) : (
-                <div className="avatar-placeholder">
-                  {user.handle.charAt(0).toUpperCase()}
-                </div>
-              )}
-
-              {isEditing && (
-                <>
-                  <input
-                    ref={avatarInputRef}
-                    type="file"
-                    accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
-                    style={{ display: 'none' }}
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) void uploadAvatarFile(f);
-                      e.currentTarget.value = '';
-                    }}
-                  />
-                  <div
-                    className={`avatar-dropzone ${isAvatarDragOver ? 'dragover' : ''}`}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      setIsAvatarDragOver(true);
-                    }}
-                    onDragLeave={() => setIsAvatarDragOver(false)}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const f = e.dataTransfer.files?.[0];
-                      if (f) void uploadAvatarFile(f);
-                    }}
-                    onClick={() => avatarInputRef.current?.click()}
-                    role="button"
-                    tabIndex={0}
-                    aria-label="Upload profile picture"
-                    title="Drop an image or click to upload"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        avatarInputRef.current?.click();
-                      }
-                    }}
-                  >
-                    {isUploadingAvatar ? 'Uploading…' : 'Drop image or click'}
+            {/* Identity Row: Avatar + Info + Desktop Action Buttons */}
+            <div className="identity-row">
+              {/* Avatar */}
+              <div className="avatar-container">
+                {profile.avatar_url ? (
+                  <img src={profile.avatar_url} alt={profile.handle} className="avatar" />
+                ) : (
+                  <div className="avatar-placeholder">
+                    {profile.handle.charAt(0).toUpperCase()}
                   </div>
-                  {user.avatar_url && (
-                    <button
-                      type="button"
-                      className="avatar-remove"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        void removeAvatar();
+                )}
+
+                {isEditing && (
+                  <>
+                    <input
+                      ref={avatarInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) void uploadAvatarFile(f);
+                        e.currentTarget.value = '';
                       }}
-                      disabled={isUploadingAvatar}
+                    />
+                    <div
+                      className={`avatar-dropzone ${isAvatarDragOver ? 'dragover' : ''}`}
+                      onDragOver={(e) => { e.preventDefault(); setIsAvatarDragOver(true); }}
+                      onDragLeave={() => setIsAvatarDragOver(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const f = e.dataTransfer.files?.[0];
+                        if (f) void uploadAvatarFile(f);
+                      }}
+                      onClick={() => avatarInputRef.current?.click()}
+                      role="button"
+                      tabIndex={0}
+                      aria-label="Upload profile picture"
+                      title="Drop an image or click to upload"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          avatarInputRef.current?.click();
+                        }
+                      }}
                     >
-                      Remove picture
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-            
-            <div className="profile-info">
-              {isEditing ? (
-                <>
-                  {!isOwner && (
-                    <div className="handle-edit-row">
-                      <input
-                        type="text"
-                        className={`edit-handle-input ${handleStatus === 'available' ? 'valid' : handleStatus === 'taken' || handleStatus === 'invalid' ? 'invalid' : ''}`}
-                        value={editHandle}
-                        onChange={(e) => setEditHandle(e.target.value)}
-                        placeholder="Handle"
-                        maxLength={32}
-                      />
+                      {isUploadingAvatar ? 'Uploading...' : 'Drop image or click'}
+                    </div>
+                    {profile.avatar_url && (
                       <button
                         type="button"
-                        className="check-handle-btn"
-                        onClick={checkHandleAvailability}
-                        disabled={handleStatus === 'checking' || !editHandle.trim()}
+                        className="avatar-remove"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); void removeAvatar(); }}
+                        disabled={isUploadingAvatar}
                       >
-                        {handleStatus === 'checking' ? '...' : 'Check'}
+                        Remove picture
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Name + Badges + Tagline */}
+              <div className="identity-info">
+                {isEditing ? (
+                  <>
+                    {!isOwner && (
+                      <div className="handle-edit-row">
+                        <input
+                          type="text"
+                          className={`edit-handle-input ${handleStatus === 'available' ? 'valid' : handleStatus === 'taken' || handleStatus === 'invalid' ? 'invalid' : ''}`}
+                          value={editHandle}
+                          onChange={(e) => setEditHandle(e.target.value)}
+                          placeholder="Handle"
+                          maxLength={32}
+                        />
+                        <button
+                          type="button"
+                          className="check-handle-btn"
+                          onClick={checkHandleAvailability}
+                          disabled={handleStatus === 'checking' || !editHandle.trim()}
+                        >
+                          {handleStatus === 'checking' ? '...' : 'Check'}
+                        </button>
+                      </div>
+                    )}
+                    {!isOwner && handleMessage && (
+                      <p className={`handle-status ${handleStatus === 'available' ? 'success' : 'error'}`}>
+                        {handleStatus === 'available' ? '✓' : '✗'} {handleMessage}
+                      </p>
+                    )}
+                    {isOwner && <h1 className="display-name">{profile.handle}</h1>}
+
+                    <input
+                      type="text"
+                      className="edit-tagline-input"
+                      value={editTagline}
+                      onChange={(e) => setEditTagline(e.target.value)}
+                      placeholder="Tagline (appears under your name)"
+                      maxLength={100}
+                    />
+
+                    <textarea
+                      className="edit-bio-input"
+                      value={editBio}
+                      onChange={(e) => setEditBio(e.target.value)}
+                      placeholder="Write something about yourself..."
+                      maxLength={1000}
+                      rows={3}
+                    />
+                    {avatarUploadError && <p className="save-error">{avatarUploadError}</p>}
+                    {saveError && <p className="save-error">{saveError}</p>}
+
+                    <div className="edit-actions">
+                      <button className="save-btn" onClick={handleSaveProfile} disabled={isSaving}>
+                        {isSaving ? 'Saving...' : 'Save changes'}
+                      </button>
+                      <button className="cancel-btn" onClick={handleCancelEdit} disabled={isSaving}>
+                        Cancel
                       </button>
                     </div>
-                  )}
-                  {!isOwner && handleMessage && (
-                    <p className={`handle-status ${handleStatus === 'available' ? 'success' : 'error'}`}>
-                      {handleStatus === 'available' ? '✓' : '✗'} {handleMessage}
-                    </p>
-                  )}
-                  {isOwner && (
-                    <h1 className="display-name">{user.handle}</h1>
-                  )}
-                  <textarea
-                    className="edit-bio-input"
-                    value={editBio}
-                    onChange={(e) => setEditBio(e.target.value)}
-                    placeholder="Write something about yourself..."
-                    maxLength={1000}
-                    rows={3}
-                  />
-                  {avatarUploadError && (
-                    <p className="save-error">{avatarUploadError}</p>
-                  )}
-                  {saveError && (
-                    <p className="save-error">{saveError}</p>
-                  )}
-                </>
-              ) : (
-                <>
-                  <h1 className="display-name">{user.handle}</h1>
-                  {user.bio && (
-                    <p className="bio">{user.bio}</p>
-                  )}
-                </>
-              )}
-              
-              {isEditing && (
-                <div className="edit-actions">
-                  <button 
-                    className="save-btn"
-                    onClick={handleSaveProfile}
-                    disabled={isSaving}
-                  >
-                    {isSaving ? 'Saving...' : 'Save changes'}
-                  </button>
-                  <button 
-                    className="cancel-btn"
-                    onClick={handleCancelEdit}
-                    disabled={isSaving}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
-              
-              {!isEditing && isOwnProfile && (
-                <div className="profile-actions">
-                  <Link href={`/u/${user.public_sqid}/dashboard`} className="dashboard-btn">
-                    📊 Dashboard
-                  </Link>
-                  <Link href={`/u/${user.public_sqid}/player`} className="players-btn">
-                    📺 Players
-                  </Link>
-                  <button
-                    className="edit-profile-btn"
-                    onClick={handleEditClick}
-                    aria-label="Edit profile"
-                  >
-                    ✏️
-                  </button>
-                  <Link href={`/u/${user.public_sqid}/posts`} className="pmd-btn" title="Post Management Dashboard">
-                    🗂️
-                  </Link>
-                  <button
-                    className="logout-btn"
-                    onClick={handleLogout}
-                    aria-label="Log out"
-                  >
-                    🚪
-                  </button>
-                </div>
-              )}
-
-              {!isEditing && isModerator && !isOwnProfile && (
-                <div className="profile-actions">
-                  <Link href={`/u/${user.public_sqid}/dashboard`} className="dashboard-btn">
-                    📊 Dashboard
-                  </Link>
-                  {(isViewerOwner || !(user.roles?.includes('moderator') || user.roles?.includes('owner'))) && (
-                    <button
-                      className="edit-profile-btn"
-                      onClick={handleEditClick}
-                      aria-label="Edit profile"
-                      title="Edit profile"
-                    >
-                      ✏️
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-          
-          <div className="profile-header-right">
-            <div className="stats">
-              <div className="stat">
-                <span className="stat-value">{posts.length}</span>
-                <span className="stat-label">artworks</span>
-              </div>
-              <div className="stat">
-                <span className="stat-value">{user.reputation}</span>
-                <span className="stat-label">reputation</span>
-              </div>
-              <div className="stat">
-                <span className="stat-value">{new Date(user.created_at).getFullYear()}</span>
-                <span className="stat-label">joined</span>
-              </div>
-            </div>
-            
-            {isModerator && !isOwnProfile && (
-              <div className="moderation-buttons">
-                {user.auto_public_approval ? (
-                  <button 
-                    className="distrust-btn"
-                    onClick={distrustUser}
-                    aria-label="Distrust user"
-                    title="Distrust"
-                  >
-                    ⚠️
-                  </button>
+                  </>
                 ) : (
-                  <button 
-                    className="trust-btn"
-                    onClick={trustUser}
-                    aria-label="Trust user"
-                    title="Trust"
-                  >
-                    🫱🏽‍🫲🏼
+                  <>
+                    <h1 className="display-name">{profile.handle}</h1>
+                    <TagBadges
+                      badges={profile.tag_badges || []}
+                      onAreaClick={() => setShowBadgesOverlay(true)}
+                    />
+                    {profile.tagline && (
+                      <p className="tagline">{profile.tagline}</p>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Desktop Action Buttons (visitors only) */}
+              {!isEditing && !profile.is_own_profile && (
+                <div className="desktop-actions">
+                  <FollowButton
+                    userSqid={profile.public_sqid || ''}
+                    initialFollowing={profile.is_following}
+                    onFollowChange={(following, newCount) => {
+                      setIsFollowing(following);
+                      setProfile(prev => prev ? {
+                        ...prev,
+                        stats: { ...prev.stats, follower_count: newCount },
+                        is_following: following,
+                      } : prev);
+                    }}
+                  />
+                  <GiftButton userSqid={profile.public_sqid || ''} />
+                </div>
+              )}
+            </div>
+
+            {/* Stats Row */}
+            <ProfileStats stats={profile.stats} reputation={profile.reputation} />
+
+            {/* Owner Panel (own profile only) */}
+            {!isEditing && profile.is_own_profile && (
+              <OwnerPanel
+                userSqid={profile.public_sqid || ''}
+                onEditClick={handleEditClick}
+              />
+            )}
+
+            {/* Moderation Buttons */}
+            {!isEditing && isModerator && !profile.is_own_profile && (
+              <div className="moderation-row">
+                <Link href={`/u/${profile.public_sqid}/dashboard`} className="mod-btn">
+                  📊 Dashboard
+                </Link>
+                {(isViewerOwner || !(profile.badges?.some(b => b.badge === 'moderator' || b.badge === 'owner'))) && (
+                  <button className="mod-btn" onClick={handleEditClick}>
+                    ✏️ Edit
                   </button>
                 )}
-                {user.banned_until ? (
-                  <button 
-                    className="unban-btn"
-                    onClick={unbanUser}
-                    aria-label="Unban user"
-                    title="Unban"
-                  >
-                    ✅
-                  </button>
+                <div className="mod-spacer" />
+                {(profile as any).auto_public_approval ? (
+                  <button className="mod-btn" onClick={distrustUser} title="Distrust">⚠️</button>
                 ) : (
-                  <button 
-                    className="ban-btn"
-                    onClick={banUser}
-                    aria-label="Ban user"
-                    title="Ban"
-                  >
-                    🚷
-                  </button>
+                  <button className="mod-btn" onClick={trustUser} title="Trust">🫱🏽‍🫲🏼</button>
+                )}
+                {(profile as any).banned_until ? (
+                  <button className="mod-btn" onClick={unbanUser} title="Unban">✅</button>
+                ) : (
+                  <button className="mod-btn" onClick={banUser} title="Ban">🚷</button>
                 )}
               </div>
             )}
           </div>
-          </div>
         </div>
 
+        {/* Bio Section - separate panel */}
+        {profile.bio && !isEditing && (
+          <div className="bio-section-wrapper">
+            <div className="bio-section">
+              <MarkdownBio bio={profile.bio} />
+            </div>
+          </div>
+        )}
+
+        {/* Mobile Action Buttons (below bio, visitors only) */}
+        {!isEditing && !profile.is_own_profile && (
+          <div className="mobile-actions">
+            <FollowButton
+              userSqid={profile.public_sqid || ''}
+              initialFollowing={profile.is_following}
+              onFollowChange={(following, newCount) => {
+                setIsFollowing(following);
+                setProfile(prev => prev ? {
+                  ...prev,
+                  stats: { ...prev.stats, follower_count: newCount },
+                  is_following: following,
+                } : prev);
+              }}
+            />
+            <GiftButton userSqid={profile.public_sqid || ''} />
+          </div>
+        )}
+
+        {/* Highlights Gallery */}
+        {profile.highlights && profile.highlights.length > 0 && (
+          <HighlightsGallery highlights={profile.highlights} />
+        )}
+
+        {/* Tabs */}
+        <ProfileTabs activeTab={activeTab} onTabChange={handleTabChange} />
+
+        {/* Artworks Section */}
         <div className="artworks-section">
-          {posts.length === 0 && postsLoading && (
+          {currentPosts.length === 0 && postsLoading && (
             <div className="loading-state">
               <div className="loading-spinner-small"></div>
               <p>Loading posts...</p>
             </div>
           )}
 
-          {posts.length === 0 && !postsLoading && (
+          {currentPosts.length === 0 && !postsLoading && (
             <div className="empty-state">
-              <span className="empty-icon">🎨</span>
-              <p>No artworks yet</p>
+              <span className="empty-icon">{activeTab === 'gallery' ? '🎨' : '⚡'}</span>
+              <p>{activeTab === 'gallery' ? 'No artworks yet' : 'No favourites yet'}</p>
             </div>
           )}
 
-          {posts.length > 0 && (
+          {currentPosts.length > 0 && (
             <CardGrid
-              posts={posts}
+              posts={currentPosts}
               API_BASE_URL={API_BASE_URL}
-              source={{ type: 'profile', id: user ? String(user.id) : undefined }}
-              cursor={nextCursor}
+              source={{ type: 'profile', id: profile ? String(profile.id) : undefined }}
+              cursor={activeTab === 'gallery' ? nextCursor : reactedNextCursor}
             />
           )}
 
-          {posts.length > 0 && (
+          {currentPosts.length > 0 && (
             <div ref={observerTarget} className="load-more-trigger">
               {postsLoading && (
                 <div className="loading-indicator">
                   <div className="loading-spinner-small"></div>
                 </div>
               )}
-              {!hasMore && (
+              {!currentHasMore && (
                 <div className="end-message">
                   <span>✨</span>
                   <div className="end-spacer" aria-hidden="true" />
@@ -961,6 +987,13 @@ export default function UserProfilePage() {
           )}
         </div>
       </div>
+
+      {/* Badges Overlay */}
+      <BadgesOverlay
+        isOpen={showBadgesOverlay}
+        onClose={() => setShowBadgesOverlay(false)}
+        userBadges={profile.badges || []}
+      />
 
       <style jsx>{`
         .profile-container {
@@ -977,42 +1010,26 @@ export default function UserProfilePage() {
           margin-left: -50vw;
           margin-right: -50vw;
           margin-top: 0;
-          /* No gap between header and the next full-bleed section */
           margin-bottom: 0;
-          background: var(--bg-secondary);
-          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+          background: transparent;
         }
 
         .profile-header {
           max-width: 1200px;
           margin: 0 auto;
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          gap: 32px;
-          /* Avoid visible "empty" band at the bottom of the header section */
           padding: 24px;
         }
 
-        @media (max-width: 600px) {
-          .profile-header {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 24px;
-          }
-        }
-
-        .profile-header-left {
+        .identity-row {
           display: flex;
-          gap: 24px;
-          align-items: flex-start;
-          flex: 1;
-          min-width: 0;
+          align-items: flex-end;
+          justify-content: space-between;
+          gap: 16px;
         }
 
-        @media (max-width: 600px) {
-          .profile-header-left {
-            width: 100%;
+        @media (max-width: 768px) {
+          .identity-row {
+            flex-wrap: wrap;
           }
         }
 
@@ -1029,6 +1046,7 @@ export default function UserProfilePage() {
           border-radius: 0;
           object-fit: cover;
           border: 3px solid var(--bg-tertiary);
+          image-rendering: pixelated;
         }
 
         .avatar-dropzone {
@@ -1098,148 +1116,106 @@ export default function UserProfilePage() {
           text-transform: uppercase;
         }
 
-        .profile-info {
+        .identity-info {
           flex: 1;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          min-height: 128px;
+          min-width: 0;
+          padding-bottom: 8px;
         }
 
-        .profile-header-right {
+        .desktop-actions {
           display: flex;
-          flex-direction: column;
-          align-items: flex-end;
-          gap: 16px;
+          align-items: center;
+          gap: 8px;
           flex-shrink: 0;
         }
 
-        @media (max-width: 600px) {
-          .profile-header-right {
-            width: 100%;
-            align-items: flex-start;
+        @media (max-width: 768px) {
+          .desktop-actions {
+            display: none;
           }
         }
 
-        .moderation-buttons {
-          display: flex;
+        .mobile-actions {
+          display: none;
           gap: 8px;
+          margin-bottom: 24px;
         }
 
-        .profile-actions {
-          display: flex;
-          gap: 16px;
-          margin-top: 20px;
-          flex-wrap: wrap;
-        }
-
-        @media (max-width: 600px) {
-          .profile-actions {
-            justify-content: flex-start;
+        @media (max-width: 768px) {
+          .mobile-actions {
+            display: flex;
           }
         }
 
-        .profile-actions :global(.players-btn),
-        .profile-actions :global(.dashboard-btn) {
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
-          border: none;
-          border-radius: 8px;
-          padding: 10px 16px;
-          font-size: 0.95rem;
-          cursor: pointer;
-          transition: all var(--transition-fast);
+        .moderation-row {
           display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-          text-decoration: none;
-          font-weight: 600;
-          gap: 6px;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-top: 16px;
         }
 
-        .profile-actions :global(.players-btn:hover),
-        .profile-actions :global(.dashboard-btn:hover) {
-          transform: translateY(-2px);
-          box-shadow: var(--glow-pink);
-          color: white;
+        .mod-spacer {
+          width: 16px;
         }
 
-        .edit-profile-btn,
-        .logout-btn,
-        :global(.pmd-btn) {
-          background: var(--bg-tertiary);
-          border: none;
-          border-radius: 8px;
-          padding: 10px 16px;
+        .display-name {
+          font-size: 1.75rem;
+          font-weight: 700;
+          color: var(--text-primary);
+          margin: 0;
+          line-height: 1.2;
+        }
+
+        .tagline {
+          font-size: 0.95rem;
+          color: var(--accent-cyan);
+          margin: 0 0 12px 0;
+          font-style: italic;
+        }
+
+        .bio-section-wrapper {
+          position: relative;
+          left: 50%;
+          right: 50%;
+          width: 100vw;
+          margin-left: -50vw;
+          margin-right: -50vw;
+          margin-bottom: 24px;
+          background: rgba(255, 255, 255, 0.05);
+          border-top: 1px solid rgba(255, 255, 255, 0.1);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .bio-section {
+          max-width: 1200px;
+          margin: 0 auto;
+          padding: 16px 24px;
+        }
+
+        @media (max-width: 768px) {
+          .bio-section-wrapper {
+            border-radius: 0;
+          }
+          .bio-section {
+            padding: 16px;
+          }
+        }
+
+        :global(.mod-btn) {
+          background: transparent;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 6px;
+          padding: 8px 12px;
           font-size: 1rem;
           cursor: pointer;
-          transition: all var(--transition-fast);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: var(--text-secondary);
+          color: var(--text-primary);
           text-decoration: none;
-        }
-
-        .edit-profile-btn,
-        :global(.pmd-btn) {
-          font-size: 1.3rem;
-        }
-
-        .edit-profile-btn:hover {
-          background: var(--accent-cyan);
-          transform: scale(1.05);
-        }
-
-        :global(.pmd-btn:hover) {
-          background: var(--accent-purple);
-          transform: scale(1.05);
-        }
-
-        .logout-btn:hover {
-          background: var(--accent-pink);
-          transform: scale(1.05);
-        }
-
-        .trust-btn,
-        .distrust-btn,
-        .ban-btn,
-        .unban-btn {
-          background: var(--bg-tertiary);
-          border: none;
-          border-radius: 8px;
-          padding: 8px 12px;
-          font-size: 1.2rem;
-          cursor: pointer;
           transition: all var(--transition-fast);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: var(--text-secondary);
         }
 
-        .trust-btn:hover {
-          background: #10b981;
-          color: white;
-          transform: scale(1.05);
-        }
-
-        .distrust-btn:hover {
-          background: #ef4444;
-          color: white;
-          transform: scale(1.05);
-        }
-
-        .ban-btn:hover {
-          background: #ef4444;
-          color: white;
-          transform: scale(1.05);
-        }
-
-        .unban-btn:hover {
-          background: #10b981;
-          color: white;
-          transform: scale(1.05);
+        :global(.mod-btn:hover) {
+          background: rgba(255, 255, 255, 0.1);
+          border-color: var(--accent-cyan);
         }
 
         .handle-edit-row {
@@ -1268,15 +1244,8 @@ export default function UserProfilePage() {
           border-color: var(--accent-cyan);
         }
 
-        .edit-handle-input.valid {
-          border-color: #4ade80;
-          color: #4ade80;
-        }
-
-        .edit-handle-input.invalid {
-          border-color: #f87171;
-          color: #f87171;
-        }
+        .edit-handle-input.valid { border-color: #4ade80; color: #4ade80; }
+        .edit-handle-input.invalid { border-color: #f87171; color: #f87171; }
 
         .check-handle-btn {
           padding: 8px 16px;
@@ -1306,12 +1275,26 @@ export default function UserProfilePage() {
           margin: 0 0 8px 0;
         }
 
-        .handle-status.success {
-          color: #4ade80;
+        .handle-status.success { color: #4ade80; }
+        .handle-status.error { color: #f87171; }
+
+        .edit-tagline-input {
+          font-size: 0.95rem;
+          color: var(--accent-cyan);
+          background: var(--bg-tertiary);
+          border: 2px solid var(--bg-tertiary);
+          border-radius: 8px;
+          padding: 8px 12px;
+          width: 100%;
+          max-width: 400px;
+          margin-bottom: 12px;
+          font-style: italic;
+          transition: border-color var(--transition-fast);
         }
 
-        .handle-status.error {
-          color: #f87171;
+        .edit-tagline-input:focus {
+          outline: none;
+          border-color: var(--accent-cyan);
         }
 
         .edit-bio-input {
@@ -1345,7 +1328,7 @@ export default function UserProfilePage() {
         .edit-actions {
           display: flex;
           gap: 12px;
-          margin-top: 16px;
+          margin-top: 8px;
         }
 
         .save-btn {
@@ -1391,180 +1374,9 @@ export default function UserProfilePage() {
           cursor: not-allowed;
         }
 
-        .display-name {
-          font-size: 1.75rem;
-          font-weight: 700;
-          color: var(--text-primary);
-          margin: 0 0 8px 0;
-          line-height: 1.2;
-        }
-
-        .handle {
-          font-size: 1rem;
-          color: var(--accent-cyan);
-          margin: 0 0 16px 0;
-        }
-
-        .bio {
-          font-size: 1rem;
-          color: var(--text-secondary);
-          line-height: 1.6;
-          margin: 0 0 20px 0;
-          max-width: 600px;
-        }
-
-        .stats {
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-          align-items: flex-end;
-        }
-
-        @media (max-width: 600px) {
-          .stats {
-            align-items: flex-start;
-          }
-        }
-
-        .stat {
-          display: flex;
-          flex-direction: column;
-          align-items: flex-end;
-        }
-
-        @media (max-width: 600px) {
-          .stat {
-            align-items: flex-start;
-          }
-        }
-
-        .stat-value {
-          font-size: 1.5rem;
-          font-weight: 700;
-          color: var(--text-primary);
-        }
-
-        .stat-label {
-          font-size: 0.8rem;
-          color: var(--text-muted);
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-
-        .blog-posts-section {
-          position: relative;
-          left: 50%;
-          right: 50%;
-          width: 100vw;
-          margin-left: -50vw;
-          margin-right: -50vw;
-          background: var(--bg-secondary);
-          margin-bottom: 0;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-          transition: all var(--transition-normal);
-          overflow: hidden;
-          /* Ensure this panel paints above the CardGrid glow below. */
-          z-index: 2;
-        }
-
-        .blog-posts-content {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 24px;
-        }
-
-        .blog-posts-section.collapsed {
-          padding-top: 16px;
-          padding-bottom: 16px;
-        }
-
-        .blog-posts-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 16px;
-        }
-
-        .blog-posts-section.collapsed .blog-posts-header {
-          margin-bottom: 0;
-        }
-
-        .blog-posts-toggle {
-          background: transparent;
-          border: none;
-          color: var(--text-secondary);
-          font-size: 1rem;
-          cursor: pointer;
-          padding: 4px 8px;
-          border-radius: 4px;
-          transition: all var(--transition-fast);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .blog-posts-toggle:hover {
-          background: var(--bg-tertiary);
-          color: var(--text-primary);
-        }
-
-        .section-title {
-          font-size: 1.25rem;
-          font-weight: 700;
-          color: var(--text-primary);
-          margin: 0;
-        }
-
-        .blog-posts-list {
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-          transition: opacity var(--transition-normal);
-        }
-
-        .blog-posts-section.collapsed .blog-posts-list {
-          display: none;
-        }
-
-        .blog-posts-list :global(.blog-post-item) {
-          display: block;
-          padding: 16px;
-          background: var(--bg-tertiary);
-          border-radius: 8px;
-          text-decoration: none;
-          transition: all var(--transition-fast);
-        }
-
-        .blog-posts-list :global(.blog-post-item:hover) {
-          background: var(--bg-primary);
-          transform: translateX(4px);
-        }
-
-        .blog-posts-list :global(.blog-post-item) .blog-post-item-title {
-          font-size: 1.1rem;
-          font-weight: 600;
-          color: var(--text-primary);
-          margin-bottom: 8px;
-        }
-
-        .blog-posts-list :global(.blog-post-item) .blog-post-item-meta {
-          display: flex;
-          align-items: center;
-          flex-wrap: wrap;
-          gap: 8px;
-          font-size: 0.85rem;
-          color: var(--text-muted);
-        }
-
-        .blog-posts-list :global(.blog-post-item) .blog-post-item-date {
-          color: var(--text-secondary);
-        }
-
         .artworks-section {
           min-height: 400px;
-          /* No artificial gap below the header/blog-posts section */
           margin-top: 0;
-          /* Keep CardGrid glow under the blog posts panel */
           position: relative;
           z-index: 1;
         }
@@ -1619,9 +1431,7 @@ export default function UserProfilePage() {
         }
 
         @keyframes spin {
-          to {
-            transform: rotate(360deg);
-          }
+          to { transform: rotate(360deg); }
         }
 
         .end-message {
@@ -1643,4 +1453,3 @@ export default function UserProfilePage() {
     </Layout>
   );
 }
-

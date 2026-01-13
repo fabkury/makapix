@@ -337,6 +337,8 @@ export default function SelectedArtworkOverlay({
 
   // For History API back button handling
   const closedByPopstateRef = useRef(false);
+  // Track when we're navigating away (so we don't call history.back() in cleanup)
+  const navigatingAwayRef = useRef(false);
   const dismissToOriginAndCloseRef = useRef<() => Promise<void>>(() => Promise.resolve());
 
   const post = posts[selectedIndex];
@@ -670,9 +672,9 @@ export default function SelectedArtworkOverlay({
 
     return () => {
       window.removeEventListener('popstate', handlePopstate);
-      // If we're unmounting but NOT due to popstate (e.g., ESC, backdrop click, swipe, or navigation),
+      // If we're unmounting but NOT due to popstate or navigation away,
       // we need to clean up the history entry we pushed
-      if (!closedByPopstateRef.current) {
+      if (!closedByPopstateRef.current && !navigatingAwayRef.current) {
         history.back();
       }
     };
@@ -914,6 +916,8 @@ export default function SelectedArtworkOverlay({
                   e.stopPropagation();
                   e.preventDefault();
                   if (post.owner?.public_sqid) {
+                    // Set flag so cleanup doesn't call history.back() and cancel navigation
+                    navigatingAwayRef.current = true;
                     router.push(`/u/${post.owner.public_sqid}`);
                   }
                 }}
@@ -922,6 +926,8 @@ export default function SelectedArtworkOverlay({
                     e.stopPropagation();
                     e.preventDefault();
                     if (post.owner?.public_sqid) {
+                      // Set flag so cleanup doesn't call history.back() and cancel navigation
+                      navigatingAwayRef.current = true;
                       router.push(`/u/${post.owner.public_sqid}`);
                     }
                   }
