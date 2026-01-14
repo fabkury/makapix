@@ -608,8 +608,7 @@ def send_player_command(
         command_payload = {
             "post_id": post.id,
             "storage_key": str(post.storage_key),
-            "art_url": post.art_url,
-            "canvas": post.canvas,
+            "art_url": post.art_url
         }
     
     elif payload.command_type == "play_channel":
@@ -712,8 +711,7 @@ def send_command_to_all_players(
         command_payload = {
             "post_id": post.id,
             "storage_key": str(post.storage_key),
-            "art_url": post.art_url,
-            "canvas": post.canvas,
+            "art_url": post.art_url
         }
     
     elif payload.command_type == "play_channel":
