@@ -231,11 +231,11 @@ Device -> [mTLS] -> MQTT Broker -> [Internal] -> API
 
 | Requirement | Status | Notes |
 |-------------|--------|-------|
-| Lawful basis | ⚠️ | Document in privacy policy |
+| Lawful basis | 🟡 | Document in privacy policy |
 | Right to access | ✅ | User can view their data |
 | Right to rectification | ✅ | User can update profile |
-| Right to erasure | ⚠️ | Soft delete, not immediate |
-| Data portability | ❌ | No export feature |
+| Right to erasure | 🟡 | Soft delete, not immediate |
+| Data portability | 🟡 | No export feature yet |
 | Processing records | ✅ | Audit logs maintained |
 
 ### Recommendations for GDPR

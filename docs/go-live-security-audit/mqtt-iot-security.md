@@ -221,8 +221,8 @@ sequenceDiagram
 | Step | Control |
 |------|---------|
 | Provision | 6-char code expires in 15 minutes |
-| Register | Requires authenticated user |
-| Register | Max 128 players per user |
+| Register (code validation) | Requires authenticated user, max 128 players per user |
+| Register (cert generation) | TLS certificate generated and stored |
 | Get Creds | player_key UUID required |
 | Connect | mTLS certificate required |
 | Delete | Certificate revoked via CRL |

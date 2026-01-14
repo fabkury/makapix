@@ -243,12 +243,12 @@ def get_user_recent_blog_posts(...):
 | DELETE /post/{id} | ✅ | - | Owner only |
 | POST /user/{id}/avatar | ✅ | - | Owner only |
 | POST /player/register | ✅ | ✅ | User registration |
+| GET /search | ✅ | - | Requires auth for results |
 
-### Public Endpoints
+### Public Endpoints (No Auth Required)
 | Endpoint | Auth | Rate Limited | Notes |
 |----------|------|--------------|-------|
 | GET /post/recent | ❌ | Cache | Cached response |
-| GET /search | ✅ | - | Requires auth |
 | GET /hashtags | ❌ | Cache | Cached response |
 | POST /player/provision | ❌ | - | Device provision |
 
