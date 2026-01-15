@@ -19,6 +19,7 @@ from ..auth import (
 from ..deps import get_db
 from ..utils.audit import log_moderation_action
 from ..pagination import apply_cursor_filter, create_page_response
+from ..services.social_notifications import SocialNotificationService
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -148,6 +149,14 @@ def promote_moderator(
             target_id=user.id,
         )
 
+        # Send notification to the new moderator
+        SocialNotificationService.create_system_notification(
+            db=db,
+            user_id=user.id,
+            notification_type="moderator_granted",
+            actor=_owner,
+        )
+
     return schemas.PromoteModeratorResponse(user_id=user.id, role="moderator")
 
 
@@ -194,6 +203,14 @@ def demote_moderator(
             action="demote_moderator",
             target_type="user",
             target_id=user.id,
+        )
+
+        # Send notification to the demoted user
+        SocialNotificationService.create_system_notification(
+            db=db,
+            user_id=user.id,
+            notification_type="moderator_revoked",
+            actor=_owner,
         )
 
 

@@ -116,6 +116,8 @@ services:
       MQTT_BROKER_HOST: mqtt
       MQTT_BROKER_PORT: 1883
       MQTT_TLS_ENABLED: "false"
+      MQTT_USERNAME: svc_backend
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
       MQTT_PUBLIC_HOST: dev.makapix.club
       MQTT_PUBLIC_PORT: 8883
       VAULT_LOCATION: ${VAULT_LOCATION}
@@ -276,10 +278,11 @@ services:
     labels:
       caddy: ${WEB_DOMAIN:-dev.makapix.club}
       caddy.header.X-Robots-Tag: "noindex, nofollow, noarchive"
-      # Route /api/* to FastAPI backend
+      # Route /api/* to FastAPI backend (strip /api prefix)
       caddy.@api.path: /api/*
       caddy.handle_0: "@api"
-      caddy.handle_0.reverse_proxy: api:8000
+      caddy.handle_0.handle_path: /api/*
+      caddy.handle_0.handle_path.reverse_proxy: api:8000
       # MQTT WebSocket proxy at /mqtt path
       caddy.@mqtt.path: /mqtt
       caddy.handle_1: "@mqtt"
@@ -358,6 +361,8 @@ networks:
 
 volumes:
   pg_data:
+    external: true
+    name: makapix_pg_data
   cache_data:
   api_pip_cache:
   caddy_data:

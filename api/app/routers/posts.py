@@ -130,10 +130,10 @@ def list_posts(
         .filter(
             models.Post.kind == "artwork",
             models.Post.deleted_by_user == False,  # Exclude user-deleted posts
+            models.Post.public_sqid.isnot(None),  # Exclude posts without public_sqid
+            models.Post.public_sqid != "",  # Exclude posts with empty public_sqid
         )
     )
-
-    is_moderator = "moderator" in current_user.roles or "owner" in current_user.roles
 
     # Convert owner_id (UUID user_key) to integer user id if provided
     owner_user_id = None
@@ -154,22 +154,23 @@ def list_posts(
         query = query.filter(models.Post.owner_id == owner_user_id)
 
     # Apply visibility filters
+    # Note: Moderator-only visibility exceptions are handled in the Moderator Dashboard
+    # endpoints (admin.py), not here. This endpoint shows the same content to all users.
     if visible_only:
         query = query.filter(models.Post.visible == True)
 
-        # Hide posts hidden by moderators unless current user is moderator/owner
-        if not is_moderator:
-            query = query.filter(models.Post.hidden_by_mod == False)
+        # Hide posts hidden by moderators (visible only in Moderator Dashboard)
+        query = query.filter(models.Post.hidden_by_mod == False)
 
-        # Hide posts hidden by users (should always be hidden from public view)
+        # Hide posts hidden by users
         query = query.filter(models.Post.hidden_by_user == False)
 
-        # Hide non-conformant posts unless current user is moderator/owner
-        if not is_moderator:
-            query = query.filter(models.Post.non_conformant == False)
+        # Hide non-conformant posts (visible only in Moderator Dashboard)
+        query = query.filter(models.Post.non_conformant == False)
 
-        # Apply public_visibility filter unless viewing own posts or is moderator
-        if not is_viewing_own_posts and not is_moderator:
+        # Apply public_visibility filter unless viewing own posts
+        # Posts pending approval are visible only to their owner and in Moderator Dashboard
+        if not is_viewing_own_posts:
             query = query.filter(models.Post.public_visibility == True)
 
     if promoted is not None:
@@ -711,13 +712,8 @@ def list_recent_posts(
     Cached for 2 minutes due to high churn rate.
     """
     # Create cache key based on cursor and limit
-    # Include moderator flag in cache key since they see different results
-    is_moderator = current_user and (
-        "moderator" in current_user.roles or "owner" in current_user.roles
-    )
-    cache_key = (
-        f"feed:recent:{'mod' if is_moderator else 'user'}:{cursor or 'first'}:{limit}"
-    )
+    # All users see the same results (moderator-only views are in Moderator Dashboard)
+    cache_key = f"feed:recent:{cursor or 'first'}:{limit}"
 
     # Try to get from cache
     cached_result = cache_get(cache_key)
@@ -741,14 +737,11 @@ def list_recent_posts(
             models.Post.visible == True,
             models.Post.hidden_by_mod == False,
             models.Post.hidden_by_user == False,
+            models.Post.non_conformant == False,
             models.Post.public_visibility == True,  # Only show publicly visible posts
             models.Post.deleted_by_user == False,  # Exclude user-deleted posts
         )
     )
-
-    # Hide non-conformant posts unless current user is moderator/owner
-    if not is_moderator:
-        query = query.filter(models.Post.non_conformant == False)
 
     # Apply cursor pagination
     query = apply_cursor_filter(

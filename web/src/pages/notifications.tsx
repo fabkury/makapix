@@ -85,6 +85,12 @@ export default function NotificationsPage() {
     // All notifications are already marked as read when the page loads
   };
 
+  // Check if notification is a system notification (no artwork)
+  const isSystemNotification = (notification: SocialNotificationFull): boolean => {
+    return notification.notification_type === "moderator_granted" ||
+           notification.notification_type === "moderator_revoked";
+  };
+
   // Render notification message
   const renderNotificationMessage = (notification: SocialNotificationFull): string => {
     const actor = notification.actor_handle || "Someone";
@@ -94,6 +100,10 @@ export default function NotificationsPage() {
       return `${actor} reacted ${notification.emoji || ""} to "${title}"`;
     } else if (notification.notification_type === "comment") {
       return `${actor} commented on "${title}"`;
+    } else if (notification.notification_type === "moderator_granted") {
+      return `${actor} granted you moderator status`;
+    } else if (notification.notification_type === "moderator_revoked") {
+      return `${actor} revoked your moderator status`;
     }
     return `${actor} interacted with "${title}"`;
   };
@@ -126,25 +136,36 @@ export default function NotificationsPage() {
             </div>
             <p>No notifications yet</p>
             <span className="empty-hint">
-              When someone reacts to or comments on your artwork, you&apos;ll see
-              it here.
+              When someone reacts to or comments on your artwork, or when you
+              receive system notifications, you&apos;ll see them here.
             </span>
           </div>
         ) : (
           <>
             <ul className="notification-list">
-              {notifications.map((notification) => (
-                <li
-                  key={notification.id}
-                  className={`notification-item ${!notification.is_read ? "unread" : ""}`}
-                >
-                  <Link
-                    href={`/p/${notification.content_sqid}`}
-                    onClick={() => handleNotificationClick(notification)}
-                    className="notification-link"
-                  >
+              {notifications.map((notification) => {
+                const isSystem = isSystemNotification(notification);
+                const notificationContent = (
+                  <>
                     <div className="notification-icon">
-                      {notification.notification_type === "reaction" ? (
+                      {isSystem && notification.actor_avatar_url ? (
+                        <img
+                          src={notification.actor_avatar_url}
+                          alt=""
+                          width={32}
+                          height={32}
+                          className="actor-avatar"
+                        />
+                      ) : isSystem ? (
+                        <svg
+                          width="20"
+                          height="20"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                        >
+                          <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z" />
+                        </svg>
+                      ) : notification.notification_type === "reaction" ? (
                         <span className="emoji">{notification.emoji || "..."}</span>
                       ) : (
                         <svg
@@ -184,9 +205,40 @@ export default function NotificationsPage() {
                         aria-hidden="true"
                       />
                     )}
-                  </Link>
-                </li>
-              ))}
+                    {isSystem && notification.actor_avatar_url && (
+                      <img
+                        src={notification.actor_avatar_url}
+                        alt=""
+                        width={64}
+                        height={64}
+                        className="notification-artwork"
+                        aria-hidden="true"
+                      />
+                    )}
+                  </>
+                );
+
+                return (
+                  <li
+                    key={notification.id}
+                    className={`notification-item ${!notification.is_read ? "unread" : ""}`}
+                  >
+                    {isSystem ? (
+                      <div className="notification-link system-notification">
+                        {notificationContent}
+                      </div>
+                    ) : (
+                      <Link
+                        href={`/p/${notification.content_sqid}`}
+                        onClick={() => handleNotificationClick(notification)}
+                        className="notification-link"
+                      >
+                        {notificationContent}
+                      </Link>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
 
             {nextCursor && (
@@ -276,7 +328,7 @@ export default function NotificationsPage() {
           transition: background var(--transition-fast);
         }
 
-        .notification-item :global(.notification-link:hover) {
+        .notification-item :global(.notification-link:hover:not(.system-notification)) {
           background: var(--bg-tertiary, #222);
         }
 
@@ -294,6 +346,17 @@ export default function NotificationsPage() {
 
         .notification-icon .emoji {
           font-size: 16px;
+        }
+
+        .notification-icon .actor-avatar {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          object-fit: cover;
+        }
+
+        .system-notification {
+          cursor: default;
         }
 
         .notification-content {

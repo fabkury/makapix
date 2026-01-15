@@ -888,6 +888,12 @@ export default function UserProfilePage() {
                 <Link href={`/u/${profile.public_sqid}/dashboard`} className="mod-btn">
                   📊 Dashboard
                 </Link>
+                {/* UMD link - visible to mods, hidden when viewing owner */}
+                {!isOwner && (
+                  <Link href={`/u/${profile.public_sqid}/manage`} className="mod-btn" title="User Management">
+                    🛠️
+                  </Link>
+                )}
                 {(isViewerOwner || !(profile.badges?.some(b => b.badge === 'moderator' || b.badge === 'owner'))) && (
                   <button className="mod-btn" onClick={handleEditClick}>
                     ✏️ Edit

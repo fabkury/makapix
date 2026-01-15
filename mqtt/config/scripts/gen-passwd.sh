@@ -15,14 +15,23 @@ PLAYER_PASSWORD=${PLAYER_PASSWORD:-$(openssl rand -base64 24 | tr -d "=+/" | cut
 # Create password file (create new or update existing)
 if [[ ! -f "${PASSWD_FILE}" ]]; then
     # Create new password file
-    mosquitto_passwd -c -b "${PASSWD_FILE}" api-server "${BACKEND_PASSWORD}" || true
+    mosquitto_passwd -c -b "${PASSWD_FILE}" svc_backend "${BACKEND_PASSWORD}" || true
+    mosquitto_passwd -b "${PASSWD_FILE}" player_client "${PLAYER_PASSWORD}" || true
+    # Web client user for browser MQTT connections (read-only, hardcoded password)
+    mosquitto_passwd -b "${PASSWD_FILE}" webclient "webclient" || true
     echo "Password file created at ${PASSWD_FILE}"
 else
     # Update existing users if they don't exist, or create new file if needed
-    if ! mosquitto_passwd -b "${PASSWD_FILE}" api-server "${BACKEND_PASSWORD}" 2>/dev/null; then
+    if ! mosquitto_passwd -b "${PASSWD_FILE}" svc_backend "${BACKEND_PASSWORD}" 2>/dev/null; then
         # User doesn't exist, add it
-        mosquitto_passwd -b "${PASSWD_FILE}" api-server "${BACKEND_PASSWORD}" || true
+        mosquitto_passwd -b "${PASSWD_FILE}" svc_backend "${BACKEND_PASSWORD}" || true
     fi
+    if ! mosquitto_passwd -b "${PASSWD_FILE}" player_client "${PLAYER_PASSWORD}" 2>/dev/null; then
+        # User doesn't exist, add it
+        mosquitto_passwd -b "${PASSWD_FILE}" player_client "${PLAYER_PASSWORD}" || true
+    fi
+    # Web client user for browser MQTT connections (read-only, hardcoded password)
+    mosquitto_passwd -b "${PASSWD_FILE}" webclient "webclient" 2>/dev/null || true
     echo "Password file updated at ${PASSWD_FILE}"
 fi
 

@@ -57,10 +57,8 @@ def search_all(
         | schemas.SearchResultPlaylist
     ] = []
 
-    # Determine if user can see hidden/non-conformant content
-    is_moderator = "moderator" in current_user.roles or "owner" in current_user.roles
-
     # Search users with trigram similarity (search by handle only)
+    # Note: Moderator-only views are in the Moderator Dashboard, not here
     if "users" in types:
         user_query = db.query(
             models.User,
@@ -69,14 +67,13 @@ def search_all(
             func.similarity(models.User.handle, q_normalized) > 0.1,
         )
 
-        # Apply visibility filters
-        if not is_moderator:
-            user_query = user_query.filter(
-                models.User.hidden_by_user == False,
-                models.User.hidden_by_mod == False,
-                models.User.non_conformant == False,
-                models.User.deactivated == False,
-            )
+        # Apply visibility filters (same for all users)
+        user_query = user_query.filter(
+            models.User.hidden_by_user == False,
+            models.User.hidden_by_mod == False,
+            models.User.non_conformant == False,
+            models.User.deactivated == False,
+        )
 
         # Apply cursor pagination (using similarity as sort field)
         if cursor:
@@ -124,18 +121,15 @@ def search_all(
             )
         )
 
-        # Apply visibility filters
+        # Apply visibility filters (same for all users)
         post_query = post_query.filter(
             models.Post.visible == True,
+            models.Post.hidden_by_mod == False,
+            models.Post.hidden_by_user == False,
+            models.Post.non_conformant == False,
             models.Post.public_visibility == True,  # Only show publicly visible posts
             models.Post.deleted_by_user == False,  # Exclude user-deleted posts
         )
-        if not is_moderator:
-            post_query = post_query.filter(
-                models.Post.hidden_by_mod == False,
-                models.Post.non_conformant == False,
-            )
-        post_query = post_query.filter(models.Post.hidden_by_user == False)
 
         # Apply cursor pagination
         if cursor:
@@ -189,19 +183,15 @@ def search_all(
                 models.Post.hashtags.contains([hashtag])
             )
 
-            # Apply visibility filters
+            # Apply visibility filters (same for all users)
             post_query = post_query.filter(
                 models.Post.visible == True,
-                models.Post.public_visibility
-                == True,  # Only show publicly visible posts
+                models.Post.hidden_by_mod == False,
+                models.Post.hidden_by_user == False,
+                models.Post.non_conformant == False,
+                models.Post.public_visibility == True,  # Only show publicly visible posts
                 models.Post.deleted_by_user == False,  # Exclude user-deleted posts
             )
-            if not is_moderator:
-                post_query = post_query.filter(
-                    models.Post.hidden_by_mod == False,
-                    models.Post.non_conformant == False,
-                )
-            post_query = post_query.filter(models.Post.hidden_by_user == False)
 
             # Limit results
             hashtag_posts = (
@@ -362,10 +352,8 @@ async def list_hashtag_posts(
     tag_normalized = tag.strip().lower()
 
     # Create cache key
-    is_moderator = current_user and (
-        "moderator" in current_user.roles or "owner" in current_user.roles
-    )
-    cache_key = f"hashtags:posts:{tag_normalized}:{'mod' if is_moderator else 'user'}:{cursor or 'first'}:{limit}"
+    # All users see the same results (moderator-only views are in Moderator Dashboard)
+    cache_key = f"hashtags:posts:{tag_normalized}:{cursor or 'first'}:{limit}"
 
     # Try to get from cache
     cached_result = cache_get(cache_key)
@@ -383,18 +371,15 @@ async def list_hashtag_posts(
         models.Post.hashtags.contains([tag_normalized])
     )
 
-    # Apply visibility filters
+    # Apply visibility filters (same for all users)
     query = query.filter(
         models.Post.visible == True,
         models.Post.hidden_by_mod == False,
         models.Post.hidden_by_user == False,
+        models.Post.non_conformant == False,
         models.Post.public_visibility == True,  # Only show publicly visible posts
         models.Post.deleted_by_user == False,  # Exclude user-deleted posts
     )
-
-    # Hide non-conformant posts unless current user is moderator/owner
-    if not is_moderator:
-        query = query.filter(models.Post.non_conformant == False)
 
     # Apply cursor pagination
     query = apply_cursor_filter(
@@ -599,13 +584,8 @@ def feed_promoted(
     Cached for 5 minutes to reduce database load.
     """
     # Create cache key based on cursor and limit
-    # Include moderator flag in cache key since they see different results
-    is_moderator = current_user and (
-        "moderator" in current_user.roles or "owner" in current_user.roles
-    )
-    cache_key = (
-        f"feed:promoted:{'mod' if is_moderator else 'user'}:{cursor or 'first'}:{limit}"
-    )
+    # All users see the same results (moderator-only views are in Moderator Dashboard)
+    cache_key = f"feed:promoted:{cursor or 'first'}:{limit}"
 
     # Try to get from cache
     cached_result = cache_get(cache_key)
@@ -629,14 +609,11 @@ def feed_promoted(
             models.Post.visible == True,
             models.Post.hidden_by_mod == False,
             models.Post.hidden_by_user == False,
+            models.Post.non_conformant == False,
             models.Post.public_visibility == True,  # Only show publicly visible posts
             models.Post.deleted_by_user == False,  # Exclude user-deleted posts
         )
     )
-
-    # Hide non-conformant posts unless current user is moderator/owner
-    if not is_moderator:
-        query = query.filter(models.Post.non_conformant == False)
 
     # Apply cursor pagination
     query = apply_cursor_filter(

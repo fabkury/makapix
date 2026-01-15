@@ -96,6 +96,7 @@ class SocialNotificationService:
             post_id=post.id,
             actor_id=actor.id if actor else None,
             actor_handle=actor.handle if actor else "Anonymous",
+            actor_avatar_url=actor.avatar_url if actor else None,
             emoji=emoji,
             comment_id=comment_id,
             comment_preview=comment_preview,
@@ -110,6 +111,59 @@ class SocialNotificationService:
 
         logger.info(
             f"Created {notification_type} notification {notification.id} for user {user_id}"
+        )
+
+        # Update Redis unread counter
+        SocialNotificationService._increment_unread_count(user_id)
+
+        # Broadcast via MQTT for real-time delivery
+        SocialNotificationService._broadcast_notification(notification)
+
+        return notification
+
+    @staticmethod
+    def create_system_notification(
+        db: Session,
+        user_id: int,
+        notification_type: str,
+        actor: models.User,
+    ) -> models.SocialNotification | None:
+        """
+        Create a system notification (no artwork reference).
+
+        Used for system events like moderator status changes.
+
+        Args:
+            db: Database session
+            user_id: ID of user to notify
+            notification_type: 'moderator_granted', 'moderator_revoked', etc.
+            actor: The user who performed the action
+
+        Returns:
+            Created notification, or None if skipped (self-action)
+        """
+        # Don't notify users about their own actions
+        if actor.id == user_id:
+            logger.debug(f"Skipping self-notification for user {user_id}")
+            return None
+
+        # Create notification record (no post reference)
+        notification = models.SocialNotification(
+            user_id=user_id,
+            notification_type=notification_type,
+            post_id=None,  # System notifications have no artwork
+            actor_id=actor.id,
+            actor_handle=actor.handle,
+            actor_avatar_url=actor.avatar_url,
+            # No emoji, comment, or content fields for system notifications
+        )
+
+        db.add(notification)
+        db.commit()
+        db.refresh(notification)
+
+        logger.info(
+            f"Created system notification {notification.id} ({notification_type}) for user {user_id}"
         )
 
         # Update Redis unread counter
@@ -340,6 +394,7 @@ class SocialNotificationService:
             "notification_type": notification.notification_type,
             "post_id": notification.post_id,
             "actor_handle": notification.actor_handle,
+            "actor_avatar_url": notification.actor_avatar_url,
             "emoji": notification.emoji,
             "comment_preview": notification.comment_preview,
             "content_title": notification.content_title,

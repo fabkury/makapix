@@ -6,7 +6,7 @@
 # Also: read player requests, write player responses
 # Also: read player view events, write view acks
 # Also: publish social notifications (reactions/comments)
-user api-server
+user svc_backend
 topic write makapix/player/+/command
 topic read makapix/player/+/status
 topic read makapix/player/+/request/+

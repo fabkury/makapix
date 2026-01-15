@@ -679,6 +679,29 @@ class AdminNote(Base):
     post = relationship("Post", back_populates="admin_notes")
 
 
+class Violation(Base):
+    """User violation record for moderation tracking."""
+
+    __tablename__ = "violations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    moderator_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    reason = Column(Text, nullable=False)  # Min 8 chars enforced at API level
+
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id], backref="violations")
+    moderator = relationship("User", foreign_keys=[moderator_id])
+
+    __table_args__ = (
+        Index("ix_violations_user_created", user_id, created_at.desc()),
+    )
+
+
 # ============================================================================
 # PLAYERS & AUTH
 # ============================================================================
@@ -1357,9 +1380,10 @@ class BlogPostStatsDaily(Base):
 
 class SocialNotification(Base):
     """
-    Social notification for reactions and comments on artwork.
+    Social notification for reactions, comments, and system events.
 
-    Notifies users when their content receives engagement from other users.
+    Notifies users when their content receives engagement from other users,
+    or when system events occur (e.g., moderator status changes).
     Blog post notifications are excluded (feature postponed).
     """
 
@@ -1370,12 +1394,12 @@ class SocialNotification(Base):
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
-    # Type: 'reaction' or 'comment'
+    # Type: 'reaction', 'comment', 'moderator_granted', 'moderator_revoked', etc.
     notification_type = Column(String(50), nullable=False)
 
-    # Target content (artwork only)
+    # Target content (nullable for system notifications)
     post_id = Column(
-        Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True
+        Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=True, index=True
     )
 
     # Actor (who triggered the notification)
@@ -1383,6 +1407,7 @@ class SocialNotification(Base):
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     actor_handle = Column(String(50), nullable=True)  # Denormalized for display
+    actor_avatar_url = Column(String(1000), nullable=True)  # For system notifications
 
     # Notification details
     emoji = Column(String(20), nullable=True)  # For reaction notifications

@@ -1590,9 +1590,10 @@ class HashUrlResponse(BaseModel):
 class SocialNotificationBase(BaseModel):
     """Base schema for social notifications."""
 
-    notification_type: str  # 'reaction' or 'comment'
-    post_id: int
+    notification_type: str  # 'reaction', 'comment', 'moderator_granted', 'moderator_revoked'
+    post_id: int | None = None  # Nullable for system notifications
     actor_handle: str | None = None
+    actor_avatar_url: str | None = None  # For system notifications
     emoji: str | None = None
     comment_preview: str | None = None
     content_title: str | None = None
@@ -1616,9 +1617,10 @@ class SocialNotificationCreate(BaseModel):
 
     user_id: int
     notification_type: str
-    post_id: int
+    post_id: int | None = None  # Nullable for system notifications
     actor_id: int | None = None
     actor_handle: str | None = None
+    actor_avatar_url: str | None = None  # For system notifications
     emoji: str | None = None
     comment_id: UUID | None = None
     comment_preview: str | None = None
@@ -1857,3 +1859,94 @@ class ReactedPostsResponse(BaseModel):
 
     items: list[ReactedPostItem]
     next_cursor: str | None = None
+
+
+# ============================================================================
+# USER MANAGEMENT DASHBOARD (UMD) SCHEMAS
+# ============================================================================
+
+
+class UMDUserData(BaseModel):
+    """Complete user data for UMD page."""
+
+    id: int
+    user_key: UUID
+    public_sqid: str
+    handle: str
+    avatar_url: str | None = None
+    reputation: int
+    badges: list[BadgeGrant] = []
+    auto_public_approval: bool
+    hidden_by_mod: bool
+    banned_until: datetime | None = None
+    roles: list[str] = []
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ViolationItem(BaseModel):
+    """Single violation record."""
+
+    id: int
+    reason: str
+    moderator_id: int
+    moderator_handle: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ViolationsResponse(BaseModel):
+    """Paginated violations list."""
+
+    items: list[ViolationItem]
+    total: int
+    next_cursor: str | None = None
+
+
+class IssueViolationRequest(BaseModel):
+    """Issue violation request."""
+
+    reason: str = Field(..., min_length=8, max_length=2000)
+
+
+class UMDCommentItem(BaseModel):
+    """Comment item for UMD."""
+
+    id: UUID
+    post_id: int
+    post_public_sqid: str
+    post_title: str
+    post_art_url: str | None = None
+    body: str
+    hidden_by_mod: bool
+    created_at: datetime
+
+
+class UMDCommentsResponse(BaseModel):
+    """Paginated comments for UMD."""
+
+    items: list[UMDCommentItem]
+    total: int
+    next_cursor: str | None = None
+
+
+class UMDReputationAdjustRequest(BaseModel):
+    """Reputation adjustment for UMD."""
+
+    delta: int = Field(..., ge=-1000, le=1000)
+    reason: str = Field(..., min_length=8, max_length=500)
+
+
+class EmailRevealResponse(BaseModel):
+    """Email reveal response."""
+
+    email: str
+    message: str = "Email revealed and logged to audit"
+
+
+class UMDBadgeListResponse(BaseModel):
+    """List of available badges for UMD."""
+
+    badges: list[BadgeDefinition]

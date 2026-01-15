@@ -96,27 +96,21 @@ def list_blog_posts(
     """
     _check_blog_posts_feature_lock()  # FEATURE POSTPONED - Remove this line to reactivate
     query = db.query(models.BlogPost).options(joinedload(models.BlogPost.owner))
-    
-    is_moderator = (
-        isinstance(current_user, models.User)
-        and ("moderator" in current_user.roles or "owner" in current_user.roles)
-    )
+
     is_viewing_own_posts = owner_id and isinstance(current_user, models.User) and owner_id == current_user.id
-    
+
     if owner_id:
         query = query.filter(models.BlogPost.owner_id == owner_id)
-    
+
     # Apply visibility filters
+    # Note: Moderator-only views are in Moderator Dashboard, not here
     if visible_only:
         query = query.filter(models.BlogPost.visible == True)
-        
-        if not is_moderator:
-            query = query.filter(models.BlogPost.hidden_by_mod == False)
-        
+        query = query.filter(models.BlogPost.hidden_by_mod == False)
         query = query.filter(models.BlogPost.hidden_by_user == False)
-        
-        # Apply public_visibility filter unless viewing own posts or is moderator
-        if not is_viewing_own_posts and not is_moderator:
+
+        # Apply public_visibility filter unless viewing own posts
+        if not is_viewing_own_posts:
             query = query.filter(models.BlogPost.public_visibility == True)
     
     # Handle sorting
@@ -522,14 +516,10 @@ def list_blog_comments(
         .options(joinedload(models.BlogPostComment.author))
         .filter(models.BlogPostComment.blog_post_id == id)
     )
-    
-    is_moderator = (
-        isinstance(current_user, models.User)
-        and ("moderator" in current_user.roles or "owner" in current_user.roles)
-    )
-    if not is_moderator:
-        query = query.filter(models.BlogPostComment.hidden_by_mod == False)
-    
+
+    # Hide moderator-hidden comments (same for all users)
+    query = query.filter(models.BlogPostComment.hidden_by_mod == False)
+
     query = query.filter(models.BlogPostComment.depth <= 3)
     query = query.order_by(models.BlogPostComment.created_at.asc()).limit(limit)
     

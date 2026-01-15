@@ -38,6 +38,7 @@ from .routers import (
     stats,
     system,
     tracking,
+    umd,
     users,
 )
 from .seed import ensure_seed_data
@@ -216,6 +217,7 @@ app.include_router(relay.router)
 app.include_router(mqtt.router)
 app.include_router(legacy.router)
 app.include_router(pmd.router)
+app.include_router(umd.router)
 
 
 # Mount vault directory for serving uploaded artwork images
