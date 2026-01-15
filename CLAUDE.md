@@ -8,6 +8,8 @@ Makapix Club (MPX) is a lightweight pixel art social network designed to run on 
 
 ## Development Commands
 
+All commands are run from the repository root. The stack is defined in `deploy/stack/docker-compose.yml`.
+
 ```bash
 # Start all services
 make up
@@ -19,28 +21,28 @@ make down
 make logs
 make logs-api      # API only
 make logs-web      # Web only
+make logs-db       # Database only
 
 # Rebuild containers
 make rebuild
-
-# Switch environments
-make local         # localhost development
-make remote        # dev.makapix.club
 
 # Database
 make db.shell      # PostgreSQL shell
 
 # Run API tests
 make test
-docker compose exec api pytest tests/test_file.py  # Single test file
-docker compose exec api pytest -k "test_name"       # Test by name
+cd deploy/stack && docker compose exec api pytest tests/test_file.py  # Single test file
+cd deploy/stack && docker compose exec api pytest -k "test_name"       # Test by name
 
 # Format Python code
 make fmt
 
 # Enter container shells
-docker compose exec api bash
-docker compose exec web sh
+cd deploy/stack && docker compose exec api bash
+cd deploy/stack && docker compose exec web sh
+
+# Deploy (pull + rebuild)
+make deploy
 ```
 
 ## Architecture
@@ -51,15 +53,19 @@ docker compose exec web sh
 - `worker/` - Celery background tasks
 - `mqtt/` - Mosquitto broker configuration
 - `apps/cta/` - Marketing site (makapix.club)
-- `deploy/stack/` - VPS production deployment
+- `deploy/stack/` - Docker Compose stack (all services)
 
-**Key services (docker-compose.yml):**
+**Key services (deploy/stack/docker-compose.yml):**
 - `db` - PostgreSQL 17
-- `cache` - Redis 7.2
-- `mqtt` - Mosquitto (ports 1883, 8883, 9001)
+- `cache` - Redis 7 (API cache, Celery broker)
+- `mqtt` - Mosquitto (ports 1883, 8883)
 - `api` - FastAPI on port 8000
+- `worker` - Celery background worker
 - `web` - Next.js on port 3000
-- `proxy` - Caddy reverse proxy
+- `caddy` - Reverse proxy with auto-TLS
+- `cta` - Marketing site
+- `vault` - HTTP file server for physical players
+- `redis` - Edge rate limiting
 
 ## Backend (api/)
 
@@ -76,9 +82,9 @@ docker compose exec web sh
 
 **Database migrations:**
 ```bash
-docker compose exec api alembic revision --autogenerate -m "description"
-docker compose exec api alembic upgrade head
-docker compose exec api alembic downgrade -1
+cd deploy/stack && docker compose exec api alembic revision --autogenerate -m "description"
+cd deploy/stack && docker compose exec api alembic upgrade head
+cd deploy/stack && docker compose exec api alembic downgrade -1
 ```
 
 ## Frontend (web/)
@@ -89,9 +95,8 @@ docker compose exec api alembic downgrade -1
 - `src/lib/` - API client, utilities
 - `src/hooks/` - Custom React hooks
 
-**Scripts:**
+**Scripts (run inside web container or during build):**
 ```bash
-npm run dev        # Development with hot reload
 npm run build      # Production build
 npm run typecheck  # TypeScript check
 npm run lint       # ESLint
@@ -103,7 +108,7 @@ npm run format     # Prettier
 Images are stored locally in a hash-based folder structure:
 - Path format: `/vault/{h1}/{h2}/{h3}/{artwork_id}.{ext}`
 - Hash derived from first 6 chars of SHA-256 of artwork ID
-- Served via `/api/vault/` endpoint
+- Served via `/api/vault/` endpoint (HTTPS) and `vault.makapix.club` (HTTP for players)
 
 ## MQTT Topics
 
@@ -114,13 +119,20 @@ makapix/player/{key}/command # Physical player commands
 makapix/player/{key}/status  # Player status reports
 ```
 
-## Deployment Notes
+## Deployment
 
-**VPS deployment uses `deploy/stack/`** - see `deploy/stack/README.stack.md` for details.
+The entire stack runs from `deploy/stack/docker-compose.yml`. There is no separate local development environment.
 
-Do NOT run `npm run build` or similar build commands directly. The deployment stack handles builds in production mode.
+**To deploy changes:**
+```bash
+make deploy   # Pulls latest code and rebuilds services
+```
 
-**Critical:** On VPS, use production mode (`deploy/stack/docker-compose.yml`) not the root docker-compose.yml, which is for local dev with hot reload.
+**Manual deployment:**
+```bash
+git pull origin main
+cd deploy/stack && docker compose down && docker compose up -d --build
+```
 
 ## Code Style
 

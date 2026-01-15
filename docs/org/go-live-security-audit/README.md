@@ -32,19 +32,19 @@ Issues are classified using the following severity levels:
 No critical security vulnerabilities were identified.
 
 ### High Priority Issues (3)
-1. **[H1]** JWT Secret Key validation should verify entropy, not just length
-2. **[H2]** Rate limiting fails open when Redis is unavailable
-3. **[H3]** Vault files served without authentication via HTTP subdomain
+1. **[H1]** JWT Secret Key validation should verify entropy, not just length - ✅ RESOLVED
+2. **[H2]** Rate limiting fails open when Redis is unavailable - ✅ RESOLVED
+3. **[H3]** Vault files served without authentication via HTTP subdomain - ⏸️ DEFERRED
 
 ### Medium Priority Issues (5)
-1. **[M1]** CORS configuration uses wildcard in development environment example
+1. **[M1]** CORS configuration uses wildcard in development environment example - ✅ RESOLVED
 2. **[M2]** Hidden posts can still be accessed via direct URL (relies on URL obscurity)
-3. **[M3]** Password reset tokens should be rate-limited per email, not just per user
-4. **[M4]** Player credentials endpoint lacks rate limiting
+3. **[M3]** Password reset tokens should be rate-limited per email, not just per user - ✅ RESOLVED
+4. **[M4]** Player credentials endpoint lacks rate limiting - ✅ RESOLVED
 5. **[M5]** Comment deletion by IP could affect users behind NAT
 
 ### Low Priority Issues (4)
-1. **[L1]** Consider adding request ID for audit trail correlation
+1. **[L1]** Consider adding request ID for audit trail correlation - ✅ RESOLVED
 2. **[L2]** Add monitoring for failed authentication attempts
 3. **[L3]** Consider implementing account lockout after repeated failures
 4. **[L4]** Blog posts feature is disabled but code remains
@@ -66,19 +66,38 @@ No critical security vulnerabilities were identified.
 ## Recommended Pre-Launch Actions
 
 ### Must Address Before Launch
-1. Review and update production environment variables (JWT_SECRET_KEY, CORS_ORIGINS)
-2. Ensure Redis is highly available or implement fallback rate limiting
-3. Consider restricting vault HTTP access or implementing signed URLs
+1. ✅ Review and update production environment variables (JWT_SECRET_KEY, CORS_ORIGINS) - Entropy validation added, CORS docs updated
+2. ✅ Ensure Redis is highly available or implement fallback rate limiting - In-memory fallback implemented
+3. ⏸️ Consider restricting vault HTTP access or implementing signed URLs - **DEFERRED** until further notice (H3)
 
 ### Should Address Soon
-1. Implement per-email rate limiting for password resets
-2. Add rate limiting to player credentials endpoint
+1. ✅ Implement per-email rate limiting for password resets - Per-IP rate limiting added
+2. ✅ Add rate limiting to player credentials endpoint - Done
 3. Review IP-based comment ownership for NAT scenarios
 
 ### Post-Launch Improvements
 1. Implement security event monitoring and alerting
-2. Add request correlation IDs for debugging
+2. ✅ Add request correlation IDs for debugging - RequestIdMiddleware added
 3. Consider account lockout mechanisms
+
+## Resolution Notes
+
+**Resolved January 15, 2026:**
+
+| Issue | Resolution |
+|-------|------------|
+| **H1** | Added `_validate_jwt_secret_entropy()` function to warn about low-entropy secrets |
+| **H2** | Added in-memory fallback rate limiter (`_check_fallback_rate_limit()`) when Redis unavailable |
+| **M1** | Updated `.env.example` with stronger warning against wildcard CORS origins |
+| **M3** | Added per-IP rate limiting (5 requests/hour) to `/forgot-password` endpoint |
+| **M4** | Added per-IP rate limiting (10 requests/minute) to `/player/{key}/credentials` endpoint |
+| **L1** | Added `RequestIdMiddleware` to generate X-Request-Id headers for audit correlation |
+
+**Deferred:**
+
+| Issue | Reason |
+|-------|--------|
+| **H3** | Vault signed URLs deferred until further notice - requires coordination with Caddy configuration |
 
 ## Document Index
 

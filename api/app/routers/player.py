@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
@@ -47,6 +47,21 @@ from ..mqtt.cert_generator import (
 from ..mqtt.player_commands import log_command, publish_player_command
 from ..services.rate_limit import check_rate_limit
 from ..utils.registration import generate_registration_code
+
+
+def get_client_ip(request: Request) -> str:
+    """
+    Extract client IP address from request, handling proxies.
+
+    Checks X-Forwarded-For header first (for reverse proxy setups),
+    then falls back to direct client IP.
+    """
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    if request.client:
+        return request.client.host
+    return "unknown"
 
 router = APIRouter(tags=["Players"])
 
@@ -266,13 +281,25 @@ def register_player(
 @router.get("/player/{player_key}/credentials", response_model=schemas.TLSCertBundle)
 def get_player_credentials(
     player_key: UUID,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> schemas.TLSCertBundle:
     """
     Device calls this to get credentials after registration completes.
-    
+
     No authentication required - player_key serves as authentication.
     """
+    # Rate limiting: 20 credential requests per minute per IP
+    client_ip = get_client_ip(request)
+    rate_limit_key = f"ratelimit:player_creds:{client_ip}"
+    allowed, _ = check_rate_limit(rate_limit_key, limit=20, window_seconds=60)
+
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many credential requests. Please try again later.",
+        )
+
     player = (
         db.query(models.Player)
         .filter(

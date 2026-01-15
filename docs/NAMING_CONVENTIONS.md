@@ -7,16 +7,14 @@ This repo is intentionally deployed as **exactly two public websites**:
 
 There are no other “environments” intended to be publicly reachable.
 
-## Docker Compose files
+## Docker Compose
 
-- `docker-compose.yml` (repo root)
-  - **Purpose**: local development on `localhost`
-  - **Not** the VPS stack
-  - Service names here may overlap with the VPS stack, but are local-only.
+All services are defined in a single file:
 
 - `deploy/stack/docker-compose.yml`
-  - **Purpose**: VPS deployment stack for the two public sites above
+  - **Purpose**: Complete stack for the VPS (all services)
   - Reverse proxy: `caddy-docker-proxy` (reads container labels)
+  - Includes: db, cache, mqtt, api, worker, web, cta, vault, piskel, pixelc
 
 ## VPS stack service names (deploy/stack)
 

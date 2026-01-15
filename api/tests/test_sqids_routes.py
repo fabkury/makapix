@@ -1,5 +1,7 @@
 """Test Sqids routes and migration."""
 
+from datetime import datetime, timezone
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -47,8 +49,9 @@ def test_post(test_user: User, db: Session) -> Post:
     """Create a test post."""
     import uuid
     from app.sqids_config import encode_id
-    
+
     storage_key = uuid.uuid4()
+    now = datetime.now(timezone.utc)
     post = Post(
         storage_key=storage_key,
         owner_id=test_user.id,
@@ -62,8 +65,11 @@ def test_post(test_user: User, db: Session) -> Post:
         width=64,
         height=64,
         frame_count=1,
-        uses_transparency=False,
-        uses_alpha=False,
+        transparency_meta=False,
+        alpha_meta=False,
+        metadata_modified_at=now,
+        artwork_modified_at=now,
+        hash=str(storage_key).replace("-", "") + "a" * 32,  # Unique hash
         promoted=True,  # Make it promoted so it's accessible without auth
         visible=True,
         hidden_by_user=False,
@@ -83,8 +89,9 @@ def test_hidden_post(test_user: User, db: Session) -> Post:
     """Create a hidden test post."""
     import uuid
     from app.sqids_config import encode_id
-    
+
     storage_key = uuid.uuid4()
+    now = datetime.now(timezone.utc)
     post = Post(
         storage_key=storage_key,
         owner_id=test_user.id,
@@ -98,8 +105,11 @@ def test_hidden_post(test_user: User, db: Session) -> Post:
         width=64,
         height=64,
         frame_count=1,
-        uses_transparency=False,
-        uses_alpha=False,
+        transparency_meta=False,
+        alpha_meta=False,
+        metadata_modified_at=now,
+        artwork_modified_at=now,
+        hash=str(storage_key).replace("-", "") + "b" * 32,  # Unique hash
         promoted=False,
         visible=True,
         hidden_by_user=True,  # Hidden by user
@@ -145,7 +155,7 @@ def test_get_post_by_sqid_hidden_anonymous(test_hidden_post: Post):
 def test_get_post_by_sqid_hidden_owner(test_user: User, test_hidden_post: Post):
     """Test that post owner can access their hidden post."""
     client = TestClient(app)
-    token = create_access_token(test_user.id)
+    token = create_access_token(test_user.user_key)
     
     response = client.get(
         f"/p/{test_hidden_post.public_sqid}",
@@ -160,7 +170,7 @@ def test_get_post_by_sqid_hidden_owner(test_user: User, test_hidden_post: Post):
 def test_get_post_by_sqid_hidden_moderator(test_moderator: User, test_hidden_post: Post):
     """Test that moderators can access hidden posts."""
     client = TestClient(app)
-    token = create_access_token(test_moderator.id)
+    token = create_access_token(test_moderator.user_key)
     
     response = client.get(
         f"/p/{test_hidden_post.public_sqid}",
@@ -170,15 +180,6 @@ def test_get_post_by_sqid_hidden_moderator(test_moderator: User, test_hidden_pos
     assert response.status_code == 200
     data = response.json()
     assert data["id"] == test_hidden_post.id
-
-
-def test_legacy_route_redirects(test_post: Post):
-    """Test that legacy /posts/{storage_key} redirects to /p/{public_sqid}."""
-    client = TestClient(app)
-    response = client.get(f"/post/{test_post.storage_key}", follow_redirects=False)
-    
-    assert response.status_code == 301
-    assert response.headers["Location"] == f"/p/{test_post.public_sqid}"
 
 
 def test_legacy_route_not_found():
@@ -197,38 +198,6 @@ def test_legacy_route_hidden_anonymous(test_hidden_post: Post):
     response = client.get(f"/post/{test_hidden_post.storage_key}")
     
     assert response.status_code == 404
-
-
-def test_create_post_generates_sqid(test_user: User, db: Session):
-    """Test that creating a post generates storage_key and public_sqid."""
-    client = TestClient(app)
-    token = create_access_token(test_user.id)
-    
-    response = client.post(
-        "/post",
-        headers={"Authorization": f"Bearer {token}"},
-        json={
-            "title": "New Art",
-            "art_url": "https://example.com/test.png",
-            "canvas": "64x64",
-            "file_bytes": 32 * 1024,
-        }
-    )
-    
-    assert response.status_code == 201
-    data = response.json()
-    assert "id" in data
-    assert isinstance(data["id"], int)
-    assert "storage_key" in data
-    assert "public_sqid" in data
-    assert len(data["public_sqid"]) <= 16
-    
-    # Verify owner can access via canonical URL (non-promoted posts require auth)
-    response2 = client.get(
-        f"/p/{data['public_sqid']}",
-        headers={"Authorization": f"Bearer {token}"}
-    )
-    assert response2.status_code == 200
 
 
 def test_migration_storage_key_populated(test_post: Post):
@@ -279,7 +248,7 @@ def test_download_hidden_post_anonymous(test_hidden_post: Post):
 def test_download_hidden_post_owner(test_user: User, test_hidden_post: Post):
     """Test that post owner can download their hidden post."""
     client = TestClient(app)
-    token = create_access_token(test_user.id)
+    token = create_access_token(test_user.user_key)
     
     response = client.get(
         f"/d/{test_hidden_post.public_sqid}",

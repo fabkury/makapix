@@ -41,7 +41,7 @@ from .routers import (
     users,
 )
 from .seed import ensure_seed_data
-from .middleware import SecurityHeadersMiddleware
+from .middleware import RequestIdMiddleware, SecurityHeadersMiddleware
 
 load_dotenv()
 
@@ -186,6 +186,9 @@ app.add_middleware(
 
 # Add security headers middleware
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Add request ID middleware for audit trail correlation
+app.add_middleware(RequestIdMiddleware)
 
 
 # Include all routers

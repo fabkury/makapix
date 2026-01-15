@@ -47,6 +47,8 @@ from ..utils.audit import log_moderation_action
 from ..utils.view_tracking import record_view, ViewType, ViewSource
 from ..utils.site_tracking import record_site_event
 from ..services.post_stats import annotate_posts_with_counts, get_user_liked_post_ids
+from ..services.storage_quota import check_storage_quota, format_quota_error
+from ..services.rate_limit import check_rate_limit
 from ..vault import (
     ALLOWED_MIME_TYPES,
     MAX_FILE_SIZE_BYTES,
@@ -60,6 +62,26 @@ from ..vault import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/post", tags=["Posts"])
+
+
+def get_upload_rate_limit(user: models.User) -> tuple[int, int]:
+    """
+    Get upload rate limit based on user reputation.
+
+    Tiers:
+    - Reputation < 100: 4 uploads per hour
+    - Reputation 100-499: 16 uploads per hour
+    - Reputation 500+: 64 uploads per hour
+
+    Returns:
+        Tuple of (limit, window_seconds)
+    """
+    if user.reputation >= 500:
+        return 64, 3600
+    elif user.reputation >= 100:
+        return 16, 3600
+    else:
+        return 4, 3600
 
 
 @router.get("", response_model=schemas.Page[schemas.Post])
@@ -435,8 +457,27 @@ async def upload_artwork(
     If the user does not have this privilege, the artwork will not appear in Recent Artworks
     until a moderator approves it.
     """
+    # Rate limiting: varies by reputation (4/16/64 per hour)
+    limit, window = get_upload_rate_limit(current_user)
+    rate_limit_key = f"ratelimit:upload:{current_user.id}"
+    allowed, _ = check_rate_limit(rate_limit_key, limit=limit, window_seconds=window)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Upload rate limit exceeded. Please try again later.",
+        )
+
     # Read the file content
     file_content = await image.read()
+    file_size = len(file_content)
+
+    # Check storage quota
+    quota_allowed, used, quota = check_storage_quota(db, current_user, file_size)
+    if not quota_allowed:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=format_quota_error(used, quota),
+        )
 
     # Save to temporary file for AMP inspection
     # Preserve original extension if available

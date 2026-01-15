@@ -1,19 +1,16 @@
 # Makapix Development Guide
 
-Complete guide for developers working on Makapix Club.
+Guide for developers working on Makapix Club. All development happens directly on the VPS.
 
 ## Table of Contents
 
 1. [Getting Started](#getting-started)
-2. [Development Environment](#development-environment)
-3. [Project Structure](#project-structure)
-4. [Development Workflow](#development-workflow)
-5. [Common Tasks](#common-tasks)
-6. [Database Management](#database-management)
-7. [Testing](#testing)
-8. [Code Quality](#code-quality)
-9. [Debugging](#debugging)
-10. [Contributing](#contributing)
+2. [Project Structure](#project-structure)
+3. [Common Tasks](#common-tasks)
+4. [Database Management](#database-management)
+5. [Testing](#testing)
+6. [Code Quality](#code-quality)
+7. [Debugging](#debugging)
 
 ---
 
@@ -21,213 +18,66 @@ Complete guide for developers working on Makapix Club.
 
 ### Prerequisites
 
-Ensure you have the following installed:
+- SSH access to the VPS
+- Git configured with repository access
+
+### Quick Start
 
 ```bash
-# Required
-- Docker 24+ and Docker Compose 2.20+
-- Git
-- Make
+# SSH to VPS
+ssh user@dev.makapix.club
 
-# Optional but recommended
-- Node.js 20+ (for local frontend development)
-- Python 3.12+ (for local API development)
-- PostgreSQL client tools (for database inspection)
-```
+# Navigate to project
+cd /opt/makapix
 
-### Initial Setup
-
-1. **Clone the repository**
-
-```bash
-git clone https://github.com/fabkury/makapix.git
-cd makapix
-```
-
-2. **Set up environment**
-
-```bash
-# Create per-environment env files from templates (first time only)
-./scripts/setup-dev.sh
-
-# Select which one is active (copies .env.local or .env.remote -> .env)
-make local
-```
-
-3. **Start all services**
-
-```bash
+# Start all services
 make up
-```
 
-4. **Verify services are running**
-
-```bash
-# Check service status
-docker compose ps
-
-# Check logs
+# View logs
 make logs
 ```
 
-5. **Access the application**
+### Access Points
 
-- **Web UI**: http://localhost:3000
-- **API Documentation**: http://localhost:8000/docs
-- **API Endpoints**: http://localhost:8000/api/
-
----
-
-## Development Environment
-
-### Environment Configuration
-
-The project uses environment templates for different contexts:
-
-- **`env.local.template`** → `.env.local`: Template for local development (localhost)
-- **`env.remote.template`** → `.env.remote`: Template for remote development (dev.makapix.club)
-- **`.env`**: The currently active environment file (copied from `.env.local` or `.env.remote`)
-
-#### Key Environment Variables
-
-```bash
-# Database
-POSTGRES_USER=appuser
-POSTGRES_PASSWORD=apppassword
-POSTGRES_DB=appdb
-DATABASE_URL=postgresql+psycopg://appuser:apppassword@db:5432/appdb
-
-# Redis
-REDIS_URL=redis://cache:6379/0
-CELERY_BROKER_URL=redis://cache:6379/0
-CELERY_RESULT_BACKEND=redis://cache:6379/0
-
-# MQTT
-MQTT_HOST=mqtt
-MQTT_PORT=8883
-MQTT_TLS=true
-MQTT_CA_FILE=/certs/ca.crt
-
-# Vault Storage
-VAULT_LOCATION=/vault
-VAULT_HOST_PATH=./vault  # Local filesystem path
-
-# Service Ports
-API_PORT=8000
-WEB_PORT=3000
-PROXY_PORT=80
-
-# Logging
-LOG_LEVEL=INFO
-```
-
-### Docker Compose Services
-
-The development stack includes:
-
-| Service | Container | Purpose | Port(s) |
-|---------|-----------|---------|---------|
-| **web** | makapix-web | Next.js frontend | 3000 |
-| **api** | makapix-api | FastAPI backend | 8000 |
-| **worker** | makapix-worker | Celery background tasks | - |
-| **db** | makapix-db | PostgreSQL database | 5432 |
-| **cache** | makapix-cache | Redis cache/queue | 6379 |
-| **mqtt** | makapix-mqtt | Mosquitto MQTT broker | 1883, 8883, 9001 |
-| **proxy** | makapix-proxy | Caddy reverse proxy | 80, 443 |
+- **Web UI**: https://dev.makapix.club
+- **API Documentation**: https://dev.makapix.club/api/docs
+- **Marketing Site**: https://makapix.club
 
 ---
 
 ## Project Structure
 
-### Backend (API)
-
 ```
-api/
-├── alembic/                  # Database migrations
-│   ├── versions/            # Migration files
-│   └── env.py              # Migration configuration
-├── app/
-│   ├── routers/            # API route handlers
-│   │   ├── auth.py         # Authentication
-│   │   ├── posts.py        # Post management
-│   │   ├── artwork.py      # Artwork serving
-│   │   ├── player.py       # Physical player integration
-│   │   └── ...
-│   ├── models.py           # SQLAlchemy models
-│   ├── schemas.py          # Pydantic schemas
-│   ├── vault.py            # Vault storage system
-│   ├── db.py               # Database connection
-│   ├── auth.py             # Authentication logic
-│   └── main.py             # FastAPI application
-├── tests/                  # Test files
-├── Dockerfile              # Docker image definition
-└── requirements.txt        # Python dependencies
+makapix/
+├── api/                   # FastAPI backend
+│   ├── app/
+│   │   ├── main.py        # Application entry point
+│   │   ├── models.py      # SQLAlchemy models
+│   │   ├── schemas.py     # Pydantic schemas
+│   │   ├── routers/       # API endpoints
+│   │   └── services/      # Business logic
+│   ├── alembic/           # Database migrations
+│   └── tests/             # API tests
+├── web/                   # Next.js frontend
+│   ├── src/
+│   │   ├── pages/         # Next.js pages
+│   │   ├── components/    # React components
+│   │   └── lib/           # Utilities
+│   └── public/            # Static assets
+├── worker/                # Celery background tasks
+├── mqtt/                  # MQTT broker config
+├── apps/cta/              # Marketing site
+├── deploy/stack/          # Docker Compose stack
+│   ├── docker-compose.yml # All services
+│   └── .env               # Environment config
+└── docs/                  # Documentation
 ```
-
-### Frontend (Web)
-
-```
-web/
-├── src/
-│   ├── pages/              # Next.js pages
-│   │   ├── index.tsx       # Home page
-│   │   ├── publish.tsx     # Upload artwork
-│   │   └── ...
-│   ├── components/         # React components
-│   │   ├── Layout.tsx
-│   │   ├── PostCard.tsx
-│   │   └── ...
-│   ├── lib/                # Utilities
-│   │   ├── api.ts          # API client
-│   │   └── mqtt.ts         # MQTT integration
-│   └── styles/             # CSS modules
-├── public/                 # Static assets
-├── Dockerfile              # Docker image definition
-├── package.json            # Node dependencies
-└── tsconfig.json           # TypeScript config
-```
-
----
-
-## Development Workflow
-
-### Daily Development Cycle
-
-```bash
-# 1. Start your day
-make up                     # Start all services
-make logs                   # Check logs for any issues
-
-# 2. Make changes to code
-# - Edit files in your IDE
-# - Changes auto-reload (hot reload enabled)
-
-# 3. View changes
-# - Web: http://localhost:3000
-# - API docs: http://localhost:8000/docs
-
-# 4. Run tests
-make api.test              # Test API changes
-
-# 5. Format code
-make fmt                   # Format Python code
-
-# 6. Stop services when done
-make down                  # Stop all services
-```
-
-### Hot Reload Behavior
-
-- **Frontend (Next.js)**: Automatic hot module replacement
-- **Backend (FastAPI)**: Uvicorn watches for file changes and auto-reloads
-- **Database**: Changes require migrations
-- **MQTT**: Config changes require container restart
 
 ---
 
 ## Common Tasks
 
-### Service Control
+### Service Management
 
 ```bash
 # Start all services
@@ -239,143 +89,70 @@ make down
 # Restart all services
 make restart
 
-# Rebuild containers and restart
+# Rebuild and restart (after code changes)
 make rebuild
 
-# View logs for all services
+# Deploy latest changes
+make deploy
+```
+
+### Viewing Logs
+
+```bash
+# All services
 make logs
 
-# View logs for specific service
+# Specific service
 make logs-api
 make logs-web
+make logs-db
 
-# Enter a shell in a container
-docker compose exec api bash
-docker compose exec web sh
+# Or directly with docker compose
+cd deploy/stack && docker compose logs -f api worker
 ```
 
-### Switching Environments
+### Shell Access
 
 ```bash
-# Switch to local development
-make local
+# API container
+make shell-api
 
-# Switch to remote/staging
-make remote
-
-# Check current environment
-make status
-```
-
-### Working with the API
-
-```bash
-# Access Python shell
-docker compose exec api python
-
-# Run specific API command
-docker compose exec api python -m app.some_module
-
-# View API logs
-make logs-api
-
-# Test API endpoint
-curl http://localhost:8000/api/health
-```
-
-### Working with the Frontend
-
-```bash
-# Access Node shell
-docker compose exec web sh
-
-# Install new npm package
-docker compose exec web npm install package-name
-
-# Run Next.js build
-docker compose exec web npm run build
-
-# View web logs
-make logs-web
+# Database shell
+make shell-db
+# or: make db.shell
 ```
 
 ---
 
 ## Database Management
 
-### Accessing the Database
+### Migrations
 
 ```bash
-# PostgreSQL shell via make
-make db.shell
+# Create a new migration
+cd deploy/stack && docker compose exec api alembic revision --autogenerate -m "description"
 
-# Or via docker compose
-docker compose exec db psql -U appuser -d appdb
+# Apply migrations
+cd deploy/stack && docker compose exec api alembic upgrade head
 
-# Run SQL file
-docker compose exec db psql -U appuser -d appdb < script.sql
+# Rollback one migration
+cd deploy/stack && docker compose exec api alembic downgrade -1
+
+# Check current revision
+cd deploy/stack && docker compose exec api alembic current
 ```
 
-### Database Migrations
-
-Makapix uses Alembic for database schema migrations.
-
-#### Creating a New Migration
+### Direct Database Access
 
 ```bash
-# Auto-generate migration from model changes
-docker compose exec api alembic revision --autogenerate -m "Description of changes"
+# PostgreSQL shell
+make shell-db
 
-# Create empty migration for manual changes
-docker compose exec api alembic revision -m "Description of changes"
-```
-
-#### Applying Migrations
-
-```bash
-# Apply all pending migrations
-docker compose exec api alembic upgrade head
-
-# Apply one migration at a time
-docker compose exec api alembic upgrade +1
-
-# Revert last migration
-docker compose exec api alembic downgrade -1
-```
-
-#### Migration History
-
-```bash
-# View migration history
-docker compose exec api alembic history
-
-# View current migration
-docker compose exec api alembic current
-
-# View pending migrations
-docker compose exec api alembic heads
-```
-
-### Resetting the Database
-
-```bash
-# Complete database reset with seed data
-make db.reset
-
-# Manual reset
-docker compose down -v          # Stop and remove volumes
-docker compose up -d db         # Start database
-docker compose exec api alembic upgrade head  # Run migrations
-```
-
-### Seed Data
-
-Seed data is automatically loaded on first startup via `app.seed.ensure_seed_data()`.
-
-To manually reload seed data:
-
-```bash
-docker compose exec api python -c "from app.seed import ensure_seed_data; ensure_seed_data()"
+# Common queries
+SELECT COUNT(*) FROM users;
+SELECT COUNT(*) FROM posts WHERE deleted_at IS NULL;
+\dt                    # List tables
+\d+ posts              # Describe table
 ```
 
 ---
@@ -385,278 +162,155 @@ docker compose exec api python -c "from app.seed import ensure_seed_data; ensure
 ### Running Tests
 
 ```bash
-# Run all API tests
-make api.test
+# Run all tests
+make test
 
-# Run tests in specific file
-docker compose exec api pytest tests/test_posts.py
+# Run specific test file
+cd deploy/stack && docker compose exec api pytest tests/test_auth.py
 
-# Run tests with verbose output
-docker compose exec api pytest -v
+# Run specific test
+cd deploy/stack && docker compose exec api pytest -k "test_create_post"
 
-# Run tests with coverage
-docker compose exec api pytest --cov=app tests/
+# Run with verbose output
+cd deploy/stack && docker compose exec api pytest -v
 
-# Run tests matching pattern
-docker compose exec api pytest -k "test_create"
+# Run with coverage
+cd deploy/stack && docker compose exec api pytest --cov=app
 ```
 
 ### Writing Tests
 
-Tests are located in `api/tests/`. Example test structure:
+Tests are located in `api/tests/`. Use pytest fixtures from `conftest.py`:
 
 ```python
-# tests/test_posts.py
-import pytest
-from fastapi.testclient import TestClient
-from app.main import app
-
-client = TestClient(app)
-
-def test_create_post():
+def test_create_post(client, test_user, db):
     """Test creating a new post."""
+    token = create_access_token(test_user.user_key)
     response = client.post(
-        "/api/post",
-        json={
-            "title": "Test Post",
-            "description": "Test description"
-        }
+        "/post",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"title": "Test", "art_url": "https://...", "canvas": "64x64"}
     )
     assert response.status_code == 201
-    data = response.json()
-    assert data["title"] == "Test Post"
 ```
-
-### Test Database
-
-Tests use a separate test database. Configuration is in `api/tests/conftest.py`.
 
 ---
 
 ## Code Quality
 
-### Formatting
+### Python (Backend)
 
 ```bash
-# Format Python code (Black + isort)
+# Format code
 make fmt
 
-# Manual formatting
-docker compose exec api black app/
-docker compose exec api isort app/
+# Or directly
+cd deploy/stack && docker compose exec api black .
+cd deploy/stack && docker compose exec api ruff check .
 ```
 
-### Linting
+### TypeScript (Frontend)
 
 ```bash
-# Lint Python code
-docker compose exec api flake8 app/
-
-# Type checking
-docker compose exec api mypy app/
-```
-
-### Pre-commit Hooks
-
-The project uses pre-commit hooks for automated checks:
-
-```bash
-# Install pre-commit (if working locally outside Docker)
-pip install pre-commit
-pre-commit install
-
-# Run pre-commit manually
-pre-commit run --all-files
+cd deploy/stack && docker compose exec web npm run lint
+cd deploy/stack && docker compose exec web npm run typecheck
 ```
 
 ---
 
 ## Debugging
 
-### Viewing Logs
+### Checking Service Health
 
 ```bash
-# All services
-make logs
+# Service status
+cd deploy/stack && docker compose ps
 
-# Specific service
-docker compose logs -f api
-docker compose logs -f web
+# Container resource usage
+docker stats
 
-# Last 100 lines
-docker compose logs --tail=100 api
+# API health endpoint
+curl https://dev.makapix.club/api/health
 ```
-
-### Interactive Debugging
-
-#### Python (API)
-
-Add breakpoint in code:
-
-```python
-# In your code
-import pdb; pdb.set_trace()
-```
-
-Then attach to the container:
-
-```bash
-docker compose exec api python -m pdb
-```
-
-#### JavaScript (Web)
-
-Use browser DevTools or add:
-
-```javascript
-debugger;
-```
-
-### Database Debugging
-
-```bash
-# View active connections
-docker compose exec db psql -U appuser -d appdb -c "SELECT * FROM pg_stat_activity;"
-
-# View table structure
-docker compose exec db psql -U appuser -d appdb -c "\d posts"
-
-# Query data
-docker compose exec db psql -U appuser -d appdb -c "SELECT * FROM posts LIMIT 10;"
-```
-
-### MQTT Debugging
-
-```bash
-# Subscribe to all topics
-docker compose exec mqtt mosquitto_sub -h localhost -t '#' -v
-
-# Subscribe to specific topic
-docker compose exec mqtt mosquitto_sub -h localhost -t 'makapix/posts/new'
-
-# Publish test message
-docker compose exec mqtt mosquitto_pub -h localhost -t 'test/topic' -m 'Hello'
-```
-
----
-
-## Contributing
-
-### Code Style
-
-- **Python**: Follow PEP 8, use Black for formatting
-- **JavaScript/TypeScript**: Follow project ESLint config
-- **SQL**: Use lowercase for keywords, snake_case for identifiers
-- **Commits**: Use clear, descriptive commit messages
-
-### Git Workflow
-
-```bash
-# Create feature branch
-git checkout -b feature/your-feature-name
-
-# Make changes and commit
-git add .
-git commit -m "Description of changes"
-
-# Push to remote
-git push origin feature/your-feature-name
-
-# Create pull request on GitHub
-```
-
-### Pull Request Checklist
-
-Before submitting a PR:
-
-- [ ] Code follows project style guidelines
-- [ ] Tests added for new functionality
-- [ ] All tests pass (`make api.test`)
-- [ ] Code formatted (`make fmt`)
-- [ ] Documentation updated if needed
-- [ ] Database migrations created if schema changed
-- [ ] No secrets or credentials committed
-
-### Adding New Dependencies
-
-#### Python Dependencies
-
-```bash
-# Add to requirements.txt
-docker compose build api worker
-docker compose up -d
-```
-
-#### Node Dependencies
-
-```bash
-# Add via npm
-docker compose exec web npm install package-name
-
-# Rebuild container to persist
-docker compose build web
-docker compose up -d web
-```
-
----
-
-## Troubleshooting
 
 ### Common Issues
 
-#### Port Already in Use
-
+**Services won't start:**
 ```bash
-# Find process using port
-lsof -i :3000
-lsof -i :8000
+# Check for port conflicts
+sudo lsof -i :80
+sudo lsof -i :443
 
-# Kill process
-kill -9 <PID>
+# Check Docker logs
+cd deploy/stack && docker compose logs caddy
 ```
 
-#### Database Connection Errors
-
+**Database connection issues:**
 ```bash
-# Restart database
-docker compose restart db
+# Verify database is running
+cd deploy/stack && docker compose exec db pg_isready
 
-# Check database logs
-docker compose logs db
+# Check connection from API
+cd deploy/stack && docker compose exec api python -c "from app.database import engine; print(engine.url)"
 ```
 
-#### Hot Reload Not Working
-
+**API errors:**
 ```bash
-# Restart service
-docker compose restart api
-docker compose restart web
+# Check API logs
+make logs-api
+
+# Test API directly
+cd deploy/stack && docker compose exec api python -c "from app.main import app; print('OK')"
 ```
 
-#### Volume Permission Issues
+### Accessing Container Internals
 
 ```bash
-# Fix vault permissions
-sudo chown -R $(id -u):$(id -g) ./vault
+# API container shell
+cd deploy/stack && docker compose exec api bash
+
+# Inside container:
+python -c "from app.models import User; print(User.__table__.columns.keys())"
+
+# Web container shell
+cd deploy/stack && docker compose exec web sh
 ```
-
-### Getting Help
-
-- Check existing documentation in `/docs`
-- Review the [Full Specification](../makapix_full_project_spec.md)
-- Look for similar issues in GitHub
-- Ask in project discussions
 
 ---
 
-## Additional Resources
+## Environment Variables
 
-- **[Architecture Documentation](ARCHITECTURE.md)** - System design details
-- **[Deployment Guide](DEPLOYMENT.md)** - Production deployment
-- **[Physical Player Guide](PHYSICAL_PLAYER.md)** - Hardware integration
-- **[API Documentation](http://localhost:8000/docs)** - Interactive API reference
-- **[Roadmap](ROADMAP.md)** - Project milestones
+Key environment variables are configured in `deploy/stack/.env`:
+
+```bash
+# Database
+DB_ADMIN_USER, DB_ADMIN_PASSWORD, DB_DATABASE
+DB_API_WORKER_USER, DB_API_WORKER_PASSWORD
+
+# API
+SECRET_KEY, JWT_SECRET_KEY
+GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
+
+# MQTT
+MQTT_PASSWORD
+
+# Storage
+VAULT_HOST_PATH, VAULT_LOCATION
+
+# Domains
+ROOT_DOMAIN, WEB_DOMAIN, VAULT_DOMAIN
+```
 
 ---
 
-Happy coding! 🎨
+## Deployment Workflow
+
+1. Make changes on the VPS (or push to git and pull)
+2. Run `make rebuild` to apply changes
+3. Check logs with `make logs`
+4. Verify functionality at https://dev.makapix.club
+
+For production deployments:
+```bash
+make deploy   # Pulls latest from git and rebuilds
+```

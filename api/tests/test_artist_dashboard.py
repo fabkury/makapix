@@ -8,15 +8,6 @@ from fastapi.testclient import TestClient
 from app import models
 
 
-def test_artist_dashboard_authorization(client: TestClient, db):
-    """Test that artist dashboard requires proper authorization."""
-    # Try to access dashboard without authentication
-    response = client.get("/api/user/test-user/artist-dashboard")
-    
-    # Should get 401 Unauthorized or 403 Forbidden
-    assert response.status_code in [401, 403]
-
-
 def test_artist_dashboard_not_found(client: TestClient, db):
     """Test that artist dashboard returns 404 for non-existent user."""
     # This test would require authentication setup

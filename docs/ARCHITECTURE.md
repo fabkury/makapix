@@ -136,9 +136,8 @@ makapix/
 │   └── cta/                 # Marketing/CTA site
 │
 ├── deploy/                   # Deployment configs
-│   └── stack/               # VPS stack orchestration
+│   └── stack/               # Docker Compose stack (all services)
 │
-├── proxy/                    # Proxy configuration
 ├── scripts/                  # Utility scripts
 ├── docs/                     # Documentation
 │   ├── ARCHITECTURE.md      # This document
@@ -147,7 +146,6 @@ makapix/
 │   ├── PHYSICAL_PLAYER.md   # Hardware integration
 │   └── ROADMAP.md           # Project roadmap
 │
-├── docker-compose.yml        # Local development stack
 ├── Makefile                  # Development commands
 ├── README.md                 # Project overview
 └── makapix_full_project_spec.md  # Full specification
@@ -479,22 +477,15 @@ delete_artwork_from_vault(artwork_id, extension)
 
 ## Deployment Architecture
 
-### Development Environment
+### VPS Deployment
 
-**Local Docker Compose Stack**
+All development and production happens on a single VPS. The stack is defined in `deploy/stack/docker-compose.yml`.
 
 ```bash
-make local     # Switch to local config
 make up        # Start all services
 make logs      # View logs
+make test      # Run tests
 ```
-
-- All services run locally
-- Hot reload enabled
-- Test data seeded
-- Vault stored in `./vault` directory
-
-### Production Environment
 
 **Single VPS Deployment**
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from typing import Callable
 
 from fastapi import Request, Response
@@ -60,5 +61,25 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "form-action 'self'",  # Only allow form submissions to same origin
         ]
         response.headers["Content-Security-Policy"] = "; ".join(csp_directives)
-        
+
+        return response
+
+
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    """
+    Add unique request ID to all requests for audit trail correlation.
+
+    Generates a short UUID for each request and adds it to:
+    - request.state.request_id (for use in logging throughout the request)
+    - X-Request-Id response header (for client correlation)
+    """
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        # Generate a short request ID (8 chars from UUID)
+        request_id = str(uuid.uuid4())[:8]
+        request.state.request_id = request_id
+
+        response = await call_next(request)
+        response.headers["X-Request-Id"] = request_id
+
         return response

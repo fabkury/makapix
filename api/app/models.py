@@ -48,6 +48,9 @@ class User(Base):
     email = Column(
         String(255), unique=True, nullable=False, index=True
     )  # Email must be unique
+    email_normalized = Column(
+        String(255), unique=True, nullable=True, index=True
+    )  # Normalized email to prevent plus-syntax/dot-syntax abuse
     email_verified = Column(Boolean, nullable=False, default=False, index=True)
 
     # Onboarding

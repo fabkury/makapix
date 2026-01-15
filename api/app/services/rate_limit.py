@@ -1,11 +1,73 @@
-"""Rate limiting service using Redis."""
+"""Rate limiting service using Redis with in-memory fallback."""
 
 from __future__ import annotations
 
 import logging
+import threading
+import time
+from typing import Dict, Tuple
+
 from ..cache import get_redis_client
 
 logger = logging.getLogger(__name__)
+
+# In-memory fallback rate limiter for when Redis is unavailable.
+# This provides basic rate limiting protection during Redis outages.
+# Structure: {key: (count, window_start_time)}
+_fallback_cache: Dict[str, Tuple[int, float]] = {}
+_fallback_cache_lock = threading.Lock()
+
+# Maximum number of keys to track in fallback cache (prevents memory growth)
+_FALLBACK_MAX_KEYS = 10000
+
+
+def _cleanup_fallback_cache(window_seconds: int) -> None:
+    """Remove expired entries from fallback cache."""
+    now = time.time()
+    expired_keys = [
+        key for key, (_, start_time) in _fallback_cache.items()
+        if now - start_time > window_seconds
+    ]
+    for key in expired_keys:
+        del _fallback_cache[key]
+
+
+def _check_fallback_rate_limit(
+    key: str, limit: int, window_seconds: int
+) -> Tuple[bool, int]:
+    """
+    In-memory fallback rate limiter for when Redis is unavailable.
+
+    Uses a simple sliding window approach with a dictionary.
+    Thread-safe via lock.
+    """
+    now = time.time()
+
+    with _fallback_cache_lock:
+        # Periodic cleanup to prevent memory growth
+        if len(_fallback_cache) > _FALLBACK_MAX_KEYS:
+            _cleanup_fallback_cache(window_seconds)
+
+        if key in _fallback_cache:
+            count, window_start = _fallback_cache[key]
+
+            # Check if window has expired
+            if now - window_start > window_seconds:
+                # Start new window
+                _fallback_cache[key] = (1, now)
+                return True, limit - 1
+            else:
+                # Within window, check limit
+                if count >= limit:
+                    return False, 0
+
+                # Increment count
+                _fallback_cache[key] = (count + 1, window_start)
+                return True, limit - count - 1
+        else:
+            # New key, start tracking
+            _fallback_cache[key] = (1, now)
+            return True, limit - 1
 
 
 def check_rate_limit(key: str, limit: int, window_seconds: int = 60) -> tuple[bool, int]:
@@ -25,12 +87,12 @@ def check_rate_limit(key: str, limit: int, window_seconds: int = 60) -> tuple[bo
         - remaining: Number of requests remaining in the current window
     """
     client = get_redis_client()
-    
-    # If Redis is unavailable, allow the request (fail open)
+
+    # If Redis is unavailable, use in-memory fallback instead of allowing all requests
     if not client:
-        logger.warning(f"Redis unavailable, allowing request for key '{key}'")
-        return True, limit
-    
+        logger.warning(f"Redis unavailable, using in-memory fallback for key '{key}'")
+        return _check_fallback_rate_limit(key, limit, window_seconds)
+
     try:
         # Get current count
         current = client.get(key)
@@ -54,8 +116,8 @@ def check_rate_limit(key: str, limit: int, window_seconds: int = 60) -> tuple[bo
     
     except Exception as e:
         logger.error(f"Rate limit check error for key '{key}': {e}")
-        # Fail open - allow request if Redis error
-        return True, limit
+        # Fall back to in-memory limiter instead of allowing all requests
+        return _check_fallback_rate_limit(key, limit, window_seconds)
 
 
 def get_rate_limit_remaining(key: str, limit: int) -> int:

@@ -1,136 +1,80 @@
-.PHONY: help local remote up down restart logs test clean deploy deploy-vps stack-up stack-down stack-logs stack-restart
+.PHONY: help up down restart rebuild logs logs-api logs-web logs-db test shell-api shell-db fmt clean deploy
+
+# Default stack directory
+STACK_DIR := deploy/stack
 
 help:
-	@echo "Makapix Development Commands"
+	@echo "Makapix Commands"
 	@echo ""
-	@echo "Environment Management:"
-	@echo "  make local          - Switch to local development (localhost)"
-	@echo "  make remote         - Switch to remote development (dev.makapix.club)"
-	@echo "  make status         - Show current environment and service status"
-	@echo ""
-	@echo "Docker Commands (Full Stack):"
+	@echo "Services:"
 	@echo "  make up             - Start all services"
 	@echo "  make down           - Stop all services"
 	@echo "  make restart        - Restart all services"
 	@echo "  make rebuild        - Rebuild and restart all services"
+	@echo ""
+	@echo "Logs:"
 	@echo "  make logs           - Show logs for all services"
 	@echo "  make logs-api       - Show logs for API service"
 	@echo "  make logs-web       - Show logs for web service"
-	@echo ""
-	@echo "VPS Stack Commands (CTA + Dev Preview):"
-	@echo "  make stack-up       - Start VPS stack (CTA + dev.makapix.club)"
-	@echo "  make stack-down     - Stop VPS stack"
-	@echo "  make stack-restart  - Restart VPS stack"
-	@echo "  make stack-logs     - Show VPS stack logs"
-	@echo ""
-	@echo "Deployment:"
-	@echo "  make deploy         - Deploy to current environment (pull, rebuild, restart)"
-	@echo "  make deploy-vps     - Full VPS deployment (git pull + switch to remote + restart)"
+	@echo "  make logs-db        - Show logs for database"
 	@echo ""
 	@echo "Development:"
 	@echo "  make test           - Run API tests"
 	@echo "  make shell-api      - Open shell in API container"
-	@echo "  make shell-db       - Open PostgreSQL shell"
+	@echo "  make shell-db       - Open PostgreSQL shell (db.shell)"
+	@echo "  make fmt            - Format Python code"
+	@echo ""
+	@echo "Deployment:"
+	@echo "  make deploy         - Pull latest code and restart services"
 	@echo ""
 	@echo "Cleanup:"
-	@echo "  make clean          - Remove all containers, volumes, and generated files"
-
-local:
-	@./scripts/switch-env.sh local || powershell -ExecutionPolicy Bypass -File ./scripts/switch-env.ps1 local
-
-remote:
-	@./scripts/switch-env.sh remote || powershell -ExecutionPolicy Bypass -File ./scripts/switch-env.ps1 remote
+	@echo "  make clean          - Remove all containers and volumes"
 
 up:
-	docker compose up -d
+	@cd $(STACK_DIR) && docker compose up -d
 
 down:
-	docker compose down
+	@cd $(STACK_DIR) && docker compose down
 
 restart:
-	docker compose restart
-
-logs:
-	docker compose logs -f
-
-logs-api:
-	docker compose logs -f api
-
-logs-web:
-	docker compose logs -f web
-
-logs-proxy:
-	docker compose logs -f proxy
-
-test:
-	docker compose run --rm api-test
-
-shell-api:
-	docker compose exec api bash
-
-shell-db:
-	docker compose exec db psql -U makapix -d makapix
-
-clean:
-	docker compose down -v
-	rm -f .env docker-compose.override.yml proxy/Caddyfile
-	@echo "Cleaned up containers, volumes, and generated files"
-
-status:
-	@echo "Current environment:"
-	@grep "^ENVIRONMENT=" .env 2>/dev/null || echo "  No .env file found"
-	@echo ""
-	@echo "Docker services:"
-	@docker compose ps
+	@cd $(STACK_DIR) && docker compose restart
 
 rebuild:
-	docker compose down
-	docker compose up -d --build
+	@cd $(STACK_DIR) && docker compose down && docker compose up -d --build
+
+logs:
+	@cd $(STACK_DIR) && docker compose logs -f
+
+logs-api:
+	@cd $(STACK_DIR) && docker compose logs -f api
+
+logs-web:
+	@cd $(STACK_DIR) && docker compose logs -f web
+
+logs-db:
+	@cd $(STACK_DIR) && docker compose logs -f db
+
+test:
+	@cd $(STACK_DIR) && docker compose exec api pytest tests/
+
+shell-api:
+	@cd $(STACK_DIR) && docker compose exec api bash
+
+shell-db db.shell:
+	@cd $(STACK_DIR) && docker compose exec db psql -U makapix -d makapix
+
+fmt:
+	@cd $(STACK_DIR) && docker compose exec api black .
+
+clean:
+	@cd $(STACK_DIR) && docker compose down -v
+	@echo "Cleaned up containers and volumes"
 
 deploy:
-	@echo "Deploying to current environment..."
-	@docker compose down
-	@docker compose up -d --build
+	@echo "Deploying Makapix..."
+	@git pull origin main
+	@cd $(STACK_DIR) && docker compose down
+	@cd $(STACK_DIR) && docker compose up -d --build
 	@echo ""
 	@echo "Deployment complete!"
-	@make status
-
-deploy-vps:
-	@echo "🚀 Starting VPS deployment..."
-	@echo ""
-	@echo "Step 1: Pulling latest code from Git..."
-	git pull origin main
-	@echo ""
-	@echo "Step 2: Switching to remote environment..."
-	@make remote
-	@echo ""
-	@echo "Step 3: Stopping current services..."
-	@docker compose down
-	@echo ""
-	@echo "Step 4: Starting services with new configuration..."
-	@docker compose up -d --build
-	@echo ""
-	@echo "Step 5: Waiting for services to be healthy..."
-	@sleep 10
-	@echo ""
-	@echo "Step 6: Checking service status..."
-	@docker compose ps
-	@echo ""
-	@echo "✅ VPS deployment complete!"
-	@echo ""
-	@echo "Verify deployment:"
-	@echo "  - Visit: https://dev.makapix.club"
-	@echo "  - Check logs: make logs"
-	@echo "  - Check network: docker network inspect caddy_net"
-
-stack-up:
-	@cd deploy/stack && docker compose up -d
-
-stack-down:
-	@cd deploy/stack && docker compose down
-
-stack-restart:
-	@cd deploy/stack && docker compose restart
-
-stack-logs:
-	@cd deploy/stack && docker compose logs -f
+	@cd $(STACK_DIR) && docker compose ps

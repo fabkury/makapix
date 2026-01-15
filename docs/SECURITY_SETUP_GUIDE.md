@@ -59,16 +59,10 @@ python3 -c 'import secrets; print(secrets.token_urlsafe(32))'
 Create a `.env` file (not tracked in git) with your secrets:
 
 ```bash
-# Local / remote dev workflow (repo root):
-# - Create `.env.local` and `.env.remote` from templates
-# - Use `make local` / `make remote` to copy the selected one to `.env`
-./scripts/setup-dev.sh
-make local
-
-# VPS stack workflow (deploy/stack):
-# - Copy `env.example` to `.env` and customize
-#   cd /opt/makapix/deploy/stack
-#   cp env.example .env
+# Copy the example env file and customize
+cd /opt/makapix/deploy/stack
+cp env.example .env
+# Edit .env with your secrets
 ```
 
 ### Production Secrets Management

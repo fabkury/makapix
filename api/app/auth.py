@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import secrets
 import uuid
@@ -14,6 +15,8 @@ from sqlalchemy.orm import Session
 
 from . import models
 from .deps import get_db
+
+logger = logging.getLogger(__name__)
 
 # Security scheme for Bearer token
 oauth2_scheme = HTTPBearer(auto_error=False)
@@ -34,6 +37,40 @@ if len(JWT_SECRET_KEY) < 32:
         "Generate a secure key with: python -c 'import secrets; print(secrets.token_urlsafe(32))' "
         "Note: This checks length, not entropy. Use cryptographically random values."
     )
+
+
+def _validate_jwt_secret_entropy(key: str) -> None:
+    """
+    Warn if JWT secret appears to have low entropy.
+
+    This is a best-effort check to catch obviously weak secrets. It validates:
+    - Character diversity (should have at least 10 unique characters)
+    - Repeating patterns (first half should not equal second half)
+
+    Note: This does not guarantee cryptographic strength, but catches common mistakes
+    like using "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" or "abcabcabcabcabcabcabcabcabcabcabc".
+    """
+    unique_chars = len(set(key))
+    if unique_chars < 10:
+        logger.warning(
+            f"JWT_SECRET_KEY has low character diversity ({unique_chars} unique chars). "
+            "This may indicate a weak secret. "
+            "Generate a secure key with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+        )
+
+    # Check for repeating patterns (e.g., "abcabc" -> first half equals second half)
+    if len(key) >= 4:
+        half = len(key) // 2
+        if key[:half] == key[half : half * 2]:
+            logger.warning(
+                "JWT_SECRET_KEY appears to contain a repeating pattern. "
+                "This may indicate a weak secret. Use a cryptographically random key."
+            )
+
+
+# Validate entropy (warn but don't block startup)
+_validate_jwt_secret_entropy(JWT_SECRET_KEY)
+
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 JWT_REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "30"))

@@ -12,6 +12,8 @@ from .. import models, schemas
 from ..auth import AnonymousUser, get_current_user, get_current_user_or_anonymous, require_moderator, require_ownership
 from ..deps import get_db
 from ..services.social_notifications import SocialNotificationService
+from ..services.rate_limit import check_rate_limit
+from ..services.profanity import contains_profanity
 from ..utils.audit import log_moderation_action
 
 router = APIRouter(prefix="/post", tags=["Comments"])
@@ -120,10 +122,30 @@ def create_comment(
 ) -> schemas.Comment:
     """
     Create comment on a post.
-    
+
     Supports both authenticated and anonymous users.
     Enforces max depth of 2 and max 1000 comments per post.
     """
+    # Rate limiting: 30 comments per 5 minutes per user/IP
+    if isinstance(current_user, models.User):
+        rate_limit_key = f"ratelimit:comment:{current_user.id}"
+    else:
+        rate_limit_key = f"ratelimit:comment:ip:{current_user.ip}"
+
+    allowed, _ = check_rate_limit(rate_limit_key, limit=30, window_seconds=300)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Comment rate limit exceeded. Please try again later.",
+        )
+
+    # Profanity filter: reject comments containing inappropriate language
+    if contains_profanity(payload.body):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Comment contains inappropriate language",
+        )
+
     # Check comment count limit (1000 per post)
     comment_count = db.query(func.count(models.Comment.id)).filter(
         models.Comment.post_id == id

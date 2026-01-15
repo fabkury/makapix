@@ -10,36 +10,22 @@ This directory contains the Docker Compose configuration for deploying the Makap
 - **Reverse Proxy**: lucaslorentz/caddy-docker-proxy
 - **Compose dir**: `deploy/stack/` (run commands from here)
 
-## ⚠️ IMPORTANT: Production vs Local Development
+## Production Mode
 
-This stack runs the web application in **PRODUCTION MODE** (optimized build).
-This is different from local development which uses **DEV MODE** (hot reload). **DEV MODE** MUST NOT BE USED UNLESS THE USER REQUESTS IT VERY EXPLICITLY.
+This stack runs all services including the web application in **PRODUCTION MODE** (optimized build).
 
-| Environment | Compose File | Web Mode | Container Name | Notes | Important! |
-|------------|--------------|----------|----------------|-------|---|
-| **VPS (this stack)** | `deploy/stack/docker-compose.yml` | Production | `makapix-web` | Uses `npm run build` + standalone server | Default choice |
-| **Local development** | Root `docker-compose.yml` | Development | `makapix-web-1` | Uses `npm run dev` with hot reload | ONLY IF USER ASKS EXPLICITLY |
-
-### Why Production Mode on dev.makapix.club?
+### Why Production Mode?
 
 1. **Mobile compatibility**: Next.js dev mode can cause styled-jsx runtime errors on mobile browsers
 2. **Performance**: Production builds are ~5x smaller and start in ~100ms vs ~1s+
 3. **Reliability**: Pre-compiled assets avoid webpack race conditions
 4. **Testing**: Catch production-only issues before going live
 
-### Common Pitfalls to Avoid
+### Best Practices
 
-- ❌ **Do NOT run multiple web containers** with the same Caddy label (`caddy: dev.makapix.club`)
-- ❌ **Do NOT mix dev/prod containers** on the same network — Caddy will route unpredictably
-- ❌ **Do NOT start containers from root docker-compose.yml** when this stack is running
 - ✅ **Always check** `docker ps | grep makapix` before deployments
 - ✅ **Always rebuild** after Dockerfile changes: `docker compose build --no-cache web`
-
-## Development Workflow
-
-1. **Local Development**: Work on `localhost` using the main `docker-compose.yml` in the repo root -- DO NOT USE THIS UNLESS VERY EXPLICITLY TOLD TO DO SO.
-2. **Staging Deployment**: Deploy to `dev.makapix.club` for testing (this stack)
-3. **Production**: When ready, "flip the switch" to serve the full app at `makapix.club`
+- ✅ Use `make` commands from repo root for convenience
 
 ## Setup
 

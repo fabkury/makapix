@@ -47,6 +47,7 @@ from ..services.email_verification import (
     mark_email_verified,
 )
 from ..services.rate_limit import check_rate_limit
+from ..services.email_normalization import normalize_email
 from ..utils.handles import generate_default_handle, validate_handle, is_handle_taken
 from ..utils.site_tracking import record_site_event
 
@@ -211,23 +212,24 @@ def register(
         db: Database session
     """
     email = payload.email.lower().strip()
-    
+    email_norm = normalize_email(email)
+
     # Rate limiting: 3 registrations per hour per IP
     client_ip = get_client_ip(request)
     rate_limit_key = f"ratelimit:register:{client_ip}"
     allowed, remaining = check_rate_limit(rate_limit_key, limit=3, window_seconds=3600)
-    
+
     if not allowed:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many registration attempts. Please try again later.",
         )
-    
-    # Check if email is already registered
+
+    # Check if email is already registered (check both original and normalized)
     existing_user = db.query(models.User).filter(
-        models.User.email == email
+        (models.User.email == email) | (models.User.email_normalized == email_norm)
     ).first()
-    
+
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -244,6 +246,7 @@ def register(
     user = models.User(
         handle=default_handle,
         email=email,
+        email_normalized=email_norm,
         email_verified=False,  # Requires email verification
         roles=["user"],
     )
@@ -657,16 +660,27 @@ def check_handle_availability(
     response_model=schemas.ResendVerificationResponse,
 )
 def resend_verification(
+    request: Request,
     payload: schemas.ResendVerificationRequest | None = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> schemas.ResendVerificationResponse:
     """
     Resend verification email to the current user.
-    
+
     Requires authentication (user must have registered but not yet verified).
-    Rate limited to 6 emails per hour.
+    Rate limited to 6 emails per hour per user, and 20 per hour per IP.
     """
+    # IP-based rate limiting: 20 verification requests per hour per IP
+    client_ip = get_client_ip(request)
+    rate_limit_key = f"ratelimit:verify_resend:{client_ip}"
+    allowed, _ = check_rate_limit(rate_limit_key, limit=20, window_seconds=3600)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many verification requests. Please try again later.",
+        )
+
     if current_user.email_verified:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -709,15 +723,26 @@ def resend_verification(
 )
 def request_verification(
     payload: schemas.ForgotPasswordRequest,  # Reuse ForgotPasswordRequest schema (just needs email)
+    request: Request,
     db: Session = Depends(get_db),
 ) -> schemas.ResendVerificationResponse:
     """
     Request verification email for an unverified account (no authentication required).
-    
+
     This endpoint allows users who cannot log in (because their email is not verified)
     to request a new verification email. For security, always returns success to prevent
     email enumeration attacks.
     """
+    # IP-based rate limiting: 20 verification requests per hour per IP
+    client_ip = get_client_ip(request)
+    rate_limit_key = f"ratelimit:verify_resend:{client_ip}"
+    allowed, _ = check_rate_limit(rate_limit_key, limit=20, window_seconds=3600)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many verification requests. Please try again later.",
+        )
+
     email = payload.email.lower().strip()
     
     # Find user by email
@@ -757,14 +782,26 @@ def request_verification(
 )
 def forgot_password(
     payload: schemas.ForgotPasswordRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> schemas.ForgotPasswordResponse:
     """
     Request a password reset email.
-    
+
     For security, always returns success even if email doesn't exist.
     This prevents email enumeration attacks.
     """
+    # Rate limiting: 5 password reset requests per hour per IP
+    client_ip = get_client_ip(request)
+    rate_limit_key = f"ratelimit:forgot_password:{client_ip}"
+    allowed, remaining = check_rate_limit(rate_limit_key, limit=5, window_seconds=3600)
+
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many password reset requests. Please try again later.",
+        )
+
     email = payload.email.lower().strip()
     
     # Find user by email

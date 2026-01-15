@@ -406,7 +406,7 @@ celery_app.conf.update(
         },
         "cleanup-unverified-accounts": {
             "task": "app.tasks.cleanup_unverified_accounts",
-            "schedule": 86400.0,  # Daily at 4AM UTC (in seconds)
+            "schedule": 43200.0,  # Every 12 hours (in seconds)
             "options": {"queue": "default"},
         },
         "cleanup-deleted-posts": {
@@ -2119,7 +2119,7 @@ def cleanup_expired_auth_tokens(self) -> dict[str, Any]:
 @celery_app.task(bind=True, name="app.tasks.cleanup_unverified_accounts")
 def cleanup_unverified_accounts(self) -> dict[str, Any]:
     """
-    Daily task: Delete user accounts that have not verified their email within 7 days.
+    Periodic task: Delete user accounts that have not verified their email within 3 days.
 
     These accounts are created during registration but the user never completed
     email verification. They cannot log in and have no user-generated content
@@ -2127,7 +2127,7 @@ def cleanup_unverified_accounts(self) -> dict[str, Any]:
 
     Also cleans up any associated tokens (email verification, refresh, password reset).
 
-    Should run daily at 4AM UTC (configured in beat_schedule).
+    Should run every 12 hours (configured in beat_schedule).
     """
     from datetime import datetime, timezone, timedelta
     from . import models
@@ -2138,9 +2138,9 @@ def cleanup_unverified_accounts(self) -> dict[str, Any]:
         logger.info("Starting unverified accounts cleanup task")
 
         now = datetime.now(timezone.utc).replace(tzinfo=None)
-        cutoff = now - timedelta(days=7)
+        cutoff = now - timedelta(days=3)
 
-        # Find unverified accounts older than 7 days
+        # Find unverified accounts older than 3 days
         stale_users = (
             db.query(models.User)
             .filter(
@@ -2150,7 +2150,7 @@ def cleanup_unverified_accounts(self) -> dict[str, Any]:
         )
 
         if not stale_users:
-            logger.info("No unverified accounts older than 7 days found")
+            logger.info("No unverified accounts older than 3 days found")
             return {"status": "success", "deleted_accounts": 0}
 
         user_ids = [u.id for u in stale_users]
