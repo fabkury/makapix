@@ -9,6 +9,7 @@ Welcome to the Makapix Club documentation hub. This directory contains comprehen
 - **[DEVELOPMENT.md](./DEVELOPMENT.md)** - Local development environment setup, running tests, debugging
 - **[ARCHITECTURE.md](./ARCHITECTURE.md)** - System architecture, tech stack, design decisions
 - **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Production deployment guide for VPS
+- **[USER_BAN_SYSTEM.md](./USER_BAN_SYSTEM.md)** - User ban system documentation: how bans work, data retention policies
 
 ### For MQTT Client Developers
 
