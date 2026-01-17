@@ -4,10 +4,13 @@ import { motion, useAnimationControls, useReducedMotion, AnimatePresence } from 
 import { useRouter } from 'next/router';
 import { authenticatedFetch, getAccessToken } from '../lib/api';
 import { PLAYER_BAR_HEIGHT } from './PlayerBarDynamic';
+import SPOCommentsOverlay from './SPOCommentsOverlay';
 
 type Rect = { left: number; top: number; width: number; height: number };
 
-export interface SelectedArtworkOverlayPost {
+const EMOJI_OPTIONS = ['👍', '❤️', '🔥', '😊', '⭐'];
+
+export interface SelectedPostOverlayPost {
   id: number;
   public_sqid: string;
   title: string;
@@ -21,13 +24,42 @@ export interface SelectedArtworkOverlayPost {
   };
 }
 
-export interface SelectedArtworkOverlayProps {
-  posts: SelectedArtworkOverlayPost[];
+export interface SelectedPostOverlayProps {
+  posts: SelectedPostOverlayPost[];
   selectedIndex: number;
   setSelectedIndex: (idx: number) => void;
   onClose: () => void; // parent should set selectedIndex = null
   onNavigateToPost: (idx: number) => void; // parent should set nav context + router.push
   getOriginRectForIndex: (idx: number) => Rect | null;
+  currentUserId?: string | null;
+  isModerator?: boolean;
+}
+
+interface ReactionTotals {
+  totals: Record<string, number>;
+  authenticated_totals: Record<string, number>;
+  anonymous_totals: Record<string, number>;
+  mine: string[];
+}
+
+interface Comment {
+  id: string;
+  author_id: string | null;
+  author_ip: string | null;
+  parent_id: string | null;
+  depth: number;
+  body: string;
+  hidden_by_mod: boolean;
+  deleted_by_owner: boolean;
+  created_at: string;
+  updated_at: string | null;
+  author_handle?: string;
+  author_display_name?: string;
+}
+
+interface WidgetData {
+  reactions: ReactionTotals;
+  comments: Comment[];
 }
 
 function getVisualViewportBox(): { x: number; y: number; width: number; height: number } {
@@ -43,6 +75,7 @@ function getVisualViewportBox(): { x: number; y: number; width: number; height: 
 }
 
 const POST_HEADER_HEIGHT = 32;
+const META_AREA_WIDTH = 384;
 
 function computeSelectedTargetRect(): { x: number; y: number; width: number; height: number } {
   const vv = getVisualViewportBox();
@@ -57,63 +90,42 @@ function computeSelectedTargetRect(): { x: number; y: number; width: number; hei
   };
 }
 
-async function fetchReactionMine(postId: number): Promise<Set<string>> {
-  const url = `/api/post/${postId}/reactions`;
-  const hasToken = !!getAccessToken();
-  const resp = hasToken
-    ? await authenticatedFetch(url.startsWith('http') ? url : `${window.location.origin}${url}`)
-    : await fetch(url, { credentials: 'include' });
-  if (!resp.ok) return new Set();
-  const data = await resp.json().catch(() => null);
-  const mine = Array.isArray(data?.mine) ? data.mine : [];
-  return new Set(mine);
+function computeMetaAreaPosition(): { x: number; y: number } {
+  const vv = getVisualViewportBox();
+  const targetRect = computeSelectedTargetRect();
+  return {
+    x: vv.x + (vv.width - META_AREA_WIDTH) / 2,
+    // Position below the artwork
+    y: targetRect.y + targetRect.height,
+  };
 }
 
-async function fetchReactionsCount(postId: number): Promise<number> {
-  const url = `/api/post/${postId}/reactions`;
+async function fetchWidgetData(postId: number): Promise<WidgetData | null> {
+  const url = `/api/post/${postId}/widget-data`;
   const hasToken = !!getAccessToken();
   try {
     const resp = hasToken
       ? await authenticatedFetch(url.startsWith('http') ? url : `${window.location.origin}${url}`)
       : await fetch(url, { credentials: 'include' });
-    if (!resp.ok) return 0;
-    const data = await resp.json().catch(() => null);
-    const totals = data?.totals || {};
-    // Sum all reaction counts
-    return Object.values(totals).reduce<number>((sum, count) => sum + (typeof count === 'number' ? count : 0), 0);
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return data;
   } catch {
-    return 0;
+    return null;
   }
 }
 
-async function fetchCommentsCount(postId: number): Promise<number> {
-  const url = `/api/post/${postId}/comments`;
-  const hasToken = !!getAccessToken();
-  try {
-    const resp = hasToken
-      ? await authenticatedFetch(url.startsWith('http') ? url : `${window.location.origin}${url}`)
-      : await fetch(url, { credentials: 'include' });
-    if (!resp.ok) return 0;
-    const data = await resp.json().catch(() => null);
-    const items = Array.isArray(data?.items) ? data.items : [];
-    return items.length;
-  } catch {
-    return 0;
-  }
-}
-
-async function setThumbsUp(postId: number, shouldLike: boolean): Promise<void> {
-  const emoji = '👍';
+async function toggleReaction(postId: number, emoji: string, shouldAdd: boolean): Promise<void> {
   const encoded = encodeURIComponent(emoji);
   const url = `/api/post/${postId}/reactions/${encoded}`;
-  const method = shouldLike ? 'PUT' : 'DELETE';
+  const method = shouldAdd ? 'PUT' : 'DELETE';
   const hasToken = !!getAccessToken();
   const resp = hasToken
     ? await authenticatedFetch(url.startsWith('http') ? url : `${window.location.origin}${url}`, { method })
     : await fetch(url, { method, credentials: 'include' });
   if (!resp.ok) {
     const txt = await resp.text().catch(() => '');
-    throw new Error(`Failed to ${shouldLike ? 'add' : 'remove'} reaction: ${resp.status} ${txt}`.trim());
+    throw new Error(`Failed to ${shouldAdd ? 'add' : 'remove'} reaction: ${resp.status} ${txt}`.trim());
   }
 }
 
@@ -148,7 +160,7 @@ const artworkShellStyles: React.CSSProperties = {
   // an unpredictable "static" position in the document flow.
   left: 0,
   top: 0,
-  overflow: 'visible', // Must be visible to show post-footer below artwork
+  overflow: 'visible',
   touchAction: 'none',
   willChange: 'transform, width, height',
   background: 'rgba(0, 0, 0, 0.18)',
@@ -241,67 +253,131 @@ const postCommentCountStyles: React.CSSProperties = {
   color: '#e8e8f0',
 };
 
-const postFooterStyles: React.CSSProperties = {
-  position: 'absolute',
-  bottom: -64,
+const metaAreaStyles: React.CSSProperties = {
+  position: 'fixed',
   left: 0,
-  right: 0,
-  height: 64,
+  top: 0,
+  width: META_AREA_WIDTH,
   background: '#000',
-  display: 'flex',
-  flexDirection: 'column',
-  pointerEvents: 'none',
+  borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+  fontFamily: "'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  pointerEvents: 'auto',
+  zIndex: 20001,
 };
 
-const postFooterTextStyles: React.CSSProperties = {
-  fontFamily: "'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-  fontSize: '14px',
-  fontWeight: 500,
-  color: '#ffffff',
+const titleRowStyles: React.CSSProperties = {
   height: 32,
   display: 'flex',
   alignItems: 'center',
   paddingLeft: 16,
   paddingRight: 16,
+  borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+  fontSize: '14px',
+  fontWeight: 600,
+  color: '#e8e8f0',
   whiteSpace: 'nowrap',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
 };
 
+const reactionsRowStyles: React.CSSProperties = {
+  height: 32,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 12,
+  borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+  padding: '0 8px',
+};
+
+const reactionButtonStyles: React.CSSProperties = {
+  position: 'relative',
+  padding: '4px 8px',
+  fontSize: '18px',
+  background: 'transparent',
+  border: '2px solid transparent',
+  borderRadius: '8px',
+  cursor: 'pointer',
+  transition: 'all 0.15s ease',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+
+const reactionBadgeStyles: React.CSSProperties = {
+  position: 'absolute',
+  bottom: -2,
+  right: -2,
+  background: '#00d4ff',
+  color: '#1a1a24',
+  fontSize: '10px',
+  fontWeight: 700,
+  padding: '1px 4px',
+  borderRadius: '8px',
+  minWidth: 16,
+  textAlign: 'center',
+  lineHeight: '1.2',
+  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.3)',
+};
+
+const commentButtonStyles: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 4,
+  padding: '4px 8px',
+  fontSize: '18px',
+  background: 'transparent',
+  border: '2px solid transparent',
+  borderRadius: '8px',
+  cursor: 'pointer',
+  transition: 'all 0.15s ease',
+  color: '#e8e8f0',
+};
+
+const descriptionAreaStyles: React.CSSProperties = {
+  maxHeight: 200,
+  overflowY: 'auto',
+  padding: 12,
+  fontSize: '13px',
+  lineHeight: 1.5,
+  color: '#a0a0b8',
+};
+
 type AnimationPhase = 'mounting' | 'flying-in' | 'selected' | 'flying-out' | 'swiping';
 
-export default function SelectedArtworkOverlay({
+export default function SelectedPostOverlay({
   posts,
   selectedIndex,
   setSelectedIndex,
   onClose,
   onNavigateToPost,
   getOriginRectForIndex,
-}: SelectedArtworkOverlayProps) {
+  currentUserId,
+  isModerator = false,
+}: SelectedPostOverlayProps) {
   const reduceMotion = useReducedMotion();
   const router = useRouter();
   const controls = useAnimationControls();
   const outgoingControls = useAnimationControls();
   const incomingControls = useAnimationControls();
   const backdropControls = useAnimationControls();
+  const metaAreaControls = useAnimationControls();
   const [portalEl, setPortalEl] = useState<HTMLElement | null>(null);
   const [phase, setPhase] = useState<AnimationPhase>('mounting');
   const [hasPlayerBar, setHasPlayerBar] = useState(false);
   const [pressing, setPressing] = useState(false);
-  const [liked, setLiked] = useState(false);
   const [likeBurstKey, setLikeBurstKey] = useState(0);
   const [targetRect, setTargetRect] = useState(() => computeSelectedTargetRect());
   const [headerPosition, setHeaderPosition] = useState(() => computePostHeaderPosition());
-  const [countsState, setCountsState] = useState<{
-    postId: number | null;
-    reactions: number | null;
-    comments: number | null;
-    status: 'idle' | 'loading' | 'ready';
-  }>({ postId: null, reactions: null, comments: null, status: 'idle' });
-  const countsCacheRef = useRef<Map<number, { reactions: number; comments: number }>>(new Map());
-  const headerControls = useAnimationControls();
-  const footerControls = useAnimationControls();
+  const [metaAreaPosition, setMetaAreaPosition] = useState(() => computeMetaAreaPosition());
   const [headerContentKey, setHeaderContentKey] = useState(0);
+  const [metaContentKey, setMetaContentKey] = useState(0);
+  const [showCommentsOverlay, setShowCommentsOverlay] = useState(false);
+  
+  // Widget data (reactions + comments)
+  const [widgetData, setWidgetData] = useState<WidgetData | null>(null);
+  const [loadingWidget, setLoadingWidget] = useState(false);
+  const widgetCacheRef = useRef<Map<number, WidgetData>>(new Map());
   
   // Store the initial origin rect SYNCHRONOUSLY on first render to avoid timing issues
   // Using a ref to capture it immediately, then a state for re-renders
@@ -313,7 +389,7 @@ export default function SelectedArtworkOverlay({
   
   // Track outgoing artwork during swipe transitions
   const [outgoingPost, setOutgoingPost] = useState<{ 
-    post: SelectedArtworkOverlayPost; 
+    post: SelectedPostOverlayPost; 
     rect: Rect;
     startX: number;
     startY: number;
@@ -323,7 +399,7 @@ export default function SelectedArtworkOverlay({
   
   // Track incoming artwork during swipe transitions (separate from main to avoid React re-render issues)
   const [incomingPost, setIncomingPost] = useState<{ 
-    post: SelectedArtworkOverlayPost; 
+    post: SelectedPostOverlayPost; 
     rect: Rect;
     startX: number;
     startY: number;
@@ -333,7 +409,7 @@ export default function SelectedArtworkOverlay({
 
   const pressTimerRef = useRef<number | null>(null);
   const pressStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
-  const likeInFlightRef = useRef(false);
+  const reactionInFlightRef = useRef(false);
 
   // For History API back button handling
   const closedByPopstateRef = useRef(false);
@@ -357,7 +433,7 @@ export default function SelectedArtworkOverlay({
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const el = document.createElement('div');
-    el.setAttribute('data-selected-artwork-overlay', 'true');
+    el.setAttribute('data-selected-post-overlay', 'true');
     document.body.appendChild(el);
     setPortalEl(el);
 
@@ -384,17 +460,19 @@ export default function SelectedArtworkOverlay({
     const handler = () => {
       const next = computeSelectedTargetRect();
       const nextHeaderPos = computePostHeaderPosition();
+      const nextMetaPos = computeMetaAreaPosition();
       setTargetRect(next);
       setHeaderPosition(nextHeaderPos);
+      setMetaAreaPosition(nextMetaPos);
       if (phase !== 'selected') return;
       controls.start({
         x: next.x,
         y: next.y,
         transition: reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 520, damping: 44 },
       });
-      headerControls.start({
-        x: nextHeaderPos.x,
-        y: nextHeaderPos.y,
+      metaAreaControls.start({
+        x: nextMetaPos.x,
+        y: nextMetaPos.y,
         transition: reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 520, damping: 44 },
       });
     };
@@ -412,52 +490,32 @@ export default function SelectedArtworkOverlay({
 
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
-  }, [controls, headerControls, phase, reduceMotion]);
+  }, [controls, metaAreaControls, phase, reduceMotion]);
 
-  // Fetch like state (auth or anonymous)
+  // Fetch widget data (reactions + comments)
   useEffect(() => {
     const postId = post?.id;
     if (!postId) return;
     let cancelled = false;
     (async () => {
       try {
-        const mine = await fetchReactionMine(postId);
-        if (cancelled) return;
-        setLiked(mine.has('👍'));
-      } catch {
-        // ignore
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [post?.id]);
-
-  // Fetch reactions and comments counts
-  useEffect(() => {
-    const postId = post?.id;
-    if (!postId) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const cached = countsCacheRef.current.get(postId);
+        const cached = widgetCacheRef.current.get(postId);
         if (cached) {
-          setCountsState({ postId, reactions: cached.reactions, comments: cached.comments, status: 'ready' });
+          setWidgetData(cached);
           return;
         }
 
-        // Important UX: when the selected post changes, the counts should disappear immediately
-        // and only re-appear once the UPDATED values have been fetched.
-        setCountsState({ postId, reactions: null, comments: null, status: 'loading' });
-
-        const [reactions, comments] = await Promise.all([fetchReactionsCount(postId), fetchCommentsCount(postId)]);
+        setLoadingWidget(true);
+        const data = await fetchWidgetData(postId);
         if (cancelled) return;
-        countsCacheRef.current.set(postId, { reactions, comments });
-        setCountsState({ postId, reactions, comments, status: 'ready' });
+        if (data) {
+          widgetCacheRef.current.set(postId, data);
+          setWidgetData(data);
+        }
       } catch {
-        // ignore (fetch helpers already return 0 on failure)
-        if (cancelled) return;
-        setCountsState({ postId, reactions: 0, comments: 0, status: 'ready' });
+        // ignore
+      } finally {
+        if (!cancelled) setLoadingWidget(false);
       }
     })();
     return () => {
@@ -481,12 +539,7 @@ export default function SelectedArtworkOverlay({
 
       // Animate header sliding in from above viewport
       const headerPos = computePostHeaderPosition();
-      headerControls.set({
-        x: headerPos.x,
-        y: headerPos.y - POST_HEADER_HEIGHT,
-        opacity: 0,
-      });
-      void headerControls.start({
+      void backdropControls.start({
         x: headerPos.x,
         y: headerPos.y,
         opacity: 1,
@@ -495,17 +548,20 @@ export default function SelectedArtworkOverlay({
           : { type: 'spring', stiffness: 400, damping: 35, mass: 0.8 },
       });
 
-      // Animate footer sliding down and fading in
-      footerControls.set({
-        y: -64,
+      // Animate meta area fading in
+      const metaPos = computeMetaAreaPosition();
+      metaAreaControls.set({
+        x: metaPos.x,
+        y: metaPos.y,
         opacity: 0,
       });
-      void footerControls.start({
-        y: 0,
+      void metaAreaControls.start({
+        x: metaPos.x,
+        y: metaPos.y,
         opacity: 1,
         transition: reduceMotion
           ? { duration: 0 }
-          : { type: 'spring', stiffness: 400, damping: 35, mass: 0.8 },
+          : { duration: 0.3, ease: [0.22, 1, 0.36, 1] },
       });
       
       const origin = initialOriginRect;
@@ -547,46 +603,55 @@ export default function SelectedArtworkOverlay({
     });
 
     return () => cancelAnimationFrame(timer);
-  }, [backdropControls, controls, footerControls, headerControls, portalEl, post, phase, initialOriginRect, reduceMotion, targetRect]);
+  }, [backdropControls, controls, metaAreaControls, portalEl, post, phase, initialOriginRect, reduceMotion, targetRect]);
 
-  const triggerLikeToggle = useCallback(async () => {
-    if (!post) return;
-    if (likeInFlightRef.current) return;
-    likeInFlightRef.current = true;
+  const handleReactionClick = useCallback(async (emoji: string) => {
+    if (!post || reactionInFlightRef.current) return;
+    reactionInFlightRef.current = true;
     try {
-      const next = !liked;
-      setLiked(next);
-      setLikeBurstKey((k) => k + 1);
-      if (navigator?.vibrate) navigator.vibrate(18);
-      await setThumbsUp(post.id, next);
+      const isActive = widgetData?.reactions.mine.includes(emoji) || false;
+      const next = !isActive;
+      
+      // Optimistic update
+      if (widgetData) {
+        const newMine = next
+          ? [...widgetData.reactions.mine, emoji]
+          : widgetData.reactions.mine.filter(e => e !== emoji);
+        const newTotals = { ...widgetData.reactions.totals };
+        newTotals[emoji] = Math.max(0, (newTotals[emoji] || 0) + (next ? 1 : -1));
+        
+        const updated: WidgetData = {
+          ...widgetData,
+          reactions: {
+            ...widgetData.reactions,
+            mine: newMine,
+            totals: newTotals,
+          },
+        };
+        setWidgetData(updated);
+        widgetCacheRef.current.set(post.id, updated);
+      }
 
-      // Only update counts once the server has confirmed the write.
-      // Do an immediate +1/-1 for responsiveness, then re-sync from server to be exact.
-      setCountsState((prev) => {
-        if (prev.postId !== post.id || prev.status !== 'ready') return prev;
-        const nextReactions = Math.max(0, (prev.reactions ?? 0) + (next ? 1 : -1));
-        const nextState = { ...prev, reactions: nextReactions };
-        countsCacheRef.current.set(post.id, { reactions: nextReactions, comments: prev.comments ?? 0 });
-        return nextState;
-      });
+      await toggleReaction(post.id, emoji, next);
 
-      // Re-sync totals in the background (accounts for other reaction types).
-      void (async () => {
-        try {
-          const reactions = await fetchReactionsCount(post.id);
-          setCountsState((prev) => {
-            if (prev.postId !== post.id || prev.status !== 'ready') return prev;
-            countsCacheRef.current.set(post.id, { reactions, comments: prev.comments ?? 0 });
-            return { ...prev, reactions };
-          });
-        } catch {
-          // ignore
-        }
-      })();
+      // Re-fetch to sync
+      const data = await fetchWidgetData(post.id);
+      if (data) {
+        setWidgetData(data);
+        widgetCacheRef.current.set(post.id, data);
+      }
+    } catch (err) {
+      console.error('Failed to toggle reaction:', err);
+      // Revert on error
+      const data = await fetchWidgetData(post.id);
+      if (data) {
+        setWidgetData(data);
+        widgetCacheRef.current.set(post.id, data);
+      }
     } finally {
-      likeInFlightRef.current = false;
+      reactionInFlightRef.current = false;
     }
-  }, [liked, post]);
+  }, [post, widgetData]);
 
   const dismissToOriginAndClose = useCallback(async () => {
     // Get fresh origin rect from DOM to ensure precision after any scroll/resize
@@ -598,14 +663,7 @@ export default function SelectedArtworkOverlay({
           opacity: 0,
           transition: reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.4, 0, 1, 1] },
         }),
-        headerControls.start({
-          x: headerPosition.x,
-          y: headerPosition.y - POST_HEADER_HEIGHT,
-          opacity: 0,
-          transition: reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.4, 0, 1, 1] },
-        }),
-        footerControls.start({
-          y: -64,
+        metaAreaControls.start({
           opacity: 0,
           transition: reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.4, 0, 1, 1] },
         }),
@@ -628,20 +686,13 @@ export default function SelectedArtworkOverlay({
       opacity: 0,
       transition: reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.4, 0, 1, 1] },
     });
-    const headerSlideOut = headerControls.start({
-      x: headerPosition.x,
-      y: headerPosition.y - POST_HEADER_HEIGHT,
+    const metaFadeOut = metaAreaControls.start({
       opacity: 0,
-      transition: reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 40, mass: 0.8 },
+      transition: reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.4, 0, 1, 1] },
     });
-    const footerSlideUp = footerControls.start({
-      y: -64,
-      opacity: 0,
-      transition: reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 40, mass: 0.8 },
-    });
-    await Promise.all([flyBack, fadeOut, headerSlideOut, footerSlideUp]);
+    await Promise.all([flyBack, fadeOut, metaFadeOut]);
     onClose();
-  }, [backdropControls, clearPressTimer, controls, footerControls, getCurrentOriginRect, headerControls, headerPosition, initialOriginRect, onClose, reduceMotion]);
+  }, [backdropControls, clearPressTimer, controls, metaAreaControls, getCurrentOriginRect, initialOriginRect, onClose, reduceMotion]);
 
   // Keep ref updated with latest dismissToOriginAndClose
   useEffect(() => {
@@ -771,7 +822,6 @@ export default function SelectedArtworkOverlay({
       // Run BOTH animations simultaneously:
       // - Outgoing flies from center back to its grid position
       // - Incoming flies from its grid position to center
-      // Header stays in place (no slide out/in) - contents will crossfade
       await Promise.all([
         outgoingControls.start({
           x: outRect.left,
@@ -803,8 +853,9 @@ export default function SelectedArtworkOverlay({
         scale: 1,
       });
       
-      // Trigger header content crossfade by updating key
+      // Trigger content crossfade by updating keys
       setHeaderContentKey((k) => k + 1);
+      setMetaContentKey((k) => k + 1);
       
       // Clear transition elements
       setOutgoingPost(null);
@@ -831,11 +882,11 @@ export default function SelectedArtworkOverlay({
   // ESC to close
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') void dismissToOriginAndClose();
+      if (e.key === 'Escape' && !showCommentsOverlay) void dismissToOriginAndClose();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [dismissToOriginAndClose]);
+  }, [dismissToOriginAndClose, showCommentsOverlay]);
 
   if (!portalEl || !post) return null;
   
@@ -847,10 +898,8 @@ export default function SelectedArtworkOverlay({
   const initialH = origin?.height ?? targetRect.height;
 
   const isInteractive = phase === 'selected';
-  const countsForPost =
-    post && countsState.postId === post.id && countsState.status === 'ready'
-      ? { reactions: countsState.reactions ?? 0, comments: countsState.comments ?? 0 }
-      : null;
+  const totalReactions = widgetData ? Object.values(widgetData.reactions.totals).reduce((sum, count) => sum + count, 0) : 0;
+  const totalComments = widgetData?.comments.length || 0;
 
   return createPortal(
     <div style={{ ...overlayStyles, bottom: hasPlayerBar ? PLAYER_BAR_HEIGHT : 0 }} role="dialog" aria-modal="true">
@@ -879,8 +928,6 @@ export default function SelectedArtworkOverlay({
         role="banner"
         style={{
           position: 'fixed',
-          // CRITICAL: Must set left/top to 0 so Framer Motion's x/y transforms 
-          // become actual viewport coordinates
           left: 0,
           top: 0,
           width: 384,
@@ -894,7 +941,7 @@ export default function SelectedArtworkOverlay({
           pointerEvents: 'auto',
         }}
         initial={{ x: headerPosition.x, y: headerPosition.y - POST_HEADER_HEIGHT, opacity: 0 }}
-        animate={headerControls}
+        animate={{ x: headerPosition.x, y: headerPosition.y, opacity: 1 }}
       >
         <AnimatePresence mode="wait">
           <motion.div
@@ -915,8 +962,6 @@ export default function SelectedArtworkOverlay({
                   e.preventDefault();
                   if (post.owner?.public_sqid) {
                     navigatingAwayRef.current = true;
-                    // Replace the overlay's history state before navigation so back button
-                    // won't re-open the overlay (replaceState doesn't trigger popstate)
                     history.replaceState(null, '');
                     router.push(`/u/${post.owner.public_sqid}`);
                   }
@@ -927,8 +972,6 @@ export default function SelectedArtworkOverlay({
                     e.preventDefault();
                     if (post.owner?.public_sqid) {
                       navigatingAwayRef.current = true;
-                      // Replace the overlay's history state before navigation so back button
-                      // won't re-open the overlay (replaceState doesn't trigger popstate)
                       history.replaceState(null, '');
                       router.push(`/u/${post.owner.public_sqid}`);
                     }
@@ -983,9 +1026,8 @@ export default function SelectedArtworkOverlay({
             exit={{ opacity: 0 }}
             transition={{ duration: reduceMotion ? 0 : 0.2 }}
           >
-            {countsForPost && (
+            {!loadingWidget && (
               <motion.div
-                // When counts become ready, mount and fade in (no "old number then change" flicker).
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: reduceMotion ? 0 : 0.2 }}
@@ -993,11 +1035,11 @@ export default function SelectedArtworkOverlay({
               >
                 <div style={postReactionCountStyles}>
                   <span style={{ fontSize: '16px', marginRight: '-2px' }}>⚡</span>
-                  <span>{countsForPost.reactions}</span>
+                  <span>{totalReactions}</span>
                 </div>
                 <div style={postCommentCountStyles}>
                   <span style={{ fontSize: '16px', marginRight: '-2px' }}>💬</span>
-                  <span>{countsForPost.comments}</span>
+                  <span>{totalComments}</span>
                 </div>
               </motion.div>
             )}
@@ -1090,7 +1132,10 @@ export default function SelectedArtworkOverlay({
           setPressing(true);
           pressTimerRef.current = window.setTimeout(() => {
             pressTimerRef.current = null;
-            void triggerLikeToggle();
+            setLikeBurstKey((k) => k + 1);
+            if (navigator?.vibrate) navigator.vibrate(18);
+            // Long press on artwork shows like animation
+            void handleReactionClick('👍');
           }, 420);
         }}
         onPointerMove={(e) => {
@@ -1127,8 +1172,6 @@ export default function SelectedArtworkOverlay({
           const isTap = absX < 10 && absY < 10 && duration < 300;
           if (isTap) {
             navigatingAwayRef.current = true;
-            // Replace the overlay's history state before navigation so back button
-            // won't re-open the overlay (replaceState doesn't trigger popstate)
             history.replaceState(null, '');
             onNavigateToPost(selectedIndex);
             return;
@@ -1165,8 +1208,6 @@ export default function SelectedArtworkOverlay({
           e.stopPropagation();
           if (!isInteractive) return;
           navigatingAwayRef.current = true;
-          // Replace the overlay's history state before navigation so back button
-          // won't re-open the overlay (replaceState doesn't trigger popstate)
           history.replaceState(null, '');
           onNavigateToPost(selectedIndex);
         }}
@@ -1198,28 +1239,78 @@ export default function SelectedArtworkOverlay({
             </motion.div>
           )}
         </div>
-
-        {/* Post Footer */}
-        <motion.div
-          style={postFooterStyles}
-          initial={{ y: -64, opacity: 0 }}
-          animate={footerControls}
-        >
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={headerContentKey}
-              style={{ display: 'flex', flexDirection: 'column' }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: reduceMotion ? 0 : 0.2 }}
-            >
-              <div style={postFooterTextStyles}>{post.title}</div>
-              <div style={postFooterTextStyles}>{post.description || ''}</div>
-            </motion.div>
-          </AnimatePresence>
-        </motion.div>
       </motion.div>
+
+      {/* Artwork Meta Area */}
+      <motion.div
+        style={metaAreaStyles}
+        initial={{ x: metaAreaPosition.x, y: metaAreaPosition.y, opacity: 0 }}
+        animate={metaAreaControls}
+      >
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={metaContentKey}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: reduceMotion ? 0 : 0.2 }}
+          >
+            {/* Title Row */}
+            <div style={titleRowStyles}>{post.title}</div>
+
+            {/* Reactions Row */}
+            <div style={reactionsRowStyles}>
+              {EMOJI_OPTIONS.map(emoji => {
+                const count = widgetData?.reactions.totals[emoji] || 0;
+                const isActive = widgetData?.reactions.mine.includes(emoji) || false;
+                return (
+                  <button
+                    key={emoji}
+                    style={{
+                      ...reactionButtonStyles,
+                      borderColor: isActive ? '#00d4ff' : 'transparent',
+                      background: isActive ? 'rgba(0, 212, 255, 0.15)' : 'transparent',
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleReactionClick(emoji);
+                    }}
+                    disabled={loadingWidget}
+                  >
+                    {emoji}
+                    {count > 0 && <span style={reactionBadgeStyles}>{count}</span>}
+                  </button>
+                );
+              })}
+              <button
+                style={commentButtonStyles}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowCommentsOverlay(true);
+                }}
+              >
+                <span>💬</span>
+                {totalComments > 0 && <span style={{ fontSize: '12px', color: '#00d4ff' }}>{totalComments}</span>}
+              </button>
+            </div>
+
+            {/* Description Area */}
+            {post.description && (
+              <div style={descriptionAreaStyles}>{post.description}</div>
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </motion.div>
+
+      {/* Comments Overlay */}
+      <SPOCommentsOverlay
+        postId={post.id}
+        isOpen={showCommentsOverlay}
+        onClose={() => setShowCommentsOverlay(false)}
+        currentUserId={currentUserId}
+        isModerator={isModerator}
+        initialComments={widgetData?.comments || []}
+      />
     </div>,
     portalEl
   );

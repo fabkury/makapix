@@ -73,6 +73,7 @@ def search_all(
             models.User.hidden_by_mod == False,
             models.User.non_conformant == False,
             models.User.deactivated == False,
+            models.User.email_verified == True,
         )
 
         # Apply cursor pagination (using similarity as sort field)

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
+import Head from 'next/head';
 import Layout from '../components/Layout';
 
 type DeviceTab = 'desktop' | 'mobile';
@@ -43,6 +44,13 @@ export default function ContributePage() {
 
   return (
     <Layout title="Contribute" description="Submit your pixel art">
+      <Head>
+        <link
+          rel="preload"
+          href="/piskel/piskel_logo_transparent_small_compact.png"
+          as="image"
+        />
+      </Head>
       <div className="contribute-container">
         <h1 className="page-title">Contribute</h1>
         <p className="page-subtitle">
@@ -84,7 +92,7 @@ export default function ContributePage() {
                     />
                   </div>
                   <h2 className="option-title">Draw in Piskel</h2>
-                  <p className="option-description">Create pixel art usingthe Piskel editor</p>
+                  <p className="option-description">Create pixel art using the Piskel editor</p>
                 </Link>
 
                 <Link href="/divoom-import" className="option-card">

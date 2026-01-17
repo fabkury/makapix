@@ -144,14 +144,6 @@ export default function PostManagementDashboard() {
     }
   }, [isOwnProfile, loadPosts, loadBDRs]);
 
-  // Scroll to BDR section if highlighted
-  useEffect(() => {
-    if (highlightedBdrId && typeof highlightedBdrId === 'string' && bdrs.length > 0) {
-      const bdrSection = document.getElementById('bdr-section');
-      bdrSection?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [highlightedBdrId, bdrs]);
-
   // SSE for BDR updates
   const handleBDRUpdate = useCallback((updatedBdr: BDRItem) => {
     setBdrs((prev) => {

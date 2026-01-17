@@ -16,8 +16,8 @@
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
 
-  <link rel="preload" href="/css/styles.css" as="style" />
-  <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="preload" href="/css/styles.css?v=2" as="style" />
+  <link rel="stylesheet" href="/css/styles.css?v=2" />
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -31,110 +31,53 @@
     <section class="hero">
       <h1>Pixel art, alive in the real world.</h1>
       <p class="lede">A free, open community connecting artists, makers, and displays.</p>
-      <p class="tagline">Where pixel art meets microcontroller displays.</p>
-      <div class="cta">
-        <a class="btn primary" href="https://discord.gg/T4PpWTkfGp" target="_blank" rel="noopener">Join the Discord</a>
-        <a class="muted link" href="#about">What's Makapix Club?</a>
+    </section>
+
+    <section class="countdown" aria-label="Countdown to launch">
+      <div class="countdown-container">
+        <div class="countdown-unit">
+          <span class="countdown-value" id="countdown-days">00</span>
+          <span class="countdown-label">Days</span>
+        </div>
+        <span class="countdown-separator">:</span>
+        <div class="countdown-unit">
+          <span class="countdown-value" id="countdown-hours">00</span>
+          <span class="countdown-label">Hours</span>
+        </div>
+        <span class="countdown-separator">:</span>
+        <div class="countdown-unit">
+          <span class="countdown-value" id="countdown-minutes">00</span>
+          <span class="countdown-label">Minutes</span>
+        </div>
+        <span class="countdown-separator">:</span>
+        <div class="countdown-unit">
+          <span class="countdown-value" id="countdown-seconds">00</span>
+          <span class="countdown-label">Seconds</span>
+        </div>
       </div>
     </section>
 
-    <section class="gallery" aria-label="Selected artworks">
-      <figure class="art">
-        <div class="pixel-wrap" data-base="64">
-          <img class="pixel" data-base="64" src="/artwork-1.webp?v=2" alt="Pixel artwork 1" loading="lazy" decoding="async" />
+    <section class="carousel-section" aria-label="Featured artworks">
+      <div class="carousel-track">
+        <div class="carousel-images" id="carousel-track">
+          <img class="carousel-artwork" src="/carousel/01.webp" alt="Pixel artwork" loading="lazy" decoding="async" />
+          <img class="carousel-artwork" src="/carousel/02.webp" alt="Pixel artwork" loading="lazy" decoding="async" />
+          <img class="carousel-artwork" src="/carousel/03.webp" alt="Pixel artwork" loading="lazy" decoding="async" />
+          <img class="carousel-artwork" src="/carousel/04.webp" alt="Pixel artwork" loading="lazy" decoding="async" />
+          <img class="carousel-artwork" src="/carousel/05.webp" alt="Pixel artwork" loading="lazy" decoding="async" />
+          <img class="carousel-artwork" src="/carousel/06.webp" alt="Pixel artwork" loading="lazy" decoding="async" />
+          <img class="carousel-artwork" src="/carousel/07.webp" alt="Pixel artwork" loading="lazy" decoding="async" />
+          <img class="carousel-artwork" src="/carousel/08.webp" alt="Pixel artwork" loading="lazy" decoding="async" />
+          <img class="carousel-artwork" src="/carousel/09.webp" alt="Pixel artwork" loading="lazy" decoding="async" />
+          <img class="carousel-artwork" src="/carousel/10.webp" alt="Pixel artwork" loading="lazy" decoding="async" />
+          <img class="carousel-artwork" src="/carousel/11.gif" alt="Pixel artwork" loading="lazy" decoding="async" />
+          <img class="carousel-artwork" src="/carousel/12.webp" alt="Pixel artwork" loading="lazy" decoding="async" />
+          <img class="carousel-artwork" src="/carousel/13.webp" alt="Pixel artwork" loading="lazy" decoding="async" />
+          <img class="carousel-artwork" src="/carousel/14.webp" alt="Pixel artwork" loading="lazy" decoding="async" />
+          <img class="carousel-artwork" src="/carousel/15.webp" alt="Pixel artwork" loading="lazy" decoding="async" />
+          <img class="carousel-artwork" src="/carousel/16.webp" alt="Pixel artwork" loading="lazy" decoding="async" />
         </div>
-      </figure>
-
-      <div class="fade-text">
-        <p class="statement">Before being a <em>style</em>...</p>
       </div>
-
-      <div class="fade-text">
-        <p class="statement">...pixel art was a <em>constraint.</em></p>
-      </div>
-
-      <figure class="art">
-        <div class="pixel-wrap" data-base="64">
-          <img class="pixel" data-base="64" src="/artwork-2.gif" alt="Pixel artwork 2" loading="lazy" decoding="async" />
-        </div>
-      </figure>
-
-      <div class="fade-text spec-card">
-        <p class="spec-title">Mega Drive/Genesis, 1988</p>
-        <p class="spec-detail">64 KB VRAM, 6-bit(-3) color (9-bit palette)</p>
-      </div>
-
-      <figure class="art">
-        <div class="pixel-wrap" data-base="64">
-          <img class="pixel" data-base="64" src="/artwork-3.gif" alt="Pixel artwork 3" loading="lazy" decoding="async" />
-        </div>
-      </figure>
-
-      <div class="fade-text spec-card">
-        <p class="spec-title">SNES, 1990</p>
-        <p class="spec-detail">64 KB VRAM, 8-bit color (15-bit palette)</p>
-      </div>
-
-      <figure class="art">
-        <div class="pixel-wrap" data-base="64">
-          <img class="pixel" data-base="64" src="/artwork-4.gif" alt="Pixel artwork 4" loading="lazy" decoding="async" />
-        </div>
-      </figure>
-
-      <div class="fade-text spec-card">
-        <p class="spec-title">Game Boy Color, 1998</p>
-        <p class="spec-detail">16 KB VRAM, 6-bit(-8) color (15-bit palette)</p>
-      </div>
-
-      <figure class="art">
-        <div class="pixel-wrap" data-base="64">
-          <img class="pixel" data-base="64" src="/artwork-5.gif" alt="Pixel artwork 5" loading="lazy" decoding="async" />
-        </div>
-      </figure>
-
-      <div class="fade-text">
-        <p class="statement">We work to bring today's pixel art to today's displays and their hardware constraints...</p>
-      </div>
-
-      <figure class="art">
-        <div class="pixel-wrap" data-base="64">
-          <img class="pixel" data-base="64" src="/artwork-6.webp" alt="Pixel artwork 6" loading="lazy" decoding="async" />
-        </div>
-      </figure>
-
-      <div class="fade-text">
-        <p class="statement">...then we add an MQTT server to feed live art from the web...</p>
-      </div>
-
-      <figure class="art">
-        <div class="pixel-wrap" data-base="64">
-          <img class="pixel" data-base="64" src="/artwork-7.webp" alt="Pixel artwork 7" loading="lazy" decoding="async" />
-        </div>
-      </figure>
-
-      <div class="fade-text">
-        <p class="statement">...and a minimal, lightweight social networking experience around the artworks.</p>
-      </div>
-
-      <figure class="art">
-        <div class="pixel-wrap" data-base="64">
-          <img class="pixel" data-base="64" src="/artwork-8.webp" alt="Pixel artwork 8" loading="lazy" decoding="async" />
-        </div>
-      </figure>
-
-      <div class="fade-text open-call">
-        <p class="statement large">This is an open project. Join us.</p>
-      </div>
-    </section>
-
-    <section id="about" class="about">
-      <h2>What's Makapix Club?</h2>
-      <ul class="bullets">
-        <li><strong>True to origins.</strong> We create for real MCU displays—low resolutions, tight color.</li>
-        <li><strong>Free forever.</strong> No ads, no paywalls, no gotchas. Built in the open.</li>
-        <li><strong>Realtime.</strong> MQTT backbone keeps viewers and devices in sync.</li>
-        <li><strong>Social.</strong> Comments, reactions, contests, community.</li>
-      </ul>
     </section>
 
     <section class="splits" aria-label="Ways to join">
@@ -169,19 +112,14 @@
         <a class="inline-cta" href="https://discord.gg/T4PpWTkfGp" target="_blank" rel="noopener">Join the Discord →</a>
       </article>
     </section>
-
-    <section class="final-cta">
-      <p><strong>Help us build it. Join the Discord.</strong></p>
-      <a class="btn primary" href="https://discord.gg/T4PpWTkfGp" target="_blank" rel="noopener">Join the Discord</a>
-    </section>
   </main>
 
   <footer class="site-footer">
     <small>© <span id="year"></span> Makapix Club • Community-run & ad-free</small>
   </footer>
 
-  <script src="/js/pixel-scale.js" defer></script>
-  <script src="/js/fade-scroll.js" defer></script>
+  <script src="/js/countdown.js" defer></script>
+  <script src="/js/carousel.js" defer></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('year').textContent = new Date().getFullYear();

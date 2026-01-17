@@ -779,13 +779,6 @@ export default function DivoomImportPage() {
     }
   }, [API_BASE_URL, description, hashtags, lastUploadedGalleryId, router, selected, title]);
 
-  // Auto-scroll batch log to bottom
-  useEffect(() => {
-    if (logContainerRef.current) {
-      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
-    }
-  }, [batchResults]);
-
   // Cleanup batch preview URL on unmount
   useEffect(() => {
     return () => {

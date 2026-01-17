@@ -530,80 +530,6 @@ export default function UserProfilePage() {
     }
   };
 
-  // Moderation functions
-  const trustUser = async () => {
-    if (!profile) return;
-    try {
-      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${profile.user_key}/auto-approval`, {
-        method: 'POST',
-      });
-      // Refresh profile
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/u/${profile.public_sqid}/profile`);
-      if (response.ok) {
-        const data = await response.json();
-        setProfile(data);
-      }
-    } catch (error) {
-      console.error('Error trusting user:', error);
-    }
-  };
-
-  const distrustUser = async () => {
-    if (!profile) return;
-    try {
-      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${profile.user_key}/auto-approval`, {
-        method: 'DELETE',
-      });
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/u/${profile.public_sqid}/profile`);
-      if (response.ok) {
-        const data = await response.json();
-        setProfile(data);
-      }
-    } catch (error) {
-      console.error('Error distrusting user:', error);
-    }
-  };
-
-  const banUser = async () => {
-    if (!profile) return;
-    if (!confirm('Are you sure you want to ban this user? Bans persist until revoked by a moderator.')) {
-      return;
-    }
-    try {
-      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${profile.user_key}/ban`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ duration_days: null })
-      });
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/u/${profile.public_sqid}/profile`);
-      if (response.ok) {
-        const data = await response.json();
-        setProfile(data);
-      }
-    } catch (error) {
-      console.error('Error banning user:', error);
-    }
-  };
-
-  const unbanUser = async () => {
-    if (!profile) return;
-    if (!confirm('Are you sure you want to unban this user?')) {
-      return;
-    }
-    try {
-      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${profile.user_key}/ban`, {
-        method: 'DELETE',
-      });
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/u/${profile.public_sqid}/profile`);
-      if (response.ok) {
-        const data = await response.json();
-        setProfile(data);
-      }
-    } catch (error) {
-      console.error('Error unbanning user:', error);
-    }
-  };
-
   // Intersection Observer for infinite scroll
   useEffect(() => {
     if (!profile) return;
@@ -899,17 +825,6 @@ export default function UserProfilePage() {
                     ✏️ Edit
                   </button>
                 )}
-                <div className="mod-spacer" />
-                {(profile as any).auto_public_approval ? (
-                  <button className="mod-btn" onClick={distrustUser} title="Distrust">⚠️</button>
-                ) : (
-                  <button className="mod-btn" onClick={trustUser} title="Trust">🫱🏽‍🫲🏼</button>
-                )}
-                {(profile as any).banned_until ? (
-                  <button className="mod-btn" onClick={unbanUser} title="Unban">✅</button>
-                ) : (
-                  <button className="mod-btn" onClick={banUser} title="Ban">🚷</button>
-                )}
               </div>
             )}
           </div>
@@ -1158,10 +1073,6 @@ export default function UserProfilePage() {
           flex-wrap: wrap;
           gap: 8px;
           margin-top: 16px;
-        }
-
-        .mod-spacer {
-          width: 16px;
         }
 
         .display-name {

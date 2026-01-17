@@ -287,14 +287,106 @@ body {
   text-underline-offset: 3px;
 }
 
-.final-cta {
+/* Countdown Section */
+.countdown {
   padding: 48px 0;
   text-align: center;
 }
 
-.final-cta p {
-  margin: 0 0 20px;
-  font-size: 1.15rem;
+.countdown-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.countdown-unit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 80px;
+}
+
+.countdown-value {
+  font-size: clamp(48px, 10vw, 96px);
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+
+.countdown-label {
+  font-size: clamp(12px, 2vw, 16px);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-top: 8px;
+}
+
+.countdown-separator {
+  font-size: clamp(36px, 8vw, 72px);
+  font-weight: 700;
+  color: var(--muted);
+  line-height: 1;
+  padding-bottom: 24px;
+}
+
+@media (max-width: 480px) {
+  .countdown-container {
+    gap: 8px;
+  }
+  .countdown-unit {
+    min-width: 60px;
+  }
+  .countdown-separator {
+    padding-bottom: 18px;
+  }
+}
+
+/* Carousel Section */
+.carousel-section {
+  width: 100vw;
+  margin-left: calc(-50vw + 50%);
+  padding: 48px 0;
+  overflow: hidden;
+}
+
+.carousel-track {
+  overflow: hidden;
+}
+
+.carousel-images {
+  display: flex;
+  gap: 24px;
+  width: max-content;
+}
+
+.carousel-images.animate {
+  animation: carousel-scroll var(--carousel-duration, 90s) linear infinite;
+}
+
+@keyframes carousel-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.carousel-artwork {
+  width: 256px;
+  height: 256px;
+  object-fit: contain;
+  background: var(--card);
+  border-radius: 8px;
+  padding: 12px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  image-rendering: -moz-crisp-edges;
+  flex-shrink: 0;
 }
 
 .site-footer {

@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Meta-guidance
+
+Feel free to ask clarifying questions, they are welcome.
+
 ## Project Overview
 
 Makapix Club (MPX) is a lightweight pixel art social network designed to run on a single VPS. It consists of a FastAPI backend, Next.js frontend, MQTT broker for real-time notifications, and a local vault for image storage.
@@ -121,7 +125,7 @@ makapix/player/{key}/status  # Player status reports
 
 ## Deployment
 
-The entire stack runs from `deploy/stack/docker-compose.yml`. There is no separate local development environment.
+The entire stack runs from `deploy/stack/docker-compose.yml`. There is no other development environment.
 
 **To deploy changes:**
 ```bash

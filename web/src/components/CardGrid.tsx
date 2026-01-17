@@ -2,8 +2,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { setNavigationContext, NavigationSource } from '../lib/navigation-context';
-import SelectedArtworkOverlay from './SelectedArtworkOverlay';
+import SelectedPostOverlay from './SelectedPostOverlay';
 import { usePlayerBarOptional } from '../contexts/PlayerBarContext';
+import { authenticatedFetch } from '../lib/api';
 
 // Set to true to enable animated edge glow effects around the grid.
 const GLOW_ENABLED = false;
@@ -62,6 +63,8 @@ export default function CardGrid({
   const [columnCount, setColumnCount] = useState(1);
   const [superPostId, setSuperPostId] = useState<number | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isModerator, setIsModerator] = useState(false);
 
   // Calculate synchronized animation delay so all glows stay in phase.
   // This negative delay "jumps" the animation to the correct position in the cycle.
@@ -105,6 +108,32 @@ export default function CardGrid({
       router.events.off('routeChangeStart', handleRouteChange);
     };
   }, [router.events]);
+
+  // Fetch current user and moderator status
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const userId = localStorage.getItem('user_id');
+    setCurrentUserId(userId);
+
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      authenticatedFetch(`${apiBaseUrl}/api/auth/me`)
+        .then(res => {
+          if (!res.ok) return null;
+          return res.json();
+        })
+        .then(data => {
+          if (data?.roles) {
+            const roles = data.roles as string[];
+            setIsModerator(roles.includes('moderator') || roles.includes('owner'));
+          }
+        })
+        .catch(() => {
+          // ignore
+        });
+    }
+  }, []);
 
   // Choose one "super post" per component mount (surrogate for backend flag).
   useEffect(() => {
@@ -344,7 +373,7 @@ export default function CardGrid({
         </div>
 
         {selectedIndex !== null && selectedIndex >= 0 && selectedIndex < posts.length && (
-          <SelectedArtworkOverlay
+          <SelectedPostOverlay
             posts={selectedOverlayPosts}
             selectedIndex={selectedIndex}
             setSelectedIndex={setSelectedIndex}
@@ -358,6 +387,8 @@ export default function CardGrid({
               handlePostClick(idx);
               router.push(`/p/${post.public_sqid}`);
             }}
+            currentUserId={currentUserId}
+            isModerator={isModerator}
           />
         )}
 

@@ -35,8 +35,11 @@ def browse_users(
     Browse and search users (requires authentication).
     """
     query = db.query(models.User)
-    
-    # Apply visibility filters for non-moderators
+
+    # Hide unverified users from everyone on public browse
+    query = query.filter(models.User.email_verified == True)
+
+    # Apply additional visibility filters for non-moderators
     is_moderator = current_user and ("moderator" in current_user.roles or "owner" in current_user.roles)
     if not is_moderator:
         query = query.filter(
@@ -46,7 +49,7 @@ def browse_users(
             models.User.deactivated == False,
             models.User.banned_until.is_(None),
         )
-    
+
     # Apply search filter
     if q:
         search_term = f"%{q}%"
@@ -240,13 +243,19 @@ def get_user_by_sqid(
     # Verify public_sqid matches (safety check)
     if user.public_sqid != public_sqid:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
+
     # Check if user is hidden and current user doesn't have permission to see it
     if user.hidden_by_user and (not current_user or not check_ownership(user.id, current_user)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
+
+    # Hide unverified users from public view (unless moderator or self)
+    is_moderator = current_user and ("moderator" in current_user.roles or "owner" in current_user.roles)
+    is_own_profile = current_user and current_user.id == user.id
+    if not user.email_verified and not is_moderator and not is_own_profile:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
     # Return UserFull for moderators/owners, UserPublic for others
-    if current_user and ("moderator" in current_user.roles or "owner" in current_user.roles):
+    if is_moderator:
         return schemas.UserFull.model_validate(user)
     else:
         return schemas.UserPublic.model_validate(user)
@@ -268,13 +277,19 @@ def get_user(
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
+
     # Check if user is hidden and current user doesn't have permission to see it
     if user.hidden_by_user and (not current_user or not check_ownership(user.id, current_user)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
+
+    # Hide unverified users from public view (unless moderator or self)
+    is_moderator = current_user and ("moderator" in current_user.roles or "owner" in current_user.roles)
+    is_own_profile = current_user and current_user.id == user.id
+    if not user.email_verified and not is_moderator and not is_own_profile:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
     # Return UserFull for moderators/owners, UserPublic for others
-    if current_user and ("moderator" in current_user.roles or "owner" in current_user.roles):
+    if is_moderator:
         return schemas.UserFull.model_validate(user)
     else:
         return schemas.UserPublic.model_validate(user)
@@ -815,6 +830,10 @@ def get_user_profile_enhanced(
     if user.hidden_by_user and not is_own_profile and not is_moderator:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    # Hide unverified users from public view (unless moderator or self)
+    if not user.email_verified and not is_own_profile and not is_moderator:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
     # Get tag badges
     user_badge_names = [bg.badge for bg in user.badges]
     tag_badges = []
@@ -1052,19 +1071,26 @@ def get_user_followers(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    # Get total count
+    # Get total count (only verified users)
     total = (
         db.query(func.count(models.Follow.id))
-        .filter(models.Follow.following_id == user.id)
+        .join(models.User, models.Follow.follower_id == models.User.id)
+        .filter(
+            models.Follow.following_id == user.id,
+            models.User.email_verified == True,
+        )
         .scalar()
         or 0
     )
 
-    # Query followers
+    # Query followers (only verified users)
     query = (
         db.query(models.User)
         .join(models.Follow, models.Follow.follower_id == models.User.id)
-        .filter(models.Follow.following_id == user.id)
+        .filter(
+            models.Follow.following_id == user.id,
+            models.User.email_verified == True,
+        )
     )
 
     # Apply cursor pagination
@@ -1105,19 +1131,26 @@ def get_user_following(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    # Get total count
+    # Get total count (only verified users)
     total = (
         db.query(func.count(models.Follow.id))
-        .filter(models.Follow.follower_id == user.id)
+        .join(models.User, models.Follow.following_id == models.User.id)
+        .filter(
+            models.Follow.follower_id == user.id,
+            models.User.email_verified == True,
+        )
         .scalar()
         or 0
     )
 
-    # Query following
+    # Query following (only verified users)
     query = (
         db.query(models.User)
         .join(models.Follow, models.Follow.following_id == models.User.id)
-        .filter(models.Follow.follower_id == user.id)
+        .filter(
+            models.Follow.follower_id == user.id,
+            models.User.email_verified == True,
+        )
     )
 
     # Apply cursor pagination
