@@ -191,7 +191,8 @@ const likeBurstStyles: React.CSSProperties = {
   position: 'absolute',
   left: '50%',
   top: '50%',
-  transform: 'translate(-50%, -50%)',
+  marginLeft: '-28px',
+  marginTop: '-28px',
   fontSize: '56px',
   textShadow: '0 10px 24px rgba(0, 0, 0, 0.45)',
   pointerEvents: 'none',
@@ -437,6 +438,7 @@ export default function SelectedPostOverlay({
   // Track when we're navigating away (so we don't call history.back() in cleanup)
   const navigatingAwayRef = useRef(false);
   const dismissToOriginAndCloseRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const savedScrollPositionRef = useRef<number>(0);
 
   const post = posts[selectedIndex];
 
@@ -713,6 +715,13 @@ export default function SelectedPostOverlay({
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
+    // Save scroll position BEFORE any history manipulation
+    savedScrollPositionRef.current = window.scrollY;
+
+    // Set manual scroll restoration to prevent browser auto-restore on popstate
+    const prevScrollRestoration = history.scrollRestoration;
+    history.scrollRestoration = 'manual';
+
     // Push a history state when overlay opens
     history.pushState({ overlayOpen: true }, '');
 
@@ -720,7 +729,10 @@ export default function SelectedPostOverlay({
       // Skip if we're cleaning up history before navigation
       if (navigatingAwayRef.current) return;
 
-      // Back button was pressed - close the overlay
+      // Back button pressed - restore scroll position immediately
+      // (before browser can restore to wrong position)
+      window.scrollTo(0, savedScrollPositionRef.current);
+
       // Push a new state to "consume" the back action and stay on the current page
       history.pushState(null, '');
       closedByPopstateRef.current = true;
@@ -731,15 +743,15 @@ export default function SelectedPostOverlay({
 
     return () => {
       window.removeEventListener('popstate', handlePopstate);
+
+      // Restore original scroll restoration setting
+      history.scrollRestoration = prevScrollRestoration;
+
       // If we're unmounting but NOT due to popstate or navigation away,
       // we need to clean up the history entry we pushed
       if (!closedByPopstateRef.current && !navigatingAwayRef.current) {
-        // Temporarily disable scroll restoration to prevent browser from
-        // resetting scroll position when we call history.back()
-        const prevScrollRestoration = history.scrollRestoration;
         history.scrollRestoration = 'manual';
         history.back();
-        // Re-enable after browser processes the history change
         queueMicrotask(() => {
           history.scrollRestoration = prevScrollRestoration;
         });

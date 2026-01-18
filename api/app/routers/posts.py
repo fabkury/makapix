@@ -116,6 +116,11 @@ def list_posts(
     has_semitransparency: bool | None = None,
     file_format: list[str] | None = Query(None),  # PNG, GIF, WEBP, BMP
     kind: list[str] | None = Query(None),  # static, animated
+    # Base/Size badge filters (new simplified dimension filtering)
+    base: list[int] | None = Query(None),  # Exact base values (min dimension)
+    base_gte: int | None = Query(None, ge=1),  # For 128+ case
+    size: list[int] | None = Query(None),  # Exact size values (max dimension) with OR logic
+    size_gte: int | None = Query(None, ge=1),  # For 128+ case
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> schemas.Page[schemas.Post]:
@@ -250,6 +255,34 @@ def list_posts(
         if kind_conditions:
             query = query.filter(or_(*kind_conditions))
 
+    # Base filter (exact match for values, >= for 128+)
+    if base is not None and len(base) > 0:
+        from sqlalchemy import or_
+
+        if base_gte is not None:
+            # Combine with OR: base in list OR base >= threshold
+            query = query.filter(
+                or_(models.Post.base.in_(base), models.Post.base >= base_gte)
+            )
+        else:
+            query = query.filter(models.Post.base.in_(base))
+    elif base_gte is not None:
+        query = query.filter(models.Post.base >= base_gte)
+
+    # Size filter (OR logic for multiple selections)
+    if size is not None and len(size) > 0:
+        from sqlalchemy import or_
+
+        if size_gte is not None:
+            # Combine size list with size >= threshold
+            query = query.filter(
+                or_(models.Post.size.in_(size), models.Post.size >= size_gte)
+            )
+        else:
+            query = query.filter(models.Post.size.in_(size))
+    elif size_gte is not None:
+        query = query.filter(models.Post.size >= size_gte)
+
     # Reactions/Comments filters require subqueries
     if reactions_min is not None or reactions_max is not None:
         from sqlalchemy import func
@@ -295,11 +328,28 @@ def list_posts(
         "frame_count": models.Post.frame_count,
         "unique_colors": models.Post.unique_colors,
     }
-    sort_column = sort_field_map.get(sort or "created_at", models.Post.created_at)
-    if order == "desc":
-        query = query.order_by(sort_column.desc())
+
+    # Handle reactions sorting as a special case (requires subquery)
+    if sort == "reactions":
+        from sqlalchemy import func
+
+        reaction_count_sort_subq = (
+            db.query(func.count(models.Reaction.id))
+            .filter(models.Reaction.post_id == models.Post.id)
+            .correlate(models.Post)
+            .scalar_subquery()
+        )
+        sort_expr = func.coalesce(reaction_count_sort_subq, 0)
+        if order == "desc":
+            query = query.order_by(sort_expr.desc())
+        else:
+            query = query.order_by(sort_expr.asc())
     else:
-        query = query.order_by(sort_column.asc())
+        sort_column = sort_field_map.get(sort or "created_at", models.Post.created_at)
+        if order == "desc":
+            query = query.order_by(sort_column.desc())
+        else:
+            query = query.order_by(sort_column.asc())
 
     # Fetch limit + 1 to check if there are more results
     posts = query.limit(limit + 1).all()

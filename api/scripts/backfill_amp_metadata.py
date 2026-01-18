@@ -168,6 +168,8 @@ def backfill_post(db: SessionLocal, post: Post, dry_run: bool = False) -> tuple[
     post.transparency_actual = metadata.get("transparency_actual", False)
     post.alpha_actual = metadata.get("alpha_actual", False)
     post.hash = sha256
+    post.base = metadata.get("base")
+    post.size = metadata.get("size")
     
     # Also update min_frame_duration_ms if present
     if metadata.get("shortest_duration_ms") is not None:

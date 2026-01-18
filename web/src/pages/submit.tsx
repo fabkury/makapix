@@ -674,7 +674,7 @@ function SubmitPageContent() {
               )}
 
               <div className="success-buttons">
-                <Link href={`/p/${uploadedArtwork.public_sqid}`} className="btn btn-primary">View Artwork</Link>
+                <Link href={`/p/${uploadedArtwork.public_sqid}`} className="btn btn-secondary">View Artwork</Link>
                 <button onClick={clearSelection} className="btn btn-secondary">Upload Another</button>
               </div>
             </div>

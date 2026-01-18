@@ -127,12 +127,12 @@ export default function ReputationPanel({ sqid, currentReputation, onReputationC
             <div className="increment-buttons">
               <button onClick={handleDecrement} disabled={delta <= -1000} title="Decrease by 1">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="m18 15-6-6-6 6" />
+                  <path d="m6 9 6 6 6-6" />
                 </svg>
               </button>
               <button onClick={handleIncrement} disabled={delta >= 1000} title="Increase by 1">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="m6 9 6 6 6-6" />
+                  <path d="m18 15-6-6-6 6" />
                 </svg>
               </button>
             </div>
@@ -203,7 +203,8 @@ export default function ReputationPanel({ sqid, currentReputation, onReputationC
         }
         .increment-buttons {
           display: flex;
-          gap: 12px;
+          gap: 16px;
+          margin-right: 8px;
         }
         .increment-buttons button {
           background: transparent;

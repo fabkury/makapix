@@ -260,6 +260,8 @@ class Post(Base):
     )  # e.g., "64x64", "128x128" - kept for backward compatibility
     width = Column(Integer, nullable=True, index=True)  # Canvas width in pixels
     height = Column(Integer, nullable=True, index=True)  # Canvas height in pixels
+    base = Column(Integer, nullable=True, index=True)  # min(width, height)
+    size = Column(Integer, nullable=True, index=True)  # max(width, height)
     file_bytes = Column(Integer, nullable=True)  # Exact file size in bytes
     frame_count = Column(
         Integer, nullable=False, default=1

@@ -9,6 +9,10 @@ import { FilterConfig } from "../hooks/useFilters";
 const HIDE_AT = 128 * 2; // ~2 rows
 const SHOW_AT = 64; // hysteresis to avoid flicker near the top
 
+// Badge values for base and size
+const BADGE_VALUES = [8, 16, 32, 64, 128] as const;
+const MAX_SIZE_SELECTIONS = 3;
+
 interface FilterButtonProps {
   onFilterChange: (filters: FilterConfig) => void;
   initialFilters?: FilterConfig;
@@ -21,7 +25,6 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
   const [showLoadingMessage, setShowLoadingMessage] = useState(false);
   // Applied filters (what's actually being used for queries)
   const [appliedFilters, setAppliedFilters] = useState<FilterConfig>({
-    file_format: ["png", "gif", "webp", "bmp"],
     kind: ["static", "animated"],
     sortBy: "created_at",
     sortOrder: "desc",
@@ -29,7 +32,6 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
   });
   // Draft filters (what the user is editing in the menu)
   const [draftFilters, setDraftFilters] = useState<FilterConfig>({
-    file_format: ["png", "gif", "webp", "bmp"],
     kind: ["static", "animated"],
     sortBy: "created_at",
     sortOrder: "desc",
@@ -42,7 +44,6 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
   useEffect(() => {
     const newFilters = {
       ...initialFilters,
-      file_format: initialFilters.file_format || ["png", "gif", "webp", "bmp"],
       kind: initialFilters.kind || ["static", "animated"],
     };
     setAppliedFilters(prev => ({ ...prev, ...newFilters }));
@@ -70,12 +71,21 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
   // Click outside to close and apply
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
+      const target = event.target as HTMLElement;
+
+      // Check if click is inside Radix UI portal content (Select dropdown, etc.)
+      // Radix portals have data-radix-* attributes on their content
+      const isRadixPortalContent = target.closest('[data-radix-select-content]') ||
+        target.closest('[data-radix-popper-content-wrapper]') ||
+        target.closest('.select-content');
+
       if (
         isOpen &&
         menuRef.current &&
         buttonRef.current &&
-        !menuRef.current.contains(event.target as Node) &&
-        !buttonRef.current.contains(event.target as Node)
+        !menuRef.current.contains(target) &&
+        !buttonRef.current.contains(target) &&
+        !isRadixPortalContent
       ) {
         closeAndApply();
       }
@@ -130,63 +140,19 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
     setDraftFilters(prev => ({ ...prev, [key]: value }));
   };
 
-  const updateSliderFilter = (field: string, values: number[]) => {
-    const newFilter = { min: values[0], max: values[1] };
-    updateFilter(field, newFilter);
-  };
-
-  // Convert slider position (0-100) to actual pixel value
-  const sliderToPixelValue = (sliderValue: number): number => {
-    if (sliderValue <= 50) {
-      const discreteValues = [8, 16, 32, 64, 128];
-      const segmentSize = 50 / (discreteValues.length - 1);
-      const index = Math.round(sliderValue / segmentSize);
-      return discreteValues[Math.min(index, discreteValues.length - 1)];
-    } else {
-      const normalizedValue = (sliderValue - 50) / 50;
-      return Math.round(128 + normalizedValue * 128);
-    }
-  };
-
-  // Convert pixel value to slider position (0-100)
-  const pixelToSliderValue = (pixelValue: number): number => {
-    if (pixelValue <= 128) {
-      const discreteValues = [8, 16, 32, 64, 128];
-      const index = discreteValues.findIndex(v => v >= pixelValue);
-      const actualIndex = index === -1 ? discreteValues.length - 1 : index;
-      const segmentSize = 50 / (discreteValues.length - 1);
-      return actualIndex * segmentSize;
-    } else {
-      const normalizedValue = (pixelValue - 128) / 128;
-      return 50 + normalizedValue * 50;
-    }
-  };
-
-  const updateDimensionFilter = (field: string, sliderValues: number[]) => {
-    const minPixels = sliderToPixelValue(sliderValues[0]);
-    const maxPixels = sliderToPixelValue(sliderValues[1]);
-    const newFilter = { min: minPixels, max: maxPixels };
-    updateFilter(field, newFilter);
-  };
-
-  // Exponential slider conversion for easier small value selection
-  // p=2.0 for moderate bias, p=5.0 for strong bias (file size)
-
-  // Convert slider position (0-100) to actual value using exponential scaling
+  // Exponential slider conversion for file size
   const sliderToExpoValue = (slider: number, min: number, max: number, power: number = 2.0): number => {
-    const normalized = slider / 100; // Convert 0-100 to 0-1
+    const normalized = slider / 100;
     const expValue = Math.pow(normalized, power);
     return Math.round(min + (max - min) * expValue);
   };
 
-  // Convert actual value to slider position (0-100) using exponential scaling
   const expoValueToSlider = (value: number, min: number, max: number, power: number = 2.0): number => {
     const normalized = (value - min) / (max - min);
     const sliderNorm = Math.pow(normalized, 1 / power);
     return sliderNorm * 100;
   };
 
-  // Update handlers for exponential sliders
   const updateExpoSliderFilter = (field: string, sliderValues: number[], min: number, max: number, power: number = 2.0) => {
     const minVal = sliderToExpoValue(sliderValues[0], min, max, power);
     const maxVal = sliderToExpoValue(sliderValues[1], min, max, power);
@@ -200,50 +166,51 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
     return `${(bytes / 1024).toFixed(0)} KiB`;
   };
 
-  // Date utilities
-  const today = new Date();
-  const sixMonthsAgo = new Date();
-  sixMonthsAgo.setMonth(today.getMonth() - 6);
-
-  const dateToTimestamp = (date: Date): number => date.getTime();
-  const timestampToDate = (timestamp: number): Date => new Date(timestamp);
-
-  const minTimestamp = dateToTimestamp(sixMonthsAgo);
-  const maxTimestamp = dateToTimestamp(today);
-
-  const formatDate = (date: Date): string => {
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  // Base badge selection (single select)
+  const toggleBaseBadge = (value: number) => {
+    if (draftFilters.base === value) {
+      // Deselect if already selected
+      updateFilter("base", undefined);
+    } else {
+      updateFilter("base", value);
+    }
   };
 
-  const updateDateFilter = (timestamps: number[]) => {
-    const minDate = timestampToDate(timestamps[0]).toISOString().split('T')[0];
-    const maxDate = timestampToDate(timestamps[1]).toISOString().split('T')[0];
-    updateFilter("creation_date", { min: minDate, max: maxDate });
+  // Size badge selection (multi-select, max 3)
+  const toggleSizeBadge = (value: number) => {
+    const current = draftFilters.size || [];
+    if (current.includes(value)) {
+      // Remove from selection
+      const newValue = current.filter(v => v !== value);
+      updateFilter("size", newValue.length > 0 ? newValue : undefined);
+    } else if (current.length < MAX_SIZE_SELECTIONS) {
+      // Add to selection (if under max)
+      updateFilter("size", [...current, value]);
+    }
+    // If at max, clicking another badge does nothing
   };
 
-  const getCurrentDateRange = (): [number, number] => {
-    const minDate = draftFilters.creation_date?.min
-      ? dateToTimestamp(new Date(draftFilters.creation_date.min))
-      : minTimestamp;
-    const maxDate = draftFilters.creation_date?.max
-      ? dateToTimestamp(new Date(draftFilters.creation_date.max))
-      : maxTimestamp;
-    return [minDate, maxDate];
-  };
-
-  const toggleMultiSelect = (field: "file_format" | "kind", value: string) => {
-    const current = draftFilters[field] || [];
-    const newValue = current.includes(value)
-      ? current.filter(v => v !== value)
-      : [...current, value];
-    updateFilter(field, newValue.length > 0 ? newValue : undefined);
+  // Animation kind selection (simplified single-select style)
+  const toggleKind = (value: string) => {
+    const current = draftFilters.kind || ["static", "animated"];
+    if (current.includes(value)) {
+      // If both are selected and we click one, show only the other
+      // If only one is selected and we click it, show both
+      if (current.length === 2) {
+        updateFilter("kind", [value === "static" ? "animated" : "static"]);
+      } else {
+        updateFilter("kind", ["static", "animated"]);
+      }
+    } else {
+      // Add back the deselected one
+      updateFilter("kind", [...current, value]);
+    }
   };
 
   const clearFilters = () => {
     const defaultFilters: FilterConfig = {
       sortBy: "created_at",
       sortOrder: "desc",
-      file_format: ["png", "gif", "webp", "bmp"],
       kind: ["static", "animated"]
     };
     setDraftFilters(defaultFilters);
@@ -251,35 +218,30 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
 
   // Check if any filters are active (based on applied filters, not draft)
   const hasActiveFilters = !!(
-    appliedFilters.width ||
-    appliedFilters.height ||
+    appliedFilters.base !== undefined ||
+    (appliedFilters.size && appliedFilters.size.length > 0) ||
     appliedFilters.file_bytes ||
-    appliedFilters.frame_count ||
-    appliedFilters.unique_colors ||
-    appliedFilters.reactions ||
-    appliedFilters.comments ||
-    appliedFilters.creation_date ||
-    (appliedFilters.has_transparency !== null && appliedFilters.has_transparency !== undefined) ||
-    (appliedFilters.has_semitransparency !== null && appliedFilters.has_semitransparency !== undefined) ||
-    (appliedFilters.file_format && appliedFilters.file_format.length > 0 && appliedFilters.file_format.length < 4) ||
     (appliedFilters.kind && appliedFilters.kind.length > 0 && appliedFilters.kind.length < 2) ||
     (appliedFilters.sortBy && appliedFilters.sortBy !== 'created_at') ||
     (appliedFilters.sortOrder && appliedFilters.sortOrder !== 'desc')
   );
 
+  // Simplified sort options
   const sortOptions = [
     { value: "created_at", label: "Creation Date" },
-    { value: "width", label: "Width" },
-    { value: "height", label: "Height" },
+    { value: "reactions", label: "Reactions" },
     { value: "file_bytes", label: "File Size" },
-    { value: "frame_count", label: "Frame Count" },
-    { value: "unique_colors", label: "Unique Colors" },
   ];
 
   const orderOptions = [
     { value: "desc", label: "Descending" },
     { value: "asc", label: "Ascending" },
   ];
+
+  // Get badge label
+  const getBadgeLabel = (value: number) => {
+    return value >= 128 ? "128+" : String(value);
+  };
 
   return (
     <>
@@ -337,52 +299,56 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
 
                 <div className="filter-separator" />
 
-                {/* Dimension Filters */}
+                {/* Base Dimension (single-select badges) */}
                 <div className="filter-section">
-                  <h4 className="filter-section-title">Dimensions</h4>
-
-                  <div className="filter-slider-group">
-                    <label className="filter-label">
-                      Width: {draftFilters.width?.min || 8}px - {draftFilters.width?.max || 256}px
-                    </label>
-                    <Slider
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={[
-                        pixelToSliderValue(draftFilters.width?.min || 8),
-                        pixelToSliderValue(draftFilters.width?.max || 256)
-                      ]}
-                      onValueChange={(values) => updateDimensionFilter("width", values)}
-                    />
+                  <h4 className="filter-section-title">Base (min dimension)</h4>
+                  <div className="filter-badges">
+                    {BADGE_VALUES.map((value) => (
+                      <button
+                        key={`base-${value}`}
+                        onClick={() => toggleBaseBadge(value)}
+                        className={`filter-badge-btn ${draftFilters.base === value ? 'active' : ''}`}
+                      >
+                        {getBadgeLabel(value)}
+                      </button>
+                    ))}
                   </div>
+                </div>
 
-                  <div className="filter-slider-group">
-                    <label className="filter-label">
-                      Height: {draftFilters.height?.min || 8}px - {draftFilters.height?.max || 256}px
-                    </label>
-                    <Slider
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={[
-                        pixelToSliderValue(draftFilters.height?.min || 8),
-                        pixelToSliderValue(draftFilters.height?.max || 256)
-                      ]}
-                      onValueChange={(values) => updateDimensionFilter("height", values)}
-                    />
+                {/* Size Dimension (multi-select badges, max 3) */}
+                <div className="filter-section">
+                  <h4 className="filter-section-title">
+                    Size (max dimension)
+                    <span className="filter-hint">
+                      {draftFilters.size?.length || 0}/{MAX_SIZE_SELECTIONS}
+                    </span>
+                  </h4>
+                  <div className="filter-badges">
+                    {BADGE_VALUES.map((value) => {
+                      const isSelected = draftFilters.size?.includes(value);
+                      const atMax = (draftFilters.size?.length || 0) >= MAX_SIZE_SELECTIONS;
+                      return (
+                        <button
+                          key={`size-${value}`}
+                          onClick={() => toggleSizeBadge(value)}
+                          className={`filter-badge-btn ${isSelected ? 'active' : ''} ${atMax && !isSelected ? 'disabled' : ''}`}
+                          disabled={atMax && !isSelected}
+                        >
+                          {getBadgeLabel(value)}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
                 <div className="filter-separator" />
 
-                {/* Technical Filters */}
+                {/* File Size Slider */}
                 <div className="filter-section">
-                  <h4 className="filter-section-title">Technical</h4>
-
+                  <h4 className="filter-section-title">File Size</h4>
                   <div className="filter-slider-group">
                     <label className="filter-label">
-                      File Size: {formatFileSize(draftFilters.file_bytes?.min || 0)} - {formatFileSize(draftFilters.file_bytes?.max || 5242880)}
+                      {formatFileSize(draftFilters.file_bytes?.min || 0)} - {formatFileSize(draftFilters.file_bytes?.max || 5242880)}
                     </label>
                     <Slider
                       min={0}
@@ -395,139 +361,26 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
                       onValueChange={(values) => updateExpoSliderFilter("file_bytes", values, 0, 5242880, 4.0)}
                     />
                   </div>
-
-                  <div className="filter-slider-group">
-                    <label className="filter-label">
-                      Frame Count: {draftFilters.frame_count?.min || 1} - {draftFilters.frame_count?.max === 256 || draftFilters.frame_count?.max === undefined ? "256+" : draftFilters.frame_count.max}
-                    </label>
-                    <Slider
-                      min={0}
-                      max={100}
-                      step={0.5}
-                      value={[
-                        expoValueToSlider(draftFilters.frame_count?.min || 1, 1, 256),
-                        expoValueToSlider(draftFilters.frame_count?.max || 256, 1, 256)
-                      ]}
-                      onValueChange={(values) => updateExpoSliderFilter("frame_count", values, 1, 256)}
-                    />
-                  </div>
-
-                  <div className="filter-slider-group">
-                    <label className="filter-label">
-                      Colors: {draftFilters.unique_colors?.min || 1} - {draftFilters.unique_colors?.max === 256 || draftFilters.unique_colors?.max === undefined ? "256+" : draftFilters.unique_colors.max}
-                    </label>
-                    <Slider
-                      min={0}
-                      max={100}
-                      step={0.5}
-                      value={[
-                        expoValueToSlider(draftFilters.unique_colors?.min || 1, 1, 256),
-                        expoValueToSlider(draftFilters.unique_colors?.max || 256, 1, 256)
-                      ]}
-                      onValueChange={(values) => updateExpoSliderFilter("unique_colors", values, 1, 256)}
-                    />
-                  </div>
                 </div>
 
                 <div className="filter-separator" />
 
-                {/* Transparency & Format */}
-                <div className="filter-section">
-                  <h4 className="filter-section-title">Transparency</h4>
-                  <div className="filter-chips">
-                    <button
-                      onClick={() => updateFilter("has_transparency", draftFilters.has_transparency === true ? null : true)}
-                      className={`filter-chip ${draftFilters.has_transparency === true ? 'active' : ''}`}
-                    >
-                      Has Transparency
-                    </button>
-                    <button
-                      onClick={() => updateFilter("has_semitransparency", draftFilters.has_semitransparency === true ? null : true)}
-                      className={`filter-chip ${draftFilters.has_semitransparency === true ? 'active' : ''}`}
-                    >
-                      Has Alpha
-                    </button>
-                  </div>
-                </div>
-
-                <div className="filter-section">
-                  <h4 className="filter-section-title">File Format</h4>
-                  <div className="filter-chips">
-                    {["png", "gif", "webp", "bmp"].map((format) => (
-                      <button
-                        key={format}
-                        onClick={() => toggleMultiSelect("file_format", format)}
-                        className={`filter-chip ${draftFilters.file_format?.includes(format) ? 'active' : ''}`}
-                      >
-                        {format.toUpperCase()}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
+                {/* Animation Type (simplified single-select style) */}
                 <div className="filter-section">
                   <h4 className="filter-section-title">Animation</h4>
-                  <div className="filter-chips">
-                    {[
-                      { value: "static", label: "Static" },
-                      { value: "animated", label: "Animated" }
-                    ].map((item) => (
-                      <button
-                        key={item.value}
-                        onClick={() => toggleMultiSelect("kind", item.value)}
-                        className={`filter-chip ${draftFilters.kind?.includes(item.value) ? 'active' : ''}`}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="filter-separator" />
-
-                {/* Date & Engagement */}
-                <div className="filter-section">
-                  <h4 className="filter-section-title">Date Range</h4>
-                  <div className="filter-slider-group">
-                    <label className="filter-label">
-                      {formatDate(timestampToDate(getCurrentDateRange()[0]))} - {formatDate(timestampToDate(getCurrentDateRange()[1]))}
-                    </label>
-                    <Slider
-                      min={minTimestamp}
-                      max={maxTimestamp}
-                      step={86400000}
-                      value={getCurrentDateRange()}
-                      onValueChange={(values) => updateDateFilter(values)}
-                    />
-                  </div>
-                </div>
-
-                <div className="filter-section">
-                  <h4 className="filter-section-title">Engagement</h4>
-                  <div className="filter-slider-group">
-                    <label className="filter-label">
-                      Reactions: {draftFilters.reactions?.min || 0} - {draftFilters.reactions?.max === 256 || draftFilters.reactions?.max === undefined ? "256+" : draftFilters.reactions.max}
-                    </label>
-                    <Slider
-                      min={0}
-                      max={256}
-                      step={1}
-                      value={[draftFilters.reactions?.min || 0, draftFilters.reactions?.max || 256]}
-                      onValueChange={(values) => updateSliderFilter("reactions", values)}
-                    />
-                  </div>
-
-                  <div className="filter-slider-group">
-                    <label className="filter-label">
-                      Comments: {draftFilters.comments?.min || 0} - {draftFilters.comments?.max === 256 || draftFilters.comments?.max === undefined ? "256+" : draftFilters.comments.max}
-                    </label>
-                    <Slider
-                      min={0}
-                      max={256}
-                      step={1}
-                      value={[draftFilters.comments?.min || 0, draftFilters.comments?.max || 256]}
-                      onValueChange={(values) => updateSliderFilter("comments", values)}
-                    />
+                  <div className="filter-badges">
+                    <button
+                      onClick={() => toggleKind("static")}
+                      className={`filter-badge-btn ${!draftFilters.kind?.includes("animated") ? 'active' : draftFilters.kind?.includes("static") ? 'semi-active' : ''}`}
+                    >
+                      Static
+                    </button>
+                    <button
+                      onClick={() => toggleKind("animated")}
+                      className={`filter-badge-btn ${!draftFilters.kind?.includes("static") ? 'active' : draftFilters.kind?.includes("animated") ? 'semi-active' : ''}`}
+                    >
+                      Animated
+                    </button>
                   </div>
                 </div>
               </div>
@@ -655,7 +508,6 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
         }
 
         .filter-scroll {
-          /* Menu max-height (50vh) minus filter-header (~60px) */
           max-height: calc(50vh - 60px);
           overscroll-behavior: contain;
         }
@@ -675,6 +527,15 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
           text-transform: uppercase;
           letter-spacing: 0.5px;
           margin-bottom: 12px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .filter-hint {
+          font-size: 0.7rem;
+          color: var(--text-muted);
+          font-weight: 400;
         }
 
         .filter-separator {
@@ -700,33 +561,45 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
           display: block;
         }
 
-        .filter-chips {
+        .filter-badges {
           display: flex;
           flex-wrap: wrap;
           gap: 8px;
         }
 
-        .filter-chip {
-          padding: 8px 14px;
+        .filter-badge-btn {
+          padding: 8px 16px;
           border-radius: 20px;
-          font-size: 0.8rem;
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          font-size: 0.85rem;
+          font-weight: 500;
+          border: 1px solid rgba(255, 255, 255, 0.15);
           cursor: pointer;
           transition: all var(--transition-fast);
           background: var(--bg-tertiary);
           color: var(--text-secondary);
         }
 
-        .filter-chip:hover {
+        .filter-badge-btn:hover:not(.disabled) {
           background: var(--bg-card);
           color: var(--text-primary);
-          border-color: rgba(255, 255, 255, 0.2);
+          border-color: rgba(255, 255, 255, 0.25);
         }
 
-        .filter-chip.active {
+        .filter-badge-btn.active {
           background: var(--accent-cyan);
           color: var(--bg-primary);
           border-color: var(--accent-cyan);
+        }
+
+        .filter-badge-btn.semi-active {
+          background: rgba(0, 255, 255, 0.15);
+          color: var(--accent-cyan);
+          border-color: var(--accent-cyan);
+        }
+
+        .filter-badge-btn.disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
         }
 
         /* Mobile responsive */

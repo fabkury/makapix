@@ -157,6 +157,8 @@ def main() -> int:
         "metadata": {
             "width": metadata.width,
             "height": metadata.height,
+            "base": metadata.base,
+            "size": metadata.size,
             "file_bytes": metadata.file_bytes,
             "file_format": metadata.file_format,
             "frame_count": metadata.frame_count,

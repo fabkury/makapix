@@ -24,6 +24,8 @@ class AMPMetadata:
     # Dimensions
     width: int
     height: int
+    base: int  # min(width, height)
+    size: int  # max(width, height)
     file_bytes: int
 
     # Format
@@ -80,9 +82,15 @@ def extract_metadata(file_path: Path, img: Image.Image) -> AMPMetadata:
         img, frame_count, transparency_meta, alpha_meta
     )
 
+    # Compute derived dimension fields
+    base = min(width, height)
+    size = max(width, height)
+
     return AMPMetadata(
         width=width,
         height=height,
+        base=base,
+        size=size,
         file_bytes=file_bytes,
         file_format=file_format,
         frame_count=frame_count,

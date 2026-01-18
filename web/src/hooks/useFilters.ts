@@ -2,24 +2,14 @@ import { useRouter } from 'next/router';
 import { useCallback, useMemo } from 'react';
 
 export interface FilterConfig {
-  // Numeric filters
-  width?: { min?: number; max?: number };
-  height?: { min?: number; max?: number };
+  // New badge-based dimension filters
+  base?: number;        // Single badge value (8, 16, 32, 64) or 128 for 128+
+  size?: number[];      // Up to 3 badge values with OR logic
+
+  // File size (keep slider)
   file_bytes?: { min?: number; max?: number };
-  frame_count?: { min?: number; max?: number };
-  unique_colors?: { min?: number; max?: number };
-  reactions?: { min?: number; max?: number };
-  comments?: { min?: number; max?: number };
 
-  // Date filters
-  creation_date?: { min?: string; max?: string };
-
-  // Boolean filters
-  has_transparency?: boolean | null;
-  has_semitransparency?: boolean | null;
-
-  // Array filters (multi-select)
-  file_format?: string[];
+  // Animation kind (single select badge-style)
   kind?: string[];
 
   // Sorting
@@ -28,6 +18,20 @@ export interface FilterConfig {
 }
 
 // Helper functions
+function parseNumberParam(val: string | string[] | undefined): number | undefined {
+  const v = Array.isArray(val) ? val[0] : val;
+  if (!v) return undefined;
+  const num = parseInt(v, 10);
+  return isNaN(num) ? undefined : num;
+}
+
+function parseNumberArrayParam(val: string | string[] | undefined): number[] | undefined {
+  if (!val) return undefined;
+  const arr = Array.isArray(val) ? val : [val];
+  const nums = arr.map(v => parseInt(v, 10)).filter(n => !isNaN(n));
+  return nums.length > 0 ? nums : undefined;
+}
+
 function parseRangeParam(min: string | string[] | undefined, max: string | string[] | undefined) {
   const minVal = Array.isArray(min) ? min[0] : min;
   const maxVal = Array.isArray(max) ? max[0] : max;
@@ -38,26 +42,9 @@ function parseRangeParam(min: string | string[] | undefined, max: string | strin
   };
 }
 
-function parseBoolParam(val: string | string[] | undefined): boolean | null {
-  const v = Array.isArray(val) ? val[0] : val;
-  if (v === 'true') return true;
-  if (v === 'false') return false;
-  return null;
-}
-
 function parseArrayParam(val: string | string[] | undefined): string[] | undefined {
   if (!val) return undefined;
   return Array.isArray(val) ? val : [val];
-}
-
-function parseDateRangeParam(min: string | string[] | undefined, max: string | string[] | undefined) {
-  const minVal = Array.isArray(min) ? min[0] : min;
-  const maxVal = Array.isArray(max) ? max[0] : max;
-  if (!minVal && !maxVal) return undefined;
-  return {
-    min: minVal || undefined,
-    max: maxVal || undefined,
-  };
 }
 
 export function useFilters() {
@@ -66,18 +53,31 @@ export function useFilters() {
   // Parse filters from URL query params
   const filters: FilterConfig = useMemo(() => {
     const query = router.query;
+
+    // Parse base: check for base_gte (128+) or base array
+    let base: number | undefined;
+    if (query.base_gte) {
+      base = 128; // 128+ indicator
+    } else if (query.base) {
+      const baseArr = parseNumberArrayParam(query.base as string | string[]);
+      base = baseArr?.[0]; // Single select, take first
+    }
+
+    // Parse size: collect from both size array and size_gte
+    let size: number[] | undefined;
+    const sizeArr = parseNumberArrayParam(query.size as string | string[]);
+    const sizeGte = parseNumberParam(query.size_gte as string);
+    if (sizeArr || sizeGte) {
+      size = sizeArr ? [...sizeArr] : [];
+      if (sizeGte) {
+        size.push(128); // 128+ indicator
+      }
+    }
+
     return {
-      width: parseRangeParam(query.width_min as string, query.width_max as string),
-      height: parseRangeParam(query.height_min as string, query.height_max as string),
+      base,
+      size,
       file_bytes: parseRangeParam(query.file_bytes_min as string, query.file_bytes_max as string),
-      frame_count: parseRangeParam(query.frame_count_min as string, query.frame_count_max as string),
-      unique_colors: parseRangeParam(query.unique_colors_min as string, query.unique_colors_max as string),
-      reactions: parseRangeParam(query.reactions_min as string, query.reactions_max as string),
-      comments: parseRangeParam(query.comments_min as string, query.comments_max as string),
-      creation_date: parseDateRangeParam(query.created_after as string, query.created_before as string),
-      has_transparency: parseBoolParam(query.has_transparency),
-      has_semitransparency: parseBoolParam(query.has_semitransparency),
-      file_format: parseArrayParam(query.file_format),
       kind: parseArrayParam(query.kind),
       sortBy: (query.sort as string) || undefined,
       sortOrder: (query.order as 'asc' | 'desc') || undefined,
@@ -87,17 +87,9 @@ export function useFilters() {
   // Check if any filters are active (non-default values)
   const hasActiveFilters = useMemo(() => {
     return !!(
-      filters.width ||
-      filters.height ||
+      filters.base !== undefined ||
+      (filters.size && filters.size.length > 0) ||
       filters.file_bytes ||
-      filters.frame_count ||
-      filters.unique_colors ||
-      filters.reactions ||
-      filters.comments ||
-      filters.creation_date ||
-      filters.has_transparency !== null && filters.has_transparency !== undefined ||
-      filters.has_semitransparency !== null && filters.has_semitransparency !== undefined ||
-      (filters.file_format && filters.file_format.length > 0 && filters.file_format.length < 4) ||
       (filters.kind && filters.kind.length > 0 && filters.kind.length < 2) ||
       (filters.sortBy && filters.sortBy !== 'created_at') ||
       (filters.sortOrder && filters.sortOrder !== 'desc')
@@ -116,38 +108,33 @@ export function useFilters() {
       }
     });
 
-    // Add range params
-    if (newFilters.width?.min) query.width_min = String(newFilters.width.min);
-    if (newFilters.width?.max) query.width_max = String(newFilters.width.max);
-    if (newFilters.height?.min) query.height_min = String(newFilters.height.min);
-    if (newFilters.height?.max) query.height_max = String(newFilters.height.max);
+    // Base filter (single select badge)
+    if (newFilters.base !== undefined) {
+      if (newFilters.base >= 128) {
+        query.base_gte = '128';
+      } else {
+        query.base = String(newFilters.base);
+      }
+    }
+
+    // Size filter (multi-select badges, max 3)
+    if (newFilters.size && newFilters.size.length > 0) {
+      const regularSizes = newFilters.size.filter(s => s < 128);
+      const has128Plus = newFilters.size.some(s => s >= 128);
+
+      if (regularSizes.length > 0) {
+        query.size = regularSizes.map(String);
+      }
+      if (has128Plus) {
+        query.size_gte = '128';
+      }
+    }
+
+    // File bytes range
     if (newFilters.file_bytes?.min) query.file_bytes_min = String(newFilters.file_bytes.min);
     if (newFilters.file_bytes?.max) query.file_bytes_max = String(newFilters.file_bytes.max);
-    if (newFilters.frame_count?.min) query.frame_count_min = String(newFilters.frame_count.min);
-    if (newFilters.frame_count?.max) query.frame_count_max = String(newFilters.frame_count.max);
-    if (newFilters.unique_colors?.min) query.unique_colors_min = String(newFilters.unique_colors.min);
-    if (newFilters.unique_colors?.max) query.unique_colors_max = String(newFilters.unique_colors.max);
-    if (newFilters.reactions?.min) query.reactions_min = String(newFilters.reactions.min);
-    if (newFilters.reactions?.max) query.reactions_max = String(newFilters.reactions.max);
-    if (newFilters.comments?.min) query.comments_min = String(newFilters.comments.min);
-    if (newFilters.comments?.max) query.comments_max = String(newFilters.comments.max);
 
-    // Date params
-    if (newFilters.creation_date?.min) query.created_after = newFilters.creation_date.min;
-    if (newFilters.creation_date?.max) query.created_before = newFilters.creation_date.max;
-
-    // Boolean params
-    if (newFilters.has_transparency !== null && newFilters.has_transparency !== undefined) {
-      query.has_transparency = String(newFilters.has_transparency);
-    }
-    if (newFilters.has_semitransparency !== null && newFilters.has_semitransparency !== undefined) {
-      query.has_semitransparency = String(newFilters.has_semitransparency);
-    }
-
-    // Array params
-    if (newFilters.file_format && newFilters.file_format.length > 0) {
-      query.file_format = newFilters.file_format;
-    }
+    // Kind (animation type)
     if (newFilters.kind && newFilters.kind.length > 0) {
       query.kind = newFilters.kind;
     }
@@ -172,38 +159,31 @@ export function useFilters() {
   const buildApiQuery = useCallback((baseParams: Record<string, string> = {}) => {
     const params = new URLSearchParams(baseParams);
 
-    // Add filter params for API
-    if (filters.width?.min) params.set('width_min', String(filters.width.min));
-    if (filters.width?.max) params.set('width_max', String(filters.width.max));
-    if (filters.height?.min) params.set('height_min', String(filters.height.min));
-    if (filters.height?.max) params.set('height_max', String(filters.height.max));
+    // Base filter
+    if (filters.base !== undefined) {
+      if (filters.base >= 128) {
+        params.set('base_gte', '128');
+      } else {
+        params.append('base', String(filters.base));
+      }
+    }
+
+    // Size filter (multi-select with OR logic)
+    if (filters.size && filters.size.length > 0) {
+      const regularSizes = filters.size.filter(s => s < 128);
+      const has128Plus = filters.size.some(s => s >= 128);
+
+      regularSizes.forEach(s => params.append('size', String(s)));
+      if (has128Plus) {
+        params.set('size_gte', '128');
+      }
+    }
+
+    // File bytes range
     if (filters.file_bytes?.min) params.set('file_bytes_min', String(filters.file_bytes.min));
     if (filters.file_bytes?.max) params.set('file_bytes_max', String(filters.file_bytes.max));
-    if (filters.frame_count?.min) params.set('frame_count_min', String(filters.frame_count.min));
-    if (filters.frame_count?.max) params.set('frame_count_max', String(filters.frame_count.max));
-    if (filters.unique_colors?.min) params.set('unique_colors_min', String(filters.unique_colors.min));
-    if (filters.unique_colors?.max) params.set('unique_colors_max', String(filters.unique_colors.max));
-    if (filters.reactions?.min) params.set('reactions_min', String(filters.reactions.min));
-    if (filters.reactions?.max) params.set('reactions_max', String(filters.reactions.max));
-    if (filters.comments?.min) params.set('comments_min', String(filters.comments.min));
-    if (filters.comments?.max) params.set('comments_max', String(filters.comments.max));
 
-    // Date params
-    if (filters.creation_date?.min) params.set('created_after', filters.creation_date.min);
-    if (filters.creation_date?.max) params.set('created_before', filters.creation_date.max);
-
-    // Boolean params
-    if (filters.has_transparency !== null && filters.has_transparency !== undefined) {
-      params.set('has_transparency', String(filters.has_transparency));
-    }
-    if (filters.has_semitransparency !== null && filters.has_semitransparency !== undefined) {
-      params.set('has_semitransparency', String(filters.has_semitransparency));
-    }
-
-    // Array params
-    if (filters.file_format && filters.file_format.length > 0) {
-      filters.file_format.forEach(f => params.append('file_format', f));
-    }
+    // Kind filter
     if (filters.kind && filters.kind.length > 0) {
       filters.kind.forEach(k => params.append('kind', k));
     }
