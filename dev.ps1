@@ -11,7 +11,7 @@ function Show-Help {
     Write-Host ""
     Write-Host "Environment Management:"
     Write-Host "  .\dev.ps1 local          - Switch to local development (localhost)"
-    Write-Host "  .\dev.ps1 remote         - Switch to remote development (dev.makapix.club)"
+    Write-Host "  .\dev.ps1 remote         - Switch to remote development (makapix.club)"
     Write-Host ""
     Write-Host "Docker Commands:"
     Write-Host "  .\dev.ps1 up             - Start all services"

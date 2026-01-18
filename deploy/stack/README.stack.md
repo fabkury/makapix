@@ -4,9 +4,10 @@ This directory contains the Docker Compose configuration for deploying the Makap
 
 ## Architecture
 
-- **CTA (static)**: https://makapix.club (content: `apps/cta/`)
-- **Web (staging)**: https://dev.makapix.club (builds from `web/`)
+- **Web (production)**: https://makapix.club (builds from `web/`)
 - **Vault (HTTP)**: http://vault.makapix.club (artwork files for physical players)
+- **Piskel Editor**: https://piskel.makapix.club
+- **PixelC Editor**: https://pixelc.makapix.club
 - **Reverse Proxy**: lucaslorentz/caddy-docker-proxy
 - **Compose dir**: `deploy/stack/` (run commands from here)
 
@@ -69,9 +70,6 @@ docker compose pull caddy && docker compose up -d caddy
 ```bash
 # Edge proxy (Caddy)
 docker logs -f caddy
-
-# CTA static site
-docker logs -f makapix-cta
 
 # Web application
 docker logs -f makapix-web
@@ -156,7 +154,6 @@ Solution: Hard refresh (Ctrl+Shift+R) or clear browser cache.
 
 ## Notes
 
-- CTA site content is in `apps/cta/` (version controlled)
 - Web builds from `web/` directory using multi-stage Dockerfile
 - Certificates are stored in the `caddy_data` Docker volume
 - All paths are relative to the monorepo root (`/opt/makapix` on VPS)

@@ -573,7 +573,7 @@ def get_cookie_config(request: Request | None = None) -> dict[str, any]:
             domain = None  # Omit domain attribute for localhost
         elif "." in hostname:
             # For production domains, use dot prefix for subdomain support
-            # Extract base domain (e.g., "dev.makapix.club" -> ".makapix.club")
+            # Extract base domain (e.g., "www.makapix.club" -> ".makapix.club")
             parts = hostname.split(".")
             if len(parts) >= 2:
                 domain = "." + ".".join(parts[-2:])  # Last two parts (e.g., "makapix.club")

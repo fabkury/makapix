@@ -97,7 +97,7 @@ MQTT_PASSWORD=<SECRET>
 # OAuth (GitHub)
 GITHUB_OAUTH_CLIENT_ID=<PUBLIC>
 GITHUB_OAUTH_CLIENT_SECRET=<SECRET>
-GITHUB_REDIRECT_URI=https://dev.makapix.club/auth/github/callback
+GITHUB_REDIRECT_URI=https://makapix.club/auth/github/callback
 
 # GitHub App
 GITHUB_APP_ID=<PUBLIC>
@@ -112,7 +112,7 @@ MAKAPIX_ADMIN_PASSWORD=<SECRET>
 # Email service (Resend)
 RESEND_API_KEY=<SECRET>
 RESEND_FROM_EMAIL=noreply@notification.makapix.club
-BASE_URL=https://dev.makapix.club
+BASE_URL=https://makapix.club
 ```
 
 ### File-Based Secrets
@@ -164,7 +164,7 @@ docker compose ps
 docker compose logs -f api --tail=50
 
 # 6. Test authentication
-curl -X POST https://dev.makapix.club/api/auth/login \
+curl -X POST https://makapix.club/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com","password":"testpass"}'
 ```
@@ -320,7 +320,7 @@ docker compose build --no-cache web
 docker compose restart web mqtt
 
 # 6. Test web MQTT connection
-# Open browser: https://dev.makapix.club
+# Open browser: https://makapix.club
 # Open DevTools > Console, look for "[MQTT] Client connected"
 # Should see no connection errors
 ```
@@ -410,7 +410,7 @@ docker compose restart mqtt
 # This is done automatically on device re-registration
 
 # To manually rotate via API:
-curl -X POST https://dev.makapix.club/api/player/{player_key}/credentials/rotate \
+curl -X POST https://makapix.club/api/player/{player_key}/credentials/rotate \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 
 # Or via database:
@@ -467,7 +467,7 @@ sed -i "s/GITHUB_OAUTH_CLIENT_SECRET=.*/GITHUB_OAUTH_CLIENT_SECRET=$NEW_OAUTH_SE
 docker compose restart api
 
 # 4. Test OAuth login
-# Open browser: https://dev.makapix.club/auth/github/login
+# Open browser: https://makapix.club/auth/github/login
 # Verify successful authentication
 
 # 5. Delete old client secret from GitHub (after verification)
@@ -522,7 +522,7 @@ nano .env
 docker compose restart api
 
 # 5. Test GitHub App functionality
-curl -X GET https://dev.makapix.club/api/auth/github/installations \
+curl -X GET https://makapix.club/api/auth/github/installations \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 
 # 6. Revoke old private key in GitHub
@@ -554,7 +554,7 @@ NEW_ADMIN_APP_PASS=$(openssl rand -base64 24 | tr -d "=+/" | cut -c1-24)
 echo "New admin password: $NEW_ADMIN_APP_PASS"
 
 # 2. Update password via API (if already logged in)
-curl -X POST https://dev.makapix.club/api/auth/change-password \
+curl -X POST https://makapix.club/api/auth/change-password \
   -H "Authorization: Bearer $ADMIN_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -586,7 +586,7 @@ cd /opt/makapix/deploy/stack
 sed -i "s/MAKAPIX_ADMIN_PASSWORD=.*/MAKAPIX_ADMIN_PASSWORD=$NEW_ADMIN_APP_PASS/" .env
 
 # 4. Test new password
-curl -X POST https://dev.makapix.club/api/auth/login \
+curl -X POST https://makapix.club/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "email": "admin@makapix.club",
@@ -676,7 +676,7 @@ sed -i "s/RESEND_API_KEY=.*/RESEND_API_KEY=$NEW_RESEND_KEY/" .env
 docker compose restart api
 
 # 4. Test email sending (trigger a password reset request)
-# Go to https://dev.makapix.club/forgot-password
+# Go to https://makapix.club/forgot-password
 # Enter a test email and verify email is received
 
 # 5. Delete old API key in Resend dashboard
@@ -774,11 +774,11 @@ docker compose ps
 docker compose logs --tail=100 | grep -i "error\|fail\|denied"
 
 # 3. Test API health
-curl https://dev.makapix.club/api/health
+curl https://makapix.club/api/health
 # Expected: {"status": "healthy"}
 
 # 4. Test user authentication
-curl -X POST https://dev.makapix.club/api/auth/login \
+curl -X POST https://makapix.club/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com","password":"testpass"}'
 # Expected: JWT tokens returned
@@ -808,7 +808,7 @@ docker compose logs api --tail=20 | grep -i "mqtt.*connect"
 # Should see successful connection
 
 # Test player certificate
-openssl s_client -connect dev.makapix.club:8883 \
+openssl s_client -connect makapix.club:8883 \
   -CAfile /opt/makapix/mqtt/certs/ca.crt \
   -cert /path/to/player/cert.pem \
   -key /path/to/player/key.pem
@@ -817,7 +817,7 @@ openssl s_client -connect dev.makapix.club:8883 \
 **OAuth:**
 ```bash
 # Test OAuth login flow
-# 1. Open https://dev.makapix.club/auth/github/login
+# 1. Open https://makapix.club/auth/github/login
 # 2. Complete GitHub authorization
 # 3. Verify successful redirect and login
 ```

@@ -25,7 +25,7 @@ Guide for developers working on Makapix Club. All development happens directly o
 
 ```bash
 # SSH to VPS
-ssh user@dev.makapix.club
+ssh user@makapix.club
 
 # Navigate to project
 cd /opt/makapix
@@ -39,9 +39,8 @@ make logs
 
 ### Access Points
 
-- **Web UI**: https://dev.makapix.club
-- **API Documentation**: https://dev.makapix.club/api/docs
-- **Marketing Site**: https://makapix.club
+- **Website**: https://makapix.club
+- **API Documentation**: https://makapix.club/api/docs
 
 ---
 
@@ -230,7 +229,7 @@ cd deploy/stack && docker compose ps
 docker stats
 
 # API health endpoint
-curl https://dev.makapix.club/api/health
+curl https://makapix.club/api/health
 ```
 
 ### Common Issues
@@ -308,7 +307,7 @@ ROOT_DOMAIN, WEB_DOMAIN, VAULT_DOMAIN
 1. Make changes on the VPS (or push to git and pull)
 2. Run `make rebuild` to apply changes
 3. Check logs with `make logs`
-4. Verify functionality at https://dev.makapix.club
+4. Verify functionality at https://makapix.club
 
 For production deployments:
 ```bash

@@ -212,24 +212,24 @@ Test with curl or httpie:
 
 ```bash
 # Get user profile with stats
-curl https://dev.makapix.club/api/user/u/{sqid}
+curl https://makapix.club/api/user/u/{sqid}
 
 # Get highlights
-curl https://dev.makapix.club/api/user/u/{sqid}/highlights
+curl https://makapix.club/api/user/u/{sqid}/highlights
 
 # Get reacted posts
-curl https://dev.makapix.club/api/user/u/{sqid}/reacted-posts
+curl https://makapix.club/api/user/u/{sqid}/reacted-posts
 
 # Follow (authenticated)
-curl -X POST https://dev.makapix.club/api/user/u/{sqid}/follow \
+curl -X POST https://makapix.club/api/user/u/{sqid}/follow \
   -H "Authorization: Bearer {token}"
 
 # Get follow status (authenticated)
-curl https://dev.makapix.club/api/user/u/{sqid}/follow-status \
+curl https://makapix.club/api/user/u/{sqid}/follow-status \
   -H "Authorization: Bearer {token}"
 
 # Get badge definitions
-curl https://dev.makapix.club/api/badge
+curl https://makapix.club/api/badge
 ```
 
 ---

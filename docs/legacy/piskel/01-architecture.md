@@ -12,7 +12,7 @@
 │  │   Makapix Club      │                             │   Piskel       │ │
 │  │   (Next.js)         │                             │   (Vanilla JS) │ │
 │  │                     │                             │                │ │
-│  │   dev.makapix.club  │                             │ piskel.makapix │ │
+│  │   makapix.club  │                             │ piskel.makapix │ │
 │  │                     │                             │   .club        │ │
 │  └─────────────────────┘                             └────────────────┘ │
 │           │                                                   │         │
@@ -227,7 +227,7 @@ window.addEventListener('message', (event) => {
 
 // Piskel side
 window.addEventListener('message', (event) => {
-  if (event.origin !== 'https://dev.makapix.club') return;
+  if (event.origin !== 'https://makapix.club') return;
   // Handle message
 });
 ```
@@ -242,7 +242,7 @@ window.addEventListener('message', (event) => {
 ### CORS Configuration
 
 Piskel at `piskel.makapix.club` may need to load artwork images from:
-- `dev.makapix.club/api/vault/...` (HTTPS vault)
+- `makapix.club/api/vault/...` (HTTPS vault)
 
 Existing vault CORS headers should suffice:
 ```

@@ -4,8 +4,7 @@
 #
 # This Dockerfile creates an OPTIMIZED PRODUCTION BUILD of the Next.js frontend.
 # It is used by:
-#   - deploy/stack/docker-compose.yml (VPS staging at dev.makapix.club)
-#   - Future production deployments
+#   - deploy/stack/docker-compose.yml (production at makapix.club)
 #
 # DO NOT use this for local development. Use the root docker-compose.yml instead,
 # which overrides the CMD to run `npm run dev` with hot reload.
@@ -54,8 +53,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 # NEXT_PUBLIC_* env vars must be present at build time (baked into JS bundles).
 # Override these with --build-arg when building for different environments.
-ARG NEXT_PUBLIC_API_BASE_URL=https://dev.makapix.club
-ARG NEXT_PUBLIC_MQTT_WS_URL=wss://dev.makapix.club/mqtt
+ARG NEXT_PUBLIC_API_BASE_URL=https://makapix.club
+ARG NEXT_PUBLIC_MQTT_WS_URL=wss://makapix.club/mqtt
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_MQTT_WS_URL=$NEXT_PUBLIC_MQTT_WS_URL
 

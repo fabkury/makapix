@@ -42,7 +42,7 @@ apps/piskel/
   var ns = $.namespace('pskl.makapix');
 
   // Configuration
-  var MAKAPIX_ORIGIN = 'https://dev.makapix.club';
+  var MAKAPIX_ORIGIN = 'https://makapix.club';
   var TOKEN_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
   var TOKEN_REFRESH_BUFFER_SECONDS = 600; // Request refresh 10 min before expiry
 

@@ -1,15 +1,15 @@
 #!/bin/bash
-# Monitor dev.makapix.club visitor statistics
+# Monitor makapix.club visitor statistics
 # Prints unique visitors (IPs) and total visits every 15 seconds
 
-LOG_FILE="/var/log/caddy/dev-access.log"
+LOG_FILE="/var/log/caddy/access.log"
 
 if [ ! -f "$LOG_FILE" ]; then
     echo "Error: Log file not found at $LOG_FILE"
     exit 1
 fi
 
-echo "Monitoring dev.makapix.club traffic..."
+echo "Monitoring makapix.club traffic..."
 echo "Press Ctrl+C to stop"
 echo ""
 

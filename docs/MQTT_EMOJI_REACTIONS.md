@@ -126,7 +126,7 @@ import json
 import uuid
 
 # Configuration
-BROKER_HOST = "dev.makapix.club"
+BROKER_HOST = "makapix.club"
 BROKER_PORT = 8883
 PLAYER_KEY = "your-player-uuid"
 

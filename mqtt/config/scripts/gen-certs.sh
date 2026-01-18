@@ -30,14 +30,14 @@ distinguished_name = dn
 req_extensions = req_ext
 
 [dn]
-CN = dev.makapix.club
+CN = makapix.club
 
 [req_ext]
 subjectAltName = @alt_names
 
 [alt_names]
-DNS.1 = dev.makapix.club
-DNS.2 = makapix.club
+DNS.1 = makapix.club
+DNS.2 = www.makapix.club
 DNS.3 = mqtt
 DNS.4 = localhost
 IP.1 = 127.0.0.1

@@ -135,7 +135,7 @@ apps/piskel/src/templates/settings/export/gif.html
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│              Makapix Club (dev.makapix.club)            │
+│              Makapix Club (makapix.club)            │
 │                                                          │
 │  ┌──────────────────────────────────────────────────┐  │
 │  │  Layout.tsx                                       │  │
@@ -218,7 +218,7 @@ piskel:
     caddy: piskel.makapix.club
     caddy.encode: "gzip zstd"
     caddy.header.X-Content-Type-Options: "nosniff"
-    caddy.header.Content-Security-Policy: "frame-ancestors 'self' https://dev.makapix.club"
+    caddy.header.Content-Security-Policy: "frame-ancestors 'self' https://makapix.club"
     caddy.reverse_proxy: "{{upstreams 80}}"
   networks:
     - caddy_net
@@ -232,7 +232,7 @@ piskel:
 
 ### Security Headers
 - `X-Content-Type-Options: nosniff`
-- `Content-Security-Policy: frame-ancestors 'self' https://dev.makapix.club`
+- `Content-Security-Policy: frame-ancestors 'self' https://makapix.club`
 - CORS: `Access-Control-Allow-Origin: *` (for vault image loading)
 
 ---

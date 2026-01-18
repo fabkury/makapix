@@ -147,8 +147,10 @@ Point your domain to your VPS IP:
 
 ```
 A     makapix.club          -> your-vps-ip
-A     dev.makapix.club      -> your-vps-ip
-A     *.makapix.club        -> your-vps-ip (optional)
+A     www.makapix.club      -> your-vps-ip
+A     vault.makapix.club    -> your-vps-ip
+A     piskel.makapix.club   -> your-vps-ip
+A     pixelc.makapix.club   -> your-vps-ip
 ```
 
 Wait for DNS propagation (can take up to 48 hours, usually 5-30 minutes).
@@ -157,7 +159,7 @@ Verify:
 
 ```bash
 dig makapix.club
-dig dev.makapix.club
+dig www.makapix.club
 ```
 
 ### 3. Set Up Environment
@@ -180,7 +182,7 @@ Update the following values:
 ```bash
 # Domain configuration
 ROOT_DOMAIN=makapix.club
-WEB_DOMAIN=dev.makapix.club
+WEB_DOMAIN=makapix.club
 
 # Web app port (reverse-proxied by Caddy)
 WEB_APP_PORT=3000
@@ -239,8 +241,7 @@ docker compose logs web
 
 Access the application:
 
-- CTA site: https://makapix.club
-- Web (live preview): https://dev.makapix.club
+- Website: https://makapix.club
 
 ---
 
@@ -255,7 +256,7 @@ Key environment variables in `/opt/makapix/deploy/stack/.env`:
 ```bash
 # Domains
 ROOT_DOMAIN=makapix.club
-WEB_DOMAIN=dev.makapix.club
+WEB_DOMAIN=makapix.club
 
 # Web app port
 WEB_APP_PORT=3000
@@ -306,22 +307,11 @@ REDIS_PORT=6379
 
 Caddy automatically handles TLS certificates via Let's Encrypt.
 
-The configuration is in `deploy/stack/caddy/Caddyfile.global`:
+Caddy configuration is managed automatically via Docker labels in `docker-compose.yml`. The web service handles routing:
 
-```
-makapix.club {
-    root * /srv/cta
-    file_server
-}
-
-dev.makapix.club {
-    reverse_proxy web:3000
-}
-
-api.makapix.club {
-    reverse_proxy api:8000
-}
-```
+- `makapix.club` and `www.makapix.club` → Next.js web app
+- `/api/*` → FastAPI backend
+- `/mqtt` → MQTT WebSocket proxy
 
 ---
 

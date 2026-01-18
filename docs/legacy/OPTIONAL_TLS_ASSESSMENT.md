@@ -95,7 +95,7 @@ File Response from Vault
 
 **Artwork URL Format:**
 - Relative: `/api/vault/a1/b2/c3/{uuid}.png`
-- Clients construct full URLs: `https://dev.makapix.club/api/vault/...`
+- Clients construct full URLs: `https://makapix.club/api/vault/...`
 
 ---
 
@@ -135,16 +135,16 @@ Caddy Reverse Proxy
 **Option B: Client URL Choice (Application Level)**
 
 Clients construct URLs based on preference:
-- HTTPS: `https://dev.makapix.club/d/{sqid}`
-- HTTP: `http://dev.makapix.club/d/{sqid}`
+- HTTPS: `https://makapix.club/d/{sqid}`
+- HTTP: `http://makapix.club/d/{sqid}`
 
 **Option C: API Provides Both URLs**
 
 Bootstrap/metadata endpoints return both:
 ```json
 {
-  "art_url_secure": "https://dev.makapix.club/api/vault/...",
-  "art_url_insecure": "http://dev.makapix.club/api/vault/..."
+  "art_url_secure": "https://makapix.club/api/vault/...",
+  "art_url_insecure": "http://makapix.club/api/vault/..."
 }
 ```
 
@@ -233,7 +233,7 @@ def mqtt_bootstrap() -> schemas.MQTTBootstrap:
     """
     MQTT broker bootstrap info with secure and insecure options.
     """
-    public_host = os.getenv("MQTT_PUBLIC_HOST", "dev.makapix.club")
+    public_host = os.getenv("MQTT_PUBLIC_HOST", "makapix.club")
     
     # Secure connection (default)
     secure_port = int(os.getenv("MQTT_PUBLIC_PORT", "8883"))
@@ -335,8 +335,8 @@ def get_artwork_url(storage_key: UUID, extension: str, secure: bool = True) -> s
     path = f"/api/vault/{chunk1}/{chunk2}/{chunk3}/{storage_key}{extension}"
     
     # Get base URL from environment
-    base_url_secure = os.getenv("BASE_URL", "https://dev.makapix.club")
-    base_url_insecure = os.getenv("BASE_URL_INSECURE", "http://dev.makapix.club")
+    base_url_secure = os.getenv("BASE_URL", "https://makapix.club")
+    base_url_insecure = os.getenv("BASE_URL_INSECURE", "http://makapix.club")
     
     base_url = base_url_secure if secure else base_url_insecure
     return f"{base_url}{path}"
@@ -389,8 +389,8 @@ MQTT_USE_CERT_USERNAME=true         # Use CN from cert as username
 MQTT_WS_TLS_ENABLED=false           # Enable TLS on WebSocket
 
 # Download URLs
-BASE_URL=https://dev.makapix.club   # Secure base URL
-BASE_URL_INSECURE=http://dev.makapix.club  # Insecure base URL (optional)
+BASE_URL=https://makapix.club   # Secure base URL
+BASE_URL_INSECURE=http://makapix.club  # Insecure base URL (optional)
 ```
 
 **Template Updates:**
@@ -754,7 +754,7 @@ import requests
 import json
 
 # Step 1: Fetch bootstrap configuration
-response = requests.get("https://dev.makapix.club/api/mqtt/bootstrap")
+response = requests.get("https://makapix.club/api/mqtt/bootstrap")
 config = response.json()
 
 # Step 2: Choose connection based on device capabilities

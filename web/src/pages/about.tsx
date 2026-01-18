@@ -564,7 +564,7 @@ function ModerationTab() {
       <p>
         If you believe a moderator action was unfair, or if you have concerns about moderator
         behavior, please contact the site owner{' '}
-        <Link href="https://dev.makapix.club/u/t5" className="user-mention">@Fab</Link> directly.
+        <Link href="/u/t5" className="user-mention">@Fab</Link> directly.
       </p>
 
       <style jsx>{`

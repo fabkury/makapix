@@ -116,7 +116,7 @@ curl https://api.makapix.club/player/{player_key}/credentials
 ```javascript
 import mqtt from 'mqtt';
 
-const client = mqtt.connect('ws://dev.makapix.club:9001', {
+const client = mqtt.connect('ws://makapix.club:9001', {
   username: userId,
   password: authToken,
 });

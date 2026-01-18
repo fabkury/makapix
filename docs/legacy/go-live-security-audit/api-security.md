@@ -143,7 +143,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost
 
 **Verification Required:** Confirm production .env has specific domain origins like:
 ```env
-CORS_ORIGINS=https://makapix.club,https://dev.makapix.club
+CORS_ORIGINS=https://makapix.club,https://makapix.club
 ```
 
 ---

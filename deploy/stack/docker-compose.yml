@@ -120,7 +120,7 @@ services:
       MQTT_TLS_ENABLED: "false"
       MQTT_USERNAME: svc_backend
       MQTT_PASSWORD: ${MQTT_PASSWORD:-}
-      MQTT_PUBLIC_HOST: dev.makapix.club
+      MQTT_PUBLIC_HOST: makapix.club
       MQTT_PUBLIC_PORT: 8883
       VAULT_LOCATION: ${VAULT_LOCATION}
       MAKAPIX_ADMIN_USER: ${MAKAPIX_ADMIN_USER}
@@ -215,27 +215,27 @@ services:
       - caddy_net
 
   # ---------------------------------------------------------------------------
-  # CTA (Call-To-Action) - Static marketing site at makapix.club
+  # CTA (Call-To-Action) - DISABLED: Web app now serves makapix.club directly
   # ---------------------------------------------------------------------------
-  cta:
-    image: caddy:${CADDY_TAG}
-    container_name: makapix-cta
-    restart: unless-stopped
-    volumes:
-      - ../../apps/cta:/usr/share/caddy:ro
-    labels:
-      caddy: ${ROOT_DOMAIN}, www.${ROOT_DOMAIN}
-      caddy.encode: "gzip zstd"
-      caddy.header.Strict-Transport-Security: "max-age=31536000"
-      caddy.header.Content-Security-Policy: "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:"
-      caddy.header.X-Content-Type-Options: "nosniff"
-      caddy.header.Referrer-Policy: "strict-origin-when-cross-origin"
-      caddy.reverse_proxy: "{{upstreams 80}}"
-      caddy.log.output: "file /var/log/caddy/access.log"
-      caddy.log.format: "json"
-      caddy.log.level: "INFO"
-    networks:
-      - caddy_net
+  # cta:
+  #   image: caddy:${CADDY_TAG}
+  #   container_name: makapix-cta
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ../../apps/cta:/usr/share/caddy:ro
+  #   labels:
+  #     caddy: ${ROOT_DOMAIN}, www.${ROOT_DOMAIN}
+  #     caddy.encode: "gzip zstd"
+  #     caddy.header.Strict-Transport-Security: "max-age=31536000"
+  #     caddy.header.Content-Security-Policy: "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:"
+  #     caddy.header.X-Content-Type-Options: "nosniff"
+  #     caddy.header.Referrer-Policy: "strict-origin-when-cross-origin"
+  #     caddy.reverse_proxy: "{{upstreams 80}}"
+  #     caddy.log.output: "file /var/log/caddy/access.log"
+  #     caddy.log.format: "json"
+  #     caddy.log.level: "INFO"
+  #   networks:
+  #     - caddy_net
 
   # ---------------------------------------------------------------------------
   # Vault HTTP - HTTP-only static file server for physical players
@@ -259,15 +259,15 @@ services:
       - caddy_net
 
   # ---------------------------------------------------------------------------
-  # Web Application (Next.js) - dev.makapix.club
+  # Web Application (Next.js) - makapix.club
   # ---------------------------------------------------------------------------
   web:
     build:
       context: ../..
       dockerfile: web/Dockerfile
       args:
-        - NEXT_PUBLIC_API_BASE_URL=https://dev.makapix.club
-        - NEXT_PUBLIC_MQTT_WS_URL=wss://dev.makapix.club/mqtt
+        - NEXT_PUBLIC_API_BASE_URL=https://makapix.club
+        - NEXT_PUBLIC_MQTT_WS_URL=wss://makapix.club/mqtt
     container_name: makapix-web
     restart: unless-stopped
     environment:
@@ -275,11 +275,10 @@ services:
       - HOST=0.0.0.0
       - PORT=3000
       - NEXT_TELEMETRY_DISABLED=1
-      - NEXT_PUBLIC_API_BASE_URL=https://dev.makapix.club
-      - NEXT_PUBLIC_MQTT_WS_URL=wss://dev.makapix.club/mqtt
+      - NEXT_PUBLIC_API_BASE_URL=https://makapix.club
+      - NEXT_PUBLIC_MQTT_WS_URL=wss://makapix.club/mqtt
     labels:
-      caddy: ${WEB_DOMAIN:-dev.makapix.club}
-      caddy.header.X-Robots-Tag: "noindex, nofollow, noarchive"
+      caddy: makapix.club, www.makapix.club
       # Route /api/* to FastAPI backend (strip /api prefix)
       caddy.@api.path: /api/*
       caddy.handle_0: "@api"
@@ -312,7 +311,7 @@ services:
       caddy: piskel.makapix.club
       caddy.encode: "gzip zstd"
       caddy.header.X-Content-Type-Options: "nosniff"
-      caddy.header.Content-Security-Policy: "frame-ancestors 'self' https://dev.makapix.club"
+      caddy.header.Content-Security-Policy: "frame-ancestors 'self' https://makapix.club"
       caddy.reverse_proxy: "{{upstreams 80}}"
     networks:
       - caddy_net
@@ -332,7 +331,7 @@ services:
       caddy.header.X-Content-Type-Options: "nosniff"
       caddy.header.Cross-Origin-Opener-Policy: "same-origin"
       caddy.header.Cross-Origin-Embedder-Policy: "require-corp"
-      caddy.header.Content-Security-Policy: "frame-ancestors 'self' https://dev.makapix.club"
+      caddy.header.Content-Security-Policy: "frame-ancestors 'self' https://makapix.club"
       caddy.reverse_proxy: "{{upstreams 80}}"
     networks:
       - caddy_net

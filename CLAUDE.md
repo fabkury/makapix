@@ -56,7 +56,7 @@ make deploy
 - `web/` - Next.js 14 frontend (TypeScript/React 18)
 - `worker/` - Celery background tasks
 - `mqtt/` - Mosquitto broker configuration
-- `apps/cta/` - Marketing site (makapix.club)
+- `apps/cta/` - Marketing site (archived)
 - `deploy/stack/` - Docker Compose stack (all services)
 
 **Key services (deploy/stack/docker-compose.yml):**
@@ -67,7 +67,7 @@ make deploy
 - `worker` - Celery background worker
 - `web` - Next.js on port 3000
 - `caddy` - Reverse proxy with auto-TLS
-- `cta` - Marketing site
+- `cta` - Marketing site (disabled)
 - `vault` - HTTP file server for physical players
 - `redis` - Edge rate limiting
 

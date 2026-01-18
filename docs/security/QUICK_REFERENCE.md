@@ -29,7 +29,7 @@
 cd /opt/makapix/deploy/stack
 docker compose ps
 docker compose logs --tail=50 | grep -i "error\|fail"
-curl https://dev.makapix.club/api/health
+curl https://makapix.club/api/health
 ```
 
 ### View Logs

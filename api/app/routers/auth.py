@@ -1301,7 +1301,7 @@ def github_callback(
         #
         # IMPORTANT: request.base_url may include a proxy path prefix (e.g. "/api/"),
         # which is NOT a valid postMessage targetOrigin and can cause runtime errors
-        # in some browsers / proxy setups. We want an origin like "https://dev.makapix.club".
+        # in some browsers / proxy setups. We want an origin like "https://makapix.club".
         forwarded_proto = request.headers.get("x-forwarded-proto")
         proto = forwarded_proto or request.url.scheme
         host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc

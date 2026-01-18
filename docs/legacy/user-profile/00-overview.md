@@ -50,5 +50,5 @@ All sections marked with ✅ indicate completion. The implementation is complete
 1. All database migrations run successfully
 2. All API endpoints are functional and tested
 3. Frontend profile page matches the Figma mock-up design
-4. Stack has been rebuilt and deployed to dev.makapix.club
+4. Stack has been rebuilt and deployed to makapix.club
 5. Manual testing confirms all features work correctly

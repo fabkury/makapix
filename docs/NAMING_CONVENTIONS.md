@@ -3,7 +3,7 @@
 This repo is intentionally deployed as **exactly two public websites**:
 
 1) **CTA (static marketing site)**: `https://makapix.club/`
-2) **Web (live preview of the full app)**: `https://dev.makapix.club/`
+2) **Web (live preview of the full app)**: `https://makapix.club/`
 
 There are no other “environments” intended to be publicly reachable.
 
@@ -25,7 +25,7 @@ All services are defined in a single file:
 
 - `web`
   - **What**: Next.js app from `web/`
-  - **Public URL**: `https://dev.makapix.club/`
+  - **Public URL**: `https://makapix.club/`
   - **Container**: `makapix-web`
 
 ## VPS env var naming (deploy/stack/.env)
@@ -33,7 +33,7 @@ All services are defined in a single file:
 We use:
 
 - `ROOT_DOMAIN`: the CTA domain (example: `makapix.club`)
-- `WEB_DOMAIN`: the live preview domain (example: `dev.makapix.club`)
+- `WEB_DOMAIN`: the live preview domain (example: `makapix.club`)
 - `WEB_APP_PORT`: the internal port the preview web server listens on (example: `3000`)
 
 Legacy variables are still supported in the compose file for older deployments:

@@ -33,7 +33,7 @@ This is a **monorepo** containing all project components:
 
 ```
 makapix/
-├── apps/cta/              # Marketing website (live at makapix.club)
+├── apps/cta/              # Marketing website (archived)
 ├── web/                   # Next.js frontend application
 ├── api/                   # FastAPI backend with Alembic migrations
 ├── worker/                # Celery background worker
@@ -136,9 +136,7 @@ make clean          # Remove all containers and volumes
 
 ## Current Status
 
-- **CTA Site**: Live at https://makapix.club (marketing/landing page)
-- **Web Preview**: Testing at https://dev.makapix.club (full application)
-- **Production**: Full application launch planned
+- **Production**: Live at https://makapix.club
 
 ## Contributing
 
@@ -162,7 +160,6 @@ For detailed attribution information, see [NOTICE](NOTICE).
 ## Links
 
 - **Website**: https://makapix.club
-- **Web Preview**: https://dev.makapix.club
 - **Repository**: https://github.com/fabkury/makapix
 
 ---

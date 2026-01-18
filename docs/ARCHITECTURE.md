@@ -504,8 +504,8 @@ make test      # Run tests
 ```
 VPS (makapix.club)
 ├── Caddy (reverse proxy)
-│   ├── makapix.club → CTA site (static)
-│   └── dev.makapix.club → Web (live preview) (Next.js)
+│   ├── makapix.club → Web application (Next.js)
+│   └── www.makapix.club → Web application (Next.js)
 ├── Docker Containers
 │   ├── web (Next.js)
 │   ├── api (FastAPI)

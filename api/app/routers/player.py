@@ -102,7 +102,7 @@ def provision_player(
     db.refresh(player)
     
     # Get MQTT broker info
-    broker_host = os.getenv("MQTT_PUBLIC_HOST", "dev.makapix.club")
+    broker_host = os.getenv("MQTT_PUBLIC_HOST", "makapix.club")
     broker_port = int(os.getenv("MQTT_PUBLIC_PORT", "8883"))
     
     return schemas.PlayerProvisionResponse(
@@ -332,7 +332,7 @@ def get_player_credentials(
         )
     
     # Get MQTT broker info
-    broker_host = os.getenv("MQTT_PUBLIC_HOST", "dev.makapix.club")
+    broker_host = os.getenv("MQTT_PUBLIC_HOST", "makapix.club")
     broker_port = int(os.getenv("MQTT_PUBLIC_PORT", "8883"))
     
     return schemas.TLSCertBundle(
@@ -457,7 +457,7 @@ def download_player_certs(
         )
     
     # Get MQTT broker info
-    broker_host = os.getenv("MQTT_PUBLIC_HOST", "dev.makapix.club")
+    broker_host = os.getenv("MQTT_PUBLIC_HOST", "makapix.club")
     broker_port = int(os.getenv("MQTT_PUBLIC_PORT", "8883"))
     
     return schemas.TLSCertBundle(

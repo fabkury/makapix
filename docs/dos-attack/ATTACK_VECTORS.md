@@ -14,7 +14,7 @@ This document describes specific attack scenarios against the Makapix Club MQTT 
 
 ### Prerequisites
 
-- Internet access to `dev.makapix.club`
+- Internet access to `makapix.club`
 - Knowledge of shared credentials (publicly available in source code)
 
 ### Attack Description
@@ -28,7 +28,7 @@ The attacker opens thousands of WebSocket connections using the shared `webclien
    - Username: "webclient"
    - Password: "webclient"
 
-2. Attacker connects via WebSocket to wss://dev.makapix.club/mqtt
+2. Attacker connects via WebSocket to wss://makapix.club/mqtt
 
 3. Attacker repeats connection in a loop:
    - Each connection consumes a file descriptor
@@ -48,7 +48,7 @@ The attacker opens thousands of WebSocket connections using the shared `webclien
 import paho.mqtt.client as mqtt
 import threading
 
-TARGET = "dev.makapix.club"
+TARGET = "makapix.club"
 PORT = 9001  # WebSocket port (via Caddy proxy)
 CONNECTIONS = []
 

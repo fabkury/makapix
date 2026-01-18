@@ -127,8 +127,8 @@ Add the following service to `/opt/makapix/deploy/stack/docker-compose.yml`:
       caddy.encode: "gzip zstd"
       # Security headers
       caddy.header.X-Content-Type-Options: "nosniff"
-      caddy.header.X-Frame-Options: "ALLOW-FROM https://dev.makapix.club"
-      caddy.header.Content-Security-Policy: "frame-ancestors 'self' https://dev.makapix.club"
+      caddy.header.X-Frame-Options: "ALLOW-FROM https://makapix.club"
+      caddy.header.Content-Security-Policy: "frame-ancestors 'self' https://makapix.club"
       # Reverse proxy to container's Caddy
       caddy.reverse_proxy: "{{upstreams 80}}"
     networks:
@@ -201,8 +201,8 @@ For iframe embedding to work, Piskel must allow being framed by Makapix:
 
 The Caddy label already sets:
 ```
-caddy.header.X-Frame-Options: "ALLOW-FROM https://dev.makapix.club"
-caddy.header.Content-Security-Policy: "frame-ancestors 'self' https://dev.makapix.club"
+caddy.header.X-Frame-Options: "ALLOW-FROM https://makapix.club"
+caddy.header.Content-Security-Policy: "frame-ancestors 'self' https://makapix.club"
 ```
 
 **Note**: `X-Frame-Options: ALLOW-FROM` is deprecated in modern browsers. `Content-Security-Policy: frame-ancestors` is the modern replacement and should work.
@@ -304,7 +304,7 @@ Currently, Piskel doesn't require environment variables. If needed in the future
 ```yaml
   piskel:
     environment:
-      - MAKAPIX_API_URL=https://dev.makapix.club
+      - MAKAPIX_API_URL=https://makapix.club
 ```
 
 ---
@@ -317,7 +317,7 @@ Before going live:
 - [ ] Container builds successfully
 - [ ] SSL certificate provisioned
 - [ ] Piskel loads in browser
-- [ ] X-Frame-Options allows embedding from dev.makapix.club
+- [ ] X-Frame-Options allows embedding from makapix.club
 - [ ] postMessage communication works
 - [ ] Makapix /editor page loads iframe correctly
 - [ ] Export flow works end-to-end
@@ -331,7 +331,7 @@ Before going live:
 
 1. Check browser console for X-Frame-Options errors
 2. Verify Content-Security-Policy header is set
-3. Ensure origin matches exactly (`https://dev.makapix.club`)
+3. Ensure origin matches exactly (`https://makapix.club`)
 
 ### postMessage not working
 

@@ -144,7 +144,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost
 
 **Production:**
 ```bash
-CORS_ORIGINS=https://makapix.club,https://dev.makapix.club
+CORS_ORIGINS=https://makapix.club,https://makapix.club
 ```
 
 ### Never Use Wildcard in Production

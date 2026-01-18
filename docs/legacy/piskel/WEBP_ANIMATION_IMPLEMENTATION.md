@@ -196,7 +196,7 @@ For single-frame WebP files, the system uses simple `<img>` loading for efficien
 
 **Date**: December 30, 2024  
 **Containers**: `makapix-web`, `makapix-piskel`  
-**URL**: https://dev.makapix.club/editor
+**URL**: https://makapix.club/editor
 
 To deploy updates:
 
@@ -210,7 +210,7 @@ docker compose up -d web piskel
 
 After deployment, verify:
 
-1. Visit https://dev.makapix.club
+1. Visit https://makapix.club
 2. Find an animated WebP artwork
 3. Click "🖌️ Edit in Piskel" button
 4. Verify loading progress appears
