@@ -674,8 +674,8 @@ function SubmitPageContent() {
               )}
 
               <div className="success-buttons">
-                <Link href={`/p/${uploadedArtwork.public_sqid}`} className="btn btn-secondary">View Artwork</Link>
-                <button onClick={clearSelection} className="btn btn-secondary">Upload Another</button>
+                <button onClick={() => router.push(`/p/${uploadedArtwork.public_sqid}`)} className="btn btn-primary">View Artwork</button>
+                <button onClick={clearSelection} className="btn btn-primary">Upload Another</button>
               </div>
             </div>
           </div>
