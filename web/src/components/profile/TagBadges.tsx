@@ -20,17 +20,21 @@ export default function TagBadges({ badges, onAreaClick }: TagBadgesProps) {
       type="button"
     >
       {badges.length > 0 ? (
-        badges.map((badge) => (
-          <img
-            key={badge.badge}
-            src={badge.icon_url_16}
-            alt={badge.label}
-            title={badge.label}
-            className="tag-badge-icon"
-            width={16}
-            height={16}
-          />
-        ))
+        badges.map((badge) => {
+          const icon32 = badge.icon_url_16.replace('_16.png', '_32.png');
+          return (
+            <img
+              key={badge.badge}
+              src={badge.icon_url_16}
+              srcSet={`${badge.icon_url_16} 1x, ${icon32} 2x`}
+              alt={badge.label}
+              title={badge.label}
+              className="tag-badge-icon"
+              width={16}
+              height={16}
+            />
+          );
+        })
       ) : (
         <span className="tag-badge-placeholder">🛡️</span>
       )}
@@ -50,6 +54,12 @@ export default function TagBadges({ badges, onAreaClick }: TagBadgesProps) {
         }
         .tag-badges-area:hover {
           background: rgba(255, 255, 255, 0.1);
+        }
+        .tag-badges-area:focus {
+          outline: none;
+        }
+        .tag-badges-area:active {
+          background: none;
         }
         .tag-badge-icon {
           width: 16px;

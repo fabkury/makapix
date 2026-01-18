@@ -19,13 +19,13 @@ export default function GiftButton({ userSqid }: GiftButtonProps) {
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 6px 10px;
+          padding: 6px 24px;
           border: 1px solid rgba(255, 255, 255, 0.2);
-          border-radius: 6px;
+          border-radius: 8px;
           background: transparent;
           cursor: pointer;
           transition: all 0.2s ease;
-          font-size: 1rem;
+          font-size: 1.25rem;
           text-decoration: none;
         }
         .gift-button:hover {

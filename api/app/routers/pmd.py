@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import AsyncGenerator
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..auth import get_current_user
 from ..deps import get_db
+from ..sqids_config import decode_user_sqid
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,46 @@ def encode_cursor(dt: datetime) -> str:
 def decode_cursor(cursor: str) -> datetime:
     """Decode base64 cursor to datetime."""
     return datetime.fromisoformat(base64.urlsafe_b64decode(cursor.encode()).decode())
+
+
+def get_target_user(
+    db: Session,
+    target_sqid: str | None,
+    current_user: models.User,
+) -> models.User:
+    """
+    Resolve target user for PMD operations.
+
+    If target_sqid is None, returns current_user.
+    If target_sqid is provided, requires moderator role and protects owner.
+    """
+    if target_sqid is None:
+        return current_user
+
+    # Require moderator for cross-user access
+    if "moderator" not in current_user.roles and "owner" not in current_user.roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Moderator role required to access other users' PMD",
+        )
+
+    # Look up target user
+    user_id = decode_user_sqid(target_sqid)
+    if user_id is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target_user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not target_user or target_user.public_sqid != target_sqid:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Protect owner - cannot access owner's PMD unless you ARE the owner
+    if "owner" in target_user.roles and target_user.id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot access the site owner's PMD",
+        )
+
+    return target_user
 
 
 def get_lightweight_view_counts(db: Session, post_ids: list[int]) -> dict[int, int]:
@@ -82,6 +123,7 @@ def get_lightweight_view_counts(db: Session, post_ids: list[int]) -> dict[int, i
 def list_pmd_posts(
     limit: int = Query(512, ge=1, le=512),
     cursor: str | None = Query(None),
+    target_sqid: str | None = Query(None),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> schemas.PMDPostsResponse:
@@ -90,12 +132,17 @@ def list_pmd_posts(
 
     NOTE: Playlist posts (kind='playlist') are excluded from PMD.
     This feature is deferred to a future release.
+
+    Moderators can view other users' PMD by providing target_sqid.
     """
+    # Resolve target user (current user or target if moderator)
+    target_user = get_target_user(db, target_sqid, current_user)
+
     # Build base query - EXCLUDE playlists
     query = (
         db.query(models.Post)
         .filter(
-            models.Post.owner_id == current_user.id,
+            models.Post.owner_id == target_user.id,
             models.Post.kind == "artwork",  # Exclude playlists
             models.Post.deleted_by_user == False,
         )
@@ -121,7 +168,7 @@ def list_pmd_posts(
     total_count = (
         db.query(func.count(models.Post.id))
         .filter(
-            models.Post.owner_id == current_user.id,
+            models.Post.owner_id == target_user.id,
             models.Post.kind == "artwork",
             models.Post.deleted_by_user == False,
         )
@@ -187,6 +234,7 @@ def list_pmd_posts(
 @router.post("/action", response_model=schemas.BatchActionResponse)
 def execute_batch_action(
     request: schemas.BatchActionRequest,
+    target_sqid: str | None = Query(None),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> schemas.BatchActionResponse:
@@ -195,14 +243,19 @@ def execute_batch_action(
 
     Limits:
     - Maximum 128 posts per request (enforced by schema)
-    - User can only modify their own posts
+    - User can only modify their own posts (or moderator can modify target's posts)
+
+    Moderators can act on other users' posts by providing target_sqid.
     """
-    # Verify all posts belong to user and are artwork (not playlists)
+    # Resolve target user (current user or target if moderator)
+    target_user = get_target_user(db, target_sqid, current_user)
+
+    # Verify all posts belong to target user and are artwork (not playlists)
     posts = (
         db.query(models.Post)
         .filter(
             models.Post.id.in_(request.post_ids),
-            models.Post.owner_id == current_user.id,
+            models.Post.owner_id == target_user.id,
             models.Post.kind == "artwork",
             models.Post.deleted_by_user == False,
         )
@@ -211,7 +264,7 @@ def execute_batch_action(
 
     if len(posts) != len(request.post_ids):
         raise HTTPException(
-            status_code=400, detail="Some posts not found or not owned by you"
+            status_code=400, detail="Some posts not found or not owned by target user"
         )
 
     # Execute action
@@ -248,6 +301,7 @@ def execute_batch_action(
 @router.post("/bdr", response_model=schemas.CreateBDRResponse)
 def create_bdr(
     request: schemas.CreateBDRRequest,
+    target_sqid: str | None = Query(None),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> schemas.CreateBDRResponse:
@@ -259,15 +313,20 @@ def create_bdr(
     - Maximum 8 BDRs per user per day
 
     The request is queued for async processing by a Celery worker.
+    Moderators can create BDRs for other users by providing target_sqid.
+    The BDR is created under the target user's ID so they can download their own data.
     """
-    # Check daily limit
+    # Resolve target user (current user or target if moderator)
+    target_user = get_target_user(db, target_sqid, current_user)
+
+    # Check daily limit (for the target user)
     today_start = datetime.now(timezone.utc).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
     today_count = (
         db.query(func.count(models.BatchDownloadRequest.id))
         .filter(
-            models.BatchDownloadRequest.user_id == current_user.id,
+            models.BatchDownloadRequest.user_id == target_user.id,
             models.BatchDownloadRequest.created_at >= today_start,
         )
         .scalar()
@@ -279,12 +338,12 @@ def create_bdr(
             detail=f"Daily limit of {BDR_DAILY_LIMIT} download requests reached. Try again tomorrow.",
         )
 
-    # Verify all posts belong to user and are artwork
+    # Verify all posts belong to target user and are artwork
     valid_count = (
         db.query(func.count(models.Post.id))
         .filter(
             models.Post.id.in_(request.post_ids),
-            models.Post.owner_id == current_user.id,
+            models.Post.owner_id == target_user.id,
             models.Post.kind == "artwork",
             models.Post.deleted_by_user == False,
         )
@@ -293,12 +352,12 @@ def create_bdr(
 
     if valid_count != len(request.post_ids):
         raise HTTPException(
-            status_code=400, detail="Some posts not found or not owned by you"
+            status_code=400, detail="Some posts not found or not owned by target user"
         )
 
-    # Create BDR record
+    # Create BDR record (under target user's ID so they can download their data)
     bdr = models.BatchDownloadRequest(
-        user_id=current_user.id,
+        user_id=target_user.id,
         post_ids=request.post_ids,
         include_comments=request.include_comments,
         include_reactions=request.include_reactions,
@@ -327,6 +386,7 @@ def create_bdr(
 
 @router.get("/bdr", response_model=schemas.BDRListResponse)
 def list_bdrs(
+    target_sqid: str | None = Query(None),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> schemas.BDRListResponse:
@@ -334,10 +394,14 @@ def list_bdrs(
     List user's batch download requests.
 
     Returns up to 20 most recent BDRs (sufficient for UI).
+    Moderators can view other users' BDRs by providing target_sqid.
     """
+    # Resolve target user (current user or target if moderator)
+    target_user = get_target_user(db, target_sqid, current_user)
+
     bdrs = (
         db.query(models.BatchDownloadRequest)
-        .filter(models.BatchDownloadRequest.user_id == current_user.id)
+        .filter(models.BatchDownloadRequest.user_id == target_user.id)
         .order_by(models.BatchDownloadRequest.created_at.desc())
         .limit(20)
         .all()
@@ -368,6 +432,7 @@ def list_bdrs(
 @router.get("/bdr/{bdr_id}/download")
 def download_bdr(
     bdr_id: str,
+    target_sqid: str | None = Query(None),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -375,10 +440,15 @@ def download_bdr(
     Download a completed BDR ZIP file.
 
     Validates:
-    - BDR belongs to current user
+    - BDR belongs to current user (or target user for moderators)
     - BDR status is 'ready'
     - BDR has not expired
+
+    Moderators can download other users' BDRs by providing target_sqid.
     """
+    # Resolve target user (current user or target if moderator)
+    target_user = get_target_user(db, target_sqid, current_user)
+
     try:
         bdr_uuid = UUID(bdr_id)
     except ValueError:
@@ -388,7 +458,7 @@ def download_bdr(
         db.query(models.BatchDownloadRequest)
         .filter(
             models.BatchDownloadRequest.id == bdr_uuid,
-            models.BatchDownloadRequest.user_id == current_user.id,
+            models.BatchDownloadRequest.user_id == target_user.id,
         )
         .first()
     )
@@ -459,6 +529,7 @@ def format_sse_event(event_type: str, data: dict) -> str:
 @router.get("/bdr/sse")
 async def bdr_sse_stream(
     request: Request,
+    target_sqid: str | None = Query(None),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -470,10 +541,15 @@ async def bdr_sse_stream(
 
     Connection stays open until client disconnects or server timeout (5 minutes).
 
+    Moderators can stream other users' BDRs by providing target_sqid.
+
     Event format:
         event: bdr_update
         data: {"id": "...", "status": "ready", ...}
     """
+    # Validate moderator access and owner protection before starting stream
+    target_user = get_target_user(db, target_sqid, current_user)
+    target_user_id = target_user.id
 
     async def event_generator() -> AsyncGenerator[str, None]:
         """Generate SSE events."""
@@ -482,7 +558,7 @@ async def bdr_sse_stream(
         last_states: dict[str, tuple[str, datetime | None]] = {}
 
         # Send initial state immediately
-        initial_bdrs = get_user_bdrs(db, current_user.id)
+        initial_bdrs = get_user_bdrs(db, target_user_id)
         for bdr in initial_bdrs:
             last_states[str(bdr.id)] = (bdr.status, bdr.completed_at)
             yield format_sse_event("bdr_update", bdr_to_dict(bdr))
@@ -505,7 +581,7 @@ async def bdr_sse_stream(
             db.expire_all()
 
             # Check for updates
-            current_bdrs = get_user_bdrs(db, current_user.id)
+            current_bdrs = get_user_bdrs(db, target_user_id)
 
             for bdr in current_bdrs:
                 bdr_id = str(bdr.id)

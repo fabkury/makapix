@@ -13,6 +13,7 @@ export interface BDRItem {
 
 interface UsePMDSSEOptions {
   enabled: boolean;
+  targetSqid?: string | null;  // For moderator cross-user access
   onBDRUpdate: (bdr: BDRItem) => void;
   onError?: (error: Error) => void;
   onConnect?: () => void;
@@ -21,6 +22,7 @@ interface UsePMDSSEOptions {
 
 export function usePMDSSE({
   enabled,
+  targetSqid,
   onBDRUpdate,
   onError,
   onConnect,
@@ -56,7 +58,10 @@ export function usePMDSSE({
     }
 
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin;
-    const url = `${API_BASE_URL}/api/pmd/bdr/sse`;
+    let url = `${API_BASE_URL}/api/pmd/bdr/sse`;
+    if (targetSqid) {
+      url += `?target_sqid=${encodeURIComponent(targetSqid)}`;
+    }
 
     try {
       const eventSource = new EventSource(url, {
@@ -103,7 +108,7 @@ export function usePMDSSE({
       console.error('[SSE] Failed to create EventSource:', error);
       onError?.(error as Error);
     }
-  }, [enabled, onBDRUpdate, onError, onConnect, onDisconnect, scheduleReconnect]);
+  }, [enabled, targetSqid, onBDRUpdate, onError, onConnect, onDisconnect, scheduleReconnect]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -118,7 +123,7 @@ export function usePMDSSE({
     }
   }, [onDisconnect]);
 
-  // Connect when enabled changes
+  // Connect when enabled or targetSqid changes
   useEffect(() => {
     if (enabled) {
       connect();
@@ -129,7 +134,7 @@ export function usePMDSSE({
     return () => {
       disconnect();
     };
-  }, [enabled, connect, disconnect]);
+  }, [enabled, targetSqid, connect, disconnect]);
 
   return {
     isConnected: typeof window !== 'undefined' && eventSourceRef.current?.readyState === EventSource.OPEN,

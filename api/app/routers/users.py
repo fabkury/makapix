@@ -6,6 +6,7 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
@@ -38,6 +39,10 @@ def browse_users(
 
     # Hide unverified users from everyone on public browse
     query = query.filter(models.User.email_verified == True)
+
+    # Always hide owner from browse listings (applies to everyone)
+    # Cast JSON to JSONB for containment operator support
+    query = query.filter(~models.User.roles.cast(JSONB).contains(["owner"]))
 
     # Apply additional visibility filters for non-moderators
     is_moderator = current_user and ("moderator" in current_user.roles or "owner" in current_user.roles)
@@ -78,10 +83,10 @@ def browse_users(
                 if sort_value is not None:
                     try:
                         last_reputation = int(sort_value)
-                        last_uuid = UUID(last_id)
+                        last_user_id = int(last_id)  # User.id is Integer, not UUID
                         query = query.filter(
                             (models.User.reputation < last_reputation) |
-                            ((models.User.reputation == last_reputation) & (models.User.id < last_uuid))
+                            ((models.User.reputation == last_reputation) & (models.User.id < last_user_id))
                         )
                     except (ValueError, TypeError):
                         pass
@@ -254,6 +259,11 @@ def get_user_by_sqid(
     if not user.email_verified and not is_moderator and not is_own_profile:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    # Hide owner from ALL view (only owner can see own profile)
+    is_target_owner = "owner" in (user.roles or [])
+    if is_target_owner and not is_own_profile:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
     # Return UserFull for moderators/owners, UserPublic for others
     if is_moderator:
         return schemas.UserFull.model_validate(user)
@@ -286,6 +296,11 @@ def get_user(
     is_moderator = current_user and ("moderator" in current_user.roles or "owner" in current_user.roles)
     is_own_profile = current_user and current_user.id == user.id
     if not user.email_verified and not is_moderator and not is_own_profile:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    # Hide owner from ALL view (only owner can see own profile)
+    is_target_owner = "owner" in (user.roles or [])
+    if is_target_owner and not is_own_profile:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     # Return UserFull for moderators/owners, UserPublic for others
@@ -832,6 +847,11 @@ def get_user_profile_enhanced(
 
     # Hide unverified users from public view (unless moderator or self)
     if not user.email_verified and not is_own_profile and not is_moderator:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    # Hide owner from ALL view (only owner can see own profile)
+    is_target_owner = "owner" in (user.roles or [])
+    if is_target_owner and not is_own_profile:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     # Get tag badges

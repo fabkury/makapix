@@ -38,9 +38,9 @@ def get_user_by_sqid_or_404(db: Session, sqid: str) -> models.User:
     return user
 
 
-def protect_owner(user: models.User) -> None:
-    """Raise 403 if target user is the site owner."""
-    if "owner" in user.roles:
+def protect_owner(target: models.User, actor: models.User) -> None:
+    """Raise 403 if target is owner and actor is not the owner themselves."""
+    if "owner" in target.roles and target.id != actor.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot manage the site owner",
@@ -65,7 +65,7 @@ def get_umd_user_data(
     Cannot be used on the site owner.
     """
     user = get_user_by_sqid_or_404(db, sqid)
-    protect_owner(user)
+    protect_owner(user, moderator)
 
     # Load badges
     badges = db.query(models.BadgeGrant).filter(models.BadgeGrant.user_id == user.id).all()
@@ -105,7 +105,7 @@ def adjust_reputation(
     Reason must be at least 8 characters.
     """
     user = get_user_by_sqid_or_404(db, sqid)
-    protect_owner(user)
+    protect_owner(user, moderator)
 
     # Apply reputation change
     user.reputation = user.reputation + payload.delta
@@ -159,7 +159,7 @@ def grant_badge(
 ) -> dict:
     """Grant badge to user (moderator only)."""
     user = get_user_by_sqid_or_404(db, sqid)
-    protect_owner(user)
+    protect_owner(user, moderator)
 
     # Check badge exists
     badge_def = db.query(models.BadgeDefinition).filter(models.BadgeDefinition.badge == badge).first()
@@ -202,7 +202,7 @@ def revoke_badge(
 ) -> None:
     """Revoke badge from user (moderator only)."""
     user = get_user_by_sqid_or_404(db, sqid)
-    protect_owner(user)
+    protect_owner(user, moderator)
 
     # Find existing badge grant
     grant = db.query(models.BadgeGrant).filter(
@@ -238,11 +238,11 @@ def get_user_comments(
     cursor: str | None = None,
     limit: int = Query(10, ge=1, le=50),
     db: Session = Depends(get_db),
-    _moderator: models.User = Depends(require_moderator),
+    moderator: models.User = Depends(require_moderator),
 ) -> schemas.UMDCommentsResponse:
     """Get user's comments for moderation (moderator only)."""
     user = get_user_by_sqid_or_404(db, sqid)
-    protect_owner(user)
+    protect_owner(user, moderator)
 
     # Count total
     total = db.query(models.Comment).filter(models.Comment.author_id == user.id).count()
@@ -369,11 +369,11 @@ def get_user_violations(
     cursor: str | None = None,
     limit: int = Query(5, ge=1, le=50),
     db: Session = Depends(get_db),
-    _moderator: models.User = Depends(require_moderator),
+    moderator: models.User = Depends(require_moderator),
 ) -> schemas.ViolationsResponse:
     """Get user's violations (moderator only)."""
     user = get_user_by_sqid_or_404(db, sqid)
-    protect_owner(user)
+    protect_owner(user, moderator)
 
     # Count total
     total = db.query(models.Violation).filter(models.Violation.user_id == user.id).count()
@@ -416,7 +416,7 @@ def issue_violation(
 ) -> dict:
     """Issue violation to user (moderator only)."""
     user = get_user_by_sqid_or_404(db, sqid)
-    protect_owner(user)
+    protect_owner(user, moderator)
 
     # Create violation
     violation = models.Violation(
@@ -482,7 +482,7 @@ def trust_user(
 ) -> dict:
     """Trust user - grant auto_public_approval (moderator only)."""
     user = get_user_by_sqid_or_404(db, sqid)
-    protect_owner(user)
+    protect_owner(user, moderator)
 
     user.auto_public_approval = True
     db.commit()
@@ -507,7 +507,7 @@ def distrust_user(
 ) -> None:
     """Distrust user - revoke auto_public_approval (moderator only)."""
     user = get_user_by_sqid_or_404(db, sqid)
-    protect_owner(user)
+    protect_owner(user, moderator)
 
     user.auto_public_approval = False
     db.commit()
@@ -530,7 +530,7 @@ def hide_user(
 ) -> dict:
     """Hide user profile (moderator only)."""
     user = get_user_by_sqid_or_404(db, sqid)
-    protect_owner(user)
+    protect_owner(user, moderator)
 
     user.hidden_by_mod = True
     db.commit()
@@ -555,7 +555,7 @@ def unhide_user(
 ) -> None:
     """Unhide user profile (moderator only)."""
     user = get_user_by_sqid_or_404(db, sqid)
-    protect_owner(user)
+    protect_owner(user, moderator)
 
     user.hidden_by_mod = False
     db.commit()
@@ -579,7 +579,7 @@ def ban_user(
 ) -> dict:
     """Ban user (moderator only). No duration = permanent ban."""
     user = get_user_by_sqid_or_404(db, sqid)
-    protect_owner(user)
+    protect_owner(user, moderator)
 
     until = None
     if duration_days:
@@ -609,7 +609,7 @@ def unban_user(
 ) -> None:
     """Unban user (moderator only)."""
     user = get_user_by_sqid_or_404(db, sqid)
-    protect_owner(user)
+    protect_owner(user, moderator)
 
     user.banned_until = None
     db.commit()
@@ -636,7 +636,7 @@ def reveal_email(
     This action is logged to the audit log.
     """
     user = get_user_by_sqid_or_404(db, sqid)
-    protect_owner(user)
+    protect_owner(user, moderator)
 
     # Log to audit before revealing
     log_moderation_action(

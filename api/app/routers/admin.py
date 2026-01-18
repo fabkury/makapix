@@ -51,6 +51,13 @@ def ban_user(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
 
+    # Block if target is owner AND actor is not the target
+    if "owner" in user.roles and user.id != moderator.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot manage the site owner",
+        )
+
     until = None
     if payload.duration_days:
         until = datetime.now(timezone.utc) + timedelta(days=payload.duration_days)
@@ -86,6 +93,13 @@ def unban_user(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
+    # Block if target is owner AND actor is not the target
+    if "owner" in user.roles and user.id != moderator.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot manage the site owner",
         )
 
     user.banned_until = None
@@ -230,6 +244,13 @@ def hide_user(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
 
+    # Block if target is owner AND actor is not the target
+    if "owner" in user.roles and user.id != moderator.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot manage the site owner",
+        )
+
     user.hidden_by_mod = True
     db.commit()
 
@@ -257,6 +278,13 @@ def unhide_user(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
+    # Block if target is owner AND actor is not the target
+    if "owner" in user.roles and user.id != moderator.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot manage the site owner",
         )
 
     user.hidden_by_mod = False
@@ -296,6 +324,13 @@ def grant_auto_approval(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
 
+    # Block if target is owner AND actor is not the target
+    if "owner" in user.roles and user.id != moderator.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot manage the site owner",
+        )
+
     user.auto_public_approval = True
     db.commit()
 
@@ -331,6 +366,13 @@ def revoke_auto_approval(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
+    # Block if target is owner AND actor is not the target
+    if "owner" in user.roles and user.id != moderator.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot manage the site owner",
         )
 
     user.auto_public_approval = False

@@ -36,8 +36,9 @@ export default function PostManagementDashboard() {
   const [currentPage, setCurrentPage] = useState(0);
   const itemsPerPage = 16;
 
-  // Auth check - redirect if not own profile
+  // Auth check - redirect if not own profile or not moderator
   const [isOwnProfile, setIsOwnProfile] = useState<boolean | null>(null);
+  const [targetSqid, setTargetSqid] = useState<string | null>(null);  // For moderator cross-user access
   const [error, setError] = useState<string | null>(null);
 
   const API_BASE_URL = useMemo(
@@ -58,10 +59,33 @@ export default function PostManagementDashboard() {
         if (meResponse.ok) {
           const meData = await meResponse.json();
           const userSqid = meData.user?.public_sqid;
-          setIsOwnProfile(userSqid === sqid);
+          const roles = meData.roles || [];
+          const viewerIsModerator = roles.includes('moderator') || roles.includes('owner');
 
-          if (userSqid !== sqid) {
-            // Not own profile - redirect back
+          if (userSqid === sqid) {
+            // Own profile
+            setIsOwnProfile(true);
+            setTargetSqid(null);
+          } else if (viewerIsModerator) {
+            // Moderator viewing another user - check if target is owner
+            const profileResponse = await authenticatedFetch(`${API_BASE_URL}/api/user/u/${sqid}/profile`);
+            if (!profileResponse.ok) {
+              router.push(`/u/${sqid}`);
+              return;
+            }
+            const profileData = await profileResponse.json();
+            const targetIsOwner = profileData.badges?.some((b: { badge: string }) => b.badge === 'owner');
+
+            if (targetIsOwner) {
+              // Cannot access owner's PMD
+              router.push(`/u/${sqid}`);
+              return;
+            }
+
+            setIsOwnProfile(false);
+            setTargetSqid(sqid as string);  // Store for API calls
+          } else {
+            // Not own profile and not moderator
             router.push(`/u/${sqid}`);
           }
         } else {
@@ -87,6 +111,7 @@ export default function PostManagementDashboard() {
       try {
         const params = new URLSearchParams({ limit: '512' });
         if (cursor) params.append('cursor', cursor);
+        if (targetSqid) params.append('target_sqid', targetSqid);
 
         const response = await authenticatedFetch(
           `${API_BASE_URL}/api/pmd/posts?${params}`
@@ -120,13 +145,16 @@ export default function PostManagementDashboard() {
         setLoadingMore(false);
       }
     },
-    [API_BASE_URL]
+    [API_BASE_URL, targetSqid]
   );
 
   // Load BDRs
   const loadBDRs = useCallback(async () => {
     try {
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/pmd/bdr`);
+      const url = targetSqid
+        ? `${API_BASE_URL}/api/pmd/bdr?target_sqid=${encodeURIComponent(targetSqid)}`
+        : `${API_BASE_URL}/api/pmd/bdr`;
+      const response = await authenticatedFetch(url);
       if (response.ok) {
         const data = await response.json();
         setBdrs(data.items);
@@ -134,15 +162,15 @@ export default function PostManagementDashboard() {
     } catch (err) {
       console.error('Error loading BDRs:', err);
     }
-  }, [API_BASE_URL]);
+  }, [API_BASE_URL, targetSqid]);
 
   // Initial load
   useEffect(() => {
-    if (isOwnProfile) {
+    if (isOwnProfile === true || targetSqid !== null) {
       loadPosts();
       loadBDRs();
     }
-  }, [isOwnProfile, loadPosts, loadBDRs]);
+  }, [isOwnProfile, targetSqid, loadPosts, loadBDRs]);
 
   // SSE for BDR updates
   const handleBDRUpdate = useCallback((updatedBdr: BDRItem) => {
@@ -164,7 +192,8 @@ export default function PostManagementDashboard() {
   }, []);
 
   usePMDSSE({
-    enabled: isOwnProfile === true,
+    enabled: isOwnProfile === true || targetSqid !== null,
+    targetSqid: targetSqid,
     onBDRUpdate: handleBDRUpdate,
   });
 
@@ -189,7 +218,10 @@ export default function PostManagementDashboard() {
             console.log(`Processing batch ${i + 1} of ${chunks.length}...`);
           }
 
-          const response = await authenticatedFetch(`${API_BASE_URL}/api/pmd/action`, {
+          const url = targetSqid
+            ? `${API_BASE_URL}/api/pmd/action?target_sqid=${encodeURIComponent(targetSqid)}`
+            : `${API_BASE_URL}/api/pmd/action`;
+          const response = await authenticatedFetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action, post_ids: chunk }),
@@ -229,7 +261,7 @@ export default function PostManagementDashboard() {
         setActionLoading(false);
       }
     },
-    [API_BASE_URL]
+    [API_BASE_URL, targetSqid]
   );
 
   // Single post hide/unhide toggle
@@ -241,7 +273,10 @@ export default function PostManagementDashboard() {
       const action = post.hidden_by_user ? 'unhide' : 'hide';
 
       try {
-        const response = await authenticatedFetch(`${API_BASE_URL}/api/pmd/action`, {
+        const url = targetSqid
+          ? `${API_BASE_URL}/api/pmd/action?target_sqid=${encodeURIComponent(targetSqid)}`
+          : `${API_BASE_URL}/api/pmd/action`;
+        const response = await authenticatedFetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action, post_ids: [postId] }),
@@ -263,14 +298,17 @@ export default function PostManagementDashboard() {
         alert(err instanceof Error ? err.message : 'Action failed');
       }
     },
-    [API_BASE_URL, posts]
+    [API_BASE_URL, posts, targetSqid]
   );
 
   // Single post delete
   const handleDeleteSingle = useCallback(
     async (postId: number) => {
       try {
-        const response = await authenticatedFetch(`${API_BASE_URL}/api/pmd/action`, {
+        const url = targetSqid
+          ? `${API_BASE_URL}/api/pmd/action?target_sqid=${encodeURIComponent(targetSqid)}`
+          : `${API_BASE_URL}/api/pmd/action`;
+        const response = await authenticatedFetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'delete', post_ids: [postId] }),
@@ -294,7 +332,7 @@ export default function PostManagementDashboard() {
         alert(err instanceof Error ? err.message : 'Action failed');
       }
     },
-    [API_BASE_URL]
+    [API_BASE_URL, targetSqid]
   );
 
   // BDR request handler
@@ -307,7 +345,10 @@ export default function PostManagementDashboard() {
       setActionLoading(true);
 
       try {
-        const response = await authenticatedFetch(`${API_BASE_URL}/api/pmd/bdr`, {
+        const url = targetSqid
+          ? `${API_BASE_URL}/api/pmd/bdr?target_sqid=${encodeURIComponent(targetSqid)}`
+          : `${API_BASE_URL}/api/pmd/bdr`;
+        const response = await authenticatedFetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -346,11 +387,11 @@ export default function PostManagementDashboard() {
         setActionLoading(false);
       }
     },
-    [API_BASE_URL]
+    [API_BASE_URL, targetSqid]
   );
 
-  // Loading state
-  if (loading || isOwnProfile === null) {
+  // Loading state - wait for auth check to complete
+  if (loading || (isOwnProfile === null && targetSqid === null)) {
     return (
       <Layout title="Post Management">
         <div className="loading-container">
@@ -413,14 +454,16 @@ export default function PostManagementDashboard() {
     );
   }
 
+  const pageTitle = targetSqid ? `PMD - ${sqid}` : 'Post Management Dashboard';
+
   return (
-    <Layout title="Post Management Dashboard">
+    <Layout title={pageTitle}>
       <div className="pmd-container">
         <div className="pmd-header">
           <Link href={`/u/${sqid}`} className="back-link">
             &#8592; Back to Profile
           </Link>
-          <h1>Post Management Dashboard</h1>
+          <h1>{targetSqid ? `Post Management Dashboard - ${sqid}` : 'Post Management Dashboard'}</h1>
           <p className="total-count">{totalCount} total posts</p>
         </div>
 

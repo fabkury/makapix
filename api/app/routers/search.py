@@ -6,6 +6,7 @@ import logging
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, or_
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
@@ -74,6 +75,7 @@ def search_all(
             models.User.non_conformant == False,
             models.User.deactivated == False,
             models.User.email_verified == True,
+            ~models.User.roles.cast(JSONB).contains(["owner"]),  # Always hide owner from search
         )
 
         # Apply cursor pagination (using similarity as sort field)

@@ -60,6 +60,7 @@ interface Comment {
 interface WidgetData {
   reactions: ReactionTotals;
   comments: Comment[];
+  views_count: number;
 }
 
 function getVisualViewportBox(): { x: number; y: number; width: number; height: number } {
@@ -253,6 +254,16 @@ const postCommentCountStyles: React.CSSProperties = {
   color: '#e8e8f0',
 };
 
+const postViewCountStyles: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '2px',
+  fontFamily: "'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  fontSize: '14px',
+  fontWeight: 500,
+  color: '#e8e8f0',
+};
+
 const metaAreaStyles: React.CSSProperties = {
   position: 'fixed',
   left: 0,
@@ -367,6 +378,16 @@ export default function SelectedPostOverlay({
   const [hasPlayerBar, setHasPlayerBar] = useState(false);
   const [pressing, setPressing] = useState(false);
   const [likeBurstKey, setLikeBurstKey] = useState(0);
+
+  // Reset like burst after 3 seconds
+  useEffect(() => {
+    if (likeBurstKey === 0) return;
+    const timer = setTimeout(() => {
+      setLikeBurstKey(0);
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [likeBurstKey]);
+
   const [targetRect, setTargetRect] = useState(() => computeSelectedTargetRect());
   const [headerPosition, setHeaderPosition] = useState(() => computePostHeaderPosition());
   const [metaAreaPosition, setMetaAreaPosition] = useState(() => computeMetaAreaPosition());
@@ -535,17 +556,6 @@ export default function SelectedPostOverlay({
       void backdropControls.start({
         opacity: 0.62,
         transition: reduceMotion ? { duration: 0 } : { duration: 0.38, ease: [0.22, 1, 0.36, 1] },
-      });
-
-      // Animate header sliding in from above viewport
-      const headerPos = computePostHeaderPosition();
-      void backdropControls.start({
-        x: headerPos.x,
-        y: headerPos.y,
-        opacity: 1,
-        transition: reduceMotion
-          ? { duration: 0 }
-          : { type: 'spring', stiffness: 400, damping: 35, mass: 0.8 },
       });
 
       // Animate meta area fading in
@@ -724,7 +734,15 @@ export default function SelectedPostOverlay({
       // If we're unmounting but NOT due to popstate or navigation away,
       // we need to clean up the history entry we pushed
       if (!closedByPopstateRef.current && !navigatingAwayRef.current) {
+        // Temporarily disable scroll restoration to prevent browser from
+        // resetting scroll position when we call history.back()
+        const prevScrollRestoration = history.scrollRestoration;
+        history.scrollRestoration = 'manual';
         history.back();
+        // Re-enable after browser processes the history change
+        queueMicrotask(() => {
+          history.scrollRestoration = prevScrollRestoration;
+        });
       }
     };
   }, []);
@@ -1041,6 +1059,10 @@ export default function SelectedPostOverlay({
                   <span style={{ fontSize: '16px', marginRight: '-2px' }}>💬</span>
                   <span>{totalComments}</span>
                 </div>
+                <div style={postViewCountStyles}>
+                  <span style={{ fontSize: '16px', marginRight: '-2px' }}>👁</span>
+                  <span>{widgetData?.views_count ?? 0}</span>
+                </div>
               </motion.div>
             )}
           </motion.div>
@@ -1228,7 +1250,7 @@ export default function SelectedPostOverlay({
               animate={{
                 opacity: 1,
                 scale: 1,
-                y: -8,
+                y: 0,
                 transition: reduceMotion
                   ? { duration: 0 }
                   : { type: 'spring', stiffness: 640, damping: 32, mass: 0.35 },

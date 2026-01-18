@@ -1,6 +1,6 @@
 /**
  * OwnerPanel component - displays management buttons for the profile owner.
- * Only visible when viewing own profile.
+ * Only visible when viewing own profile or for moderators viewing others.
  */
 
 import Link from 'next/link';
@@ -10,10 +10,22 @@ import { useRouter } from 'next/router';
 interface OwnerPanelProps {
   userSqid: string;
   onEditClick?: () => void;
+  isOwner: boolean;           // true = viewing own profile
+  isModerator?: boolean;      // viewer is moderator
+  isTargetOwner?: boolean;    // target user has owner badge
 }
 
-export default function OwnerPanel({ userSqid, onEditClick }: OwnerPanelProps) {
+export default function OwnerPanel({
+  userSqid,
+  onEditClick,
+  isOwner,
+  isModerator = false,
+  isTargetOwner = false,
+}: OwnerPanelProps) {
   const router = useRouter();
+
+  // Show PMD button if: own profile OR (moderator AND NOT target is owner)
+  const showPMD = isOwner || (isModerator && !isTargetOwner);
 
   const handleLogout = async () => {
     if (window.confirm('Are you sure you want to log out?')) {
@@ -31,35 +43,43 @@ export default function OwnerPanel({ userSqid, onEditClick }: OwnerPanelProps) {
       >
         📊
       </Link>
-      <Link
-        href={`/u/${userSqid}/posts`}
-        className="panel-btn"
-        title="Post Management Dashboard"
-      >
-        🗂️
-      </Link>
-      <Link
-        href={`/u/${userSqid}/player`}
-        className="panel-btn"
-        title="Manage Players"
-      >
-        📺
-      </Link>
-      <div className="spacer" />
-      <button
-        className="panel-btn"
-        onClick={onEditClick}
-        title="Edit Profile"
-      >
-        ✏️
-      </button>
-      <button
-        className="panel-btn logout"
-        onClick={handleLogout}
-        title="Log Out"
-      >
-        🚪
-      </button>
+      {/* PMD button - shown for own profile or moderators (except for site owner's profile) */}
+      {showPMD && (
+        <Link
+          href={`/u/${userSqid}/posts`}
+          className="panel-btn"
+          title="Post Management Dashboard"
+        >
+          🗂️
+        </Link>
+      )}
+      {/* Rest of owner-only buttons */}
+      {isOwner && (
+        <>
+          <Link
+            href={`/u/${userSqid}/player`}
+            className="panel-btn"
+            title="Manage Players"
+          >
+            📺
+          </Link>
+          <div className="spacer" />
+          <button
+            className="panel-btn"
+            onClick={onEditClick}
+            title="Edit Profile"
+          >
+            ✏️
+          </button>
+          <button
+            className="panel-btn logout"
+            onClick={handleLogout}
+            title="Log Out"
+          >
+            🚪
+          </button>
+        </>
+      )}
 
       <style jsx>{`
         .owner-panel {

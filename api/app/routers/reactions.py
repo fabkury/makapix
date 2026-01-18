@@ -314,8 +314,15 @@ def get_widget_data(
             valid_comments.append(comment)
     
     comments = [schemas.Comment.model_validate(c) for c in valid_comments]
-    
+
+    # ===== VIEWS COUNT =====
+    # Sum total_views from PostStatsDaily for this post
+    views_count = db.query(func.coalesce(func.sum(models.PostStatsDaily.total_views), 0)).filter(
+        models.PostStatsDaily.post_id == id
+    ).scalar() or 0
+
     return schemas.WidgetData(
         reactions=reactions,
         comments=comments,
+        views_count=views_count,
     )

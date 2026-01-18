@@ -71,7 +71,7 @@ export default function CollapsiblePanel({ title, children, defaultOpen = false 
           transform: rotate(180deg);
         }
         .panel-content {
-          padding: 0 16px 16px;
+          padding: 16px;
         }
       `}</style>
     </div>

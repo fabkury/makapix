@@ -635,6 +635,7 @@ class WidgetData(BaseModel):
 
     reactions: ReactionTotals
     comments: list["Comment"]
+    views_count: int = 0
 
 
 # ============================================================================
