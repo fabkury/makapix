@@ -1559,6 +1559,12 @@ export default function UserProfilePage() {
           /* Keep CardGrid glow under the blog posts panel */
           position: relative;
           z-index: 1;
+          /* Break out of profile-container to use full viewport width */
+          left: 50%;
+          right: 50%;
+          width: 100vw;
+          margin-left: -50vw;
+          margin-right: -50vw;
         }
 
         .empty-state {
