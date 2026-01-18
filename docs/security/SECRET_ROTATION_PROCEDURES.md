@@ -57,11 +57,13 @@ Secret rotation is a critical security practice that limits the exposure window 
 | Database Admin Password | 90 days | High | ⚠️ Manual |
 | Database Worker Password | 90 days | High | ⚠️ Manual |
 | MQTT Backend Password | 90 days | High | ⚠️ Manual |
+| MQTT Webclient Password | 90 days | Medium | ⚠️ Manual (code change) |
 | MQTT Player Passwords | Per-device lifecycle | Medium | ✅ Automatic |
 | TLS Certificates | 365 days (auto-renewal at 30 days) | High | ✅ Automatic |
 | OAuth Client Secret | 180 days | Medium | ⚠️ Manual |
 | GitHub App Private Key | 365 days | Medium | ⚠️ Manual |
 | Admin Account Password | 90 days | Critical | ⚠️ Manual |
+| Resend API Key | 180 days | Medium | ⚠️ Manual |
 
 ### Calendar
 
@@ -106,6 +108,11 @@ GITHUB_APP_PRIVATE_KEY=<SECRET>
 # Admin account
 MAKAPIX_ADMIN_USER=admin
 MAKAPIX_ADMIN_PASSWORD=<SECRET>
+
+# Email service (Resend)
+RESEND_API_KEY=<SECRET>
+RESEND_FROM_EMAIL=noreply@notification.makapix.club
+BASE_URL=https://dev.makapix.club
 ```
 
 ### File-Based Secrets
@@ -113,6 +120,14 @@ MAKAPIX_ADMIN_PASSWORD=<SECRET>
 - **MQTT Password File:** `/opt/makapix/mqtt/config/passwords`
 - **TLS Certificates:** `/opt/makapix/mqtt/certs/` (ca.key, ca.crt, server.key, server.crt)
 - **CRL File:** `/opt/makapix/mqtt/certs/crl.pem`
+
+### Hardcoded Values (Require Code Changes)
+
+- **MQTT Webclient Credentials:** `web/src/lib/mqtt-client.ts` (username: "webclient", password: "webclient")
+
+### Critical Configuration (DO NOT ROTATE)
+
+- **SQIDS_ALPHABET:** Defined in `.env` - changing this value will break ALL existing canonical URLs for posts and users. This is NOT a secret but must remain stable after go-live.
 
 ---
 
@@ -182,41 +197,50 @@ Rotating database credentials requires coordinating PostgreSQL user changes with
 #### Procedure - Admin Password
 
 ```bash
-# 1. Generate new password
+# 1. Get current admin username from .env
+cd /opt/makapix/deploy/stack
+source .env
+echo "Current admin user: $DB_ADMIN_USER"
+
+# 2. Generate new password
 NEW_ADMIN_PASS=$(openssl rand -base64 24 | tr -d "=+/" | cut -c1-24)
 echo "New admin password: $NEW_ADMIN_PASS"
 
-# 2. Update PostgreSQL password
-docker compose exec db psql -U postgres_admin -d makapix -c \
-  "ALTER USER postgres_admin WITH PASSWORD '$NEW_ADMIN_PASS';"
+# 3. Update PostgreSQL password (use current user from .env)
+docker compose exec db psql -U "$DB_ADMIN_USER" -d "$DB_DATABASE" -c \
+  "ALTER USER $DB_ADMIN_USER WITH PASSWORD '$NEW_ADMIN_PASS';"
 
-# 3. Update .env file
-cd /opt/makapix/deploy/stack
+# 4. Update .env file
 sed -i "s/DB_ADMIN_PASSWORD=.*/DB_ADMIN_PASSWORD=$NEW_ADMIN_PASS/" .env
 
-# 4. Test connection
-docker compose exec db psql -U postgres_admin -d makapix -c "SELECT 1;"
+# 5. Test connection
+docker compose exec db psql -U "$DB_ADMIN_USER" -d "$DB_DATABASE" -c "SELECT 1;"
 ```
 
 #### Procedure - Worker Password
 
 ```bash
-# 1. Generate new password
+# 1. Get current usernames from .env
+cd /opt/makapix/deploy/stack
+source .env
+echo "Admin user: $DB_ADMIN_USER"
+echo "Worker user: $DB_API_WORKER_USER"
+
+# 2. Generate new password
 NEW_WORKER_PASS=$(openssl rand -base64 24 | tr -d "=+/" | cut -c1-24)
 echo "New worker password: $NEW_WORKER_PASS"
 
-# 2. Update PostgreSQL password
-docker compose exec db psql -U postgres_admin -d makapix -c \
-  "ALTER USER api_worker WITH PASSWORD '$NEW_WORKER_PASS';"
+# 3. Update PostgreSQL password (using admin user to alter worker user)
+docker compose exec db psql -U "$DB_ADMIN_USER" -d "$DB_DATABASE" -c \
+  "ALTER USER $DB_API_WORKER_USER WITH PASSWORD '$NEW_WORKER_PASS';"
 
-# 3. Update .env file
-cd /opt/makapix/deploy/stack
+# 4. Update .env file
 sed -i "s/DB_API_WORKER_PASSWORD=.*/DB_API_WORKER_PASSWORD=$NEW_WORKER_PASS/" .env
 
-# 4. Restart services that use database
+# 5. Restart services that use database
 docker compose restart api worker
 
-# 5. Verify database connectivity
+# 6. Verify database connectivity
 docker compose logs -f api --tail=50
 docker compose exec api python -c "from app.database import engine; print(engine.connect())"
 ```
@@ -262,31 +286,48 @@ docker compose logs -f api --tail=20 | grep -i mqtt
 
 #### Procedure - Web Client Password
 
+**⚠️ WARNING: This requires a code change and frontend rebuild.**
+
 ```bash
-# 1. Generate new password (or keep hardcoded for simplicity)
+# 1. Generate new password
 NEW_WEBCLIENT_PASS=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
 echo "New webclient password: $NEW_WEBCLIENT_PASS"
 
-# 2. Update password file
+# 2. Update MQTT password file
 cd /opt/makapix/mqtt/config
 mosquitto_passwd -b passwords webclient "$NEW_WEBCLIENT_PASS"
 
-# 3. Update web application configuration
-# Edit web/src/contexts/MqttContext.tsx or equivalent
-# Update the MQTT connection credentials
+# 3. Update web application source code
+# Edit: web/src/lib/mqtt-client.ts
+# Find the connect() method and update the credentials:
+#
+#   const options: IClientOptions = {
+#     ...
+#     username: "webclient",
+#     password: "YOUR_NEW_PASSWORD_HERE",  # <-- Update this line
+#     ...
+#   };
+#
 
-# 4. Rebuild and restart web service
+# 4. Commit the code change (if desired)
+cd /opt/makapix
+git add web/src/lib/mqtt-client.ts
+git commit -m "security: rotate MQTT webclient password"
+
+# 5. Rebuild and restart web service
 cd /opt/makapix/deploy/stack
 docker compose build --no-cache web
 docker compose restart web mqtt
 
-# 5. Test web MQTT connection
-# Open browser, connect to https://dev.makapix.club
-# Check browser console for MQTT connection status
+# 6. Test web MQTT connection
+# Open browser: https://dev.makapix.club
+# Open DevTools > Console, look for "[MQTT] Client connected"
+# Should see no connection errors
 ```
 
 #### Notes
-- **Web client password rotation requires code changes** (currently hardcoded)
+- **Web client password is hardcoded in `web/src/lib/mqtt-client.ts`** - requires code change
+- This is a known security issue (H1 in security audit) - consider per-session credentials
 - Player passwords rotate automatically on device registration
 - Backend password is most critical - rotate quarterly
 
@@ -608,7 +649,49 @@ print('Redis connection successful')
 
 ---
 
-### 9. Caddy Admin API (Optional)
+### 9. Resend API Key
+
+The Resend API key is used for all transactional emails (registration, password reset, download notifications).
+
+#### Impact Analysis
+- **Downtime:** None
+- **User Impact:** Email sending paused during update (~1 minute)
+- **Duration:** ~2 minutes
+
+#### Procedure
+
+```bash
+# 1. Generate new API key in Resend dashboard
+# Go to: https://resend.com/api-keys
+# Click "Create API Key"
+# Copy the new key (shown only once)
+
+NEW_RESEND_KEY="re_your_new_key_here"
+
+# 2. Update .env file
+cd /opt/makapix/deploy/stack
+sed -i "s/RESEND_API_KEY=.*/RESEND_API_KEY=$NEW_RESEND_KEY/" .env
+
+# 3. Restart API service
+docker compose restart api
+
+# 4. Test email sending (trigger a password reset request)
+# Go to https://dev.makapix.club/forgot-password
+# Enter a test email and verify email is received
+
+# 5. Delete old API key in Resend dashboard
+# Go back to Resend API Keys page
+# Click "Delete" on the old key
+```
+
+#### Notes
+- API keys can coexist during transition
+- Test email delivery before deleting old key
+- Monitor for email delivery failures in logs
+
+---
+
+### 10. Caddy Admin API (Optional)
 
 Caddy's admin API is exposed on localhost only. To add authentication:
 
@@ -804,6 +887,32 @@ Store rotation logs in:
 Use this checklist for routine rotation:
 
 ```markdown
+### Pre-Production (Go-Live) Rotation Checklist
+
+Complete this checklist BEFORE launching:
+
+- [ ] Backup current .env file
+- [ ] Generate new JWT secret (JWT_SECRET_KEY)
+- [ ] Rotate database admin password (DB_ADMIN_PASSWORD)
+- [ ] Rotate database worker password (DB_API_WORKER_PASSWORD)
+- [ ] Rotate MQTT backend password (MQTT_PASSWORD)
+- [ ] Rotate MQTT webclient password (code change + password file)
+- [ ] Rotate admin account password (MAKAPIX_ADMIN_PASSWORD)
+- [ ] Rotate GitHub OAuth client secret (GITHUB_OAUTH_CLIENT_SECRET)
+- [ ] Rotate GitHub App private key (GITHUB_APP_PRIVATE_KEY)
+- [ ] Rotate Resend API key (RESEND_API_KEY)
+- [ ] Regenerate TLS certificates for MQTT (optional but recommended)
+- [ ] Update .env file with all new secrets
+- [ ] Rebuild web service (for webclient password change)
+- [ ] Restart all affected services
+- [ ] Verify service health
+- [ ] Test user authentication (password + OAuth)
+- [ ] Test email delivery (registration/password reset)
+- [ ] Test MQTT connectivity (web + backend)
+- [ ] Document in audit log
+- [ ] Store all secrets in password manager
+- [ ] Delete old secrets from external services (GitHub, Resend)
+
 ### Quarterly Rotation Checklist (Every 90 Days)
 
 - [ ] Backup current .env file

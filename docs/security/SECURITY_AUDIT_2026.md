@@ -325,7 +325,8 @@ Eclipse Mosquitto 2.0 with three security layers:
 - **Impact:** High - But limited by read-only ACLs
 - **Mitigation:** ACLs prevent webclient from publishing
 - **Recommendation:** Generate unique passwords per web session
-- **Current:** Hardcoded "webclient" password for all browser clients
+- **Current:** Hardcoded in `web/src/lib/mqtt-client.ts` (username: "webclient", password: "webclient")
+- **Location:** `/opt/makapix/web/src/lib/mqtt-client.ts` line ~83-84
 
 **[M2] MQTT certificates have 365-day validity**
 - **Risk:** Long validity period extends compromise window
@@ -392,11 +393,13 @@ Data protection follows privacy-by-design principles with proper encryption and 
 | Database Admin | `DB_ADMIN_PASSWORD` env var | Environment | ⚠️ Manual |
 | Database Worker | `DB_API_WORKER_PASSWORD` env var | Environment | ⚠️ Manual |
 | MQTT Backend | `MQTT_PASSWORD` env var | Mosquitto password file | ⚠️ Manual |
+| MQTT Webclient | `web/src/lib/mqtt-client.ts` | Hardcoded in source | ⚠️ Manual (code change) |
 | MQTT Players | Generated per player | Mosquitto password file | ✅ Per-player |
 | TLS Certificates | `/mqtt/certs/` directory | Filesystem | ✅ 365-day auto-renewal |
 | OAuth Client Secret | `GITHUB_OAUTH_CLIENT_SECRET` env var | Environment | ⚠️ Manual |
 | GitHub App Key | `GITHUB_APP_PRIVATE_KEY` env var | Environment | ⚠️ Manual |
 | Admin Account | `MAKAPIX_ADMIN_PASSWORD` env var | Bcrypt in database | ⚠️ Manual |
+| Resend API Key | `RESEND_API_KEY` env var | Environment | ⚠️ Manual |
 
 ### ✅ Security Strengths
 

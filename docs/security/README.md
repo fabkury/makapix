@@ -69,12 +69,16 @@ Step-by-step procedures for rotating all secrets used in the platform:
 - `GITHUB_OAUTH_CLIENT_SECRET` - OAuth client secret (rotate every 180 days)
 - `GITHUB_APP_PRIVATE_KEY` - GitHub App private key (rotate every 365 days)
 - `MAKAPIX_ADMIN_PASSWORD` - Admin account password (rotate every 90 days)
+- `RESEND_API_KEY` - Email service API key (rotate every 180 days)
 
 ### File-Based Secrets
 - `/mqtt/config/passwords` - MQTT password file (bcrypt hashed)
 - `/mqtt/certs/ca.key` - MQTT CA private key (365-day validity)
 - `/mqtt/certs/server.key` - MQTT server private key (365-day validity)
 - `/mqtt/certs/crl.pem` - Certificate revocation list (30-day validity)
+
+### Hardcoded Secrets (Require Code Changes)
+- `web/src/lib/mqtt-client.ts` - MQTT webclient credentials (see rotation procedures)
 
 ## Security Best Practices
 

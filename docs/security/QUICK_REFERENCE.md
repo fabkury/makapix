@@ -15,8 +15,12 @@
 |--------|----------|----------|
 | JWT Key | `/opt/makapix/deploy/stack/.env` | 90 days |
 | DB Passwords | `/opt/makapix/deploy/stack/.env` | 90 days |
-| MQTT Passwords | `/opt/makapix/mqtt/config/passwords` | 90 days |
+| MQTT Backend | `/opt/makapix/deploy/stack/.env` + `/opt/makapix/mqtt/config/passwords` | 90 days |
+| MQTT Webclient | `/opt/makapix/mqtt/config/passwords` + `web/src/lib/mqtt-client.ts` | 90 days |
 | Admin Password | `/opt/makapix/deploy/stack/.env` | 90 days |
+| OAuth Secrets | `/opt/makapix/deploy/stack/.env` | 180 days |
+| GitHub App Key | `/opt/makapix/deploy/stack/.env` | 365 days |
+| Resend API Key | `/opt/makapix/deploy/stack/.env` | 180 days |
 
 ## Quick Commands
 
@@ -185,11 +189,15 @@ openssl x509 -in /opt/makapix/mqtt/certs/server.crt -noout -dates
 
 ## Security Checklist (Pre-Production)
 
-- [ ] All secrets rotated from default values
+- [ ] All secrets rotated from default/development values
 - [ ] JWT_SECRET_KEY is 32+ random characters
 - [ ] Database uses strong passwords (24+ chars)
-- [ ] MQTT passwords are not default/hardcoded
+- [ ] MQTT backend password rotated (MQTT_PASSWORD)
+- [ ] MQTT webclient password rotated (code + password file)
 - [ ] Admin password is strong and unique
+- [ ] GitHub OAuth client secret rotated
+- [ ] GitHub App private key rotated
+- [ ] Resend API key configured and rotated
 - [ ] CORS_ORIGINS does not contain "*"
 - [ ] HTTPS enabled with valid certificates
 - [ ] All services have health checks
@@ -197,6 +205,7 @@ openssl x509 -in /opt/makapix/mqtt/certs/server.crt -noout -dates
 - [ ] Backups are configured
 - [ ] Security audit reviewed and issues addressed
 - [ ] Secret rotation schedule documented
+- [ ] All old secrets deleted from external services (GitHub, Resend)
 
 ## Useful Monitoring Commands
 
