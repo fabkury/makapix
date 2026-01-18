@@ -142,6 +142,7 @@ class UserFull(UserPublic):
     auto_public_approval: bool = (
         False  # Privilege to auto-approve public visibility for uploads
     )
+    approved_hashtags: list[str] = Field(default_factory=list)
 
 
 class UserCreate(BaseModel):
@@ -161,6 +162,7 @@ class UserUpdate(BaseModel):
     website: str | None = Field(None, max_length=500)
     avatar_url: str | None = None
     hidden_by_user: bool | None = None
+    approved_hashtags: list[str] | None = None
 
 
 class ConformanceStatus(BaseModel):

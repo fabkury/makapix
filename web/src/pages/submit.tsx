@@ -718,6 +718,12 @@ function SubmitPageContent() {
                 <Link href="/size_rules" className="size-rules-link">See size rules</Link>
               </div>
 
+              <div className="monitored-hashtags-link-container">
+                <Link href="/about?tab=rules#monitored-hashtags" className="monitored-hashtags-link">
+                  See mandatory monitored hashtags rules
+                </Link>
+              </div>
+
               {imageInfo && (
                 <div className="info-card">
                   <h3 className="info-title">Artwork Information</h3>
@@ -936,6 +942,9 @@ function SubmitPageContent() {
         .size-rules-link-container { text-align: center; }
         .size-rules-link { color: var(--accent-cyan); font-size: 0.9rem; }
         .size-rules-link:hover { text-decoration: underline; }
+        .monitored-hashtags-link-container { text-align: center; margin-top: 4px; }
+        .monitored-hashtags-link { color: #ff6b6b; font-size: 0.85rem; }
+        .monitored-hashtags-link:hover { text-decoration: underline; color: #ff8888; }
         .error-box { padding: 16px; background: rgba(255, 100, 100, 0.1); border: 1px solid rgba(255, 100, 100, 0.3); border-radius: 8px; }
         .error-box p { margin: 0; color: #ff6b6b; }
         .error-item { display: flex; align-items: center; gap: 8px; color: #ff6b6b; font-size: 0.9rem; }

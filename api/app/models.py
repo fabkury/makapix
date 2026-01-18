@@ -75,6 +75,11 @@ class User(Base):
         Boolean, nullable=False, default=False, index=True
     )  # Auto-approve public visibility for uploads
 
+    # Content preferences
+    approved_hashtags = Column(
+        ARRAY(String(50)), nullable=False, default=list
+    )  # Monitored hashtags the user has opted into viewing
+
     # Timestamps
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
 from ..auth import check_ownership, get_current_user, get_current_user_optional, require_moderator, require_ownership
+from ..constants import MONITORED_HASHTAGS
 from ..avatar_vault import ALLOWED_MIME_TYPES as AVATAR_ALLOWED_MIME_TYPES
 from ..avatar_vault import get_avatar_url, save_avatar_image
 from ..avatar_vault import try_delete_avatar_by_public_url
@@ -398,7 +399,24 @@ def update_user(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only moderators can change hidden_by_user for other users"
             )
-    
+
+    # Update approved_hashtags (users can only set their own, moderators can set for anyone)
+    if payload.approved_hashtags is not None:
+        if user.id != current_user.id and not is_actor_moderator:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only update your own approved hashtags"
+            )
+        # Validate that all hashtags are in the monitored list
+        invalid_tags = set(payload.approved_hashtags) - MONITORED_HASHTAGS
+        if invalid_tags:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid hashtags: {', '.join(sorted(invalid_tags))}. "
+                       f"Allowed values: {', '.join(sorted(MONITORED_HASHTAGS))}"
+            )
+        user.approved_hashtags = list(payload.approved_hashtags)
+
     db.commit()
     db.refresh(user)
     

@@ -16,6 +16,10 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..db import get_session
 from .. import models
+from ..utils.monitored_hashtags import (
+    apply_monitored_hashtag_filter,
+    post_has_unapproved_monitored_hashtags,
+)
 from .publisher import publish
 from .schemas import (
     QueryPostsRequest,
@@ -379,6 +383,9 @@ def _handle_query_posts(
             # Moderators see everything except non-visible
             query = query.filter(models.Post.visible, ~models.Post.hidden_by_user)
 
+        # Apply monitored hashtag filtering based on player owner's preferences
+        query = apply_monitored_hashtag_filter(query, models.Post, player.owner)
+
         # Apply AMP criteria filters
         if request.criteria:
             query, error = _apply_criteria_filters(query, request.criteria)
@@ -534,6 +541,16 @@ def _handle_get_post(
                 request.request_id,
                 "Post is not available",
                 "not_available",
+            )
+            return
+
+        # Check if post has monitored hashtags that owner hasn't approved
+        if post_has_unapproved_monitored_hashtags(post, player.owner):
+            _send_error_response(
+                player.player_key,
+                request.request_id,
+                "Post contains content not approved by user",
+                "content_not_approved",
             )
             return
 

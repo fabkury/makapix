@@ -259,6 +259,20 @@ services:
       - caddy_net
 
   # ---------------------------------------------------------------------------
+  # WWW Redirect - Redirect www.makapix.club to makapix.club
+  # ---------------------------------------------------------------------------
+  www-redirect:
+    image: alpine:latest
+    container_name: makapix-www-redirect
+    restart: unless-stopped
+    command: ["sleep", "infinity"]
+    labels:
+      caddy: www.makapix.club
+      caddy.redir: https://makapix.club{uri} permanent
+    networks:
+      - caddy_net
+
+  # ---------------------------------------------------------------------------
   # Web Application (Next.js) - makapix.club
   # ---------------------------------------------------------------------------
   web:
@@ -278,7 +292,7 @@ services:
       - NEXT_PUBLIC_API_BASE_URL=https://makapix.club
       - NEXT_PUBLIC_MQTT_WS_URL=wss://makapix.club/mqtt
     labels:
-      caddy: makapix.club, www.makapix.club
+      caddy: makapix.club
       # Route /api/* to FastAPI backend (strip /api prefix)
       caddy.@api.path: /api/*
       caddy.handle_0: "@api"

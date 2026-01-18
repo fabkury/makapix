@@ -20,6 +20,10 @@ from ..pagination import (
     decode_cursor,
 )
 from ..services.post_stats import annotate_posts_with_counts, get_user_liked_post_ids
+from ..utils.monitored_hashtags import (
+    apply_monitored_hashtag_filter,
+    filter_posts_by_monitored_hashtags,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +138,9 @@ def search_all(
             models.Post.deleted_by_user == False,  # Exclude user-deleted posts
         )
 
+        # Apply monitored hashtag filtering
+        post_query = apply_monitored_hashtag_filter(post_query, models.Post, current_user)
+
         # Apply cursor pagination
         if cursor:
             cursor_data = decode_cursor(cursor)
@@ -195,6 +202,9 @@ def search_all(
                 models.Post.public_visibility == True,  # Only show publicly visible posts
                 models.Post.deleted_by_user == False,  # Exclude user-deleted posts
             )
+
+            # Apply monitored hashtag filtering
+            post_query = apply_monitored_hashtag_filter(post_query, models.Post, current_user)
 
             # Limit results
             hashtag_posts = (
@@ -362,6 +372,8 @@ async def list_hashtag_posts(
     cached_result = cache_get(cache_key)
     if cached_result:
         response = schemas.Page(**cached_result)
+        # Apply monitored hashtag filtering (user-specific)
+        response.items = filter_posts_by_monitored_hashtags(response.items, current_user)
         # Add user-specific like status if authenticated
         if current_user and response.items:
             post_ids = [item.id for item in response.items]
@@ -383,6 +395,9 @@ async def list_hashtag_posts(
         models.Post.public_visibility == True,  # Only show publicly visible posts
         models.Post.deleted_by_user == False,  # Exclude user-deleted posts
     )
+
+    # Note: Monitored hashtag filtering is applied in-memory after fetching
+    # because this endpoint uses a shared cache across all users.
 
     # Apply cursor pagination
     query = apply_cursor_filter(
@@ -408,6 +423,9 @@ async def list_hashtag_posts(
 
     # Cache for 5 minutes
     cache_set(cache_key, response.model_dump(), ttl=HASHTAG_POSTS_CACHE_TTL)
+
+    # Apply monitored hashtag filtering (user-specific, after caching)
+    response.items = filter_posts_by_monitored_hashtags(response.items, current_user)
 
     return response
 
@@ -594,6 +612,8 @@ def feed_promoted(
     cached_result = cache_get(cache_key)
     if cached_result:
         response = schemas.Page(**cached_result)
+        # Apply monitored hashtag filtering (user-specific)
+        response.items = filter_posts_by_monitored_hashtags(response.items, current_user)
         # Add user-specific like status if authenticated
         if current_user and response.items:
             post_ids = [item.id for item in response.items]
@@ -617,6 +637,9 @@ def feed_promoted(
             models.Post.deleted_by_user == False,  # Exclude user-deleted posts
         )
     )
+
+    # Note: Monitored hashtag filtering is applied in-memory after fetching
+    # because this endpoint uses a shared cache across all users.
 
     # Apply cursor pagination
     query = apply_cursor_filter(
@@ -642,6 +665,9 @@ def feed_promoted(
 
     # Cache for 5 minutes
     cache_set(cache_key, response.model_dump(), ttl=PROMOTED_FEED_CACHE_TTL)
+
+    # Apply monitored hashtag filtering (user-specific, after caching)
+    response.items = filter_posts_by_monitored_hashtags(response.items, current_user)
 
     return response
 
@@ -671,19 +697,18 @@ def feed_following(
     if not following_ids:
         return schemas.Page(items=[], next_cursor=None)
 
-    posts = (
-        db.query(models.Post)
-        .filter(
-            models.Post.owner_id.in_(following_ids),
-            models.Post.visible == True,
-            models.Post.hidden_by_mod == False,
-            models.Post.public_visibility == True,  # Only show publicly visible posts
-            models.Post.deleted_by_user == False,  # Exclude user-deleted posts
-        )
-        .order_by(models.Post.created_at.desc())
-        .limit(limit)
-        .all()
+    query = db.query(models.Post).filter(
+        models.Post.owner_id.in_(following_ids),
+        models.Post.visible == True,
+        models.Post.hidden_by_mod == False,
+        models.Post.public_visibility == True,  # Only show publicly visible posts
+        models.Post.deleted_by_user == False,  # Exclude user-deleted posts
     )
+
+    # Apply monitored hashtag filtering
+    query = apply_monitored_hashtag_filter(query, models.Post, current_user)
+
+    posts = query.order_by(models.Post.created_at.desc()).limit(limit).all()
 
     # Add reaction and comment counts, and user liked status
     annotate_posts_with_counts(db, posts, current_user.id)

@@ -37,7 +37,8 @@ const navItems: NavItem[] = [
   },
   {
     href: '/',
-    icon: '🐣',
+    iconSrc: '/button/new-artworks/btn006-new-artworks-v2-32px-1x.png',
+    iconSrcSet: '/button/new-artworks/btn006-new-artworks-v2-32px-1x.png 1x, /button/new-artworks/btn006-new-artworks-v2-40px-1_25x.png 1.25x, /button/new-artworks/btn006-new-artworks-v2-48px-1_5x.png 1.5x, /button/new-artworks/btn006-new-artworks-v2-56px-1_75x.png 1.75x, /button/new-artworks/btn006-new-artworks-v2-64px-2x.png 2x, /button/new-artworks/btn006-new-artworks-v2-72px-2_25x.png 2.25x, /button/new-artworks/btn006-new-artworks-v2-80px-2_5x.png 2.5x, /button/new-artworks/btn006-new-artworks-v2-88px-2_75x.png 2.75x, /button/new-artworks/btn006-new-artworks-v2-96px-3x.png 3x, /button/new-artworks/btn006-new-artworks-v2-104px-3_25x.png 3.25x, /button/new-artworks/btn006-new-artworks-v2-112px-3_5x.png 3.5x, /button/new-artworks/btn006-new-artworks-v2-128px-4x.png 4x',
     label: 'Recent',
     matchPaths: ['/', '/recent', '/posts']
   },
@@ -55,7 +56,11 @@ export default function Layout({ children, title, description }: LayoutProps) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [publicSqid, setPublicSqid] = useState<string | null>(null);
-  const [isModerator, setIsModerator] = useState(false);
+  // Cache moderator status in localStorage to avoid flash on page navigation
+  const [isModerator, setIsModerator] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('is_moderator') === 'true';
+  });
   // Prevent header avatar "flashing" on navigation: Layout is mounted per-page in this app,
   // so without a synchronous initial value, the avatar briefly renders as the placeholder
   // until `/api/auth/me` completes. Cache it in localStorage and hydrate immediately.
@@ -85,6 +90,8 @@ export default function Layout({ children, title, description }: LayoutProps) {
             // Token refresh failed - clear tokens and redirect to login
             clearTokens();
             setIsLoggedIn(false);
+            setIsModerator(false);
+            try { localStorage.removeItem('is_moderator'); } catch { /* ignore */ }
             return null;
           }
           return res.ok ? res.json() : null;
@@ -92,7 +99,14 @@ export default function Layout({ children, title, description }: LayoutProps) {
         .then(data => {
           if (data?.roles) {
             const roles = data.roles as string[];
-            setIsModerator(roles.includes('moderator') || roles.includes('owner'));
+            const isMod = roles.includes('moderator') || roles.includes('owner');
+            setIsModerator(isMod);
+            try {
+              if (isMod) localStorage.setItem('is_moderator', 'true');
+              else localStorage.removeItem('is_moderator');
+            } catch {
+              // ignore
+            }
           }
           if (data?.user) {
             // Sync localStorage with actual user data from API

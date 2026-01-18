@@ -37,6 +37,7 @@ export default function AuthPanel({
   const [loading, setLoading] = useState(false);
   const [registrationSuccess, setRegistrationSuccess] = useState<RegisterResponse | null>(null);
   const [emailNotVerified, setEmailNotVerified] = useState(false);
+  const [registrationPendingVerification, setRegistrationPendingVerification] = useState(false);
   const [resendingVerification, setResendingVerification] = useState(false);
   const [verificationResent, setVerificationResent] = useState(false);
 
@@ -49,6 +50,7 @@ export default function AuthPanel({
     e.preventDefault();
     setError(null);
     setEmailNotVerified(false);
+    setRegistrationPendingVerification(false);
     setVerificationResent(false);
 
     const trimmedEmail = email.trim();
@@ -78,6 +80,13 @@ export default function AuthPanel({
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+
+          // Check for pending verification (unverified account exists)
+          if (response.status === 409 && errorData.detail === 'pending_verification') {
+            setRegistrationPendingVerification(true);
+            throw new Error('An account with this email is pending confirmation.');
+          }
+
           let errorMessage = 'Failed to register';
 
           if (Array.isArray(errorData.detail)) {
@@ -215,7 +224,7 @@ export default function AuthPanel({
         <div className="auth-card">
           {showLogoSection && (
             <div className="logo-section">
-              <img src="/logo.png" alt="Makapix Club" className="auth-logo" />
+              <img src="/android-chrome-512x512.png" alt="Makapix Club" className="auth-logo" />
             </div>
           )}
 
@@ -225,6 +234,8 @@ export default function AuthPanel({
               onClick={() => {
                 setMode('login');
                 setError(null);
+                setEmailNotVerified(false);
+                setRegistrationPendingVerification(false);
               }}
             >
               Login
@@ -234,6 +245,8 @@ export default function AuthPanel({
               onClick={() => {
                 setMode('register');
                 setError(null);
+                setEmailNotVerified(false);
+                setRegistrationPendingVerification(false);
               }}
             >
               Register
@@ -242,21 +255,18 @@ export default function AuthPanel({
 
           <form onSubmit={handleSubmit} className="form">
             {verificationResent && <div className="success-alert">Verification email sent! Please check your inbox.</div>}
-            {error && (
-              <div className="error-alert">
-                {error}
-                {emailNotVerified && (
-                  <div className="resend-section">
-                    <button
-                      type="button"
-                      onClick={handleResendVerification}
-                      disabled={resendingVerification}
-                      className="resend-button"
-                    >
-                      {resendingVerification ? 'Sending...' : 'Resend verification email'}
-                    </button>
-                  </div>
-                )}
+            {error && <div className="error-alert">{error}</div>}
+
+            {registrationPendingVerification && mode === 'register' && (
+              <div className="resend-section">
+                <button
+                  type="button"
+                  onClick={handleResendVerification}
+                  disabled={resendingVerification}
+                  className="resend-link-button"
+                >
+                  {resendingVerification ? 'Sending...' : 'Resend the confirmation email'}
+                </button>
               </div>
             )}
 
@@ -292,6 +302,16 @@ export default function AuthPanel({
                   <Link href="/forgot-password" className="help-link">
                     Forgot your password?
                   </Link>
+                  {emailNotVerified && (
+                    <button
+                      type="button"
+                      onClick={handleResendVerification}
+                      disabled={resendingVerification}
+                      className="help-link resend-link"
+                    >
+                      {resendingVerification ? 'Sending...' : 'Resend the confirmation email'}
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -424,14 +444,33 @@ export default function AuthPanel({
         .help-links {
           display: flex;
           flex-direction: column;
-          gap: 6px;
-          margin-top: 4px;
+          gap: 8px;
+          margin-top: 8px;
         }
 
         .help-link {
           font-size: 0.85rem;
           color: var(--accent-cyan);
           text-align: right;
+        }
+
+        .resend-link {
+          background: none;
+          border: none;
+          color: var(--accent-cyan);
+          font-size: 0.85rem;
+          cursor: pointer;
+          padding: 0;
+          text-align: right;
+        }
+
+        .resend-link:hover:not(:disabled) {
+          text-decoration: underline;
+        }
+
+        .resend-link:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
 
         .error-alert {
@@ -453,31 +492,24 @@ export default function AuthPanel({
         }
 
         .resend-section {
-          margin-top: 12px;
-          padding-top: 12px;
-          border-top: 1px solid rgba(239, 68, 68, 0.2);
+          margin-top: 8px;
         }
 
-        .resend-button {
-          width: 100%;
-          padding: 10px 16px;
-          background: transparent;
-          border: 1px solid rgba(255, 255, 255, 0.2);
-          border-radius: 6px;
-          color: var(--text-secondary);
-          font-size: 0.9rem;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all var(--transition-fast);
-        }
-
-        .resend-button:hover:not(:disabled) {
-          background: rgba(255, 255, 255, 0.05);
-          border-color: var(--accent-cyan);
+        .resend-link-button {
+          background: none;
+          border: none;
           color: var(--accent-cyan);
+          font-size: 0.85rem;
+          cursor: pointer;
+          padding: 0;
+          text-align: left;
         }
 
-        .resend-button:disabled {
+        .resend-link-button:hover:not(:disabled) {
+          text-decoration: underline;
+        }
+
+        .resend-link-button:disabled {
           opacity: 0.6;
           cursor: not-allowed;
         }

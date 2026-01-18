@@ -231,6 +231,11 @@ def register(
     ).first()
 
     if existing_user:
+        if not existing_user.email_verified:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="pending_verification",
+            )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="An account with this email already exists",
@@ -355,7 +360,19 @@ def login(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many login attempts. Please try again later.",
         )
-    
+
+    # Check for unverified account BEFORE password verification
+    # This reveals account existence for unverified emails (accepted UX tradeoff)
+    user = db.query(models.User).filter(
+        (models.User.email == email) | (models.User.email_normalized == email)
+    ).first()
+
+    if user and not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email not verified. Please check your email for verification link.",
+        )
+
     # Find identity and verify password
     identity = find_identity_by_password(db, email, payload.password)
     
@@ -372,14 +389,10 @@ def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
         )
-    
-    # Check if email is verified for password-based login
-    if not user.email_verified:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Email not verified. Please check your email for verification link.",
-        )
-    
+
+    # Note: Email verification is checked BEFORE password verification (above)
+    # to ensure we return the "not verified" error regardless of password correctness
+
     # Check if user is allowed to authenticate
     check_user_can_authenticate(user)
     

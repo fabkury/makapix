@@ -120,6 +120,7 @@ export function clearTokens(): void {
   localStorage.removeItem("user_id");
   localStorage.removeItem("user_handle");
   localStorage.removeItem("avatar_url");
+  localStorage.removeItem("is_moderator");
 }
 
 /**

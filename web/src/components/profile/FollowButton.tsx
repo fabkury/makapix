@@ -1,6 +1,6 @@
 /**
  * FollowButton component - displays follow/unfollow button.
- * Uses 👣 emoji with glow effect.
+ * Uses pixel art icon with glow effect.
  */
 
 import { useState } from 'react';
@@ -57,7 +57,15 @@ export default function FollowButton({
       aria-label={isFollowing ? 'Unfollow' : 'Follow'}
       title={isFollowing ? 'Unfollow' : 'Follow'}
     >
-      <span className="follow-icon">👣</span>
+      <img
+        src="/button/follow-user/btn007-follow-user-32px-1x.png"
+        srcSet="/button/follow-user/btn007-follow-user-32px-1x.png 1x, /button/follow-user/btn007-follow-user-40px-1_25x.png 1.25x, /button/follow-user/btn007-follow-user-48px-1_5x.png 1.5x, /button/follow-user/btn007-follow-user-56px-1_75x.png 1.75x, /button/follow-user/btn007-follow-user-64px-2x.png 2x, /button/follow-user/btn007-follow-user-72px-2_25x.png 2.25x, /button/follow-user/btn007-follow-user-80px-2_5x.png 2.5x, /button/follow-user/btn007-follow-user-88px-2_75x.png 2.75x, /button/follow-user/btn007-follow-user-96px-3x.png 3x, /button/follow-user/btn007-follow-user-104px-3_25x.png 3.25x, /button/follow-user/btn007-follow-user-112px-3_5x.png 3.5x, /button/follow-user/btn007-follow-user-128px-4x.png 4x"
+        alt=""
+        width={32}
+        height={32}
+        className="follow-icon"
+        aria-hidden="true"
+      />
 
       <style jsx>{`
         .follow-button {
@@ -70,7 +78,6 @@ export default function FollowButton({
           background: transparent;
           cursor: pointer;
           transition: all 0.2s ease;
-          font-size: 1.25rem;
         }
         .follow-button:hover:not(:disabled) {
           background: rgba(255, 255, 255, 0.1);
@@ -79,7 +86,10 @@ export default function FollowButton({
           opacity: 0.5;
           cursor: not-allowed;
         }
-        .follow-icon {
+        .follow-button :global(.follow-icon) {
+          display: block;
+          width: 32px;
+          height: 32px;
           filter: ${isFollowing
             ? 'drop-shadow(0 0 8px rgba(0, 245, 255, 0.8))'
             : 'none'};

@@ -87,7 +87,7 @@ export default function AboutPage() {
         }
 
         .about-container :global(.tab-trigger[data-state='active']) {
-          color: #000;
+          color: var(--accent-cyan);
         }
 
         .about-container :global(.tab-content) {
@@ -280,11 +280,24 @@ function RulesTab() {
         can be granted or revoked at any time by moderators.
       </p>
 
-      <h2>NSFW Content</h2>
-      
+      <h2 id="monitored-hashtags">Monitored Hashtags</h2>
+
       <p className="warning">
-        If you post NSFW content, you must include the <strong>#nsfw</strong> hashtag in your
-        post. Posting NSFW content is permitted—failing to tag it is a violation.
+        The following hashtags are <strong>monitored</strong> and content using them
+        is hidden by default: <code>#politics</code>, <code>#nsfw</code>,{' '}
+        <code>#explicit</code>, <code>#13plus</code>, <code>#violence</code>.
+      </p>
+
+      <p>
+        If you post content that falls under any of these categories, you{' '}
+        <strong>must</strong> include the appropriate hashtag. Failing to tag
+        monitored content is a violation that can lead to expulsion.
+      </p>
+
+      <p>
+        To view content with monitored hashtags, you must explicitly enable each
+        hashtag in your account settings. This applies to the web interface and
+        any connected player devices.
       </p>
 
       <h2>User Handles</h2>
@@ -564,7 +577,7 @@ function ModerationTab() {
       <p>
         If you believe a moderator action was unfair, or if you have concerns about moderator
         behavior, please contact the site owner{' '}
-        <Link href="/u/t5" className="user-mention">@Fab</Link> directly.
+        <Link href="https://makapix.club/u/t5" className="user-mention">@Fab</Link> directly.
       </p>
 
       <style jsx>{`

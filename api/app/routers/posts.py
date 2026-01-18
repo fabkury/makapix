@@ -44,6 +44,10 @@ from ..mqtt.notifications import (
     publish_category_promotion_notification,
 )
 from ..utils.audit import log_moderation_action
+from ..utils.monitored_hashtags import (
+    apply_monitored_hashtag_filter,
+    filter_posts_by_monitored_hashtags,
+)
 from ..utils.view_tracking import record_view, ViewType, ViewSource
 from ..utils.site_tracking import record_site_event
 from ..services.post_stats import annotate_posts_with_counts, get_user_liked_post_ids
@@ -177,6 +181,10 @@ def list_posts(
         # Posts pending approval are visible only to their owner and in Moderator Dashboard
         if not is_viewing_own_posts:
             query = query.filter(models.Post.public_visibility == True)
+
+    # Apply monitored hashtag filtering (unless viewing own posts)
+    if not is_viewing_own_posts:
+        query = apply_monitored_hashtag_filter(query, models.Post, current_user)
 
     if promoted is not None:
         query = query.filter(models.Post.promoted == promoted)
@@ -769,6 +777,8 @@ def list_recent_posts(
     cached_result = cache_get(cache_key)
     if cached_result:
         response = schemas.Page(**cached_result)
+        # Apply monitored hashtag filtering (user-specific)
+        response.items = filter_posts_by_monitored_hashtags(response.items, current_user)
         # Add user-specific like status if authenticated
         if current_user and response.items:
             post_ids = [item.id for item in response.items]
@@ -793,6 +803,9 @@ def list_recent_posts(
         )
     )
 
+    # Note: Monitored hashtag filtering is applied in-memory after fetching
+    # because this endpoint uses a shared cache across all users.
+
     # Apply cursor pagination
     query = apply_cursor_filter(
         query, models.Post, cursor, "created_at", sort_desc=True
@@ -816,8 +829,12 @@ def list_recent_posts(
     )
 
     # Cache for 2 minutes (120 seconds) - shorter due to high churn
-    # Note: Cache stores base data; user_has_liked is added when retrieving from cache
+    # Note: Cache stores base data; monitored hashtag filtering and user_has_liked
+    # are applied when retrieving from cache
     cache_set(cache_key, response.model_dump(), ttl=120)
+
+    # Apply monitored hashtag filtering (user-specific, after caching)
+    response.items = filter_posts_by_monitored_hashtags(response.items, current_user)
 
     # Record site event for page view
     record_site_event(request, "page_view", user=current_user)
