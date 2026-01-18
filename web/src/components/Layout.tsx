@@ -264,12 +264,9 @@ export default function Layout({ children, title, description }: LayoutProps) {
         <header className={`header ${isHeaderHidden ? 'header-hidden' : ''}`}>
           <div className="header-left">
             <Link
-              href={isLoggedIn ? "/" : "/welcome"}
+              href="/about"
               className="logo-link"
-              aria-label="Makapix Club Home"
-              onClick={() => {
-                if (!isLoggedIn) markWelcomeAsInternalNav();
-              }}
+              aria-label="About Makapix Club"
               // In dev, some tooling can inject extra attributes into SSR output, triggering
               // noisy hydration warnings (e.g. "Extra attributes from the server: data-cursor-ref").
               // Suppress that specific warning for these nav anchors.
