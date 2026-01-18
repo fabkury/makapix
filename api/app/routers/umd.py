@@ -577,7 +577,18 @@ def ban_user(
     db: Session = Depends(get_db),
     moderator: models.User = Depends(require_moderator),
 ) -> dict:
-    """Ban user (moderator only). No duration = permanent ban."""
+    """
+    Ban user (moderator only).
+    
+    Banning a user prevents them from authenticating but does NOT delete their account.
+    The user profile and all associated data remain in the database.
+    
+    - No duration (None) = permanent ban (banned_until = None)
+    - With duration = temporary ban (banned_until = current_time + duration_days)
+    
+    Note: There is no automatic cleanup of banned user profiles. They remain in the
+    database indefinitely unless manually deleted by an administrator.
+    """
     user = get_user_by_sqid_or_404(db, sqid)
     protect_owner(user, moderator)
 
@@ -607,7 +618,12 @@ def unban_user(
     db: Session = Depends(get_db),
     moderator: models.User = Depends(require_moderator),
 ) -> None:
-    """Unban user (moderator only)."""
+    """
+    Unban user (moderator only).
+    
+    Removes the ban by setting banned_until to NULL, allowing the user to
+    authenticate again immediately. Does not delete the user's profile or data.
+    """
     user = get_user_by_sqid_or_404(db, sqid)
     protect_owner(user, moderator)
 

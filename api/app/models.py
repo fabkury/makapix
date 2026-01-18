@@ -65,6 +65,9 @@ class User(Base):
     hidden_by_mod = Column(Boolean, nullable=False, default=False, index=True)
     non_conformant = Column(Boolean, nullable=False, default=False, index=True)
     deactivated = Column(Boolean, nullable=False, default=False, index=True)
+    # banned_until: NULL = not banned, None = permanently banned, future datetime = banned until that time
+    # Note: Permanent ban uses None (not a past date). Ban expiration is checked at authentication time.
+    # Banned users are NOT automatically deleted - profiles remain in database indefinitely.
     banned_until = Column(DateTime(timezone=True), nullable=True, index=True)
 
     # Publishing privileges
