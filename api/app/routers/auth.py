@@ -204,7 +204,7 @@ def register(
     - User must verify email before logging in
     - After verification, user can optionally change password/handle
     
-    Rate limited to 5 registrations per hour per IP address.
+    Rate limited to 15 registrations per hour per IP address.
     
     Args:
         payload: Registration request with email
@@ -214,18 +214,8 @@ def register(
     email = payload.email.lower().strip()
     email_norm = normalize_email(email)
 
-    # Rate limiting: 3 registrations per hour per IP
-    client_ip = get_client_ip(request)
-    rate_limit_key = f"ratelimit:register:{client_ip}"
-    allowed, remaining = check_rate_limit(rate_limit_key, limit=3, window_seconds=3600)
-
-    if not allowed:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many registration attempts. Please try again later.",
-        )
-
     # Check if email is already registered (check both original and normalized)
+    # This check is done before rate limiting so users get a more helpful error message
     existing_user = db.query(models.User).filter(
         (models.User.email == email) | (models.User.email_normalized == email_norm)
     ).first()
@@ -239,6 +229,18 @@ def register(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="An account with this email already exists",
+        )
+
+    # Rate limiting: 15 registrations per hour per IP
+    # Only checked after email validation to show more specific errors first
+    client_ip = get_client_ip(request)
+    rate_limit_key = f"ratelimit:register:{client_ip}"
+    allowed, remaining = check_rate_limit(rate_limit_key, limit=15, window_seconds=3600)
+
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many registration attempts. Please try again later.",
         )
     
     # Generate default handle (makapix-user-X)

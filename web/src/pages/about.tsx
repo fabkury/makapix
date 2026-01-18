@@ -169,7 +169,7 @@ function AboutTab() {
       <p>
         Makapix Club was founded in November 2025 by{' '}
         <span className="user-mention">@Fab</span> and{' '}
-        <span className="user-mention">@m_o_n_s_t_e_r</span>.
+        <span className="user-mention">@m o n s t e r</span>.
       </p>
 
       <h2>Open Source</h2>
