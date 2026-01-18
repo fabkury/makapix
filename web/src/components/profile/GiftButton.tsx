@@ -1,17 +1,23 @@
 /**
- * GiftButton component - links to the gift page.
+ * GiftButton component - navigates to the gift page.
  * Uses 🎁 emoji, styled similarly to FollowButton but smaller.
  */
 
-import Link from 'next/link';
+import { useRouter } from 'next/router';
 
 interface GiftButtonProps {
   userSqid: string;
 }
 
 export default function GiftButton({ userSqid }: GiftButtonProps) {
+  const router = useRouter();
+
+  const handleClick = () => {
+    router.push(`/u/${userSqid}/gift`);
+  };
+
   return (
-    <Link href={`/u/${userSqid}/gift`} className="gift-button" aria-label="Send gift" title="Send gift">
+    <button className="gift-button" onClick={handleClick} aria-label="Send gift" title="Send gift">
       <span className="gift-icon">🎁</span>
 
       <style jsx>{`
@@ -26,7 +32,6 @@ export default function GiftButton({ userSqid }: GiftButtonProps) {
           cursor: pointer;
           transition: all 0.2s ease;
           font-size: 1.25rem;
-          text-decoration: none;
         }
         .gift-button:hover {
           background: rgba(255, 255, 255, 0.1);
@@ -36,6 +41,6 @@ export default function GiftButton({ userSqid }: GiftButtonProps) {
           filter: drop-shadow(0 0 6px rgba(0, 245, 255, 0.5));
         }
       `}</style>
-    </Link>
+    </button>
   );
 }
