@@ -79,6 +79,15 @@ export default function AboutPage() {
           max-width: 160px;
           padding: 10px 20px;
           font-size: 0.95rem;
+          color: rgba(255, 255, 255, 0.7);
+        }
+
+        .about-container :global(.tab-trigger:hover) {
+          color: rgba(255, 255, 255, 0.9);
+        }
+
+        .about-container :global(.tab-trigger[data-state='active']) {
+          color: #000;
         }
 
         .about-container :global(.tab-content) {
@@ -224,6 +233,11 @@ function AboutTab() {
         .user-mention {
           color: var(--accent-cyan);
           font-weight: 500;
+          text-decoration: none;
+        }
+
+        .user-mention:hover {
+          text-decoration: underline;
         }
 
         @media (max-width: 480px) {
@@ -466,7 +480,7 @@ function ModerationTab() {
       <h1>Moderation</h1>
 
       <p className="lead">
-        Our moderation team works to keep Makapix Club safe and welcoming. Here is how our
+        Our moderators work to keep Makapix Club safe and welcoming. Here is how our
         moderation system works.
       </p>
 
@@ -550,7 +564,7 @@ function ModerationTab() {
       <p>
         If you believe a moderator action was unfair, or if you have concerns about moderator
         behavior, please contact the site owner{' '}
-        <span className="user-mention">@Fab</span> directly.
+        <Link href="https://dev.makapix.club/u/t5" className="user-mention">@Fab</Link> directly.
       </p>
 
       <style jsx>{`
@@ -621,6 +635,11 @@ function ModerationTab() {
         .user-mention {
           color: var(--accent-cyan);
           font-weight: 500;
+          text-decoration: none;
+        }
+
+        .user-mention:hover {
+          text-decoration: underline;
         }
 
         @media (max-width: 480px) {
