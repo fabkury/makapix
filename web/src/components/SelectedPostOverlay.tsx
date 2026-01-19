@@ -433,12 +433,7 @@ export default function SelectedPostOverlay({
   const pressStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const reactionInFlightRef = useRef(false);
 
-  // For History API back button handling
-  const closedByPopstateRef = useRef(false);
-  // Track when we're navigating away (so we don't call history.back() in cleanup)
-  const navigatingAwayRef = useRef(false);
   const dismissToOriginAndCloseRef = useRef<() => Promise<void>>(() => Promise.resolve());
-  const savedScrollPositionRef = useRef<number>(0);
 
   const post = posts[selectedIndex];
 
@@ -711,54 +706,6 @@ export default function SelectedPostOverlay({
     dismissToOriginAndCloseRef.current = dismissToOriginAndClose;
   }, [dismissToOriginAndClose]);
 
-  // Handle browser back button (Android back gesture, etc.)
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    // Save scroll position BEFORE any history manipulation
-    savedScrollPositionRef.current = window.scrollY;
-
-    // Set manual scroll restoration to prevent browser auto-restore on popstate
-    const prevScrollRestoration = history.scrollRestoration;
-    history.scrollRestoration = 'manual';
-
-    // Push a history state when overlay opens
-    history.pushState({ overlayOpen: true }, '');
-
-    const handlePopstate = () => {
-      // Skip if we're cleaning up history before navigation
-      if (navigatingAwayRef.current) return;
-
-      // Back button pressed - restore scroll position immediately
-      // (before browser can restore to wrong position)
-      window.scrollTo(0, savedScrollPositionRef.current);
-
-      // Push a new state to "consume" the back action and stay on the current page
-      history.pushState(null, '');
-      closedByPopstateRef.current = true;
-      void dismissToOriginAndCloseRef.current();
-    };
-
-    window.addEventListener('popstate', handlePopstate);
-
-    return () => {
-      window.removeEventListener('popstate', handlePopstate);
-
-      // Restore original scroll restoration setting
-      history.scrollRestoration = prevScrollRestoration;
-
-      // If we're unmounting but NOT due to popstate or navigation away,
-      // we need to clean up the history entry we pushed
-      if (!closedByPopstateRef.current && !navigatingAwayRef.current) {
-        history.scrollRestoration = 'manual';
-        history.back();
-        queueMicrotask(() => {
-          history.scrollRestoration = prevScrollRestoration;
-        });
-      }
-    };
-  }, []);
-
   const snapBackToTarget = useCallback(async () => {
     setPhase('flying-in');
     clearPressTimer();
@@ -991,8 +938,6 @@ export default function SelectedPostOverlay({
                   e.stopPropagation();
                   e.preventDefault();
                   if (post.owner?.public_sqid) {
-                    navigatingAwayRef.current = true;
-                    history.replaceState(null, '');
                     router.push(`/u/${post.owner.public_sqid}`);
                   }
                 }}
@@ -1001,8 +946,6 @@ export default function SelectedPostOverlay({
                     e.stopPropagation();
                     e.preventDefault();
                     if (post.owner?.public_sqid) {
-                      navigatingAwayRef.current = true;
-                      history.replaceState(null, '');
                       router.push(`/u/${post.owner.public_sqid}`);
                     }
                   }
@@ -1205,8 +1148,6 @@ export default function SelectedPostOverlay({
           const duration = pressStart ? Date.now() - pressStart.time : Infinity;
           const isTap = absX < 10 && absY < 10 && duration < 300;
           if (isTap) {
-            navigatingAwayRef.current = true;
-            history.replaceState(null, '');
             onNavigateToPost(selectedIndex);
             return;
           }
@@ -1241,8 +1182,6 @@ export default function SelectedPostOverlay({
         onClick={(e) => {
           e.stopPropagation();
           if (!isInteractive) return;
-          navigatingAwayRef.current = true;
-          history.replaceState(null, '');
           onNavigateToPost(selectedIndex);
         }}
       >

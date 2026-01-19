@@ -168,17 +168,24 @@ function AboutTab() {
       
       <p>
         Makapix Club was founded in November 2025 by{' '}
-        <span className="user-mention">@Fab</span> and{' '}
-        <span className="user-mention">@m o n s t e r</span>.
+        <Link href="https://makapix.club/u/t5" className="user-mention">@Fab</Link> and{' '}
+        <Link href="https://makapix.club/u/CH" className="user-mention">@m o n s t e r</Link>.
       </p>
 
       <h2>Open Source</h2>
-      
+
       <p>
         Makapix Club is open source. You can find our code on{' '}
         <a href="https://github.com/fabkury/makapix" target="_blank" rel="noopener noreferrer">
           GitHub
         </a>.
+      </p>
+
+      <h2>Contact</h2>
+
+      <p>
+        For questions, feedback, or inquiries about the project, reach us at{' '}
+        <a href="mailto:acme@makapix.club">acme@makapix.club</a>.
       </p>
 
       <style jsx>{`

@@ -385,7 +385,7 @@ export default function CardGrid({
 
               // Store navigation context for swipe navigation on post page
               handlePostClick(idx);
-              router.replace(`/p/${post.public_sqid}`);
+              router.push(`/p/${post.public_sqid}`);
             }}
             currentUserId={currentUserId}
             isModerator={isModerator}

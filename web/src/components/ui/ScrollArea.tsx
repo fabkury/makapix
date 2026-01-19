@@ -31,6 +31,8 @@ export function ScrollArea({ children, className = "", style }: ScrollAreaProps)
           height: 100%;
           border-radius: inherit;
           overscroll-behavior: contain;
+          touch-action: pan-y;
+          -webkit-overflow-scrolling: touch;
         }
 
         .scroll-area-viewport > div {

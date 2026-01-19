@@ -1,6 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Filter, X } from "lucide-react";
-import { ScrollArea } from "./ui/ScrollArea";
 import { Slider } from "./ui/Slider";
 import { Select } from "./ui/Select";
 import { FilterConfig } from "../hooks/useFilters";
@@ -119,21 +118,6 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
     };
   }, []);
 
-  // Prevent scroll propagation from menu to page
-  const handleMenuWheel = useCallback((e: React.WheelEvent) => {
-    const target = e.currentTarget;
-    const scrollTop = target.scrollTop;
-    const scrollHeight = target.scrollHeight;
-    const clientHeight = target.clientHeight;
-    const atTop = scrollTop === 0 && e.deltaY < 0;
-    const atBottom = scrollTop + clientHeight >= scrollHeight && e.deltaY > 0;
-
-    // Only prevent if we're at bounds and trying to scroll further
-    if (atTop || atBottom) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  }, []);
 
   // Update draft filter (does not apply until menu closes)
   const updateFilter = (key: string, value: unknown) => {
@@ -259,7 +243,7 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
 
         {/* Floating Menu */}
         {isOpen && (
-          <div ref={menuRef} className="filter-menu" onWheel={handleMenuWheel}>
+          <div ref={menuRef} className="filter-menu">
             <div className="filter-header">
               <h3>Filter & Sort</h3>
               <div className="filter-header-actions">
@@ -276,7 +260,7 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
               </div>
             </div>
 
-            <ScrollArea className="filter-scroll">
+            <div className="filter-scroll">
               <div className="filter-content">
                 {/* Sorting Section */}
                 <div className="filter-section">
@@ -384,7 +368,7 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
                   </div>
                 </div>
               </div>
-            </ScrollArea>
+            </div>
           </div>
         )}
       </div>
@@ -451,9 +435,9 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
           background: var(--bg-secondary);
           border-right: 1px solid rgba(255, 255, 255, 0.1);
           overflow: hidden;
-          overflow-y: auto;
-          overscroll-behavior: contain;
           box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3);
+          display: flex;
+          flex-direction: column;
         }
 
         .filter-header {
@@ -463,6 +447,7 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
           display: flex;
           justify-content: space-between;
           align-items: center;
+          flex-shrink: 0;
         }
 
         .filter-header h3 {
@@ -508,8 +493,11 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
         }
 
         .filter-scroll {
-          max-height: calc(50vh - 60px);
+          flex: 1;
+          overflow-y: auto;
+          overflow-x: hidden;
           overscroll-behavior: contain;
+          -webkit-overflow-scrolling: touch;
         }
 
         .filter-content {
