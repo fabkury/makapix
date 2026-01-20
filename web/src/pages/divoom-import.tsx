@@ -1002,8 +1002,8 @@ export default function DivoomImportPage() {
       <div className="container">
         <div className="header-row">
           <h1 className="page-title">Import from Divoom</h1>
-          <button className="back-btn" type="button" onClick={() => router.push('/submit')}>
-            ← Back to Submit
+          <button className="back-btn" type="button" onClick={() => router.push('/contribute')}>
+            ← Back to Contribute
           </button>
         </div>
         <div className="page-note">

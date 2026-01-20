@@ -909,6 +909,8 @@ function SubmitPageContent() {
 
                         {scalingMode === 'ratio' ? (
                           <div className="scaling-ratio">
+                            <p className="original-size-label">Original: {imageInfo.width} × {imageInfo.height} px</p>
+
                             <div className="ratio-input-row">
                               <label className="form-label">Scaling Ratio</label>
                               <div className="ratio-input-group">
@@ -916,6 +918,7 @@ function SubmitPageContent() {
                                 <span className="ratio-suffix">%</span>
                               </div>
                             </div>
+                            <p className="help-text">Adjust the slider or enter a percentage to scale both dimensions uniformly</p>
 
                             <div className="slider-container">
                               <input type="range" min={3.125} max={300} step={0.1} value={scalePercent} onChange={handleScaleSliderChange} className="scale-slider" />
@@ -925,7 +928,7 @@ function SubmitPageContent() {
                             {scalePercent !== 100 ? (
                               <div className="scale-preview">New size: {Math.round(imageInfo.width * scalePercent / 100)} × {Math.round(imageInfo.height * scalePercent / 100)} px</div>
                             ) : (
-                              <div className="scale-preview muted">Original size: {imageInfo.width} × {imageInfo.height} px (no scaling)</div>
+                              <div className="scale-preview muted">No scaling applied</div>
                             )}
                           </div>
                         ) : (
@@ -1097,7 +1100,7 @@ function SubmitPageContent() {
         .tab { flex: 1; padding: 10px 16px; background: transparent; color: var(--text-secondary); font-size: 0.9rem; cursor: pointer; transition: all var(--transition-fast); }
         .tab:hover { background: rgba(255, 255, 255, 0.05); }
         .tab.active { background: var(--accent-cyan); color: var(--bg-primary); }
-        .scaling-ratio, .scaling-dimensions { display: flex; flex-direction: column; gap: 12px; }
+        .scaling-ratio, .scaling-dimensions { display: flex; flex-direction: column; gap: 12px; min-width: 260px; }
         .ratio-input-row { display: flex; justify-content: space-between; align-items: center; }
         .ratio-input-group { display: flex; align-items: center; gap: 8px; }
         .ratio-input { width: 100px; padding: 8px 12px; text-align: center; font-family: monospace; background: var(--bg-tertiary); border: 1px solid var(--bg-tertiary); color: var(--text-primary); border-radius: 6px; }
@@ -1119,7 +1122,7 @@ function SubmitPageContent() {
         .toggle.on { background: var(--accent-cyan); }
         .toggle-handle { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: white; transition: left var(--transition-fast); }
         .toggle.on .toggle-handle { left: 22px; }
-        .dimension-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .dimension-inputs { display: grid; grid-template-columns: 120px 120px; gap: 12px; }
         .dimension-input-group { display: flex; flex-direction: column; gap: 6px; }
         .algorithm-section { padding-top: 16px; border-top: 1px solid var(--bg-tertiary); }
         .radio-group { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
