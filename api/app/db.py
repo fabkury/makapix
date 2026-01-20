@@ -11,6 +11,11 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 def get_database_url() -> str:
     """Get the database URL for API operations (uses API worker user)."""
+    # Allow override for tests
+    test_url = os.getenv("TEST_DATABASE_URL")
+    if test_url:
+        return test_url
+
     # Construct from components using API worker credentials
     api_user = os.getenv("DB_API_WORKER_USER")
     api_pass = os.getenv("DB_API_WORKER_PASSWORD")

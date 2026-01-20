@@ -16,7 +16,7 @@ from ..deps import get_db
 from ..utils.visibility import can_access_post
 from ..utils.site_tracking import record_site_event
 from ..utils.view_tracking import record_view, ViewType, ViewSource
-from ..vault import get_artwork_file_path, ALLOWED_MIME_TYPES
+from ..vault import get_artwork_file_path, get_upscaled_file_path, ALLOWED_MIME_TYPES, FORMAT_TO_EXT, FORMAT_TO_MIME
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +106,85 @@ def get_post_by_sqid(
     return schemas.Post.model_validate(post)
 
 
+@router.get("/d/{public_sqid}.{extension}")
+def download_by_sqid_format(
+    public_sqid: str,
+    extension: str,
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_optional),
+) -> FileResponse:
+    """
+    Download artwork file in a specific format by public Sqids ID.
+
+    Available formats depend on the post's formats_available field
+    (populated by SSAFPP processing).
+
+    Supported extensions: gif, png, bmp, webp
+    """
+    from ..sqids_config import decode_sqid
+
+    # Validate extension
+    extension = extension.lower()
+    valid_extensions = ["gif", "png", "bmp", "webp"]
+    if extension not in valid_extensions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid extension. Supported: {', '.join(valid_extensions)}",
+        )
+
+    post_id = decode_sqid(public_sqid)
+    if post_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+
+    # Query post
+    post = db.query(models.Post).filter(models.Post.id == post_id).first()
+
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+
+    # Verify public_sqid matches
+    if post.public_sqid != public_sqid:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+
+    # Check visibility
+    if not can_access_post(post, current_user):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+
+    # Check if requested format is available
+    formats_available = post.formats_available or []
+    if extension not in formats_available:
+        # Return 404 with info about available formats
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "message": f"Format '{extension}' not available for this artwork",
+                "formats_available": formats_available,
+            },
+        )
+
+    # Get file path for requested format
+    file_path = get_artwork_file_path(post.storage_key, FORMAT_TO_EXT[extension])
+
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found (format conversion may still be processing)",
+        )
+
+    # Determine filename for download
+    filename = f"{post.title or 'artwork'}.{extension}"
+
+    # Get MIME type
+    media_type = FORMAT_TO_MIME.get(extension, "application/octet-stream")
+
+    return FileResponse(
+        path=str(file_path),
+        media_type=media_type,
+        filename=filename,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/d/{public_sqid}")
 def download_by_sqid(
     public_sqid: str,
@@ -124,18 +203,18 @@ def download_by_sqid(
 
     # Query post
     post = db.query(models.Post).filter(models.Post.id == post_id).first()
-    
+
     if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
-    
+
     # Verify public_sqid matches
     if post.public_sqid != public_sqid:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
-    
+
     # Check visibility
     if not can_access_post(post, current_user):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
-    
+
     # Get file path
     file_path = get_post_file_path_from_storage_key(post.storage_key, post.file_format)
 
@@ -146,12 +225,65 @@ def download_by_sqid(
     filename = f"{post.title or 'artwork'}{file_path.suffix}"
 
     # Get MIME type from file_format
-    from ..vault import FORMAT_TO_MIME
     media_type = FORMAT_TO_MIME.get(post.file_format, "image/png") if post.file_format else "image/png"
 
     return FileResponse(
         path=str(file_path),
         media_type=media_type,
+        filename=filename,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/d/{public_sqid}/upscaled")
+def download_upscaled_by_sqid(
+    public_sqid: str,
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_optional),
+) -> FileResponse:
+    """
+    Download upscaled artwork preview by public Sqids ID.
+
+    The upscaled version is a WEBP file with nearest-neighbor upscaling
+    to a maximum of 768px on the longest side.
+
+    Returns 404 if the upscaled version hasn't been generated yet.
+    """
+    from ..sqids_config import decode_sqid
+
+    post_id = decode_sqid(public_sqid)
+    if post_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+
+    # Query post
+    post = db.query(models.Post).filter(models.Post.id == post_id).first()
+
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+
+    # Verify public_sqid matches
+    if post.public_sqid != public_sqid:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+
+    # Check visibility
+    if not can_access_post(post, current_user):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+
+    # Get upscaled file path
+    file_path = get_upscaled_file_path(post.storage_key)
+
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Upscaled version not available (may still be processing or artwork is too large to upscale)",
+        )
+
+    # Determine filename for download
+    filename = f"{post.title or 'artwork'}_upscaled.webp"
+
+    return FileResponse(
+        path=str(file_path),
+        media_type="image/webp",
         filename=filename,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
@@ -186,7 +318,6 @@ def download_by_storage_key(
     filename = f"{post.title or 'artwork'}{file_path.suffix}"
 
     # Get MIME type from file_format
-    from ..vault import FORMAT_TO_MIME
     media_type = FORMAT_TO_MIME.get(post.file_format, "image/png") if post.file_format else "image/png"
 
     return FileResponse(

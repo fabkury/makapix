@@ -4,6 +4,14 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import Layout from '../components/Layout';
 import { authenticatedFetch, clearTokens } from '../lib/api';
+import {
+  saveDraft,
+  loadDraft,
+  clearDraft,
+  fileToDataUrl,
+  dataUrlToFile,
+  SubmitDraftData,
+} from '../lib/submit-draft-storage';
 
 interface ImageInfo {
   width: number;
@@ -220,6 +228,10 @@ function SubmitPageContent() {
   // Track if we've processed Piskel/Pixelc import
   const [editorImportProcessed, setEditorImportProcessed] = useState(false);
 
+  // Draft persistence state
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
+  const [initComplete, setInitComplete] = useState(false);
+
   // Get image info when file is selected
   const handleFileSelect = useCallback(async (file: File) => {
     // Validate file type
@@ -249,6 +261,11 @@ function SubmitPageContent() {
     // Create preview URL
     const objectUrl = URL.createObjectURL(file);
     setPreviewUrl(objectUrl);
+
+    // Convert file to data URL for draft persistence (async, non-blocking)
+    fileToDataUrl(file)
+      .then((dataUrl) => setImageDataUrl(dataUrl))
+      .catch((err) => console.warn('Failed to convert file to data URL:', err));
 
     // Get detailed image info using the scaler module (if available)
     if (scalerModule?.getImageInfo) {
@@ -288,71 +305,122 @@ function SubmitPageContent() {
     }
   }, [title, scalerModule]);
 
-  // Handle imports from Piskel or Pixelc editors
+  // Restore state from a saved draft
+  const restoreFromDraft = useCallback(async (draft: SubmitDraftData) => {
+    // Restore form fields
+    setTitle(draft.title);
+    setDescription(draft.description);
+    setHashtags(draft.hashtags);
+    setPostAsHidden(draft.postAsHidden);
+    setAllowEdit(draft.allowEdit);
+
+    // Restore scaling options
+    setShowScalingOptions(draft.showScalingOptions);
+    setScalePercent(draft.scalePercent);
+    setScaleAlgorithm(draft.scaleAlgorithm);
+    setScalingMode(draft.scalingMode);
+    setCustomWidth(draft.customWidth);
+    setCustomHeight(draft.customHeight);
+    setMaintainAspectRatio(draft.maintainAspectRatio);
+
+    // Restore image info
+    if (draft.imageInfo) {
+      setImageInfo(draft.imageInfo);
+    }
+
+    // Restore image data URL and convert back to File
+    if (draft.imageDataUrl && draft.imageName && draft.imageMimeType) {
+      setImageDataUrl(draft.imageDataUrl);
+      const file = dataUrlToFile(draft.imageDataUrl, draft.imageName, draft.imageMimeType);
+      setSelectedFile(file);
+      const objectUrl = URL.createObjectURL(file);
+      setPreviewUrl(objectUrl);
+    }
+  }, []);
+
+  // Handle imports from Piskel or Pixelc editors, or restore saved draft
   useEffect(() => {
     if (editorImportProcessed) return;
     if (!router.isReady) return;
 
     const from = router.query.from as string | undefined;
-    if (!from || (from !== 'piskel' && from !== 'pixelc')) return;
+    const hasEditorImport = from === 'piskel' || from === 'pixelc';
 
-    const storageKey = from === 'piskel' ? 'piskel_export' : 'pixelc_export';
-    const exportData = sessionStorage.getItem(storageKey);
+    if (hasEditorImport) {
+      const storageKey = from === 'piskel' ? 'piskel_export' : 'pixelc_export';
+      const exportData = sessionStorage.getItem(storageKey);
 
-    if (!exportData) {
-      console.warn(`No ${storageKey} data found in sessionStorage`);
-      setEditorImportProcessed(true);
-      return;
+      if (exportData) {
+        // New artwork from editor takes priority - clear any saved draft
+        clearDraft();
+
+        try {
+          const data = JSON.parse(exportData);
+
+          // Get the data URL - both Piskel and Pixelc use 'imageData'
+          const dataUrl = data.imageData;
+
+          if (!dataUrl || typeof dataUrl !== 'string') {
+            console.error(`Invalid ${from} export data: missing data URL`);
+            setEditorImportProcessed(true);
+            setInitComplete(true);
+            return;
+          }
+
+          // Convert data URL to File
+          const byteString = atob(dataUrl.split(',')[1]);
+          const mimeMatch = dataUrl.match(/^data:([^;]+);/);
+          const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
+          const arrayBuffer = new ArrayBuffer(byteString.length);
+          const uint8Array = new Uint8Array(arrayBuffer);
+          for (let i = 0; i < byteString.length; i++) {
+            uint8Array[i] = byteString.charCodeAt(i);
+          }
+          const blob = new Blob([arrayBuffer], { type: mimeType });
+
+          // Generate filename
+          const extension = mimeType === 'image/gif' ? 'gif' : mimeType === 'image/webp' ? 'webp' : 'png';
+          const fileName = from === 'pixelc' && data.name
+            ? `${data.name}.${extension}`
+            : `${from}-export.${extension}`;
+
+          const file = new File([blob], fileName, { type: mimeType });
+
+          // Store data URL for draft persistence
+          setImageDataUrl(dataUrl);
+
+          // Pre-fill title from Pixelc name if available
+          if (from === 'pixelc' && data.name) {
+            setTitle(data.name);
+          }
+
+          // Process the file
+          handleFileSelect(file);
+
+          // Clear the editor export from sessionStorage
+          sessionStorage.removeItem(storageKey);
+
+          setEditorImportProcessed(true);
+          setInitComplete(true);
+          return;
+        } catch (err) {
+          console.error(`Failed to process ${from} export:`, err);
+          setEditorImportProcessed(true);
+          setInitComplete(true);
+          return;
+        }
+      }
     }
 
-    try {
-      const data = JSON.parse(exportData);
-
-      // Get the data URL - both Piskel and Pixelc use 'imageData'
-      const dataUrl = data.imageData;
-
-      if (!dataUrl || typeof dataUrl !== 'string') {
-        console.error(`Invalid ${from} export data: missing data URL`);
-        setEditorImportProcessed(true);
-        return;
-      }
-
-      // Convert data URL to File
-      const byteString = atob(dataUrl.split(',')[1]);
-      const mimeMatch = dataUrl.match(/^data:([^;]+);/);
-      const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
-      const arrayBuffer = new ArrayBuffer(byteString.length);
-      const uint8Array = new Uint8Array(arrayBuffer);
-      for (let i = 0; i < byteString.length; i++) {
-        uint8Array[i] = byteString.charCodeAt(i);
-      }
-      const blob = new Blob([arrayBuffer], { type: mimeType });
-
-      // Generate filename
-      const extension = mimeType === 'image/gif' ? 'gif' : mimeType === 'image/webp' ? 'webp' : 'png';
-      const fileName = from === 'pixelc' && data.name
-        ? `${data.name}.${extension}`
-        : `${from}-export.${extension}`;
-
-      const file = new File([blob], fileName, { type: mimeType });
-
-      // Pre-fill title from Pixelc name if available
-      if (from === 'pixelc' && data.name) {
-        setTitle(data.name);
-      }
-
-      // Process the file
-      handleFileSelect(file);
-
-      // Clear the sessionStorage
-      sessionStorage.removeItem(storageKey);
-
-      setEditorImportProcessed(true);
-    } catch (err) {
-      console.error(`Failed to process ${from} export:`, err);
-      setEditorImportProcessed(true);
+    // No editor import - try to restore saved draft
+    const draft = loadDraft();
+    if (draft) {
+      restoreFromDraft(draft);
     }
-  }, [router.isReady, router.query.from, editorImportProcessed, handleFileSelect]);
+
+    setEditorImportProcessed(true);
+    setInitComplete(true);
+  }, [router.isReady, router.query.from, editorImportProcessed, handleFileSelect, restoreFromDraft]);
 
   // Fallback for image info when scaler is not available
   const fallbackImageInfo = useCallback((file: File, objectUrl: string) => {
@@ -390,6 +458,55 @@ function SubmitPageContent() {
     };
     img.src = objectUrl;
   }, [title]);
+
+  // Auto-save draft when state changes (debounced)
+  useEffect(() => {
+    // Only save after initialization is complete and we have an image
+    if (!initComplete || !selectedFile) return;
+
+    const timeoutId = setTimeout(() => {
+      const draft: SubmitDraftData = {
+        version: 1,
+        savedAt: Date.now(),
+        imageDataUrl,
+        imageName: selectedFile.name,
+        imageMimeType: selectedFile.type,
+        imageInfo,
+        title,
+        description,
+        hashtags,
+        postAsHidden,
+        allowEdit,
+        showScalingOptions,
+        scalePercent,
+        scaleAlgorithm,
+        scalingMode,
+        customWidth,
+        customHeight,
+        maintainAspectRatio,
+      };
+      saveDraft(draft);
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [
+    initComplete,
+    selectedFile,
+    imageDataUrl,
+    imageInfo,
+    title,
+    description,
+    hashtags,
+    postAsHidden,
+    allowEdit,
+    showScalingOptions,
+    scalePercent,
+    scaleAlgorithm,
+    scalingMode,
+    customWidth,
+    customHeight,
+    maintainAspectRatio,
+  ]);
 
   const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -505,6 +622,7 @@ function SubmitPageContent() {
     }
     setPreviewUrl(null);
     setImageInfo(null);
+    setImageDataUrl(null);
     setValidationErrors([]);
     setTitle('');
     setDescription('');
@@ -519,6 +637,7 @@ function SubmitPageContent() {
     setShowScalingOptions(false);
     setPreviewScaling(false);
     setProcessingState({ isProcessing: false, progress: null, error: null });
+    clearDraft();
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -609,6 +728,9 @@ function SubmitPageContent() {
         height: data.post.height,
         public_visibility: data.post.public_visibility,
       });
+
+      // Clear draft after successful upload
+      clearDraft();
 
     } catch (error) {
       console.error('Upload error:', error);

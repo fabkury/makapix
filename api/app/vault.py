@@ -245,10 +245,10 @@ def validate_image_dimensions(width: int, height: int) -> tuple[bool, str | None
 def validate_file_size(file_size: int) -> tuple[bool, str | None]:
     """
     Validate that the file size is within limits.
-    
+
     Args:
         file_size: File size in bytes
-    
+
     Returns:
         Tuple of (is_valid, error_message)
     """
@@ -256,6 +256,64 @@ def validate_file_size(file_size: int) -> tuple[bool, str | None]:
         max_mb = MAX_FILE_SIZE_BYTES / (1024 * 1024)
         actual_mb = file_size / (1024 * 1024)
         return False, f"File size ({actual_mb:.2f} MB) exceeds maximum of {max_mb} MB"
-    
+
     return True, None
+
+
+def get_upscaled_file_path(artwork_id: UUID) -> Path:
+    """
+    Get the path for an upscaled artwork file.
+
+    The upscaled file is stored in the same vault folder as the original,
+    with "_upscaled.webp" suffix.
+
+    Args:
+        artwork_id: The UUID of the artwork (storage_key)
+
+    Returns:
+        Path to the upscaled WEBP file: {folder}/{artwork_id}_upscaled.webp
+    """
+    folder_path = get_artwork_folder_path(artwork_id)
+    return folder_path / f"{artwork_id}_upscaled.webp"
+
+
+def delete_all_artwork_formats(artwork_id: UUID, formats: list[str]) -> dict[str, bool]:
+    """
+    Delete all format variants of an artwork plus the upscaled version.
+
+    Args:
+        artwork_id: The UUID of the artwork (storage_key)
+        formats: List of file formats to delete (e.g., ['png', 'gif', 'webp', 'bmp'])
+
+    Returns:
+        Dictionary mapping format/type to deletion success status
+        Example: {'png': True, 'gif': True, 'upscaled': True}
+    """
+    results = {}
+
+    # Delete each format variant
+    for file_format in formats:
+        if file_format in FORMAT_TO_EXT:
+            extension = FORMAT_TO_EXT[file_format]
+            try:
+                deleted = delete_artwork_from_vault(artwork_id, extension)
+                results[file_format] = deleted
+            except Exception as e:
+                logger.warning(f"Failed to delete {file_format} for {artwork_id}: {e}")
+                results[file_format] = False
+
+    # Delete upscaled version
+    try:
+        upscaled_path = get_upscaled_file_path(artwork_id)
+        if upscaled_path.exists():
+            upscaled_path.unlink()
+            logger.info(f"Deleted upscaled file for {artwork_id}")
+            results["upscaled"] = True
+        else:
+            results["upscaled"] = False
+    except Exception as e:
+        logger.warning(f"Failed to delete upscaled file for {artwork_id}: {e}")
+        results["upscaled"] = False
+
+    return results
 

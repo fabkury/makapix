@@ -248,6 +248,8 @@ class Post(BaseModel):
     reaction_count: int = 0
     comment_count: int = 0
     user_has_liked: bool = False  # Whether the current user has liked (👍) this post
+    formats_available: list[str] = []  # Available formats after SSAFPP processing
+    file_format: str | None = None  # Original file format: png, gif, webp, bmp
 
     model_config = ConfigDict(from_attributes=True)
 

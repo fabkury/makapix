@@ -98,6 +98,11 @@ export default function UserProfilePage() {
   // Follow state
   const [isFollowing, setIsFollowing] = useState(false);
 
+  // Account deletion state
+  const [deletionStep, setDeletionStep] = useState<'initial' | 'confirm-1' | 'confirm-2' | 'final-1' | 'final-2' | 'deleting' | 'success'>('initial');
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletionError, setDeletionError] = useState<string | null>(null);
+
   const observerTarget = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const hasMoreRef = useRef(true);
@@ -344,6 +349,7 @@ export default function UserProfilePage() {
       setAvatarUploadError(null);
       setHandleStatus('idle');
       setHandleMessage('');
+      resetDeletionState();
       setIsEditing(false);
     }
   };
@@ -527,6 +533,78 @@ export default function UserProfilePage() {
       setSaveError('Failed to save changes');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // Reset deletion state
+  const resetDeletionState = () => {
+    setDeletionStep('initial');
+    setDeleteConfirmText('');
+    setDeletionError(null);
+  };
+
+  // Handle account deletion
+  const handleAccountDeletion = async () => {
+    if (deletionStep === 'initial') {
+      setDeletionStep('confirm-1');
+      return;
+    }
+
+    if (deletionStep === 'confirm-1') {
+      setDeletionStep('confirm-2');
+      return;
+    }
+
+    if (deletionStep === 'confirm-2') {
+      // Only proceed if user typed "delete"
+      if (deleteConfirmText.toLowerCase() !== 'delete') {
+        return;
+      }
+      setDeletionStep('final-1');
+      return;
+    }
+
+    if (deletionStep === 'final-1') {
+      setDeletionStep('final-2');
+      return;
+    }
+
+    if (deletionStep === 'final-2') {
+      // Actually delete the account
+      setDeletionStep('deleting');
+      setDeletionError(null);
+
+      try {
+        const response = await authenticatedFetch(`${API_BASE_URL}/api/user/delete-account`, {
+          method: 'POST',
+        });
+
+        if (response.status === 401) {
+          clearTokens();
+          router.push('/auth');
+          return;
+        }
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          setDeletionError(errorData.detail || 'Failed to delete account');
+          setDeletionStep('final-1');
+          return;
+        }
+
+        setDeletionStep('success');
+
+        // Clear tokens and redirect after 5 seconds
+        setTimeout(() => {
+          clearTokens();
+          window.location.href = 'https://makapix.club/';
+        }, 5000);
+
+      } catch (err) {
+        console.error('Error deleting account:', err);
+        setDeletionError('Failed to delete account. Please try again.');
+        setDeletionStep('final-1');
+      }
     }
   };
 
@@ -762,6 +840,107 @@ export default function UserProfilePage() {
                         Cancel
                       </button>
                     </div>
+
+                    {/* Danger Zone - only visible on own profile and not for site owner */}
+                    {profile.is_own_profile && !isOwner && (
+                      <div className="danger-zone">
+                        <h3 className="danger-zone-title">Danger Zone</h3>
+
+                        {/* Success Overlay */}
+                        {deletionStep === 'success' && (
+                          <div className="deletion-overlay">
+                            <div className="deletion-overlay-content">
+                              <p>Your account will now be deleted.</p>
+                              <p>You will be logged out.</p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Initial state */}
+                        {deletionStep === 'initial' && (
+                          <button
+                            type="button"
+                            className="danger-btn danger-btn-initial"
+                            onClick={handleAccountDeletion}
+                          >
+                            Delete this account
+                          </button>
+                        )}
+
+                        {/* First confirmation */}
+                        {deletionStep === 'confirm-1' && (
+                          <button
+                            type="button"
+                            className="danger-btn danger-btn-confirm"
+                            onClick={handleAccountDeletion}
+                          >
+                            Click again to confirm
+                          </button>
+                        )}
+
+                        {/* Second confirmation with text input */}
+                        {deletionStep === 'confirm-2' && (
+                          <div className="delete-confirmation-box">
+                            <p className="delete-warning-text">
+                              This action is <strong>permanent</strong> and cannot be undone.
+                              All your posts, comments, reactions, and profile data will be permanently deleted.
+                            </p>
+                            <label className="delete-confirm-label">
+                              Type <strong>delete</strong> to confirm:
+                              <input
+                                type="text"
+                                className="delete-confirm-input"
+                                value={deleteConfirmText}
+                                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                                placeholder="delete"
+                                autoComplete="off"
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              className="danger-btn danger-btn-final"
+                              onClick={handleAccountDeletion}
+                              disabled={deleteConfirmText.toLowerCase() !== 'delete'}
+                            >
+                              Delete forever
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Final confirmation */}
+                        {deletionStep === 'final-1' && (
+                          <>
+                            {deletionError && <p className="deletion-error">{deletionError}</p>}
+                            <button
+                              type="button"
+                              className="danger-btn danger-btn-final"
+                              onClick={handleAccountDeletion}
+                            >
+                              Click again to confirm
+                            </button>
+                          </>
+                        )}
+
+                        {/* Very final confirmation */}
+                        {deletionStep === 'final-2' && (
+                          <button
+                            type="button"
+                            className="danger-btn danger-btn-final danger-btn-pulsing"
+                            onClick={handleAccountDeletion}
+                          >
+                            Confirm permanent deletion
+                          </button>
+                        )}
+
+                        {/* Deleting state */}
+                        {deletionStep === 'deleting' && (
+                          <div className="deleting-state">
+                            <div className="loading-spinner-small"></div>
+                            <p>Deleting your account...</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </>
                 ) : (
                   <>
@@ -1291,6 +1470,147 @@ export default function UserProfilePage() {
         .cancel-btn:disabled {
           opacity: 0.6;
           cursor: not-allowed;
+        }
+
+        /* Danger Zone Styles */
+        .danger-zone {
+          margin-top: 32px;
+          padding: 20px;
+          border: 2px solid rgba(239, 68, 68, 0.3);
+          border-radius: 12px;
+          background: rgba(239, 68, 68, 0.05);
+          max-width: 600px;
+        }
+
+        .danger-zone-title {
+          font-size: 1rem;
+          font-weight: 600;
+          color: #ef4444;
+          margin: 0 0 16px 0;
+        }
+
+        .danger-btn {
+          padding: 12px 24px;
+          font-size: 0.95rem;
+          font-weight: 600;
+          border-radius: 8px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .danger-btn-initial {
+          background: transparent;
+          border: 2px solid #ef4444;
+          color: #ef4444;
+        }
+
+        .danger-btn-initial:hover {
+          background: rgba(239, 68, 68, 0.1);
+        }
+
+        .danger-btn-confirm {
+          background: rgba(245, 158, 11, 0.15);
+          border: 2px solid #f59e0b;
+          color: #f59e0b;
+        }
+
+        .danger-btn-confirm:hover {
+          background: rgba(245, 158, 11, 0.25);
+        }
+
+        .danger-btn-final {
+          background: #ef4444;
+          border: 2px solid #ef4444;
+          color: white;
+        }
+
+        .danger-btn-final:hover:not(:disabled) {
+          background: #dc2626;
+          border-color: #dc2626;
+        }
+
+        .danger-btn-final:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .danger-btn-pulsing {
+          animation: pulse-danger 1s ease-in-out infinite;
+        }
+
+        @keyframes pulse-danger {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+          50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+        }
+
+        .delete-confirmation-box {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+
+        .delete-warning-text {
+          color: var(--text-secondary);
+          font-size: 0.9rem;
+          line-height: 1.5;
+          margin: 0;
+        }
+
+        .delete-confirm-label {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          font-size: 0.9rem;
+          color: var(--text-secondary);
+        }
+
+        .delete-confirm-input {
+          padding: 10px 14px;
+          background: var(--bg-tertiary);
+          border: 2px solid var(--bg-tertiary);
+          border-radius: 8px;
+          font-size: 0.95rem;
+          color: var(--text-primary);
+          transition: border-color 0.2s ease;
+          max-width: 200px;
+        }
+
+        .delete-confirm-input:focus {
+          outline: none;
+          border-color: #ef4444;
+        }
+
+        .deletion-error {
+          color: #ef4444;
+          font-size: 0.9rem;
+          margin: 0 0 12px 0;
+        }
+
+        .deleting-state {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          color: var(--text-secondary);
+        }
+
+        .deletion-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.9);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 10000;
+        }
+
+        .deletion-overlay-content {
+          text-align: center;
+          color: var(--text-primary);
+          font-size: 1.25rem;
+          line-height: 2;
         }
 
         .artworks-section {

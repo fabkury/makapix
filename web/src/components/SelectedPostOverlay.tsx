@@ -22,6 +22,13 @@ export interface SelectedPostOverlayPost {
     avatar_url?: string | null;
     public_sqid?: string;
   };
+  created_at: string;
+  frame_count: number;
+  width: number;
+  height: number;
+  file_bytes: number;
+  file_format?: string;
+  formats_available: string[];
 }
 
 export interface SelectedPostOverlayProps {
@@ -128,6 +135,27 @@ async function toggleReaction(postId: number, emoji: string, shouldAdd: boolean)
     const txt = await resp.text().catch(() => '');
     throw new Error(`Failed to ${shouldAdd ? 'add' : 'remove'} reaction: ${resp.status} ${txt}`.trim());
   }
+}
+
+function formatFileSizeCompact(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const k = 1000;
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const value = bytes / Math.pow(k, i);
+  if (value >= 100) return `${Math.round(value)} ${units[i]}`;
+  if (value >= 10) return `${value.toFixed(1)} ${units[i]}`;
+  return `${value.toFixed(2)} ${units[i]}`;
+}
+
+function formatDateTime(isoString: string): string {
+  const date = new Date(isoString);
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${year}/${month}/${day} ${hours}:${minutes}`;
 }
 
 // Inline styles to ensure they work inside the portal
@@ -271,7 +299,6 @@ const metaAreaStyles: React.CSSProperties = {
   top: 0,
   width: META_AREA_WIDTH,
   background: '#000',
-  borderTop: '1px solid rgba(255, 255, 255, 0.1)',
   fontFamily: "'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
   pointerEvents: 'auto',
   zIndex: 20001,
@@ -283,7 +310,6 @@ const titleRowStyles: React.CSSProperties = {
   alignItems: 'center',
   paddingLeft: 16,
   paddingRight: 16,
-  borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
   fontSize: '14px',
   fontWeight: 600,
   color: '#e8e8f0',
@@ -298,7 +324,6 @@ const reactionsRowStyles: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   gap: 12,
-  borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
   padding: '0 8px',
 };
 
@@ -355,6 +380,79 @@ const descriptionAreaStyles: React.CSSProperties = {
   color: '#a0a0b8',
 };
 
+const technicalInfoRowStyles: React.CSSProperties = {
+  height: 24,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: '12px',
+  color: '#a0a0b8',
+};
+
+const moreButtonStyles: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  color: '#e8e8f0',
+  fontSize: '18px',
+  cursor: 'pointer',
+  padding: '4px 8px',
+  marginLeft: '8px',
+  borderRadius: '4px',
+  lineHeight: 1,
+};
+
+const moreMenuOverlayStyles: React.CSSProperties = {
+  position: 'fixed',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  zIndex: 20002,
+};
+
+const moreMenuStyles: React.CSSProperties = {
+  position: 'absolute',
+  background: '#1a1a24',
+  border: '1px solid rgba(255, 255, 255, 0.15)',
+  borderRadius: '8px',
+  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+  minWidth: '200px',
+  overflow: 'visible',
+};
+
+const menuItemStyles: React.CSSProperties = {
+  display: 'block',
+  width: '100%',
+  padding: '10px 16px',
+  fontSize: '14px',
+  color: '#e8e8f0',
+  background: 'transparent',
+  border: 'none',
+  textAlign: 'left',
+  cursor: 'pointer',
+  fontFamily: "'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+};
+
+const menuItemDisabledStyles: React.CSSProperties = {
+  ...menuItemStyles,
+  color: '#6a6a80',
+  cursor: 'not-allowed',
+};
+
+const subPanelStyles: React.CSSProperties = {
+  position: 'absolute',
+  // Position to the LEFT of the parent menu since menu is at right edge of screen
+  right: '100%',
+  top: 0,
+  background: '#1a1a24',
+  border: '1px solid rgba(255, 255, 255, 0.15)',
+  borderRadius: '8px',
+  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+  minWidth: '140px',
+  overflow: 'hidden',
+  marginRight: '4px',
+};
+
 type AnimationPhase = 'mounting' | 'flying-in' | 'selected' | 'flying-out' | 'swiping';
 
 export default function SelectedPostOverlay({
@@ -395,7 +493,44 @@ export default function SelectedPostOverlay({
   const [headerContentKey, setHeaderContentKey] = useState(0);
   const [metaContentKey, setMetaContentKey] = useState(0);
   const [showCommentsOverlay, setShowCommentsOverlay] = useState(false);
-  
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showFormatSubPanel, setShowFormatSubPanel] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const subPanelCloseTimeoutRef = useRef<number | null>(null);
+
+  // Helper to close submenu with optional delay
+  const closeSubPanelDelayed = useCallback((delay: number = 300) => {
+    if (subPanelCloseTimeoutRef.current) {
+      window.clearTimeout(subPanelCloseTimeoutRef.current);
+    }
+    subPanelCloseTimeoutRef.current = window.setTimeout(() => {
+      setShowFormatSubPanel(false);
+      subPanelCloseTimeoutRef.current = null;
+    }, delay);
+  }, []);
+
+  // Helper to cancel pending close and optionally show submenu
+  const cancelSubPanelClose = useCallback((show?: boolean) => {
+    if (subPanelCloseTimeoutRef.current) {
+      window.clearTimeout(subPanelCloseTimeoutRef.current);
+      subPanelCloseTimeoutRef.current = null;
+    }
+    if (show !== undefined) {
+      setShowFormatSubPanel(show);
+    }
+  }, []);
+
+  // Helper to immediately close submenu (for when parent closes)
+  const closeSubPanelImmediate = useCallback(() => {
+    if (subPanelCloseTimeoutRef.current) {
+      window.clearTimeout(subPanelCloseTimeoutRef.current);
+      subPanelCloseTimeoutRef.current = null;
+    }
+    setShowFormatSubPanel(false);
+  }, []);
+
   // Widget data (reactions + comments)
   const [widgetData, setWidgetData] = useState<WidgetData | null>(null);
   const [loadingWidget, setLoadingWidget] = useState(false);
@@ -445,6 +580,15 @@ export default function SelectedPostOverlay({
     pressTimerRef.current = null;
     pressStartRef.current = null;
     setPressing(false);
+  }, []);
+
+  // Cleanup subpanel close timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (subPanelCloseTimeoutRef.current) {
+        window.clearTimeout(subPanelCloseTimeoutRef.current);
+      }
+    };
   }, []);
 
   // Create portal root
@@ -660,6 +804,130 @@ export default function SelectedPostOverlay({
     }
   }, [post, widgetData]);
 
+  const handleEditInPiskel = useCallback(() => {
+    if (!post) return;
+    setShowMoreMenu(false);
+    router.push(`/editor?edit=${post.public_sqid}`);
+  }, [post, router]);
+
+  const handleDownloadNative = useCallback(async () => {
+    if (!post) return;
+    setShowMoreMenu(false);
+    try {
+      const resp = await fetch(`/api/d/${post.public_sqid}`);
+      if (!resp.ok) throw new Error('Download failed');
+      const blob = await resp.blob();
+      const ext = post.file_format || 'png';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${post.title || post.public_sqid}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Download failed:', err);
+    }
+  }, [post]);
+
+  const handleDownloadUpscaled = useCallback(async () => {
+    if (!post) return;
+    setShowMoreMenu(false);
+    try {
+      const resp = await fetch(`/api/d/${post.public_sqid}/upscaled`);
+      if (!resp.ok) throw new Error('Download failed');
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${post.title || post.public_sqid}_upscaled.webp`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Download failed:', err);
+    }
+  }, [post]);
+
+  const handleDownloadFormat = useCallback(async (format: string) => {
+    if (!post) return;
+    setShowMoreMenu(false);
+    setShowFormatSubPanel(false);
+    try {
+      const resp = await fetch(`/api/d/${post.public_sqid}.${format}`);
+      if (!resp.ok) throw new Error('Download failed');
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${post.title || post.public_sqid}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Download failed:', err);
+    }
+  }, [post]);
+
+  const handleShareUpscaled = useCallback(async () => {
+    if (!post) return;
+    setShowMoreMenu(false);
+    try {
+      const resp = await fetch(`/api/d/${post.public_sqid}/upscaled`);
+      if (!resp.ok) throw new Error('Fetch failed');
+      const blob = await resp.blob();
+      const file = new File([blob], `${post.title || post.public_sqid}_upscaled.webp`, { type: 'image/webp' });
+
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: post.title,
+        });
+      } else {
+        // Fallback: copy post URL to clipboard
+        const postUrl = `${window.location.origin}/p/${post.public_sqid}`;
+        await navigator.clipboard.writeText(postUrl);
+        alert('Link copied to clipboard');
+      }
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        console.error('Share failed:', err);
+      }
+    }
+  }, [post]);
+
+  const handleShareNative = useCallback(async () => {
+    if (!post) return;
+    setShowMoreMenu(false);
+    try {
+      const resp = await fetch(`/api/d/${post.public_sqid}`);
+      if (!resp.ok) throw new Error('Fetch failed');
+      const blob = await resp.blob();
+      const ext = post.file_format || 'png';
+      const mimeType = ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/png';
+      const file = new File([blob], `${post.title || post.public_sqid}.${ext}`, { type: mimeType });
+
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: post.title,
+        });
+      } else {
+        // Fallback: copy post URL to clipboard
+        const postUrl = `${window.location.origin}/p/${post.public_sqid}`;
+        await navigator.clipboard.writeText(postUrl);
+        alert('Link copied to clipboard');
+      }
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        console.error('Share failed:', err);
+      }
+    }
+  }, [post]);
+
   const dismissToOriginAndClose = useCallback(async () => {
     // Get fresh origin rect from DOM to ensure precision after any scroll/resize
     const origin = getCurrentOriginRect() ?? initialOriginRect;
@@ -856,14 +1124,65 @@ export default function SelectedPostOverlay({
     ]
   );
 
-  // ESC to close
+  // ESC to close, arrow keys to navigate
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !showCommentsOverlay) void dismissToOriginAndClose();
+      if (e.key === 'Escape') {
+        if (showMoreMenu) {
+          setShowMoreMenu(false);
+          closeSubPanelImmediate();
+        } else if (!showCommentsOverlay) {
+          void dismissToOriginAndClose();
+        }
+      }
+
+      // Arrow key navigation (only when interactive and no overlays open)
+      if (phase === 'selected' && !showMoreMenu && !showCommentsOverlay) {
+        if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          if (selectedIndex < posts.length - 1) {
+            void swipeToIndex(selectedIndex + 1);
+          } else {
+            void bounceX('left');
+          }
+        } else if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          if (selectedIndex > 0) {
+            void swipeToIndex(selectedIndex - 1);
+          } else {
+            void bounceX('right');
+          }
+        }
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [dismissToOriginAndClose, showCommentsOverlay]);
+  }, [
+    closeSubPanelImmediate,
+    dismissToOriginAndClose,
+    showCommentsOverlay,
+    showMoreMenu,
+    phase,
+    selectedIndex,
+    posts.length,
+    swipeToIndex,
+    bounceX,
+  ]);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    if (!showMoreMenu) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (moreMenuRef.current && !moreMenuRef.current.contains(target) &&
+          moreButtonRef.current && !moreButtonRef.current.contains(target)) {
+        setShowMoreMenu(false);
+        closeSubPanelImmediate();
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [closeSubPanelImmediate, showMoreMenu]);
 
   if (!portalEl || !post) return null;
   
@@ -1018,11 +1337,174 @@ export default function SelectedPostOverlay({
                   <span style={{ fontSize: '16px', marginRight: '-2px' }}>👁</span>
                   <span>{widgetData?.views_count ?? 0}</span>
                 </div>
+                <button
+                  ref={moreButtonRef}
+                  style={moreButtonStyles}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!showMoreMenu && moreButtonRef.current) {
+                      const rect = moreButtonRef.current.getBoundingClientRect();
+                      const viewportWidth = window.innerWidth;
+                      const menuWidth = 200; // minWidth from moreMenuStyles
+                      const margin = 8;
+
+                      // Position menu below the button, aligned to the right edge of the button
+                      // but ensure it stays within viewport
+                      let rightPos = viewportWidth - rect.right;
+                      if (rect.right - menuWidth < margin) {
+                        // Menu would overflow left, align to left edge instead
+                        rightPos = viewportWidth - menuWidth - margin;
+                      }
+
+                      setMenuPosition({
+                        top: rect.bottom + 4,
+                        right: Math.max(margin, rightPos),
+                      });
+                    }
+                    setShowMoreMenu(!showMoreMenu);
+                  }}
+                  aria-label="More options"
+                >
+                  &#8942;
+                </button>
               </motion.div>
             )}
           </motion.div>
         </AnimatePresence>
       </motion.div>
+
+      {/* More Menu Overlay */}
+      {showMoreMenu && (
+        <div
+          style={moreMenuOverlayStyles}
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowMoreMenu(false);
+            closeSubPanelImmediate();
+          }}
+        >
+          <div
+            ref={moreMenuRef}
+            style={{
+              ...moreMenuStyles,
+              right: menuPosition?.right ?? 16,
+              top: menuPosition?.top ?? (POST_HEADER_HEIGHT + 4),
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Disabled items */}
+            <button style={menuItemDisabledStyles} disabled>
+              Use as profile photo
+            </button>
+            <button style={menuItemDisabledStyles} disabled>
+              Add to my favorites
+            </button>
+
+            {/* Enabled items */}
+            <button
+              style={menuItemStyles}
+              onClick={handleEditInPiskel}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              Edit in Piskel
+            </button>
+            <button style={menuItemDisabledStyles} disabled>
+              Edit in Pixelc
+            </button>
+
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '4px 0' }} />
+
+            <button
+              style={menuItemStyles}
+              onClick={handleShareUpscaled}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              Share upscaled
+            </button>
+            <button
+              style={menuItemStyles}
+              onClick={handleShareNative}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              Share native size
+            </button>
+
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '4px 0' }} />
+
+            <button
+              style={menuItemStyles}
+              onClick={handleDownloadUpscaled}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              Download upscaled
+            </button>
+            <div
+              style={{ position: 'relative' }}
+              onMouseEnter={() => cancelSubPanelClose(true)}
+              onMouseLeave={() => closeSubPanelDelayed()}
+            >
+              <button
+                style={{
+                  ...menuItemStyles,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (showFormatSubPanel) {
+                    closeSubPanelImmediate();
+                  } else {
+                    cancelSubPanelClose(true);
+                  }
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span>Download alternative format</span>
+                <span style={{ marginLeft: '8px' }}>{showFormatSubPanel ? '▼' : '◀'}</span>
+              </button>
+              {showFormatSubPanel && (() => {
+                const alternativeFormats = post.formats_available
+                  .filter(f => f.toLowerCase() !== (post.file_format || 'png').toLowerCase());
+                return (
+                  <div style={subPanelStyles}>
+                    {alternativeFormats.length > 0 ? (
+                      alternativeFormats.map(format => (
+                        <button
+                          key={format}
+                          style={menuItemStyles}
+                          onClick={() => handleDownloadFormat(format)}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                        >
+                          {format.toUpperCase()}
+                        </button>
+                      ))
+                    ) : (
+                      <div style={{ ...menuItemStyles, color: '#6a6a80', cursor: 'default' }}>
+                        No alternative formats
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+            <button
+              style={menuItemStyles}
+              onClick={handleDownloadNative}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              Download native format
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Outgoing artwork during swipe transition (flies back to grid) */}
       {outgoingPost && (
@@ -1230,6 +1712,18 @@ export default function SelectedPostOverlay({
           >
             {/* Title Row */}
             <div style={titleRowStyles}>{post.title}</div>
+
+            {/* Technical Info Row */}
+            <div style={technicalInfoRowStyles}>
+              {formatDateTime(post.created_at)}
+              <span style={{ margin: '0 8px', opacity: 0.5 }}>&bull;</span>
+              <span style={post.frame_count > 256 ? { color: '#ff8080' } : undefined}>
+                {post.frame_count}
+              </span>
+              &times;({post.width}&times;{post.height})
+              <span style={{ margin: '0 8px', opacity: 0.5 }}>&bull;</span>
+              {formatFileSizeCompact(post.file_bytes)} {post.file_format?.toUpperCase() || 'PNG'}
+            </div>
 
             {/* Reactions Row */}
             <div style={reactionsRowStyles}>

@@ -298,6 +298,9 @@ class Post(Base):
     # Note: Uniqueness is enforced via partial index uq_posts_hash_active
     # (only for non-deleted posts)
     file_format = Column(String(20), nullable=True)  # File format: png, gif, webp, bmp
+    formats_available = Column(
+        ARRAY(String(10)), nullable=False, default=list
+    )  # Available formats after SSAFPP: ['png', 'gif', 'webp', 'bmp']
 
     # Visibility & moderation
     visible = Column(Boolean, nullable=False, default=True, index=True)
@@ -1116,7 +1119,7 @@ class SiteStatsDaily(Base):
     __tablename__ = "site_stats_daily"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    date = Column(Date, nullable=False, unique=True, index=True)
+    date = Column(Date, nullable=False, unique=True)
 
     # Core metrics
     total_page_views = Column(Integer, nullable=False, default=0)

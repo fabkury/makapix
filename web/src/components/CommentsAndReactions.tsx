@@ -307,10 +307,13 @@ export default function CommentsAndReactions({
     }
 
     const isFolded = foldedComments.has(comment.id);
+    const isDeletedUser = !comment.author_id && !comment.author_ip;
     const authorName = comment.deleted_by_owner
       ? '[deleted]'
-      : (comment.author_display_name || comment.author_handle || 'Unknown');
-    const isGuest = !comment.deleted_by_owner && !comment.author_id && comment.author_ip !== null;
+      : isDeletedUser
+        ? '[deleted user]'
+        : (comment.author_display_name || comment.author_handle || 'Unknown');
+    const isGuest = !comment.deleted_by_owner && !isDeletedUser && !comment.author_id && comment.author_ip !== null;
 
     return (
       <div key={comment.id} className={`makapix-comment ${isFolded ? 'makapix-folded' : ''}`} data-comment-id={comment.id}>

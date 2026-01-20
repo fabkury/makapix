@@ -169,10 +169,13 @@ export default function SPOCommentsOverlay({
       return null;
     }
 
+    const isDeletedUser = !comment.author_id && !comment.author_ip;
     const authorName = comment.deleted_by_owner
       ? '[deleted]'
-      : (comment.author_display_name || comment.author_handle || 'Anonymous');
-    const isGuest = !comment.deleted_by_owner && !comment.author_id && comment.author_ip !== null;
+      : isDeletedUser
+        ? '[deleted user]'
+        : (comment.author_display_name || comment.author_handle || 'Anonymous');
+    const isGuest = !comment.deleted_by_owner && !isDeletedUser && !comment.author_id && comment.author_ip !== null;
     const canReply = depth < 2; // Only allow replies up to 2 levels deep (0, 1)
 
     return (

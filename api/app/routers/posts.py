@@ -669,6 +669,7 @@ async def upload_artwork(
         alpha_actual=alpha_actual,
         hash=file_hash,
         file_format=file_format,
+        formats_available=[file_format],  # Initialize with native format
         public_visibility=public_visibility,
         hidden_by_user=user_hidden,
         metadata_modified_at=now,
@@ -729,6 +730,14 @@ async def upload_artwork(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to save artwork. Please try again.",
         )
+
+    # Queue SSAFPP task for format conversion and upscaling
+    try:
+        from ..tasks import process_ssafpp
+
+        process_ssafpp.delay(post.id)
+    except Exception as e:
+        logger.error(f"Failed to queue SSAFPP task for post {post.id}: {e}")
 
     # Invalidate feed caches since a new post was created
     if public_visibility:
@@ -1076,17 +1085,17 @@ def permanent_delete_post(
             status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
         )
 
-    # Delete the artwork from vault if it exists
-    if post.art_url:
-        # Extract extension from art_url (e.g., "/api/vault/a1/b2/c3/uuid.png" -> ".png")
+    # Delete all artwork format variants + upscaled version
+    if post.storage_key:
         from app import vault
 
         try:
-            ext = "." + post.art_url.rsplit(".", 1)[-1].lower()
-            if ext in vault.ALLOWED_MIME_TYPES.values():
-                vault.delete_artwork_from_vault(post.storage_key, ext)
+            formats_to_delete = post.formats_available or (
+                [post.file_format] if post.file_format else []
+            )
+            vault.delete_all_artwork_formats(post.storage_key, formats_to_delete)
         except Exception as e:
-            logger.warning(f"Failed to delete artwork file for post {id}: {e}")
+            logger.warning(f"Failed to delete artwork files for post {id}: {e}")
 
     # Log to audit before deletion
     # Wrap in try-except to prevent audit logging failures from blocking deletion

@@ -2254,15 +2254,18 @@ def cleanup_deleted_posts(self) -> dict[str, Any]:
 
         for post in posts_to_delete:
             try:
-                # Delete vault file (if it exists)
-                if post.art_url:
+                # Delete all artwork format variants + upscaled version
+                if post.storage_key:
                     try:
-                        ext = "." + post.art_url.rsplit(".", 1)[-1].lower()
-                        if ext in vault.ALLOWED_MIME_TYPES.values():
-                            vault.delete_artwork_from_vault(post.storage_key, ext)
+                        formats_to_delete = post.formats_available or (
+                            [post.file_format] if post.file_format else []
+                        )
+                        vault.delete_all_artwork_formats(
+                            post.storage_key, formats_to_delete
+                        )
                     except Exception as e:
                         logger.warning(
-                            f"Failed to delete vault file for post {post.id}: {e}"
+                            f"Failed to delete vault files for post {post.id}: {e}"
                         )
 
                 # Delete the post (cascades to comments, reactions, admin_notes, etc.)
@@ -2303,6 +2306,372 @@ def cleanup_deleted_posts(self) -> dict[str, Any]:
         logger.error(f"Error in cleanup_deleted_posts task: {e}", exc_info=True)
         db.rollback()
         return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
+
+
+# ============================================================================
+# SERVER-SIDE ARTWORK FILE POST-PROCESSING (SSAFPP) TASKS
+# ============================================================================
+
+
+def _is_lossy_webp(file_bytes: bytes) -> bool:
+    """
+    Detect if a WEBP file uses lossy compression (VP8 codec).
+
+    WEBP files have RIFF header, then WEBP signature, then chunk type:
+    - VP8 (lossy) or VP8L (lossless) for static images
+    - VP8X (extended) for animated/alpha/metadata, followed by other chunks
+
+    Returns True if the WEBP is lossy, False if lossless.
+    """
+    if len(file_bytes) < 20:
+        return False
+
+    # Check RIFF header
+    if file_bytes[0:4] != b"RIFF" or file_bytes[8:12] != b"WEBP":
+        return False
+
+    # Check chunk type at offset 12
+    chunk_type = file_bytes[12:16]
+
+    if chunk_type == b"VP8 ":
+        return True  # Lossy
+    elif chunk_type == b"VP8L":
+        return False  # Lossless
+    elif chunk_type == b"VP8X":
+        # Extended format - need to check for VP8 chunk within
+        # For simplicity, check if there's a VP8 chunk anywhere
+        # (VP8X can contain either VP8 or VP8L data)
+        pos = 20  # Skip RIFF header + VP8X header
+        while pos < len(file_bytes) - 8:
+            if file_bytes[pos : pos + 4] == b"VP8 ":
+                return True
+            # Skip to next chunk
+            if pos + 8 > len(file_bytes):
+                break
+            chunk_size = int.from_bytes(file_bytes[pos + 4 : pos + 8], "little")
+            pos += 8 + chunk_size + (chunk_size % 2)  # Chunks are 2-byte aligned
+        return False  # Assume lossless if no VP8 chunk found
+
+    return False  # Unknown format, assume lossless
+
+
+@celery_app.task(
+    name="app.tasks.process_ssafpp",
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    max_retries=3,
+)
+def process_ssafpp(self, post_id: int) -> dict[str, Any]:
+    """
+    Server-Side Artwork File Post-Processing (SSAFPP).
+
+    Performs automatic post-processing for uploaded artworks:
+    1. File Format Conversion (FFC): Convert to all supported formats
+    2. Artwork Upscaling (AU): Create 768px max preview using nearest-neighbor
+
+    Task flow:
+    1. Load post by ID, validate it's an artwork
+    2. Get source file from vault
+    3. Determine target formats based on frame_count:
+       - Static (frame_count=1): ['png', 'gif', 'webp', 'bmp']
+       - Animated (frame_count>1): ['gif', 'webp']
+    4. Convert to each target format (skip native, skip if exists)
+    5. Create upscaled version
+    6. Update formats_available in database
+    """
+    from io import BytesIO
+    from PIL import Image
+
+    from . import models, vault
+    from .db import get_session
+
+    db = next(get_session())
+    try:
+        logger.info(f"Starting SSAFPP for post {post_id}")
+
+        # Load post
+        post = db.query(models.Post).filter(models.Post.id == post_id).first()
+
+        if not post:
+            logger.error(f"Post {post_id} not found")
+            return {"status": "error", "message": "Post not found"}
+
+        if post.kind != "artwork":
+            logger.info(f"Post {post_id} is not an artwork (kind={post.kind})")
+            return {"status": "skipped", "message": "Not an artwork"}
+
+        if not post.storage_key or not post.file_format:
+            logger.error(f"Post {post_id} missing storage_key or file_format")
+            return {"status": "error", "message": "Missing storage info"}
+
+        # Get source file path
+        native_format = post.file_format.lower()
+        source_path = vault.get_artwork_file_path(
+            post.storage_key, vault.FORMAT_TO_EXT.get(native_format, f".{native_format}")
+        )
+
+        if not source_path.exists():
+            logger.error(f"Source file not found for post {post_id}: {source_path}")
+            return {"status": "error", "message": "Source file not found"}
+
+        # Read source file
+        source_bytes = source_path.read_bytes()
+        is_animated = post.frame_count > 1
+
+        # Determine target formats
+        if is_animated:
+            target_formats = ["gif", "webp"]
+        else:
+            target_formats = ["png", "gif", "webp", "bmp"]
+
+        formats_available = [native_format]
+        conversion_results = {}
+
+        # Open source image
+        source_image = Image.open(BytesIO(source_bytes))
+
+        # For animated images, extract all frames
+        frames = []
+        durations = []
+        if is_animated:
+            try:
+                frame_idx = 0
+                while True:
+                    source_image.seek(frame_idx)
+                    frames.append(source_image.copy())
+                    duration = source_image.info.get("duration", 100)
+                    durations.append(duration)
+                    frame_idx += 1
+            except EOFError:
+                pass  # End of frames
+            source_image.seek(0)  # Reset to first frame
+
+        # Convert to each target format
+        for target_format in target_formats:
+            if target_format == native_format:
+                continue  # Skip native format
+
+            target_path = vault.get_artwork_file_path(
+                post.storage_key, vault.FORMAT_TO_EXT[target_format]
+            )
+
+            # Skip if already exists
+            if target_path.exists():
+                if target_format not in formats_available:
+                    formats_available.append(target_format)
+                conversion_results[target_format] = "exists"
+                continue
+
+            try:
+                # Create target directory if needed
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+
+                output = BytesIO()
+
+                if is_animated:
+                    # Animated conversion
+                    if target_format == "gif":
+                        # Convert frames to P mode for GIF
+                        gif_frames = []
+                        for frame in frames:
+                            if frame.mode == "RGBA":
+                                # Flatten alpha onto white background for GIF
+                                rgb_frame = Image.new("RGB", frame.size, (255, 255, 255))
+                                rgb_frame.paste(frame, mask=frame.split()[3])
+                                gif_frames.append(rgb_frame.convert("P", palette=Image.Palette.ADAPTIVE))
+                            elif frame.mode == "P":
+                                gif_frames.append(frame.copy())
+                            else:
+                                gif_frames.append(frame.convert("P", palette=Image.Palette.ADAPTIVE))
+
+                        gif_frames[0].save(
+                            output,
+                            format="GIF",
+                            save_all=True,
+                            append_images=gif_frames[1:],
+                            duration=durations,
+                            loop=0,
+                        )
+
+                    elif target_format == "webp":
+                        # Convert frames for WEBP (supports RGBA)
+                        webp_frames = []
+                        for frame in frames:
+                            if frame.mode not in ("RGB", "RGBA"):
+                                webp_frames.append(frame.convert("RGBA"))
+                            else:
+                                webp_frames.append(frame.copy())
+
+                        webp_frames[0].save(
+                            output,
+                            format="WEBP",
+                            save_all=True,
+                            append_images=webp_frames[1:],
+                            duration=durations,
+                            loop=0,
+                            lossless=True,
+                        )
+
+                else:
+                    # Static image conversion
+                    img = source_image.copy()
+
+                    if target_format == "png":
+                        if img.mode not in ("RGB", "RGBA", "P", "L", "LA"):
+                            img = img.convert("RGBA")
+                        img.save(output, format="PNG")
+
+                    elif target_format == "gif":
+                        if img.mode == "RGBA":
+                            # Flatten alpha onto white background
+                            rgb_img = Image.new("RGB", img.size, (255, 255, 255))
+                            rgb_img.paste(img, mask=img.split()[3])
+                            img = rgb_img.convert("P", palette=Image.Palette.ADAPTIVE)
+                        elif img.mode != "P":
+                            img = img.convert("P", palette=Image.Palette.ADAPTIVE)
+                        img.save(output, format="GIF")
+
+                    elif target_format == "webp":
+                        if img.mode not in ("RGB", "RGBA"):
+                            img = img.convert("RGBA")
+                        img.save(output, format="WEBP", lossless=True)
+
+                    elif target_format == "bmp":
+                        if img.mode not in ("RGB", "L"):
+                            if img.mode == "RGBA":
+                                # Flatten alpha onto white background
+                                rgb_img = Image.new("RGB", img.size, (255, 255, 255))
+                                rgb_img.paste(img, mask=img.split()[3])
+                                img = rgb_img
+                            else:
+                                img = img.convert("RGB")
+                        img.save(output, format="BMP")
+
+                # Write to file
+                target_path.write_bytes(output.getvalue())
+                formats_available.append(target_format)
+                conversion_results[target_format] = "created"
+                logger.info(f"Created {target_format} for post {post_id}")
+
+            except Exception as e:
+                logger.error(f"Failed to convert to {target_format} for post {post_id}: {e}")
+                conversion_results[target_format] = f"error: {e}"
+
+        # Create upscaled version
+        upscaled_result = "skipped"
+        try:
+            upscaled_path = vault.get_upscaled_file_path(post.storage_key)
+
+            # Skip if already exists
+            if not upscaled_path.exists():
+                # Calculate scale factor (largest integer where max dimension <= 768)
+                width = post.width or source_image.width
+                height = post.height or source_image.height
+                max_dim = max(width, height)
+
+                if max_dim <= 768:
+                    scale_factor = 768 // max_dim
+                else:
+                    scale_factor = 1
+
+                if scale_factor > 1:
+                    new_width = width * scale_factor
+                    new_height = height * scale_factor
+
+                    upscaled_path.parent.mkdir(parents=True, exist_ok=True)
+                    output = BytesIO()
+
+                    # Determine if output should be lossy or lossless
+                    use_lossy = (native_format == "webp" and _is_lossy_webp(source_bytes))
+
+                    if is_animated:
+                        # MEMORY SAFEGUARD: Cap frame count at 256 for upscaling only.
+                        # Upscaling creates larger in-memory frames (e.g., 64x64 -> 768x768),
+                        # and processing hundreds of such frames can cause memory exhaustion
+                        # in the worker process. The original format conversions above use
+                        # the full frame set since they don't increase frame dimensions.
+                        # 256 frames at 768x768 RGBA ≈ 600MB which is a reasonable limit.
+                        MAX_UPSCALE_FRAMES = 256
+                        upscale_frames = frames[:MAX_UPSCALE_FRAMES]
+                        upscale_durations = durations[:MAX_UPSCALE_FRAMES]
+                        if len(frames) > MAX_UPSCALE_FRAMES:
+                            logger.info(
+                                f"Capping upscaled animation from {len(frames)} to {MAX_UPSCALE_FRAMES} frames for post {post_id}"
+                            )
+
+                        # Upscale all frames (capped)
+                        upscaled_frames = []
+                        for frame in upscale_frames:
+                            if frame.mode not in ("RGB", "RGBA"):
+                                frame = frame.convert("RGBA")
+                            upscaled_frame = frame.resize(
+                                (new_width, new_height),
+                                resample=Image.Resampling.NEAREST,
+                            )
+                            upscaled_frames.append(upscaled_frame)
+
+                        upscaled_frames[0].save(
+                            output,
+                            format="WEBP",
+                            save_all=True,
+                            append_images=upscaled_frames[1:],
+                            duration=upscale_durations,
+                            loop=0,
+                            lossless=not use_lossy,
+                            quality=90 if use_lossy else 100,
+                        )
+                    else:
+                        # Upscale static image
+                        img = source_image.copy()
+                        if img.mode not in ("RGB", "RGBA"):
+                            img = img.convert("RGBA")
+
+                        upscaled_img = img.resize(
+                            (new_width, new_height),
+                            resample=Image.Resampling.NEAREST,
+                        )
+
+                        upscaled_img.save(
+                            output,
+                            format="WEBP",
+                            lossless=not use_lossy,
+                            quality=90 if use_lossy else 100,
+                        )
+
+                    upscaled_path.write_bytes(output.getvalue())
+                    upscaled_result = f"created ({new_width}x{new_height}, scale={scale_factor})"
+                    logger.info(f"Created upscaled version for post {post_id}: {upscaled_result}")
+                else:
+                    upscaled_result = "skipped (no scaling possible)"
+            else:
+                upscaled_result = "exists"
+
+        except Exception as e:
+            logger.error(f"Failed to create upscaled version for post {post_id}: {e}")
+            upscaled_result = f"error: {e}"
+
+        # Update formats_available in database
+        post.formats_available = sorted(set(formats_available))
+        db.commit()
+
+        logger.info(f"SSAFPP completed for post {post_id}: formats={post.formats_available}")
+
+        return {
+            "status": "success",
+            "post_id": post_id,
+            "formats_available": post.formats_available,
+            "conversions": conversion_results,
+            "upscaled": upscaled_result,
+        }
+
+    except Exception as e:
+        logger.error(f"SSAFPP failed for post {post_id}: {e}", exc_info=True)
+        db.rollback()
+        raise  # Re-raise for Celery retry
+
     finally:
         db.close()
 
@@ -2785,3 +3154,370 @@ def renew_crl_if_needed(self) -> dict[str, Any]:
     except Exception as e:
         logger.error(f"Error in renew_crl_if_needed task: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
+
+
+# ============================================================================
+# ACCOUNT DELETION TASK
+# ============================================================================
+
+
+@celery_app.task(
+    name="app.tasks.delete_user_account",
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    max_retries=3,
+)
+def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
+    """
+    Permanently delete a user account and all associated data.
+
+    This task handles the complete deletion of a user account:
+    1. Reactions - delete all user's reactions on posts
+    2. Comments - special handling for hierarchy:
+       - Comments WITH children: Set author_id=NULL, body="[deleted comment]"
+       - Comments WITHOUT children: Hard delete
+    3. Posts - delete all posts AND vault files
+    4. Players - delete all registered physical players
+    5. BatchDownloadRequests - delete records AND zip files from /vault/bdr/
+    6. SocialNotifications - delete both received and actor notifications
+    7. UserHighlights - delete profile highlights
+    8. BadgeGrant & ReputationHistory - delete badges and rep history
+    9. Follow - delete both follower_id and following_id relationships
+    10. CategoryFollow - delete category follows
+    11. BlogPostComment - same hierarchy handling as regular comments
+    12. BlogPost - delete all blog posts
+    13. Tokens - delete RefreshToken, EmailVerificationToken, PasswordResetToken
+    14. AuthIdentity - delete OAuth identities
+    15. Avatar - delete avatar file from vault
+    16. User record - final delete (frees email for reuse)
+
+    Args:
+        user_id: Integer ID of the user to delete
+
+    Returns:
+        Dictionary with deletion status and counts
+    """
+    from pathlib import Path
+    from sqlalchemy import func
+    from . import models
+    from .db import SessionLocal
+    from .vault import delete_all_artwork_formats, get_vault_location
+    from .avatar_vault import try_delete_avatar_by_public_url
+
+    db = SessionLocal()
+    counts = {
+        "reactions": 0,
+        "comments_deleted": 0,
+        "comments_anonymized": 0,
+        "posts": 0,
+        "players": 0,
+        "batch_download_requests": 0,
+        "notifications": 0,
+        "highlights": 0,
+        "badges": 0,
+        "reputation_history": 0,
+        "follows": 0,
+        "category_follows": 0,
+        "blog_post_comments_deleted": 0,
+        "blog_post_comments_anonymized": 0,
+        "blog_posts": 0,
+        "refresh_tokens": 0,
+        "email_tokens": 0,
+        "password_tokens": 0,
+        "auth_identities": 0,
+        "avatar_deleted": False,
+    }
+
+    try:
+        logger.info(f"Starting account deletion for user {user_id}")
+
+        # Get the user first
+        user = db.query(models.User).filter(models.User.id == user_id).first()
+        if not user:
+            logger.error(f"User {user_id} not found for deletion")
+            return {"status": "error", "message": "User not found"}
+
+        # 1. Delete all user's reactions
+        counts["reactions"] = (
+            db.query(models.Reaction)
+            .filter(models.Reaction.user_id == user_id)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        logger.info(f"Deleted {counts['reactions']} reactions for user {user_id}")
+
+        # Also delete blog post reactions
+        db.query(models.BlogPostReaction).filter(
+            models.BlogPostReaction.user_id == user_id
+        ).delete(synchronize_session=False)
+        db.commit()
+
+        # 2. Handle comments (special logic for hierarchical comments)
+        # First, find comments WITH children - these need to be anonymized
+        # Then, find comments WITHOUT children - these can be hard deleted
+
+        # Get all comment IDs by this user
+        user_comments = (
+            db.query(models.Comment)
+            .filter(models.Comment.author_id == user_id)
+            .all()
+        )
+
+        for comment in user_comments:
+            # Check if this comment has children
+            has_children = (
+                db.query(models.Comment)
+                .filter(models.Comment.parent_id == comment.id)
+                .count()
+                > 0
+            )
+
+            if has_children:
+                # Anonymize: set author_id=NULL and body to placeholder
+                comment.author_id = None
+                comment.body = "[deleted comment]"
+                counts["comments_anonymized"] += 1
+            else:
+                # Hard delete
+                db.delete(comment)
+                counts["comments_deleted"] += 1
+
+        db.commit()
+        logger.info(
+            f"Handled comments for user {user_id}: "
+            f"{counts['comments_deleted']} deleted, {counts['comments_anonymized']} anonymized"
+        )
+
+        # 3. Delete all posts AND vault files
+        user_posts = (
+            db.query(models.Post)
+            .filter(models.Post.owner_id == user_id)
+            .all()
+        )
+
+        for post in user_posts:
+            # Delete vault files for this post
+            try:
+                formats = post.formats_available or []
+                if post.file_format and post.file_format not in formats:
+                    formats.append(post.file_format)
+                if formats:
+                    delete_all_artwork_formats(post.storage_key, formats)
+            except Exception as e:
+                logger.warning(f"Failed to delete vault files for post {post.id}: {e}")
+
+            # Delete the post (cascades to comments, reactions, admin_notes)
+            db.delete(post)
+            counts["posts"] += 1
+
+            # Commit in batches to avoid memory issues
+            if counts["posts"] % 50 == 0:
+                db.commit()
+                logger.info(f"Deleted {counts['posts']} posts so far...")
+
+        db.commit()
+        logger.info(f"Deleted {counts['posts']} posts for user {user_id}")
+
+        # 4. Delete all players
+        counts["players"] = (
+            db.query(models.Player)
+            .filter(models.Player.owner_id == user_id)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        logger.info(f"Deleted {counts['players']} players for user {user_id}")
+
+        # 5. Delete BatchDownloadRequests AND their zip files
+        bdrs = (
+            db.query(models.BatchDownloadRequest)
+            .filter(models.BatchDownloadRequest.user_id == user_id)
+            .all()
+        )
+
+        vault_base = get_vault_location()
+        for bdr in bdrs:
+            # Delete the zip file if it exists
+            if bdr.download_path:
+                try:
+                    zip_path = vault_base / bdr.download_path.lstrip("/")
+                    if zip_path.exists():
+                        zip_path.unlink()
+                        logger.info(f"Deleted BDR zip file: {zip_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete BDR zip file for {bdr.id}: {e}")
+
+            db.delete(bdr)
+            counts["batch_download_requests"] += 1
+
+        db.commit()
+        logger.info(
+            f"Deleted {counts['batch_download_requests']} batch download requests for user {user_id}"
+        )
+
+        # 6. Delete SocialNotifications (both received and actor)
+        counts["notifications"] = (
+            db.query(models.SocialNotification)
+            .filter(
+                (models.SocialNotification.user_id == user_id)
+                | (models.SocialNotification.actor_id == user_id)
+            )
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        logger.info(f"Deleted {counts['notifications']} notifications for user {user_id}")
+
+        # 7. Delete UserHighlights
+        counts["highlights"] = (
+            db.query(models.UserHighlight)
+            .filter(models.UserHighlight.user_id == user_id)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        logger.info(f"Deleted {counts['highlights']} highlights for user {user_id}")
+
+        # 8. Delete BadgeGrant and ReputationHistory
+        counts["badges"] = (
+            db.query(models.BadgeGrant)
+            .filter(models.BadgeGrant.user_id == user_id)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+
+        counts["reputation_history"] = (
+            db.query(models.ReputationHistory)
+            .filter(models.ReputationHistory.user_id == user_id)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        logger.info(
+            f"Deleted {counts['badges']} badges and {counts['reputation_history']} rep history for user {user_id}"
+        )
+
+        # 9. Delete Follow relationships (both directions)
+        follows_as_follower = (
+            db.query(models.Follow)
+            .filter(models.Follow.follower_id == user_id)
+            .delete(synchronize_session=False)
+        )
+        follows_as_following = (
+            db.query(models.Follow)
+            .filter(models.Follow.following_id == user_id)
+            .delete(synchronize_session=False)
+        )
+        counts["follows"] = follows_as_follower + follows_as_following
+        db.commit()
+        logger.info(f"Deleted {counts['follows']} follow relationships for user {user_id}")
+
+        # 10. Delete CategoryFollow
+        counts["category_follows"] = (
+            db.query(models.CategoryFollow)
+            .filter(models.CategoryFollow.user_id == user_id)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        logger.info(f"Deleted {counts['category_follows']} category follows for user {user_id}")
+
+        # 11. Handle BlogPostComments (same logic as regular comments)
+        user_blog_comments = (
+            db.query(models.BlogPostComment)
+            .filter(models.BlogPostComment.author_id == user_id)
+            .all()
+        )
+
+        for comment in user_blog_comments:
+            has_children = (
+                db.query(models.BlogPostComment)
+                .filter(models.BlogPostComment.parent_id == comment.id)
+                .count()
+                > 0
+            )
+
+            if has_children:
+                comment.author_id = None
+                comment.body = "[deleted comment]"
+                counts["blog_post_comments_anonymized"] += 1
+            else:
+                db.delete(comment)
+                counts["blog_post_comments_deleted"] += 1
+
+        db.commit()
+        logger.info(
+            f"Handled blog comments for user {user_id}: "
+            f"{counts['blog_post_comments_deleted']} deleted, "
+            f"{counts['blog_post_comments_anonymized']} anonymized"
+        )
+
+        # 12. Delete BlogPosts
+        counts["blog_posts"] = (
+            db.query(models.BlogPost)
+            .filter(models.BlogPost.owner_id == user_id)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        logger.info(f"Deleted {counts['blog_posts']} blog posts for user {user_id}")
+
+        # 13. Delete Tokens
+        counts["refresh_tokens"] = (
+            db.query(models.RefreshToken)
+            .filter(models.RefreshToken.user_id == user_id)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+
+        counts["email_tokens"] = (
+            db.query(models.EmailVerificationToken)
+            .filter(models.EmailVerificationToken.user_id == user_id)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+
+        counts["password_tokens"] = (
+            db.query(models.PasswordResetToken)
+            .filter(models.PasswordResetToken.user_id == user_id)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        logger.info(
+            f"Deleted tokens for user {user_id}: "
+            f"{counts['refresh_tokens']} refresh, "
+            f"{counts['email_tokens']} email, "
+            f"{counts['password_tokens']} password"
+        )
+
+        # 14. Delete AuthIdentity
+        counts["auth_identities"] = (
+            db.query(models.AuthIdentity)
+            .filter(models.AuthIdentity.user_id == user_id)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        logger.info(f"Deleted {counts['auth_identities']} auth identities for user {user_id}")
+
+        # 15. Delete avatar from vault
+        if user.avatar_url:
+            counts["avatar_deleted"] = try_delete_avatar_by_public_url(user.avatar_url)
+            logger.info(f"Avatar deletion for user {user_id}: {counts['avatar_deleted']}")
+
+        # 16. Finally, delete the user record
+        db.delete(user)
+        db.commit()
+        logger.info(f"Deleted user record for user {user_id}")
+
+        # Invalidate any cached stats
+        try:
+            from .services.user_profile_stats import invalidate_user_profile_stats_cache
+            invalidate_user_profile_stats_cache(db, user_id)
+        except Exception as e:
+            logger.warning(f"Failed to invalidate stats cache for user {user_id}: {e}")
+
+        logger.info(f"Account deletion completed for user {user_id}: {counts}")
+        return {"status": "success", "user_id": user_id, "counts": counts}
+
+    except Exception as e:
+        logger.error(f"Error deleting account for user {user_id}: {e}", exc_info=True)
+        db.rollback()
+        raise  # Re-raise to trigger Celery retry
+
+    finally:
+        db.close()

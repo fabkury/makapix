@@ -582,6 +582,58 @@ def delete_user_account(
     db.commit()
 
 
+@router.post("/delete-account", status_code=status.HTTP_202_ACCEPTED)
+def request_account_deletion(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict:
+    """
+    Request permanent deletion of the current user's account.
+
+    This endpoint:
+    1. Prevents owner role from deleting their account
+    2. Marks user as deactivated immediately (prevents login during deletion)
+    3. Queues a background task to delete all user data
+    4. Creates an audit log entry
+
+    Returns 202 Accepted - deletion is processed asynchronously.
+    """
+    from ..tasks import delete_user_account_task
+    from ..utils.audit import log_moderation_action
+
+    # Prevent owner from deleting their own account
+    if "owner" in (current_user.roles or []):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The site owner cannot delete their own account"
+        )
+
+    # Immediately mark user as deactivated to prevent login during deletion
+    current_user.deactivated = True
+    db.commit()
+
+    # Log the deletion request
+    try:
+        log_moderation_action(
+            db=db,
+            actor_id=current_user.id,
+            action="account_deletion_requested",
+            target_type="user",
+            target_id=current_user.id,
+            reason_code="user_request",
+            note="User requested permanent account deletion",
+        )
+    except Exception as e:
+        # Don't fail the request if audit logging fails
+        import logging
+        logging.getLogger(__name__).error(f"Failed to log account deletion request: {e}")
+
+    # Queue the background task to perform full deletion
+    delete_user_account_task.delay(current_user.id)
+
+    return {"status": "accepted", "message": "Account deletion has been queued"}
+
+
 @router.get("/{id}/blog-posts/recent", response_model=list[schemas.BlogPost])
 def get_user_recent_blog_posts(
     id: UUID,
