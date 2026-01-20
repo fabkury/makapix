@@ -169,6 +169,8 @@ const overlayStyles: React.CSSProperties = {
   // Must sit above the site top-header and any other fixed UI.
   zIndex: 20000,
   pointerEvents: 'auto',
+  // Prevent touch gestures from causing page scroll when dragging inside the overlay
+  touchAction: 'none',
 };
 
 const backdropStyles: React.CSSProperties = {
@@ -378,6 +380,9 @@ const descriptionAreaStyles: React.CSSProperties = {
   fontSize: '13px',
   lineHeight: 1.5,
   color: '#a0a0b8',
+  // Allow vertical scrolling within description only, without propagating to page
+  touchAction: 'pan-y',
+  overscrollBehavior: 'contain',
 };
 
 const technicalInfoRowStyles: React.CSSProperties = {
