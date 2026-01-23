@@ -15,7 +15,6 @@ from servoom import DivoomClient, PixelBeanDecoder
 from servoom.config import Config
 from credentials import CONFIG_EMAIL, CONFIG_MD5_PASSWORD
 
-
 # Constants
 CATEGORY_ID = 18
 BATCH_SIZE = 30
@@ -36,9 +35,9 @@ def load_gallery_file() -> List[Dict]:
     """Load the gallery JSON file, returning empty list if it doesn't exist."""
     if not GALLERY_FILE.exists():
         return []
-    
+
     try:
-        with open(GALLERY_FILE, 'r', encoding='utf-8') as f:
+        with open(GALLERY_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
             if isinstance(data, list):
                 return data
@@ -51,28 +50,34 @@ def load_gallery_file() -> List[Dict]:
 def save_gallery_file(artworks: List[Dict]) -> None:
     """Save the gallery JSON file."""
     GALLERY_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(GALLERY_FILE, 'w', encoding='utf-8') as f:
+    with open(GALLERY_FILE, "w", encoding="utf-8") as f:
         json.dump(artworks, f, indent=2, ensure_ascii=False)
 
 
-def fetch_category_artworks(client: DivoomClient, category_id: int, max_count: int, batch_size: int) -> List[Dict]:
+def fetch_category_artworks(
+    client: DivoomClient, category_id: int, max_count: int, batch_size: int
+) -> List[Dict]:
     """Fetch artworks from a category, up to max_count items."""
-    print(f"Fetching up to {max_count} artworks from category {category_id} (batch size: {batch_size})...")
-    
+    print(
+        f"Fetching up to {max_count} artworks from category {category_id} (batch size: {batch_size})..."
+    )
+
     all_artworks = []
     start_num = 1
     safety_limit = max_count * 2  # Safety stop at double the target (total fetched)
     total_fetched = 0  # Track total artworks fetched from API (before filtering)
-    
+
     while len(all_artworks) < max_count:
         # Safety stop: if we've fetched double the target from API and still don't have enough collected, stop
         if total_fetched >= safety_limit:
-            print(f"[WARNING] Safety limit reached: fetched {total_fetched} artworks from API but only collected {len(all_artworks)}/{max_count}")
+            print(
+                f"[WARNING] Safety limit reached: fetched {total_fetched} artworks from API but only collected {len(all_artworks)}/{max_count}"
+            )
             print(f"[WARNING] Stopping fetch to prevent infinite loop")
             break
-        
+
         end_num = start_num + batch_size - 1
-        
+
         payload = {
             "StartNum": start_num,
             "EndNum": end_num,
@@ -82,18 +87,18 @@ def fetch_category_artworks(client: DivoomClient, category_id: int, max_count: i
             "FileSort": 0,
             "Version": 12,
             "RefreshIndex": 0,
-            'Token': client.token,
-            'UserId': client.user_id,
+            "Token": client.token,
+            "UserId": client.user_id,
         }
-        
+
         try:
             resp = requests.post(
                 Config.GET_CATEGORY_FILES_ENDPOINT,
                 headers=client.HEADERS,
                 json=payload,
-                timeout=client._request_timeout
+                timeout=client._request_timeout,
             )
-            
+
             # Try to parse JSON response
             try:
                 data = resp.json()
@@ -102,202 +107,222 @@ def fetch_category_artworks(client: DivoomClient, category_id: int, max_count: i
                 print(f"  Status Code: {resp.status_code}")
                 print(f"  Response Body (first 500 chars): {resp.text[:500]}")
                 break
-            
+
             # Check for errors
-            if data.get('ReturnCode', 0) != 0:
+            if data.get("ReturnCode", 0) != 0:
                 print(f"  [ERROR] Server returned error code: {data.get('ReturnCode')}")
                 break
-            
+
             # Check various possible field names for the files list
-            files = data.get('FileList', data.get('CategoryFileList', []))
-            
+            files = data.get("FileList", data.get("CategoryFileList", []))
+
             if not files:
                 print(f"  No more files available. Stopping fetch.")
                 break
-            
+
             # Track total fetched before filtering
             total_fetched += len(files)
-            
+
             # Filter out hidden artworks
-            filtered_files = [file for file in files if not client._should_exclude_hidden(file)]
-            
+            filtered_files = [
+                file for file in files if not client._should_exclude_hidden(file)
+            ]
+
             # Add files up to max_count
             remaining = max_count - len(all_artworks)
             all_artworks.extend(filtered_files[:remaining])
-            
-            print(f"  Retrieved files {start_num}-{end_num}. Total collected: {len(all_artworks)}/{max_count} (fetched: {total_fetched})")
-            
+
+            print(
+                f"  Retrieved files {start_num}-{end_num}. Total collected: {len(all_artworks)}/{max_count} (fetched: {total_fetched})"
+            )
+
             # If we've reached our target, stop
             if len(all_artworks) >= max_count:
                 break
-            
+
             # Continue fetching even if we got fewer files than batch_size
             # This allows us to make up for filtered items (hidden artworks)
             start_num += batch_size
-            
+
         except requests.RequestException as e:
             print(f"[ERROR] Request failed: {e}")
             break
-    
-    print(f"[OK] Fetched {len(all_artworks)} artworks from category {category_id} (total retrieved from API: {total_fetched})")
+
+    print(
+        f"[OK] Fetched {len(all_artworks)} artworks from category {category_id} (total retrieved from API: {total_fetched})"
+    )
     return all_artworks
 
 
-def add_new_artworks(existing_artworks: List[Dict], new_artworks: List[Dict]) -> List[Dict]:
+def add_new_artworks(
+    existing_artworks: List[Dict], new_artworks: List[Dict]
+) -> List[Dict]:
     """Add new artworks to the existing list, deduplicating by GalleryId."""
     # Create lookup of existing GalleryIds
-    existing_ids = {art.get('GalleryId') for art in existing_artworks if art.get('GalleryId')}
-    
+    existing_ids = {
+        art.get("GalleryId") for art in existing_artworks if art.get("GalleryId")
+    }
+
     # Add new artworks that don't exist
     added_count = 0
     current_time = datetime.now().isoformat()
-    
+
     for artwork in new_artworks:
-        gallery_id = artwork.get('GalleryId')
+        gallery_id = artwork.get("GalleryId")
         if not gallery_id:
             continue
-        
+
         if gallery_id not in existing_ids:
             # Create new artwork entry with all metadata
             new_entry = artwork.copy()
-            new_entry['added_date'] = current_time
-            new_entry['downloaded_file'] = ''
-            new_entry['decoded_file'] = ''
-            new_entry['health'] = 'ok'
-            
+            new_entry["added_date"] = current_time
+            new_entry["downloaded_file"] = ""
+            new_entry["decoded_file"] = ""
+            new_entry["health"] = "ok"
+
             existing_artworks.append(new_entry)
             existing_ids.add(gallery_id)
             added_count += 1
-            
+
             # Save after each addition
             save_gallery_file(existing_artworks)
-    
+
     print(f"[OK] Added {added_count} new artworks to gallery file")
     return existing_artworks
 
 
-def trim_gallery_file(artworks: List[Dict], max_count: int) -> tuple[List[Dict], List[int]]:
+def trim_gallery_file(
+    artworks: List[Dict], max_count: int
+) -> tuple[List[Dict], List[int]]:
     """Trim the gallery file to max_count items, removing oldest by added_date.
-    
+
     Returns:
         tuple: (trimmed artworks list, list of removed GalleryIds)
     """
     if len(artworks) <= max_count:
         return artworks, []
-    
+
     # Sort by added_date (oldest first)
     def get_added_date(art: Dict) -> str:
-        return art.get('added_date', '')
-    
+        return art.get("added_date", "")
+
     sorted_artworks = sorted(artworks, key=get_added_date)
     removed_gallery_ids = []
-    
+
     # Remove oldest items
     while len(sorted_artworks) > max_count:
         removed = sorted_artworks.pop(0)
-        gallery_id = removed.get('GalleryId')
+        gallery_id = removed.get("GalleryId")
         if gallery_id:
             removed_gallery_ids.append(gallery_id)
-        
+
         # Delete associated files if they exist
-        downloaded_file = removed.get('downloaded_file', '')
-        decoded_file = removed.get('decoded_file', '')
-        
+        downloaded_file = removed.get("downloaded_file", "")
+        decoded_file = removed.get("decoded_file", "")
+
         if downloaded_file and os.path.exists(downloaded_file):
             try:
                 os.remove(downloaded_file)
                 # print(f"  Deleted downloaded file: {downloaded_file}")
             except Exception as e:
-                print(f"  [WARNING] Failed to delete downloaded file {downloaded_file}: {e}")
-        
+                print(
+                    f"  [WARNING] Failed to delete downloaded file {downloaded_file}: {e}"
+                )
+
         if decoded_file and os.path.exists(decoded_file):
             try:
                 os.remove(decoded_file)
                 # print(f"  Deleted decoded file: {decoded_file}")
             except Exception as e:
                 print(f"  [WARNING] Failed to delete decoded file {decoded_file}: {e}")
-        
+
         # print(f"  Removed artwork GalleryId={gallery_id} (oldest by added_date)")
-        
+
         # Save after each removal
         save_gallery_file(sorted_artworks)
-    
+
     print(f"[OK] Trimmed gallery file to {len(sorted_artworks)} items")
     return sorted_artworks, removed_gallery_ids
 
 
-def process_artwork_download_decode(client: DivoomClient, artwork: Dict, gallery_file: List[Dict]) -> int | None:
+def process_artwork_download_decode(
+    client: DivoomClient, artwork: Dict, gallery_file: List[Dict]
+) -> int | None:
     """Process a single artwork: download and decode if needed.
-    
+
     Returns:
         int | None: GalleryId if a file was downloaded in this execution, None otherwise
     """
-    gallery_id = artwork.get('GalleryId')
+    gallery_id = artwork.get("GalleryId")
     if not gallery_id:
         return None
-    
-    health = artwork.get('health', 'ok')
-    if health != 'ok':
+
+    health = artwork.get("health", "ok")
+    if health != "ok":
         return None
-    
+
     # Step 7.a: Download file
-    downloaded_file = artwork.get('downloaded_file', '')
+    downloaded_file = artwork.get("downloaded_file", "")
     if not downloaded_file:
         # Set the download path
         downloaded_file = str(DOWNLOAD_DIR / f"{gallery_id}.dat")
-        artwork['downloaded_file'] = downloaded_file
+        artwork["downloaded_file"] = downloaded_file
         save_gallery_file(gallery_file)
-    
+
     # Check if file already exists
     file_downloaded = False
     if not os.path.exists(downloaded_file):
         try:
             # Download the artwork (client will create a file with format: {gallery_id}.dat)
-            pixel_bean, file_path = client.download_art_by_id(gallery_id, output_dir=str(DOWNLOAD_DIR))
-            
+            pixel_bean, file_path = client.download_art_by_id(
+                gallery_id, output_dir=str(DOWNLOAD_DIR)
+            )
+
             pixel_bean.update_from_download(file_path)
-            
-            artwork['downloaded_file'] = file_path
+
+            artwork["downloaded_file"] = file_path
             save_gallery_file(gallery_file)
             file_downloaded = True
-            
+
         except Exception as e:
             print(f"  [ERROR] Download failed for GalleryId={gallery_id}: {e}")
-            artwork['health'] = 'download failed'
+            artwork["health"] = "download failed"
             save_gallery_file(gallery_file)
             return None
-    
+
     # Step 7.b: Decode file
-    decoded_file = artwork.get('decoded_file', '')
+    decoded_file = artwork.get("decoded_file", "")
     if not decoded_file:
         # Set the decode path
         decoded_file = str(DECODE_DIR / f"{gallery_id}.webp")
-        artwork['decoded_file'] = decoded_file
+        artwork["decoded_file"] = decoded_file
         save_gallery_file(gallery_file)
-    
+
     # Check if decoded file already exists
     if not os.path.exists(decoded_file):
         try:
             # Decode the downloaded file
             pixel_bean = PixelBeanDecoder.decode_file(downloaded_file)
             if pixel_bean is None:
-                raise ValueError("Failed to decode file: unsupported format or corrupted file")
-            
+                raise ValueError(
+                    "Failed to decode file: unsupported format or corrupted file"
+                )
+
             # Save as WebP (lossless is already the default)
             pixel_bean.save_to_webp(decoded_file)
-            
-            artwork['decoded_file'] = decoded_file
-            artwork['health'] = 'ok'
+
+            artwork["decoded_file"] = decoded_file
+            artwork["health"] = "ok"
             save_gallery_file(gallery_file)
-            
+
         except Exception as e:
             print(f"  [ERROR] Decode failed for GalleryId={gallery_id}: {e}")
-            artwork['health'] = 'decode failed'
+            artwork["health"] = "decode failed"
             save_gallery_file(gallery_file)
             return gallery_id if file_downloaded else None
-    
+
     # Success
-    artwork['health'] = 'ok'
+    artwork["health"] = "ok"
     save_gallery_file(gallery_file)
     return gallery_id if file_downloaded else None
 
@@ -312,82 +337,90 @@ def main():
     print("=" * 70)
     print("Divoom Cloud Sync Script")
     print("=" * 70)
-    
+
     # Step 1: Connect to Divoom Cloud
     print("\n[1] Connecting to Divoom Cloud...")
     client = DivoomClient(CONFIG_EMAIL, CONFIG_MD5_PASSWORD)
     if not client.login():
         print("[ERROR] Failed to login to Divoom Cloud")
         return
-    
+
     # Step 2: Fetch recent artworks from category 18
-    print(f"\n[2] Fetching most recent {MAX_ARTWORKS} artworks from category {CATEGORY_ID}...")
-    new_artworks = fetch_category_artworks(client, CATEGORY_ID, MAX_ARTWORKS, BATCH_SIZE)
-    
+    print(
+        f"\n[2] Fetching most recent {MAX_ARTWORKS} artworks from category {CATEGORY_ID}..."
+    )
+    new_artworks = fetch_category_artworks(
+        client, CATEGORY_ID, MAX_ARTWORKS, BATCH_SIZE
+    )
+
     if not new_artworks:
         print("[WARNING] No artworks fetched from category")
         return
-    
+
     # Step 3: Load and update gallery file
     print(f"\n[3] Loading gallery file: {GALLERY_FILE}")
     gallery_file = load_gallery_file()
-    
+
     print(f"[3] Adding new artworks to gallery file...")
     gallery_file = add_new_artworks(gallery_file, new_artworks)
-    
+
     # Step 4: Trim gallery file to max 1000 items
     print(f"\n[4] Trimming gallery file to {MAX_ARTWORKS} items...")
     gallery_file, removed_gallery_ids = trim_gallery_file(gallery_file, MAX_ARTWORKS)
     removed_count = len(removed_gallery_ids)
-    
+
     # Step 5: Sort by added_date (oldest first) and process artworks with health="ok"
     print(f"\n[5] Processing artworks (download/decode)...")
-    
+
     def get_added_date(art: Dict) -> str:
-        return art.get('added_date', '')
-    
+        return art.get("added_date", "")
+
     sorted_artworks = sorted(gallery_file, key=get_added_date)
-    
+
     processed_count = 0
     downloaded_gallery_ids = []
     total_artworks = len(sorted_artworks)
     percent_step = max(1, int(total_artworks * 0.05))
     for artwork in sorted_artworks:
-        if artwork.get('health') == 'ok':
-            gallery_id = artwork.get('GalleryId')
+        if artwork.get("health") == "ok":
+            gallery_id = artwork.get("GalleryId")
 
             try:
-                downloaded_id = process_artwork_download_decode(client, artwork, gallery_file)
+                downloaded_id = process_artwork_download_decode(
+                    client, artwork, gallery_file
+                )
                 if downloaded_id is not None:
                     downloaded_gallery_ids.append(downloaded_id)
                 processed_count += 1
             except Exception as e:
                 print(f"  [ERROR] Unknown error processing GalleryId={gallery_id}: {e}")
-                artwork['health'] = 'unknown error'
+                artwork["health"] = "unknown error"
                 save_gallery_file(gallery_file)
-                
+
             # Print status message every 5% of artworks processed
             if total_artworks > 0 and processed_count % percent_step == 0:
                 percent = int((processed_count / total_artworks) * 100)
-                print(f"    [STATUS] Processed {processed_count}/{total_artworks} artworks ({percent}%)")
-    
+                print(
+                    f"    [STATUS] Processed {processed_count}/{total_artworks} artworks ({percent}%)"
+                )
+
     print(f"[OK] Processed {processed_count} artworks")
-    
+
     # Step 6: Call foo() function
     print(f"\n[6] Calling foo() function...")
     foo()
-    
+
     # Step 7: Generate final report
     print(f"\n[7] Generating final report...")
-    
+
     # Reload gallery file to get final state
     gallery_file = load_gallery_file()
-    
+
     # Count artworks by health status
-    ok_count = sum(1 for art in gallery_file if art.get('health') == 'ok')
-    not_ok_count = sum(1 for art in gallery_file if art.get('health') != 'ok')
+    ok_count = sum(1 for art in gallery_file if art.get("health") == "ok")
+    not_ok_count = sum(1 for art in gallery_file if art.get("health") != "ok")
     downloaded_count = len(downloaded_gallery_ids)
-    
+
     print("\n" + "=" * 70)
     print("FINAL REPORT")
     print("=" * 70)
@@ -396,25 +429,26 @@ def main():
     print(f"  Files removed in this execution: {removed_count}")
     print(f"  Files with health != 'ok': {not_ok_count}")
     print("=" * 70)
-    
+
     # Print GalleryIds lists
     if downloaded_gallery_ids:
-        print(f"\n  GalleryIds downloaded in this execution ({len(downloaded_gallery_ids)}):")
+        print(
+            f"\n  GalleryIds downloaded in this execution ({len(downloaded_gallery_ids)}):"
+        )
         print(f"    {', '.join(map(str, downloaded_gallery_ids))}")
     else:
         print(f"\n  GalleryIds downloaded in this execution: (none)")
-    
+
     if removed_gallery_ids:
         print(f"\n  GalleryIds removed in this execution ({len(removed_gallery_ids)}):")
         print(f"    {', '.join(map(str, removed_gallery_ids))}")
     else:
         print(f"\n  GalleryIds removed in this execution: (none)")
-    
+
     print("\n" + "=" * 70)
     print("Sync completed successfully")
     print("=" * 70)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-

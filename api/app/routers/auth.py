@@ -58,7 +58,9 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 # GitHub OAuth Configuration
 GITHUB_CLIENT_ID = os.getenv("GITHUB_OAUTH_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_OAUTH_CLIENT_SECRET")
-GITHUB_REDIRECT_URI = os.getenv("GITHUB_REDIRECT_URI", "http://localhost/auth/github/callback")
+GITHUB_REDIRECT_URI = os.getenv(
+    "GITHUB_REDIRECT_URI", "http://localhost/auth/github/callback"
+)
 
 # OAuth state cookie configuration (CSRF/replay protection)
 OAUTH_STATE_COOKIE_NAME = "oauth_state"
@@ -101,7 +103,6 @@ def _clear_oauth_state_cookie(resp: Response, request: Request) -> None:
     resp.delete_cookie(**delete_kwargs)
 
 
-
 # Special characters allowed in passwords (optional)
 PASSWORD_SPECIAL_CHARS = "!@#$%^&*()-_=+[]{}|;:,.<>?"
 
@@ -112,7 +113,7 @@ PASSWORD_MIN_LENGTH = 8
 def get_client_ip(request: Request) -> str:
     """
     Extract client IP address from request.
-    
+
     Used for rate limiting to track requests per IP.
     Falls back to "unknown" if client information is not available.
     """
@@ -122,13 +123,13 @@ def get_client_ip(request: Request) -> str:
 def validate_password(password: str) -> tuple[bool, str | None]:
     """
     Validate password meets minimum requirements.
-    
+
     Requirements:
     - At least 8 characters long
     - At least one letter (uppercase or lowercase)
     - At least one number
     - Special characters are allowed but not required
-    
+
     Returns:
         Tuple of (is_valid, error_message)
         - is_valid: True if password meets requirements
@@ -136,53 +137,53 @@ def validate_password(password: str) -> tuple[bool, str | None]:
     """
     if not password:
         return False, "Password is required"
-    
+
     if len(password) < PASSWORD_MIN_LENGTH:
         return False, f"Password must be at least {PASSWORD_MIN_LENGTH} characters long"
-    
+
     # Check for at least one letter
     has_letter = any(c.isalpha() for c in password)
     if not has_letter:
         return False, "Password must contain at least one letter"
-    
+
     # Check for at least one number
     has_number = any(c.isdigit() for c in password)
     if not has_number:
         return False, "Password must contain at least one number"
-    
+
     return True, None
 
 
 def generate_random_password(length: int = 12) -> str:
     """
     Generate a random password with letters and digits.
-    
+
     Minimum length of 8 characters.
     Includes letters (may be uppercase, lowercase, or both) and digits.
     May include special characters for additional security.
-    
+
     Guarantees at least one letter and one digit to meet minimum requirements.
     """
     if length < PASSWORD_MIN_LENGTH:
         length = PASSWORD_MIN_LENGTH
-    
+
     # Use multiple character sets for stronger passwords
     alphabet = string.ascii_letters + string.digits + PASSWORD_SPECIAL_CHARS
-    
+
     # Ensure at least one letter and one digit (minimum requirements)
     password_chars = [
         secrets.choice(string.ascii_letters),  # At least one letter
         secrets.choice(string.digits),  # At least one digit
     ]
-    
+
     # Fill the rest randomly from the full alphabet
     for _ in range(length - 2):
         password_chars.append(secrets.choice(alphabet))
-    
+
     # Shuffle to avoid predictable pattern
     secrets.SystemRandom().shuffle(password_chars)
-    
-    return ''.join(password_chars)
+
+    return "".join(password_chars)
 
 
 @router.post(
@@ -197,15 +198,15 @@ def register(
 ) -> schemas.RegisterResponse:
     """
     Register a new user with email only.
-    
+
     - Generates a unique handle (makapix-user-X)
     - Generates a random 8-character password
     - Sends a verification email with the password
     - User must verify email before logging in
     - After verification, user can optionally change password/handle
-    
+
     Rate limited to 15 registrations per hour per IP address.
-    
+
     Args:
         payload: Registration request with email
         request: HTTP request (used for rate limiting IP extraction)
@@ -216,9 +217,13 @@ def register(
 
     # Check if email is already registered (check both original and normalized)
     # This check is done before rate limiting so users get a more helpful error message
-    existing_user = db.query(models.User).filter(
-        (models.User.email == email) | (models.User.email_normalized == email_norm)
-    ).first()
+    existing_user = (
+        db.query(models.User)
+        .filter(
+            (models.User.email == email) | (models.User.email_normalized == email_norm)
+        )
+        .first()
+    )
 
     if existing_user:
         if not existing_user.email_verified:
@@ -242,13 +247,13 @@ def register(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many registration attempts. Please try again later.",
         )
-    
+
     # Generate default handle (makapix-user-X)
     default_handle = generate_default_handle(db)
-    
+
     # Generate random 8-character password
     generated_password = generate_random_password(8)
-    
+
     # Create user with email_verified=False
     user = models.User(
         handle=default_handle,
@@ -260,16 +265,17 @@ def register(
     db.add(user)
     try:
         db.flush()  # Get the user ID without committing
-        
+
         # Generate public_sqid from the assigned id
         from ..sqids_config import encode_user_id
+
         user.public_sqid = encode_user_id(user.id)
-        
+
         db.commit()
         db.refresh(user)
     except IntegrityError as e:
         db.rollback()
-        error_str = str(e.orig) if hasattr(e, 'orig') else str(e)
+        error_str = str(e.orig) if hasattr(e, "orig") else str(e)
         if "email" in error_str.lower():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -280,7 +286,7 @@ def register(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create user account",
         )
-    
+
     # Create password identity (using email as the identifier)
     try:
         create_password_identity(
@@ -308,15 +314,15 @@ def register(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create authentication identity",
         )
-    
+
     # Send verification email with the generated password
     email_sent = send_verification_email_for_user(db, user, password=generated_password)
     if not email_sent:
         logger.warning(f"Failed to send verification email to user {user.id}")
-    
+
     # Record site event for signup
     record_site_event(request, "signup", user=user)
-    
+
     # Return registration response (NO tokens - user must verify email first)
     return schemas.RegisterResponse(
         message="Please check your email to verify your account",
@@ -338,12 +344,12 @@ def login(
 ) -> schemas.OAuthTokens:
     """
     Login with email and password.
-    
+
     Requires email verification for password-based login.
     Rate limited to 10 login attempts per 5 minutes per IP address.
-    
+
     The refresh token is stored in an HttpOnly cookie and not returned in the response body.
-    
+
     Args:
         payload: Login credentials (email and password)
         request: HTTP request (used for rate limiting IP extraction)
@@ -351,12 +357,12 @@ def login(
         db: Database session
     """
     email = payload.email.lower().strip()
-    
+
     # Rate limiting: 10 login attempts per 5 minutes per IP
     client_ip = get_client_ip(request)
     rate_limit_key = f"ratelimit:login:{client_ip}"
     allowed, remaining = check_rate_limit(rate_limit_key, limit=10, window_seconds=300)
-    
+
     if not allowed:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -365,9 +371,11 @@ def login(
 
     # Check for unverified account BEFORE password verification
     # This reveals account existence for unverified emails (accepted UX tradeoff)
-    user = db.query(models.User).filter(
-        (models.User.email == email) | (models.User.email_normalized == email)
-    ).first()
+    user = (
+        db.query(models.User)
+        .filter((models.User.email == email) | (models.User.email_normalized == email))
+        .first()
+    )
 
     if user and not user.email_verified:
         raise HTTPException(
@@ -377,13 +385,13 @@ def login(
 
     # Find identity and verify password
     identity = find_identity_by_password(db, email, payload.password)
-    
+
     if not identity:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
-    
+
     # Get user
     user = db.query(models.User).filter(models.User.id == identity.user_id).first()
     if not user:
@@ -397,19 +405,22 @@ def login(
 
     # Check if user is allowed to authenticate
     check_user_can_authenticate(user)
-    
+
     # Generate tokens
     access_token = create_access_token(user.user_key)
     refresh_token = create_refresh_token(user.user_key, db)
-    
+
     # Set refresh token as HttpOnly cookie
     set_refresh_token_cookie(response, refresh_token, request)
-    
+
     # Calculate token expiration time
     from ..auth import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
     from datetime import timezone
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
-    
+
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+    )
+
     # Return response without refresh_token (it's in the cookie)
     return schemas.OAuthTokens(
         token=access_token,
@@ -433,21 +444,21 @@ def verify_email(
 ) -> schemas.VerifyEmailResponse:
     """
     Verify email address using the token sent via email.
-    
+
     After verification, user should go through the welcome flow to customize their profile.
     The welcome flow allows them to change their handle, avatar, and bio.
     """
     user = mark_email_verified(db, token)
-    
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired verification token",
         )
-    
+
     # Check if user needs to go through welcome flow
     needs_welcome = not user.welcome_completed
-    
+
     return schemas.VerifyEmailResponse(
         message="Email verified successfully. You can now log in.",
         verified=True,
@@ -470,18 +481,20 @@ def change_password(
 ) -> schemas.ChangePasswordResponse:
     """
     Change the current user's password.
-    
+
     Requires authentication and current password verification.
     New password must meet minimum requirements.
     """
     # Verify current password
-    identity = find_identity_by_password(db, current_user.email, payload.current_password)
+    identity = find_identity_by_password(
+        db, current_user.email, payload.current_password
+    )
     if not identity:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Current password is incorrect",
         )
-    
+
     # Validate new password
     is_valid, error_message = validate_password(payload.new_password)
     if not is_valid:
@@ -489,7 +502,7 @@ def change_password(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=error_message,
         )
-    
+
     # Update password
     success = update_password(db, current_user.id, payload.new_password)
     if not success:
@@ -497,7 +510,7 @@ def change_password(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Failed to change password",
         )
-    
+
     return schemas.ChangePasswordResponse(
         message="Password changed successfully",
     )
@@ -514,10 +527,10 @@ def change_handle(
 ) -> schemas.ChangeHandleResponse:
     """
     Change the current user's handle.
-    
+
     Requires authentication. Handle must be unique and URL-safe.
     Changes are logged for audit purposes.
-    
+
     Note: The site owner's handle cannot be changed via the API.
     """
     # Require email verification to change handle
@@ -533,10 +546,10 @@ def change_handle(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="The site owner's handle cannot be changed",
         )
-    
+
     # Strip whitespace but preserve original case
     new_handle = payload.new_handle.strip()
-    
+
     # Validate handle format
     is_valid, error_msg = validate_handle(new_handle)
     if not is_valid:
@@ -544,14 +557,14 @@ def change_handle(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid handle: {error_msg}",
         )
-    
+
     # Check if same as current (case-insensitive comparison)
     if new_handle.lower() == current_user.handle.lower():
         # Even if casing changed, update it
         if new_handle != current_user.handle:
             old_handle = current_user.handle
             current_user.handle = new_handle
-            
+
             # Create audit log entry for case change
             audit_log = models.AuditLog(
                 actor_id=current_user.id,
@@ -561,7 +574,7 @@ def change_handle(
                 note=f"Handle casing changed from '{old_handle}' to '{new_handle}'",
             )
             db.add(audit_log)
-            
+
             try:
                 db.commit()
                 db.refresh(current_user)
@@ -571,30 +584,30 @@ def change_handle(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="This handle is already taken",
                 )
-            
+
             return schemas.ChangeHandleResponse(
                 message="Handle updated successfully",
                 handle=current_user.handle,
             )
-        
+
         return schemas.ChangeHandleResponse(
             message="Handle unchanged",
             handle=current_user.handle,
         )
-    
+
     # Check if handle is already taken (case-insensitive)
     if is_handle_taken(db, new_handle, exclude_user_id=current_user.id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This handle is already taken",
         )
-    
+
     # Store old handle for audit
     old_handle = current_user.handle
-    
+
     # Update handle (preserve original case)
     current_user.handle = new_handle
-    
+
     # Create audit log entry for handle change
     audit_log = models.AuditLog(
         actor_id=current_user.id,
@@ -604,7 +617,7 @@ def change_handle(
         note=f"Handle changed from '{old_handle}' to '{new_handle}'",
     )
     db.add(audit_log)
-    
+
     try:
         db.commit()
         db.refresh(current_user)
@@ -614,9 +627,11 @@ def change_handle(
             status_code=status.HTTP_409_CONFLICT,
             detail="This handle is already taken",
         )
-    
-    logger.info(f"User {current_user.id} changed handle from '{old_handle}' to '{new_handle}'")
-    
+
+    logger.info(
+        f"User {current_user.id} changed handle from '{old_handle}' to '{new_handle}'"
+    )
+
     return schemas.ChangeHandleResponse(
         message="Handle changed successfully",
         handle=current_user.handle,
@@ -634,15 +649,15 @@ def check_handle_availability(
 ) -> schemas.CheckHandleAvailabilityResponse:
     """
     Check if a handle is available for use.
-    
+
     Can be called by authenticated or unauthenticated users.
     For authenticated users, their current handle is excluded from the check
     (so they can keep their own handle).
-    
+
     The check is case-insensitive: "User", "user", and "USER" are considered the same.
     """
     handle = payload.handle.strip()
-    
+
     # Validate handle format first
     is_valid, error_msg = validate_handle(handle)
     if not is_valid:
@@ -651,18 +666,18 @@ def check_handle_availability(
             available=False,
             message=f"Invalid handle: {error_msg}",
         )
-    
+
     # Check if handle is taken (excluding current user if authenticated)
     exclude_user_id = current_user.id if current_user else None
     taken = is_handle_taken(db, handle, exclude_user_id=exclude_user_id)
-    
+
     if taken:
         return schemas.CheckHandleAvailabilityResponse(
             handle=handle,
             available=False,
             message="This handle is already taken",
         )
-    
+
     return schemas.CheckHandleAvailabilityResponse(
         handle=handle,
         available=True,
@@ -701,16 +716,16 @@ def resend_verification(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already verified",
         )
-    
+
     # Use provided email or user's current email
     email = (payload.email if payload else None) or current_user.email
-    
+
     if not email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No email address provided",
         )
-    
+
     # Send verification email
     try:
         email_sent = send_verification_email_for_user(db, current_user, email)
@@ -725,7 +740,7 @@ def resend_verification(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=str(e),
         )
-    
+
     return schemas.ResendVerificationResponse(
         message="Verification email sent",
         email=email,
@@ -759,19 +774,21 @@ def request_verification(
         )
 
     email = payload.email.lower().strip()
-    
+
     # Find user by email
-    user = db.query(models.User).filter(
-        models.User.email == email
-    ).first()
-    
+    user = db.query(models.User).filter(models.User.email == email).first()
+
     if user and not user.email_verified:
         # Check if user has a password identity (only password users need verification)
-        password_identity = db.query(models.AuthIdentity).filter(
-            models.AuthIdentity.user_id == user.id,
-            models.AuthIdentity.provider == "password",
-        ).first()
-        
+        password_identity = (
+            db.query(models.AuthIdentity)
+            .filter(
+                models.AuthIdentity.user_id == user.id,
+                models.AuthIdentity.provider == "password",
+            )
+            .first()
+        )
+
         if password_identity:
             # Send verification email
             try:
@@ -782,8 +799,10 @@ def request_verification(
             except Exception as e:
                 logger.error(f"Failed to send verification email: {e}")
     else:
-        logger.info(f"Verification requested for non-existent or already verified email: {email}")
-    
+        logger.info(
+            f"Verification requested for non-existent or already verified email: {email}"
+        )
+
     # Always return success to prevent email enumeration
     return schemas.ResendVerificationResponse(
         message="If an unverified account exists with this email, a verification link has been sent.",
@@ -818,23 +837,26 @@ def forgot_password(
         )
 
     email = payload.email.lower().strip()
-    
+
     # Find user by email
-    user = db.query(models.User).filter(
-        models.User.email == email
-    ).first()
-    
+    user = db.query(models.User).filter(models.User.email == email).first()
+
     if user:
         # Check if user has a password identity (OAuth-only users can't reset password)
-        password_identity = db.query(models.AuthIdentity).filter(
-            models.AuthIdentity.user_id == user.id,
-            models.AuthIdentity.provider == "password",
-        ).first()
-        
+        password_identity = (
+            db.query(models.AuthIdentity)
+            .filter(
+                models.AuthIdentity.user_id == user.id,
+                models.AuthIdentity.provider == "password",
+            )
+            .first()
+        )
+
         if password_identity:
             # Send reset email
             try:
                 from ..services.password_reset import send_reset_email_for_user
+
                 send_reset_email_for_user(db, user)
             except ValueError as e:
                 # Rate limit exceeded - still return success for security
@@ -845,7 +867,7 @@ def forgot_password(
             logger.info(f"Password reset requested for OAuth-only user {user.id}")
     else:
         logger.info(f"Password reset requested for non-existent email: {email}")
-    
+
     # Always return success to prevent email enumeration
     return schemas.ForgotPasswordResponse(
         message="If an account exists with this email, a password reset link has been sent."
@@ -862,35 +884,33 @@ def reset_password(
 ) -> schemas.ResetPasswordResponse:
     """
     Reset password using a token from email.
-    
+
     The password is only changed if the token is valid.
     New password must meet minimum requirements.
     """
     from ..services.password_reset import verify_reset_token, mark_token_used
-    
+
     # Verify token
     reset_token = verify_reset_token(db, payload.token)
-    
+
     if not reset_token:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired password reset token. Please request a new password reset.",
         )
-    
+
     # Get user
-    user = db.query(models.User).filter(
-        models.User.id == reset_token.user_id
-    ).first()
-    
+    user = db.query(models.User).filter(models.User.id == reset_token.user_id).first()
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found.",
         )
-    
+
     # Check if user is allowed to authenticate
     check_user_can_authenticate(user)
-    
+
     # Validate new password
     is_valid, error_message = validate_password(payload.new_password)
     if not is_valid:
@@ -898,7 +918,7 @@ def reset_password(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=error_message,
         )
-    
+
     # Update password
     success = update_password(db, user.id, payload.new_password)
     if not success:
@@ -906,12 +926,12 @@ def reset_password(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Failed to reset password. This account may not support password login.",
         )
-    
+
     # Mark token as used
     mark_token_used(db, reset_token.id)
-    
+
     logger.info(f"Password reset successful for user {user.id}")
-    
+
     return schemas.ResetPasswordResponse(
         message="Password reset successfully. You can now log in with your new password."
     )
@@ -929,7 +949,7 @@ def list_providers(
     List all authentication providers linked to the current user.
     """
     identities = get_user_identities(db, current_user.id)
-    
+
     return schemas.AuthIdentitiesList(
         identities=[
             schemas.AuthIdentityResponse.model_validate(identity)
@@ -950,7 +970,7 @@ def unlink_provider(
 ):
     """
     Unlink an authentication provider from the current user.
-    
+
     Prevents unlinking if it's the last authentication method.
     """
     try:
@@ -976,9 +996,9 @@ def github_login(request: Request, installation_id: int = Query(None)):
     if not GITHUB_CLIENT_ID:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="GitHub OAuth not configured"
+            detail="GitHub OAuth not configured",
         )
-    
+
     # Create and persist a nonce to protect OAuth state (CSRF/replay protection)
     state_nonce = secrets.token_urlsafe(24)
 
@@ -986,20 +1006,22 @@ def github_login(request: Request, installation_id: int = Query(None)):
     state_data = {"nonce": state_nonce}
     if installation_id:
         state_data["installation_id"] = installation_id
-    
+
     import json
+
     state = _b64url_encode(json.dumps(state_data).encode())
-    
+
     params = {
         "client_id": GITHUB_CLIENT_ID,
         "redirect_uri": GITHUB_REDIRECT_URI,
         "scope": "user:email",
-        "state": state
+        "state": state,
     }
-    
+
     auth_url = f"https://github.com/login/oauth/authorize?{urlencode(params)}"
-    
+
     from fastapi.responses import RedirectResponse
+
     redirect = RedirectResponse(url=auth_url)
     _set_oauth_state_cookie(redirect, state_nonce, request)
     return redirect
@@ -1012,7 +1034,7 @@ def github_callback(
     state: str = Query(...),
     installation_id: int = Query(None),
     setup_action: str = Query(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Handle GitHub OAuth callback and exchange code for tokens.
@@ -1022,12 +1044,13 @@ def github_callback(
         logger.error("GitHub OAuth callback failed: OAuth credentials not configured")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="GitHub OAuth not configured"
+            detail="GitHub OAuth not configured",
         )
-    
+
     try:
         # Validate and decode OAuth state BEFORE any outbound calls
         import json
+
         expected_nonce = request.cookies.get(OAUTH_STATE_COOKIE_NAME)
         try:
             state_data = json.loads(_b64url_decode(state).decode())
@@ -1040,7 +1063,9 @@ def github_callback(
 
         received_nonce = state_data.get("nonce")
         if not expected_nonce or not received_nonce or expected_nonce != received_nonce:
-            logger.warning("OAuth state verification failed (nonce mismatch or missing)")
+            logger.warning(
+                "OAuth state verification failed (nonce mismatch or missing)"
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid OAuth state. Please try again.",
@@ -1050,7 +1075,7 @@ def github_callback(
         state_installation_id = state_data.get("installation_id")
         if state_installation_id and not installation_id:
             installation_id = state_installation_id
-        
+
         # Exchange code for GitHub access token
         token_data = {
             "client_id": GITHUB_CLIENT_ID,
@@ -1058,42 +1083,43 @@ def github_callback(
             "code": code,
             "redirect_uri": GITHUB_REDIRECT_URI,
         }
-        
+
         logger.info(f"Exchanging GitHub OAuth code for access token")
         try:
             with httpx.Client() as client:
                 token_http_resp = client.post(
                     "https://github.com/login/oauth/access_token",
                     data=token_data,
-                    headers={"Accept": "application/json"}
+                    headers={"Accept": "application/json"},
                 )
                 token_http_resp.raise_for_status()
                 token_response = token_http_resp.json()
-                
+
                 if "error" in token_response:
                     error_msg = f"GitHub OAuth error: {token_response.get('error_description', token_response.get('error', 'Unknown error'))}"
                     logger.error(error_msg)
                     raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=error_msg
+                        status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg
                     )
-                
+
                 github_access_token = token_response["access_token"]
                 logger.info("Successfully obtained GitHub access token")
-                
+
                 # Fetch GitHub user profile
                 logger.info("Fetching GitHub user profile")
                 user_response = client.get(
                     "https://api.github.com/user",
                     headers={
                         "Authorization": f"Bearer {github_access_token}",
-                        "Accept": "application/vnd.github.v3+json"
-                    }
+                        "Accept": "application/vnd.github.v3+json",
+                    },
                 )
                 user_response.raise_for_status()
                 github_user = user_response.json()
-                logger.info(f"Successfully fetched GitHub user profile: {github_user.get('login')}")
-                
+                logger.info(
+                    f"Successfully fetched GitHub user profile: {github_user.get('login')}"
+                )
+
                 # Fetch GitHub user emails (since we requested user:email scope)
                 github_email = None
                 try:
@@ -1102,66 +1128,72 @@ def github_callback(
                         "https://api.github.com/user/emails",
                         headers={
                             "Authorization": f"Bearer {github_access_token}",
-                            "Accept": "application/vnd.github.v3+json"
-                        }
+                            "Accept": "application/vnd.github.v3+json",
+                        },
                     )
                     emails_response.raise_for_status()
                     emails = emails_response.json()
-                    
+
                     # Find primary email or first verified email
                     for email_entry in emails:
                         if email_entry.get("primary") and email_entry.get("verified"):
                             github_email = email_entry.get("email")
                             break
-                    
+
                     # If no primary verified email, use first verified email
                     if not github_email:
                         for email_entry in emails:
                             if email_entry.get("verified"):
                                 github_email = email_entry.get("email")
                                 break
-                    
+
                     # Fallback to first email if no verified email found
                     if not github_email and emails:
                         github_email = emails[0].get("email")
-                    
-                    logger.info(f"Found GitHub email: {github_email if github_email else 'None'}")
+
+                    logger.info(
+                        f"Found GitHub email: {github_email if github_email else 'None'}"
+                    )
                 except httpx.HTTPError as e:
-                    logger.warning(f"Failed to fetch GitHub emails: {e}, continuing without email")
+                    logger.warning(
+                        f"Failed to fetch GitHub emails: {e}, continuing without email"
+                    )
                     # Fallback to email from user profile if available
                     github_email = github_user.get("email")
-                
+
         except httpx.HTTPError as e:
             logger.error(f"HTTP error during GitHub OAuth flow: {e}", exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to authenticate with GitHub: {str(e)}"
+                detail=f"Failed to authenticate with GitHub: {str(e)}",
             )
-        
+
         # Find or create Makapix user via GitHub identity
         github_user_id = str(github_user["id"])
         github_username = github_user["login"]
-        
+
         logger.info(f"Looking up user with GitHub ID: {github_user_id}")
-        
+
         # Check if user is already logged in (from state or session)
         # TODO: Extract user_id from state if provided for account linking
-        
+
         # Check if GitHub identity already exists
         identity = find_identity_by_oauth(db, "github", github_user_id)
-        
+
         if identity:
             # Existing user - update profile and identity metadata
-            user = db.query(models.User).filter(models.User.id == identity.user_id).first()
+            user = (
+                db.query(models.User).filter(models.User.id == identity.user_id).first()
+            )
             if not user:
                 logger.error(f"Identity found but user not found: {identity.user_id}")
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="User account not found"
+                    detail="User account not found",
                 )
-            
+
             logger.info(f"Found existing user: {user.id} ({user.handle})")
-            
+
             # Update identity metadata
             identity.provider_metadata = {
                 "username": github_username,
@@ -1174,30 +1206,34 @@ def github_callback(
             # These should be set only once at registration time.
             if github_email:
                 user.email = github_email
-            
+
             db.commit()
             db.refresh(user)
         else:
             # New user - check if we're linking to an existing logged-in user
             # (This would be handled by checking for a session/cookie, but for now we create new user)
             logger.info(f"Creating new user for GitHub username: {github_username}")
-            
+
             # Generate default handle
             handle = generate_default_handle(db)
-            
+
             # Check if email is already registered
             email_to_use = github_email or github_user.get("email")
             if email_to_use:
-                existing_user = db.query(models.User).filter(
-                    models.User.email == email_to_use.lower()
-                ).first()
+                existing_user = (
+                    db.query(models.User)
+                    .filter(models.User.email == email_to_use.lower())
+                    .first()
+                )
                 if existing_user:
-                    logger.error(f"Email {email_to_use} already registered for user {existing_user.id}")
+                    logger.error(
+                        f"Email {email_to_use} already registered for user {existing_user.id}"
+                    )
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
                         detail="An account with this email already exists. Please log in with your existing account.",
                     )
-            
+
             # Create user - OAuth users are automatically verified since GitHub already verified their email
             user = models.User(
                 handle=handle,
@@ -1210,23 +1246,27 @@ def github_callback(
             db.add(user)
             try:
                 db.flush()  # Get the user ID without committing
-                
+
                 # Generate public_sqid from the assigned id
                 from ..sqids_config import encode_user_id
+
                 user.public_sqid = encode_user_id(user.id)
-                
+
                 db.commit()
                 db.refresh(user)
                 logger.info(f"Successfully created user: {user.id} ({user.handle})")
             except IntegrityError as e:
                 db.rollback()
-                error_str = str(e.orig) if hasattr(e, 'orig') else str(e)
-                logger.error(f"Database integrity error creating user: {error_str}", exc_info=True)
+                error_str = str(e.orig) if hasattr(e, "orig") else str(e)
+                logger.error(
+                    f"Database integrity error creating user: {error_str}",
+                    exc_info=True,
+                )
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to create user account. Please try again."
+                    detail="Failed to create user account. Please try again.",
                 )
-            
+
             # Create GitHub identity
             try:
                 create_oauth_identity(
@@ -1247,7 +1287,7 @@ def github_callback(
                 db.commit()
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to create authentication identity. Please try again."
+                    detail="Failed to create authentication identity. Please try again.",
                 )
             except Exception as e:
                 db.rollback()
@@ -1257,7 +1297,7 @@ def github_callback(
                 logger.error(f"Failed to create GitHub identity: {e}", exc_info=True)
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to create authentication identity. Please try again."
+                    detail="Failed to create authentication identity. Please try again.",
                 )
 
         # Handle GitHub App installation if installation_id is provided
@@ -1265,9 +1305,13 @@ def github_callback(
             logger.info(f"Processing GitHub App installation: {installation_id}")
             try:
                 # Check if installation already exists
-                existing_installation = db.query(models.GitHubInstallation).filter(
-                    models.GitHubInstallation.installation_id == installation_id
-                ).first()
+                existing_installation = (
+                    db.query(models.GitHubInstallation)
+                    .filter(
+                        models.GitHubInstallation.installation_id == installation_id
+                    )
+                    .first()
+                )
 
                 # Don't set target_repo during installation - user will select/create repo later
                 # target_repo should be NULL until user selects a repository
@@ -1279,7 +1323,7 @@ def github_callback(
                         installation_id=installation_id,
                         account_login=github_username,
                         account_type="User",
-                        target_repo=None  # User will select repository later
+                        target_repo=None,  # User will select repository later
                     )
                     db.add(installation)
                     db.commit()
@@ -1292,10 +1336,15 @@ def github_callback(
                     if existing_installation.target_repo is None:
                         existing_installation.target_repo = None
                     db.commit()
-                    logger.info(f"Updated GitHub installation {installation_id} to user {user.id}")
+                    logger.info(
+                        f"Updated GitHub installation {installation_id} to user {user.id}"
+                    )
             except IntegrityError as e:
                 db.rollback()
-                logger.error(f"Database integrity error handling installation: {e}", exc_info=True)
+                logger.error(
+                    f"Database integrity error handling installation: {e}",
+                    exc_info=True,
+                )
                 # Don't fail the auth flow if installation handling fails
 
         # Generate JWT tokens
@@ -1309,7 +1358,7 @@ def github_callback(
             db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to generate authentication tokens. Please try again."
+                detail="Failed to generate authentication tokens. Please try again.",
             )
 
         # Determine the site origin from the request.
@@ -1319,21 +1368,25 @@ def github_callback(
         # in some browsers / proxy setups. We want an origin like "https://makapix.club".
         forwarded_proto = request.headers.get("x-forwarded-proto")
         proto = forwarded_proto or request.url.scheme
-        host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+        host = (
+            request.headers.get("x-forwarded-host")
+            or request.headers.get("host")
+            or request.url.netloc
+        )
         site_origin = f"{proto}://{host}"
 
         # Check if user needs to go through welcome flow
         needs_welcome = not user.welcome_completed
-        
+
         # Create a simple HTML page that shows success and stores tokens
         from fastapi.responses import HTMLResponse
         import html
-        
+
         # Escape user-provided data to prevent XSS
         safe_handle = html.escape(user.handle)
         safe_user_id = html.escape(str(user.id))
         safe_site_origin = html.escape(site_origin)
-        
+
         # Determine redirect URL based on whether user needs welcome flow
         if needs_welcome:
             redirect_url = f"{site_origin}/new-account-welcome"
@@ -1439,14 +1492,14 @@ def github_callback(
         </body>
         </html>
         """
-        
+
         html_response = HTMLResponse(content=html_content)
         # Set refresh token as HttpOnly cookie on the ACTUAL returned response
         set_refresh_token_cookie(html_response, makapix_refresh_token, request)
         # Clear OAuth state cookie now that the flow is complete
         _clear_oauth_state_cookie(html_response, request)
         return html_response
-        
+
     except HTTPException:
         # Re-raise HTTP exceptions as-is
         raise
@@ -1455,7 +1508,7 @@ def github_callback(
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred during authentication. Please try again."
+            detail="An unexpected error occurred during authentication. Please try again.",
         )
 
 
@@ -1468,7 +1521,7 @@ def exchange_github_code(
     payload: schemas.GithubExchangeRequest,
     request: Request,
     response: Response,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> schemas.OAuthTokens:
     """
     Exchange GitHub OAuth code for Makapix JWT.
@@ -1476,9 +1529,9 @@ def exchange_github_code(
     if not GITHUB_CLIENT_ID or not GITHUB_CLIENT_SECRET:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="GitHub OAuth not configured"
+            detail="GitHub OAuth not configured",
         )
-    
+
     # Exchange code for GitHub access token
     token_data = {
         "client_id": GITHUB_CLIENT_ID,
@@ -1486,73 +1539,75 @@ def exchange_github_code(
         "code": payload.code,
         "redirect_uri": payload.redirect_uri,
     }
-    
+
     try:
         with httpx.Client() as client:
             token_http_resp = client.post(
                 "https://github.com/login/oauth/access_token",
                 data=token_data,
-                headers={"Accept": "application/json"}
+                headers={"Accept": "application/json"},
             )
             token_http_resp.raise_for_status()
             token_response = token_http_resp.json()
-            
+
             if "error" in token_response:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"GitHub OAuth error: {token_response['error_description']}"
+                    detail=f"GitHub OAuth error: {token_response['error_description']}",
                 )
-            
+
             access_token = token_response["access_token"]
-            
+
             # Fetch GitHub user profile
             user_response = client.get(
                 "https://api.github.com/user",
                 headers={
                     "Authorization": f"Bearer {access_token}",
-                    "Accept": "application/vnd.github.v3+json"
-                }
+                    "Accept": "application/vnd.github.v3+json",
+                },
             )
             user_response.raise_for_status()
             github_user = user_response.json()
-            
+
     except httpx.HTTPError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to authenticate with GitHub: {str(e)}"
+            detail=f"Failed to authenticate with GitHub: {str(e)}",
         )
-    
+
     # Find or create Makapix user via GitHub identity
     github_user_id = str(github_user["id"])
     github_username = github_user["login"]
-    
+
     # Check if GitHub identity already exists
     identity = find_identity_by_oauth(db, "github", github_user_id)
-    
+
     if identity:
         # Existing user
         user = db.query(models.User).filter(models.User.id == identity.user_id).first()
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="User account not found"
+                detail="User account not found",
             )
     else:
         # Create new user - OAuth users are automatically verified
         handle = generate_default_handle(db)
         email_to_use = github_user.get("email")
-        
+
         # Check if email already exists
         if email_to_use:
-            existing_user = db.query(models.User).filter(
-                models.User.email == email_to_use.lower()
-            ).first()
+            existing_user = (
+                db.query(models.User)
+                .filter(models.User.email == email_to_use.lower())
+                .first()
+            )
             if existing_user:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="An account with this email already exists",
                 )
-        
+
         user = models.User(
             handle=handle,
             bio=github_user.get("bio"),
@@ -1563,14 +1618,15 @@ def exchange_github_code(
         )
         db.add(user)
         db.flush()  # Get the user ID without committing
-        
+
         # Generate public_sqid from the assigned id
         from ..sqids_config import encode_user_id
+
         user.public_sqid = encode_user_id(user.id)
-        
+
         db.commit()
         db.refresh(user)
-        
+
         # Create GitHub identity
         create_oauth_identity(
             db=db,
@@ -1583,39 +1639,44 @@ def exchange_github_code(
                 "avatar_url": github_user.get("avatar_url"),
             },
         )
-    
+
     # Check if installation_id is provided (from GitHub App installation)
     installation_id = payload.installation_id
     setup_action = payload.setup_action
-    
+
     if installation_id and setup_action == "install":
         # Bind GitHub App installation to user
-        installation = db.query(models.GitHubInstallation).filter(
-            models.GitHubInstallation.installation_id == installation_id
-        ).first()
-        
+        installation = (
+            db.query(models.GitHubInstallation)
+            .filter(models.GitHubInstallation.installation_id == installation_id)
+            .first()
+        )
+
         if not installation:
             installation = models.GitHubInstallation(
                 user_id=user.id,
                 installation_id=installation_id,
                 account_login=github_user["login"],
-                account_type="User"
+                account_type="User",
             )
             db.add(installation)
             db.commit()
-    
+
     # Generate JWT tokens
     access_token = create_access_token(user.user_key)
     refresh_token = create_refresh_token(user.user_key, db)
-    
+
     # Set refresh token as HttpOnly cookie
     set_refresh_token_cookie(response, refresh_token, request)
-    
+
     # Calculate token expiration time
     from ..auth import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
     from datetime import timezone
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
-    
+
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+    )
+
     # Return response without refresh_token (it's in the cookie)
     return schemas.OAuthTokens(
         token=access_token,
@@ -1637,13 +1698,13 @@ def refresh_token_endpoint(
 ) -> schemas.OAuthTokens:
     """
     Refresh access token using refresh token from HttpOnly cookie.
-    
+
     Uses token rotation with a grace period: the old refresh token remains valid
     for 60 seconds after a new one is issued. This handles race conditions where:
     - Two browser tabs try to refresh simultaneously
     - Network issues cause the response to be lost
     - The browser closes before the new token is stored
-    
+
     The refresh token is read from the HttpOnly cookie and the new refresh token
     is set in the cookie. It is not returned in the response body.
     """
@@ -1652,36 +1713,39 @@ def refresh_token_endpoint(
     if not refresh_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="No refresh token found in cookie"
+            detail="No refresh token found in cookie",
         )
-    
+
     user = verify_refresh_token(refresh_token, db)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired refresh token"
+            detail="Invalid or expired refresh token",
         )
-    
+
     # Check if user is allowed to authenticate
     check_user_can_authenticate(user)
-    
+
     # Mark the old refresh token as rotated with a 60-second grace period
     # This allows the client to retry if the response is lost, while still
     # providing security through token rotation
     mark_refresh_token_rotated(refresh_token, db, grace_seconds=60)
-    
+
     # Generate new tokens
     access_token = create_access_token(user.user_key)
     new_refresh_token = create_refresh_token(user.user_key, db)
-    
+
     # Set new refresh token as HttpOnly cookie
     set_refresh_token_cookie(response, new_refresh_token, request)
-    
+
     # Calculate token expiration time
     from ..auth import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
     from datetime import timezone
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
-    
+
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+    )
+
     # Return response without refresh_token (it's in the cookie)
     return schemas.OAuthTokens(
         token=access_token,
@@ -1702,7 +1766,7 @@ def complete_welcome(
 ) -> None:
     """
     Mark the current user's welcome flow as completed.
-    
+
     This should be called after the user has gone through the new account welcome page,
     regardless of whether they made any changes ("Skip for now" or "Save changes").
     """
@@ -1716,11 +1780,11 @@ def logout(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(get_current_user),
 ) -> None:
     """
     Logout current user by revoking refresh token from cookie.
-    
+
     The refresh token is read from the HttpOnly cookie, revoked in the database,
     and the cookie is cleared.
     """
@@ -1729,7 +1793,7 @@ def logout(
     if refresh_token:
         # Revoke the refresh token in database
         revoke_refresh_token(refresh_token, db)
-    
+
     # Clear the refresh token cookie
     clear_refresh_token_cookie(response, request)
 
@@ -1752,20 +1816,20 @@ def github_onboarding_redirect(
     request: Request,
     installation_id: int = Query(...),
     setup_action: str = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Redirect from GitHub's onboarding URL to our setup URL.
     This handles the case where GitHub redirects to /onboarding/github instead of /github-app-setup.
     """
     from fastapi.responses import RedirectResponse
-    
+
     # Determine the base URL from the request
-    base_url = str(request.base_url).rstrip('/')
+    base_url = str(request.base_url).rstrip("/")
     # Handle both http and https
     if request.headers.get("x-forwarded-proto") == "https":
         base_url = base_url.replace("http://", "https://")
-    
+
     # Redirect to Next.js setup page (using shorter /setup route to avoid GitHub URL truncation)
     setup_url = f"{base_url}/setup?installation_id={installation_id}&setup_action={setup_action}"
     return RedirectResponse(url=setup_url, status_code=302)
@@ -1776,7 +1840,7 @@ def github_app_setup(
     request: Request,
     installation_id: int = Query(...),
     setup_action: str = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Handle GitHub App installation completion.
@@ -1784,13 +1848,13 @@ def github_app_setup(
     Redirects to Next.js page for better UX.
     """
     from fastapi.responses import RedirectResponse
-    
+
     # Determine the base URL from the request
-    base_url = str(request.base_url).rstrip('/')
+    base_url = str(request.base_url).rstrip("/")
     # Handle both http and https
     if request.headers.get("x-forwarded-proto") == "https":
         base_url = base_url.replace("http://", "https://")
-    
+
     # Redirect to Next.js setup page (using shorter /setup route to avoid GitHub URL truncation)
     setup_url = f"{base_url}/setup?installation_id={installation_id}&setup_action={setup_action}"
     return RedirectResponse(url=setup_url, status_code=302)
@@ -1798,91 +1862,103 @@ def github_app_setup(
 
 @router.get("/github-app/status")
 def get_github_app_status(
-    current_user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)
 ) -> dict:
     """
     Check if the current user has installed the GitHub App.
     Returns installation status and app installation URL if not installed.
     """
     import logging
+
     logger = logging.getLogger(__name__)
 
-    installation = db.query(models.GitHubInstallation).filter(
-        models.GitHubInstallation.user_id == current_user.id
-    ).first()
+    installation = (
+        db.query(models.GitHubInstallation)
+        .filter(models.GitHubInstallation.user_id == current_user.id)
+        .first()
+    )
 
     # Get GitHub App slug from environment or use default
     app_slug = os.getenv("GITHUB_APP_SLUG", "makapix-club")
     # Construct installation URL - users can install from this URL
-    install_url = f"https://github.com/apps/{app_slug}/installations/new" if app_slug else None
+    install_url = (
+        f"https://github.com/apps/{app_slug}/installations/new" if app_slug else None
+    )
 
     result = {
         "installed": installation is not None,
         "installation_id": installation.installation_id if installation else None,
-        "install_url": install_url
+        "install_url": install_url,
     }
 
-    logger.info(f"GitHub App status check for user {current_user.id}: app_slug={app_slug}, install_url={install_url}, installed={result['installed']}")
+    logger.info(
+        f"GitHub App status check for user {current_user.id}: app_slug={app_slug}, install_url={install_url}, installed={result['installed']}"
+    )
 
     return result
 
 
 @router.post("/github-app/clear-installation")
 def clear_github_app_installation(
-    current_user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)
 ) -> dict:
     """
     Clear invalid GitHub App installation from database.
     Useful when user needs to reinstall the app.
     """
     import logging
+
     logger = logging.getLogger(__name__)
 
-    installation = db.query(models.GitHubInstallation).filter(
-        models.GitHubInstallation.user_id == current_user.id
-    ).first()
+    installation = (
+        db.query(models.GitHubInstallation)
+        .filter(models.GitHubInstallation.user_id == current_user.id)
+        .first()
+    )
 
     if not installation:
         return {
             "status": "no_installation",
-            "message": "No installation found to clear"
+            "message": "No installation found to clear",
         }
 
     installation_id = installation.installation_id
     db.delete(installation)
     db.commit()
 
-    logger.info(f"Cleared GitHub App installation {installation_id} for user {current_user.id}")
+    logger.info(
+        f"Cleared GitHub App installation {installation_id} for user {current_user.id}"
+    )
 
     return {
         "status": "cleared",
-        "message": f"Installation {installation_id} has been cleared. You can now reinstall the GitHub App."
+        "message": f"Installation {installation_id} has been cleared. You can now reinstall the GitHub App.",
     }
 
 
 @router.get("/github-app/validate")
 def validate_github_app_installation(
-    current_user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)
 ) -> dict:
     """
     Validate that the GitHub App installation is working by testing access token generation.
     Returns validation status and error details if invalid.
     """
     import logging
+
     logger = logging.getLogger(__name__)
 
-    installation = db.query(models.GitHubInstallation).filter(
-        models.GitHubInstallation.user_id == current_user.id
-    ).first()
+    installation = (
+        db.query(models.GitHubInstallation)
+        .filter(models.GitHubInstallation.user_id == current_user.id)
+        .first()
+    )
 
     if not installation:
         return {
             "valid": False,
             "error": "No GitHub App installation found",
-            "details": "User has not installed the GitHub App"
+            "details": "User has not installed the GitHub App",
         }
 
     # Check if installation has required fields
@@ -1890,75 +1966,86 @@ def validate_github_app_installation(
         return {
             "valid": False,
             "error": "Invalid installation",
-            "details": "Installation ID is missing"
+            "details": "Installation ID is missing",
         }
 
     # target_repo is now optional - users select/create repositories via the UI
     # Don't require it for validation
-    
+
     # Verify that the installation belongs to the configured GitHub App before attempting token generation
-    logger.info(f"Verifying installation {installation.installation_id} belongs to configured GitHub App")
+    logger.info(
+        f"Verifying installation {installation.installation_id} belongs to configured GitHub App"
+    )
     if not verify_installation_belongs_to_app(installation.installation_id):
         app_slug = os.getenv("GITHUB_APP_SLUG", "makapix-club")
-        install_url = f"https://github.com/apps/{app_slug}/installations/new" if app_slug else None
-        
+        install_url = (
+            f"https://github.com/apps/{app_slug}/installations/new"
+            if app_slug
+            else None
+        )
+
         error_details = (
             f"Installation {installation.installation_id} belongs to a different GitHub App. "
             f"This usually happens when you installed the wrong GitHub App (e.g., localhost app instead of VPS app).\n\n"
         )
-        
+
         if install_url:
-            error_details += f"Please install the correct GitHub App from: {install_url}\n\n"
+            error_details += (
+                f"Please install the correct GitHub App from: {install_url}\n\n"
+            )
             error_details += f"After installing, you may need to uninstall the incorrect installation first."
-        
+
         logger.warning(
             f"User {current_user.id} has installation {installation.installation_id} that belongs to wrong GitHub App. "
             f"Configured app slug: {app_slug}"
         )
-        
+
         return {
             "valid": False,
             "error": "Installation belongs to wrong GitHub App",
             "details": error_details,
             "app_slug": app_slug,
-            "install_url": install_url
+            "install_url": install_url,
         }
 
     # Test if we can get an access token from GitHub
     try:
         from app.github import get_github_app_token
+
         access_token = get_github_app_token(installation.installation_id)
-        
+
         if not access_token:
-            logger.error(f"Failed to get access token for installation {installation.installation_id}")
+            logger.error(
+                f"Failed to get access token for installation {installation.installation_id}"
+            )
             return {
                 "valid": False,
                 "error": "Failed to get access token",
-                "details": f"GitHub App installation {installation.installation_id} cannot authenticate. This usually means:\n1. The GITHUB_APP_ID or GITHUB_APP_PRIVATE_KEY environment variables are incorrect\n2. The private key doesn't match the GitHub App\n3. The installation was revoked on GitHub\n\nCheck your GitHub App configuration in the API environment variables."
+                "details": f"GitHub App installation {installation.installation_id} cannot authenticate. This usually means:\n1. The GITHUB_APP_ID or GITHUB_APP_PRIVATE_KEY environment variables are incorrect\n2. The private key doesn't match the GitHub App\n3. The installation was revoked on GitHub\n\nCheck your GitHub App configuration in the API environment variables.",
             }
 
         # If we successfully got a token, the installation is valid
         # Installation tokens can't access /user endpoint, so we don't test it
         # The fact that we can get a token means the installation is valid
-        logger.info(f"GitHub App installation validated successfully for user {current_user.id}")
+        logger.info(
+            f"GitHub App installation validated successfully for user {current_user.id}"
+        )
         return {
             "valid": True,
             "installation_id": installation.installation_id,
             "target_repo": installation.target_repo,  # May be NULL - user selects repo later
-            "account_login": installation.account_login
+            "account_login": installation.account_login,
         }
 
     except Exception as e:
         error_msg = str(e)
-        logger.error(f"Error validating GitHub App installation for user {current_user.id}: {error_msg}")
-        
+        logger.error(
+            f"Error validating GitHub App installation for user {current_user.id}: {error_msg}"
+        )
+
         # Provide specific guidance based on error
         details = f"Error: {error_msg}"
         if "could not be decoded" in error_msg.lower() or "401" in error_msg:
             details += "\n\nThis means the GitHub App credentials are incorrect. Please check:\n1. GITHUB_APP_ID matches your GitHub App ID\n2. GITHUB_APP_PRIVATE_KEY is the correct private key from your GitHub App\n3. The private key format is correct (should start with '-----BEGIN RSA PRIVATE KEY-----')"
-        
-        return {
-            "valid": False,
-            "error": "Validation failed",
-            "details": details
-        }
+
+        return {"valid": False, "error": "Validation failed", "details": details}

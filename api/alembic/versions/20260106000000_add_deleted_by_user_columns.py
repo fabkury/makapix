@@ -16,7 +16,6 @@ from collections.abc import Sequence
 from alembic import op
 import sqlalchemy as sa
 
-
 # revision identifiers, used by Alembic.
 revision: str = "20260106000000"
 down_revision: str | None = "20260103000000"
@@ -28,7 +27,9 @@ def upgrade() -> None:
     # 1. Add new columns
     op.add_column(
         "posts",
-        sa.Column("deleted_by_user", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column(
+            "deleted_by_user", sa.Boolean(), nullable=False, server_default="false"
+        ),
     )
     op.add_column(
         "posts",

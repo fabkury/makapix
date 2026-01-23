@@ -465,10 +465,10 @@ def hash_url(self, url: str) -> dict[str, Any]:
 @celery_app.task(name="app.tasks.check_post_hash", bind=True)
 def check_post_hash(self, post_id: str) -> dict[str, Any]:
     """
-    Check if a post's art_url hash matches the expected hash.
+    Check if a post's vault file hash matches the expected hash.
     Sets non_conformant=True if mismatch detected.
     """
-    from . import models
+    from . import models, vault
     from .db import SessionLocal
 
     db = SessionLocal()
@@ -482,14 +482,23 @@ def check_post_hash(self, post_id: str) -> dict[str, Any]:
             logger.info("Post %s has no hash, skipping", post_id)
             return {"status": "skipped", "message": "No expected hash"}
 
-        if not post.art_url:
-            logger.error("Post %s has no art_url", post_id)
-            return {"status": "error", "message": "No art_url"}
+        if not post.storage_key or not post.file_format:
+            logger.error("Post %s has no storage_key or file_format", post_id)
+            return {"status": "error", "message": "No storage info"}
 
-        # Fetch and hash the remote content
-        logger.info("Checking hash for post %s: %s", post_id, post.art_url)
-        hash_result = hash_url_sync(post.art_url)
-        actual_hash = hash_result["sha256"]
+        # Read file from vault and compute hash
+        file_path = vault.get_artwork_file_path(
+            post.storage_key,
+            vault.FORMAT_TO_EXT.get(post.file_format, f".{post.file_format}"),
+            storage_shard=post.storage_shard,
+        )
+        if not file_path.exists():
+            logger.error("Vault file not found for post %s: %s", post_id, file_path)
+            return {"status": "error", "message": "Vault file not found"}
+
+        logger.info("Checking hash for post %s from vault: %s", post_id, file_path)
+        file_content = file_path.read_bytes()
+        actual_hash = hashlib.sha256(file_content).hexdigest()
 
         if actual_hash != post.hash:
             logger.warning(
@@ -541,7 +550,7 @@ def periodic_check_post_hashes(self) -> dict[str, Any]:
 
     Checks batches of posts with hash set, marks non-conformant on mismatch.
     """
-    from . import models
+    from . import models, vault
     from .db import SessionLocal
     from .utils.audit import log_moderation_action, get_system_user_id
 
@@ -555,7 +564,8 @@ def periodic_check_post_hashes(self) -> dict[str, Any]:
             db.query(models.Post)
             .filter(
                 models.Post.hash.isnot(None),
-                models.Post.art_url.isnot(None),
+                models.Post.storage_key.isnot(None),
+                models.Post.file_format.isnot(None),
             )
             .limit(100)
             .all()
@@ -570,9 +580,20 @@ def periodic_check_post_hashes(self) -> dict[str, Any]:
 
         for post in posts_to_check:
             try:
-                # Check hash
-                hash_result = hash_url_sync(post.art_url)
-                actual_hash = hash_result["sha256"]
+                # Read file from vault and compute hash
+                file_path = vault.get_artwork_file_path(
+                    post.storage_key,
+                    vault.FORMAT_TO_EXT.get(post.file_format, f".{post.file_format}"),
+                    storage_shard=post.storage_shard,
+                )
+                if not file_path.exists():
+                    logger.warning(
+                        f"Vault file not found for post {post.id}: {file_path}"
+                    )
+                    continue
+
+                file_content = file_path.read_bytes()
+                actual_hash = hashlib.sha256(file_content).hexdigest()
 
                 if actual_hash != post.hash:
                     logger.warning(
@@ -2261,7 +2282,9 @@ def cleanup_deleted_posts(self) -> dict[str, Any]:
                             [post.file_format] if post.file_format else []
                         )
                         vault.delete_all_artwork_formats(
-                            post.storage_key, formats_to_delete
+                            post.storage_key,
+                            formats_to_delete,
+                            storage_shard=post.storage_shard,
                         )
                     except Exception as e:
                         logger.warning(
@@ -2410,7 +2433,9 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
         # Get source file path
         native_format = post.file_format.lower()
         source_path = vault.get_artwork_file_path(
-            post.storage_key, vault.FORMAT_TO_EXT.get(native_format, f".{native_format}")
+            post.storage_key,
+            vault.FORMAT_TO_EXT.get(native_format, f".{native_format}"),
+            storage_shard=post.storage_shard,
         )
 
         if not source_path.exists():
@@ -2455,7 +2480,9 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
                 continue  # Skip native format
 
             target_path = vault.get_artwork_file_path(
-                post.storage_key, vault.FORMAT_TO_EXT[target_format]
+                post.storage_key,
+                vault.FORMAT_TO_EXT[target_format],
+                storage_shard=post.storage_shard,
             )
 
             # Skip if already exists
@@ -2479,13 +2506,21 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
                         for frame in frames:
                             if frame.mode == "RGBA":
                                 # Flatten alpha onto white background for GIF
-                                rgb_frame = Image.new("RGB", frame.size, (255, 255, 255))
+                                rgb_frame = Image.new(
+                                    "RGB", frame.size, (255, 255, 255)
+                                )
                                 rgb_frame.paste(frame, mask=frame.split()[3])
-                                gif_frames.append(rgb_frame.convert("P", palette=Image.Palette.ADAPTIVE))
+                                gif_frames.append(
+                                    rgb_frame.convert(
+                                        "P", palette=Image.Palette.ADAPTIVE
+                                    )
+                                )
                             elif frame.mode == "P":
                                 gif_frames.append(frame.copy())
                             else:
-                                gif_frames.append(frame.convert("P", palette=Image.Palette.ADAPTIVE))
+                                gif_frames.append(
+                                    frame.convert("P", palette=Image.Palette.ADAPTIVE)
+                                )
 
                         gif_frames[0].save(
                             output,
@@ -2557,13 +2592,17 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
                 logger.info(f"Created {target_format} for post {post_id}")
 
             except Exception as e:
-                logger.error(f"Failed to convert to {target_format} for post {post_id}: {e}")
+                logger.error(
+                    f"Failed to convert to {target_format} for post {post_id}: {e}"
+                )
                 conversion_results[target_format] = f"error: {e}"
 
         # Create upscaled version
         upscaled_result = "skipped"
         try:
-            upscaled_path = vault.get_upscaled_file_path(post.storage_key)
+            upscaled_path = vault.get_upscaled_file_path(
+                post.storage_key, storage_shard=post.storage_shard
+            )
 
             # Skip if already exists
             if not upscaled_path.exists():
@@ -2585,7 +2624,7 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
                     output = BytesIO()
 
                     # Determine if output should be lossy or lossless
-                    use_lossy = (native_format == "webp" and _is_lossy_webp(source_bytes))
+                    use_lossy = native_format == "webp" and _is_lossy_webp(source_bytes)
 
                     if is_animated:
                         # MEMORY SAFEGUARD: Cap frame count at 256 for upscaling only.
@@ -2642,8 +2681,12 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
                         )
 
                     upscaled_path.write_bytes(output.getvalue())
-                    upscaled_result = f"created ({new_width}x{new_height}, scale={scale_factor})"
-                    logger.info(f"Created upscaled version for post {post_id}: {upscaled_result}")
+                    upscaled_result = (
+                        f"created ({new_width}x{new_height}, scale={scale_factor})"
+                    )
+                    logger.info(
+                        f"Created upscaled version for post {post_id}: {upscaled_result}"
+                    )
                 else:
                     upscaled_result = "skipped (no scaling possible)"
             else:
@@ -2657,7 +2700,9 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
         post.formats_available = sorted(set(formats_available))
         db.commit()
 
-        logger.info(f"SSAFPP completed for post {post_id}: formats={post.formats_available}")
+        logger.info(
+            f"SSAFPP completed for post {post_id}: formats={post.formats_available}"
+        )
 
         return {
             "status": "success",
@@ -2752,11 +2797,7 @@ def process_bdr_job(self, bdr_id: str) -> dict[str, Any]:
         user_sqid = user.public_sqid or sqids.encode([user.id])
 
         # Load posts with their data
-        posts = (
-            db.query(models.Post)
-            .filter(models.Post.id.in_(bdr.post_ids))
-            .all()
-        )
+        posts = db.query(models.Post).filter(models.Post.id.in_(bdr.post_ids)).all()
 
         if not posts:
             raise ValueError("No posts found")
@@ -2795,19 +2836,23 @@ def process_bdr_job(self, bdr_id: str) -> dict[str, Any]:
                     # Get author handle
                     author_handle = None
                     if comment.author_id:
-                        author = db.query(models.User.handle).filter(
-                            models.User.id == comment.author_id
-                        ).first()
+                        author = (
+                            db.query(models.User.handle)
+                            .filter(models.User.id == comment.author_id)
+                            .first()
+                        )
                         author_handle = author[0] if author else "anonymous"
                     else:
                         author_handle = "anonymous"
 
-                    comments_by_post[sqid].append({
-                        "id": str(comment.id),
-                        "author_handle": author_handle,
-                        "body": comment.body,
-                        "created_at": comment.created_at.isoformat(),
-                    })
+                    comments_by_post[sqid].append(
+                        {
+                            "id": str(comment.id),
+                            "author_handle": author_handle,
+                            "body": comment.body,
+                            "created_at": comment.created_at.isoformat(),
+                        }
+                    )
 
             comments_data = {
                 "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -2821,7 +2866,7 @@ def process_bdr_job(self, bdr_id: str) -> dict[str, Any]:
                 db.query(
                     models.Reaction.post_id,
                     models.Reaction.emoji,
-                    func.count(models.Reaction.id).label("count")
+                    func.count(models.Reaction.id).label("count"),
                 )
                 .filter(models.Reaction.post_id.in_(bdr.post_ids))
                 .group_by(models.Reaction.post_id, models.Reaction.emoji)
@@ -2859,54 +2904,57 @@ def process_bdr_job(self, bdr_id: str) -> dict[str, Any]:
             # Download and add artworks
             for post in posts:
                 try:
-                    # Determine file extension from file_format or art_url
+                    # Determine file extension from file_format
                     ext = post.file_format or "png"
                     if not ext.startswith("."):
                         ext = f".{ext}"
 
                     artwork_filename = f"{post.public_sqid}{ext}"
 
-                    # Download artwork file
-                    if post.art_url.startswith("/api/vault/"):
-                        # Local vault file via API path
-                        relative_path = post.art_url.replace("/api/vault/", "")
-                        source_path = vault_base / relative_path
+                    # Get artwork file from vault using storage_key and storage_shard
+                    if post.storage_key and post.file_format:
+                        source_path = vault.get_artwork_file_path(
+                            post.storage_key,
+                            vault.FORMAT_TO_EXT.get(
+                                post.file_format, f".{post.file_format}"
+                            ),
+                            storage_shard=post.storage_shard,
+                        )
                         if source_path.exists():
                             shutil.copy(source_path, artworks_dir / artwork_filename)
                         else:
                             logger.warning(f"Vault file not found: {source_path}")
                             continue
-                    elif post.art_url.startswith("/vault/"):
-                        # Local vault file via direct path
-                        source_path = vault_base / post.art_url.lstrip("/vault/")
-                        if source_path.exists():
-                            shutil.copy(source_path, artworks_dir / artwork_filename)
-                        else:
-                            logger.warning(f"Vault file not found: {source_path}")
-                            continue
-                    elif post.art_url.startswith("http://") or post.art_url.startswith("https://"):
-                        # Remote URL (GitHub Pages, etc.)
+                    elif post.art_url and (
+                        post.art_url.startswith("http://")
+                        or post.art_url.startswith("https://")
+                    ):
+                        # Legacy: Remote URL (GitHub Pages, etc.)
                         with httpx.Client(timeout=30) as client:
                             response = client.get(post.art_url)
                             response.raise_for_status()
-                            (artworks_dir / artwork_filename).write_bytes(response.content)
+                            (artworks_dir / artwork_filename).write_bytes(
+                                response.content
+                            )
                     else:
-                        logger.warning(f"Unknown art_url format: {post.art_url}")
+                        logger.warning(f"Cannot locate artwork for post {post.id}")
                         continue
 
                     # Add to metadata
-                    metadata["artworks"].append({
-                        "sqid": post.public_sqid,
-                        "filename": artwork_filename,
-                        "title": post.title,
-                        "description": post.description,
-                        "created_at": post.created_at.isoformat(),
-                        "width": post.width,
-                        "height": post.height,
-                        "frame_count": post.frame_count,
-                        "file_format": post.file_format,
-                        "hashtags": post.hashtags or [],
-                    })
+                    metadata["artworks"].append(
+                        {
+                            "sqid": post.public_sqid,
+                            "filename": artwork_filename,
+                            "title": post.title,
+                            "description": post.description,
+                            "created_at": post.created_at.isoformat(),
+                            "width": post.width,
+                            "height": post.height,
+                            "frame_count": post.frame_count,
+                            "file_format": post.file_format,
+                            "hashtags": post.hashtags or [],
+                        }
+                    )
 
                 except Exception as e:
                     logger.error(f"Failed to process artwork {post.id}: {e}")
@@ -3072,7 +3120,9 @@ def cleanup_expired_bdrs(self) -> dict[str, Any]:
                         user_dir.rmdir()
                         logger.info(f"Removed empty BDR directory: {user_dir}")
                     except Exception as e:
-                        logger.warning(f"Failed to remove empty directory {user_dir}: {e}")
+                        logger.warning(
+                            f"Failed to remove empty directory {user_dir}: {e}"
+                        )
 
         logger.info(f"Cleaned up {cleaned_up} expired BDRs")
         return {
@@ -3126,13 +3176,17 @@ def renew_crl_if_needed(self) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
         days_until_expiry = (expiration - now).days
 
-        logger.info(f"CRL expires in {days_until_expiry} days ({expiration.isoformat()})")
+        logger.info(
+            f"CRL expires in {days_until_expiry} days ({expiration.isoformat()})"
+        )
 
         if days_until_expiry <= 7:
             logger.info("CRL is within 7 days of expiration, renewing...")
             new_expiration = renew_crl()
             if new_expiration:
-                logger.info(f"CRL renewed successfully, new expiration: {new_expiration.isoformat()}")
+                logger.info(
+                    f"CRL renewed successfully, new expiration: {new_expiration.isoformat()}"
+                )
                 return {
                     "status": "success",
                     "action": "renewed",
@@ -3259,9 +3313,7 @@ def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
 
         # Get all comment IDs by this user
         user_comments = (
-            db.query(models.Comment)
-            .filter(models.Comment.author_id == user_id)
-            .all()
+            db.query(models.Comment).filter(models.Comment.author_id == user_id).all()
         )
 
         for comment in user_comments:
@@ -3290,11 +3342,7 @@ def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
         )
 
         # 3. Delete all posts AND vault files
-        user_posts = (
-            db.query(models.Post)
-            .filter(models.Post.owner_id == user_id)
-            .all()
-        )
+        user_posts = db.query(models.Post).filter(models.Post.owner_id == user_id).all()
 
         for post in user_posts:
             # Delete vault files for this post
@@ -3303,7 +3351,9 @@ def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
                 if post.file_format and post.file_format not in formats:
                     formats.append(post.file_format)
                 if formats:
-                    delete_all_artwork_formats(post.storage_key, formats)
+                    delete_all_artwork_formats(
+                        post.storage_key, formats, storage_shard=post.storage_shard
+                    )
             except Exception as e:
                 logger.warning(f"Failed to delete vault files for post {post.id}: {e}")
 
@@ -3365,7 +3415,9 @@ def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
             .delete(synchronize_session=False)
         )
         db.commit()
-        logger.info(f"Deleted {counts['notifications']} notifications for user {user_id}")
+        logger.info(
+            f"Deleted {counts['notifications']} notifications for user {user_id}"
+        )
 
         # 7. Delete UserHighlights
         counts["highlights"] = (
@@ -3407,7 +3459,9 @@ def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
         )
         counts["follows"] = follows_as_follower + follows_as_following
         db.commit()
-        logger.info(f"Deleted {counts['follows']} follow relationships for user {user_id}")
+        logger.info(
+            f"Deleted {counts['follows']} follow relationships for user {user_id}"
+        )
 
         # 10. Delete CategoryFollow
         counts["category_follows"] = (
@@ -3416,7 +3470,9 @@ def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
             .delete(synchronize_session=False)
         )
         db.commit()
-        logger.info(f"Deleted {counts['category_follows']} category follows for user {user_id}")
+        logger.info(
+            f"Deleted {counts['category_follows']} category follows for user {user_id}"
+        )
 
         # 11. Handle BlogPostComments (same logic as regular comments)
         user_blog_comments = (
@@ -3492,12 +3548,16 @@ def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
             .delete(synchronize_session=False)
         )
         db.commit()
-        logger.info(f"Deleted {counts['auth_identities']} auth identities for user {user_id}")
+        logger.info(
+            f"Deleted {counts['auth_identities']} auth identities for user {user_id}"
+        )
 
         # 15. Delete avatar from vault
         if user.avatar_url:
             counts["avatar_deleted"] = try_delete_avatar_by_public_url(user.avatar_url)
-            logger.info(f"Avatar deletion for user {user_id}: {counts['avatar_deleted']}")
+            logger.info(
+                f"Avatar deletion for user {user_id}: {counts['avatar_deleted']}"
+            )
 
         # 16. Finally, delete the user record
         db.delete(user)
@@ -3507,6 +3567,7 @@ def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
         # Invalidate any cached stats
         try:
             from .services.user_profile_stats import invalidate_user_profile_stats_cache
+
             invalidate_user_profile_stats_cache(db, user_id)
         except Exception as e:
             logger.warning(f"Failed to invalidate stats cache for user {user_id}: {e}")

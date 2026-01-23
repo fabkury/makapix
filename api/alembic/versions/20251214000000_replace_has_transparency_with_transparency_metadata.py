@@ -48,5 +48,3 @@ def downgrade() -> None:
 
     op.execute("ALTER TABLE posts DROP COLUMN IF EXISTS uses_alpha")
     op.execute("ALTER TABLE posts DROP COLUMN IF EXISTS uses_transparency")
-
-

@@ -14,7 +14,6 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-
 # revision identifiers, used by Alembic.
 revision: str = "20260109000000"
 down_revision: str | None = "20260106000000"
@@ -54,9 +53,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(
-        "ix_batch_download_requests_id", "batch_download_requests", ["id"]
-    )
+    op.create_index("ix_batch_download_requests_id", "batch_download_requests", ["id"])
     op.create_index(
         "ix_batch_download_requests_user_id", "batch_download_requests", ["user_id"]
     )

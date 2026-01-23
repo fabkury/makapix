@@ -12,6 +12,7 @@ except ImportError:
     def publish_demo_message(payload=None):
         """Compatibility wrapper for publish_demo_message."""
         from .publisher import publish
+
         topic = "posts/new/demo"
         message = payload or {
             "title": "Demo publish",
@@ -22,5 +23,5 @@ except ImportError:
             raise RuntimeError("Failed to publish demo message")
         return topic
 
-__all__ = ["notifications", "publisher", "schemas", "publish_demo_message"]
 
+__all__ = ["notifications", "publisher", "schemas", "publish_demo_message"]

@@ -220,4 +220,3 @@ def _output_error(
 
 if __name__ == "__main__":
     sys.exit(main())
-

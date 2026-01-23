@@ -36,33 +36,33 @@ def upgrade() -> None:
             nullable=True,
         ),
     )
-    
+
     # Add player context columns
     op.add_column(
         "view_events",
         sa.Column("local_datetime", sa.String(50), nullable=True),
     )
-    
+
     op.add_column(
         "view_events",
         sa.Column("local_timezone", sa.String(50), nullable=True),
     )
-    
+
     op.add_column(
         "view_events",
         sa.Column("play_order", sa.Integer(), nullable=True),
     )
-    
+
     op.add_column(
         "view_events",
         sa.Column("channel", sa.String(20), nullable=True),
     )
-    
+
     op.add_column(
         "view_events",
         sa.Column("channel_context", sa.String(100), nullable=True),
     )
-    
+
     # Create indexes for new columns
     op.create_index("ix_view_events_player_id", "view_events", ["player_id"])
     op.create_index("ix_view_events_channel", "view_events", ["channel"])
@@ -72,7 +72,7 @@ def downgrade() -> None:
     # Drop indexes
     op.drop_index("ix_view_events_channel", table_name="view_events")
     op.drop_index("ix_view_events_player_id", table_name="view_events")
-    
+
     # Drop columns
     op.drop_column("view_events", "channel_context")
     op.drop_column("view_events", "channel")
@@ -80,4 +80,3 @@ def downgrade() -> None:
     op.drop_column("view_events", "local_timezone")
     op.drop_column("view_events", "local_datetime")
     op.drop_column("view_events", "player_id")
-

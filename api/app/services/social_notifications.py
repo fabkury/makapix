@@ -258,9 +258,7 @@ class SocialNotificationService:
         return items, next_cursor
 
     @staticmethod
-    def mark_as_read(
-        db: Session, notification_ids: list[UUID], user_id: int
-    ) -> int:
+    def mark_as_read(db: Session, notification_ids: list[UUID], user_id: int) -> int:
         """
         Mark specific notifications as read.
 
@@ -327,9 +325,7 @@ class SocialNotificationService:
         return count
 
     @staticmethod
-    def delete_notification(
-        db: Session, notification_id: UUID, user_id: int
-    ) -> bool:
+    def delete_notification(db: Session, notification_id: UUID, user_id: int) -> bool:
         """
         Delete a specific notification.
 
@@ -408,7 +404,9 @@ class SocialNotificationService:
         success = publish(topic, payload, qos=1, retain=False)
 
         if success:
-            logger.debug(f"Broadcast notification {notification.id} to MQTT topic {topic}")
+            logger.debug(
+                f"Broadcast notification {notification.id} to MQTT topic {topic}"
+            )
         else:
             logger.warning(
                 f"Failed to broadcast notification {notification.id} to MQTT"

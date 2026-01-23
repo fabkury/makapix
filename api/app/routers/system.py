@@ -18,7 +18,7 @@ _STARTUP_TIME = time.time()
 def get_health() -> schemas.HealthResponse:
     """
     Liveness & minimal readiness check.
-    
+
     TODO: Add rate limiting headers (X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset)
     """
     uptime_s = time.time() - _STARTUP_TIME
@@ -29,7 +29,7 @@ def get_health() -> schemas.HealthResponse:
 def get_public_config() -> schemas.Config:
     """
     Public configuration limits for the client.
-    
+
     TODO: Load from environment variables or database
     TODO: Add caching to avoid repeated queries
     """

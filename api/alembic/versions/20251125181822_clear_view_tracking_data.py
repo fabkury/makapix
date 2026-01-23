@@ -30,4 +30,3 @@ def upgrade() -> None:
 def downgrade() -> None:
     # Cannot restore deleted data, so downgrade is a no-op
     pass
-

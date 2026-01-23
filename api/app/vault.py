@@ -66,40 +66,62 @@ def hash_artwork_id(artwork_id: UUID) -> str:
     return hashlib.sha256(str(artwork_id).encode()).hexdigest()
 
 
-def get_artwork_folder_path(artwork_id: UUID) -> Path:
+def compute_storage_shard(storage_key: UUID) -> str:
+    """
+    Compute storage shard path from storage_key. Call ONCE at post creation.
+    Returns: "8c/4f/2a" (first 6 chars of SHA-256, split into 2-char chunks)
+    """
+    hash_value = hash_artwork_id(storage_key)
+    return f"{hash_value[0:2]}/{hash_value[2:4]}/{hash_value[4:6]}"
+
+
+def get_artwork_folder_path(artwork_id: UUID, storage_shard: str | None = None) -> Path:
     """
     Get the folder path for an artwork based on its hashed ID.
-    
+
     The first 6 characters of the hash are split into 3 chunks of 2 characters
     to create a folder structure.
-    
+
+    Args:
+        artwork_id: The UUID of the artwork
+        storage_shard: Pre-computed shard path (e.g., "8c/4f/2a"). If provided,
+                       skips hash computation.
+
     Example:
         hash = "a1b2c3d4..."
         folder = VAULT_LOCATION/a1/b2/c3/
     """
     vault_location = get_vault_location()
+
+    if storage_shard:
+        # Use pre-computed shard directly
+        return vault_location / Path(storage_shard)
+
+    # Fallback: compute hash (for backwards compatibility)
     hash_value = hash_artwork_id(artwork_id)
-    
-    # Split first 6 characters into 3 chunks of 2
     chunk1 = hash_value[0:2]
     chunk2 = hash_value[2:4]
     chunk3 = hash_value[4:6]
-    
+
     return vault_location / chunk1 / chunk2 / chunk3
 
 
-def get_artwork_file_path(artwork_id: UUID, extension: str) -> Path:
+def get_artwork_file_path(
+    artwork_id: UUID, extension: str, storage_shard: str | None = None
+) -> Path:
     """
     Get the full file path for an artwork.
-    
+
     Args:
         artwork_id: The UUID of the artwork
         extension: The file extension (e.g., ".png", ".jpg", ".gif")
-    
+        storage_shard: Pre-computed shard path (e.g., "8c/4f/2a"). If provided,
+                       skips hash computation.
+
     Returns:
         Full path where the artwork file should be stored
     """
-    folder_path = get_artwork_folder_path(artwork_id)
+    folder_path = get_artwork_folder_path(artwork_id, storage_shard=storage_shard)
     # Ensure extension is lowercase and starts with a dot
     ext = extension.lower() if extension.startswith(".") else f".{extension.lower()}"
     return folder_path / f"{artwork_id}{ext}"
@@ -109,6 +131,7 @@ def save_artwork_to_vault(
     artwork_id: UUID,
     file_content: bytes,
     file_format: str,
+    storage_shard: str | None = None,
 ) -> Path:
     """
     Save an artwork image to the vault.
@@ -117,6 +140,8 @@ def save_artwork_to_vault(
         artwork_id: The UUID of the artwork (post ID)
         file_content: The raw bytes of the image file
         file_format: The file format (png, gif, webp, bmp)
+        storage_shard: Pre-computed shard path (e.g., "8c/4f/2a"). If provided,
+                       skips hash computation.
 
     Returns:
         The path where the file was saved
@@ -126,14 +151,18 @@ def save_artwork_to_vault(
         IOError: If there's an error writing the file
     """
     if file_format not in FORMAT_TO_EXT:
-        raise ValueError(f"File format '{file_format}' is not allowed. Allowed formats: {list(FORMAT_TO_EXT.keys())}")
+        raise ValueError(
+            f"File format '{file_format}' is not allowed. Allowed formats: {list(FORMAT_TO_EXT.keys())}"
+        )
 
     extension = FORMAT_TO_EXT[file_format]
-    file_path = get_artwork_file_path(artwork_id, extension)
-    
+    file_path = get_artwork_file_path(
+        artwork_id, extension, storage_shard=storage_shard
+    )
+
     # Create the directory structure if it doesn't exist
     file_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Write the file
     try:
         with open(file_path, "wb") as f:
@@ -145,19 +174,25 @@ def save_artwork_to_vault(
         raise
 
 
-def delete_artwork_from_vault(artwork_id: UUID, extension: str) -> bool:
+def delete_artwork_from_vault(
+    artwork_id: UUID, extension: str, storage_shard: str | None = None
+) -> bool:
     """
     Delete an artwork image from the vault.
-    
+
     Args:
         artwork_id: The UUID of the artwork
         extension: The file extension
-    
+        storage_shard: Pre-computed shard path (e.g., "8c/4f/2a"). If provided,
+                       skips hash computation.
+
     Returns:
         True if the file was deleted, False if it didn't exist
     """
-    file_path = get_artwork_file_path(artwork_id, extension)
-    
+    file_path = get_artwork_file_path(
+        artwork_id, extension, storage_shard=storage_shard
+    )
+
     try:
         if file_path.exists():
             file_path.unlink()
@@ -171,74 +206,96 @@ def delete_artwork_from_vault(artwork_id: UUID, extension: str) -> bool:
         raise
 
 
-def get_artwork_url(artwork_id: UUID, extension: str) -> str:
+def get_artwork_url(
+    artwork_id: UUID, extension: str, storage_shard: str | None = None
+) -> str:
     """
     Get the URL path for accessing an artwork.
-    
+
     This returns a relative URL path that can be served by the API.
-    
+
     Args:
         artwork_id: The UUID of the artwork
         extension: The file extension
-    
+        storage_shard: Pre-computed shard path (e.g., "8c/4f/2a"). If provided,
+                       skips hash computation.
+
     Returns:
         URL path like /api/vault/a1/b2/c3/artwork-id.png
     """
-    hash_value = hash_artwork_id(artwork_id)
-    chunk1 = hash_value[0:2]
-    chunk2 = hash_value[2:4]
-    chunk3 = hash_value[4:6]
-    
+    if storage_shard:
+        shard_path = storage_shard
+    else:
+        # Fallback: compute hash (for backwards compatibility)
+        hash_value = hash_artwork_id(artwork_id)
+        shard_path = f"{hash_value[0:2]}/{hash_value[2:4]}/{hash_value[4:6]}"
+
     ext = extension.lower() if extension.startswith(".") else f".{extension.lower()}"
-    
-    return f"/api/vault/{chunk1}/{chunk2}/{chunk3}/{artwork_id}{ext}"
+
+    return f"/api/vault/{shard_path}/{artwork_id}{ext}"
 
 
 def validate_image_dimensions(width: int, height: int) -> tuple[bool, str | None]:
     """
     Validate image dimensions according to Makapix Club size rules.
-    
+
     Rules:
     - Under 128x128: Only specific sizes allowed (8x8, 8x16, 16x8, 16x16, 16x32, 32x16, 32x32, 32x64, 64x32, 64x64, 64x128, 128x64)
       All 90-degree rotations of these sizes are also allowed (e.g., 8x16 and 16x8 are both valid)
     - From 128x128 to 256x256 (inclusive): Any size allowed (square or rectangular)
     - Above 256x256: Not allowed
-    
+
     Args:
         width: Image width in pixels
         height: Image height in pixels
-    
+
     Returns:
         Tuple of (is_valid, error_message)
     """
     if width < 1 or height < 1:
         return False, "Image dimensions must be at least 1x1"
-    
+
     # Check if either dimension exceeds 256
     if width > 256 or height > 256:
-        return False, f"Image dimensions exceed maximum of 256x256. Got {width}x{height}"
-    
+        return (
+            False,
+            f"Image dimensions exceed maximum of 256x256. Got {width}x{height}",
+        )
+
     # Define allowed sizes for dimensions under 128x128
     # Includes both orientations (e.g., 8x16 and 16x8 are both allowed)
     allowed_sizes = [
-        (8, 8), (8, 16), (16, 8), (8, 32), (32, 8),
-        (16, 16), (16, 32), (32, 16),
-        (32, 32), (32, 64), (64, 32),
-        (64, 64), (64, 128), (128, 64),
+        (8, 8),
+        (8, 16),
+        (16, 8),
+        (8, 32),
+        (32, 8),
+        (16, 16),
+        (16, 32),
+        (32, 16),
+        (32, 32),
+        (32, 64),
+        (64, 32),
+        (64, 64),
+        (64, 128),
+        (128, 64),
     ]
-    
+
     # If both dimensions are >= 128, any size is allowed (up to 256x256)
     if width >= 128 and height >= 128:
         return True, None
-    
+
     # Otherwise, check if the size is in the allowed list
     # This covers cases where at least one dimension is < 128
     if (width, height) not in allowed_sizes:
         # Create a sorted list for the error message (remove duplicates)
         unique_sizes = sorted(set(allowed_sizes))
         allowed_str = ", ".join([f"{w}x{h}" for w, h in unique_sizes])
-        return False, f"Image size {width}x{height} is not allowed. Under 128x128, only these sizes are allowed (rotations included): {allowed_str}"
-    
+        return (
+            False,
+            f"Image size {width}x{height} is not allowed. Under 128x128, only these sizes are allowed (rotations included): {allowed_str}",
+        )
+
     return True, None
 
 
@@ -260,7 +317,7 @@ def validate_file_size(file_size: int) -> tuple[bool, str | None]:
     return True, None
 
 
-def get_upscaled_file_path(artwork_id: UUID) -> Path:
+def get_upscaled_file_path(artwork_id: UUID, storage_shard: str | None = None) -> Path:
     """
     Get the path for an upscaled artwork file.
 
@@ -269,21 +326,27 @@ def get_upscaled_file_path(artwork_id: UUID) -> Path:
 
     Args:
         artwork_id: The UUID of the artwork (storage_key)
+        storage_shard: Pre-computed shard path (e.g., "8c/4f/2a"). If provided,
+                       skips hash computation.
 
     Returns:
         Path to the upscaled WEBP file: {folder}/{artwork_id}_upscaled.webp
     """
-    folder_path = get_artwork_folder_path(artwork_id)
+    folder_path = get_artwork_folder_path(artwork_id, storage_shard=storage_shard)
     return folder_path / f"{artwork_id}_upscaled.webp"
 
 
-def delete_all_artwork_formats(artwork_id: UUID, formats: list[str]) -> dict[str, bool]:
+def delete_all_artwork_formats(
+    artwork_id: UUID, formats: list[str], storage_shard: str | None = None
+) -> dict[str, bool]:
     """
     Delete all format variants of an artwork plus the upscaled version.
 
     Args:
         artwork_id: The UUID of the artwork (storage_key)
         formats: List of file formats to delete (e.g., ['png', 'gif', 'webp', 'bmp'])
+        storage_shard: Pre-computed shard path (e.g., "8c/4f/2a"). If provided,
+                       skips hash computation.
 
     Returns:
         Dictionary mapping format/type to deletion success status
@@ -296,7 +359,9 @@ def delete_all_artwork_formats(artwork_id: UUID, formats: list[str]) -> dict[str
         if file_format in FORMAT_TO_EXT:
             extension = FORMAT_TO_EXT[file_format]
             try:
-                deleted = delete_artwork_from_vault(artwork_id, extension)
+                deleted = delete_artwork_from_vault(
+                    artwork_id, extension, storage_shard=storage_shard
+                )
                 results[file_format] = deleted
             except Exception as e:
                 logger.warning(f"Failed to delete {file_format} for {artwork_id}: {e}")
@@ -304,7 +369,7 @@ def delete_all_artwork_formats(artwork_id: UUID, formats: list[str]) -> dict[str
 
     # Delete upscaled version
     try:
-        upscaled_path = get_upscaled_file_path(artwork_id)
+        upscaled_path = get_upscaled_file_path(artwork_id, storage_shard=storage_shard)
         if upscaled_path.exists():
             upscaled_path.unlink()
             logger.info(f"Deleted upscaled file for {artwork_id}")
@@ -316,4 +381,3 @@ def delete_all_artwork_formats(artwork_id: UUID, formats: list[str]) -> dict[str
         results["upscaled"] = False
 
     return results
-

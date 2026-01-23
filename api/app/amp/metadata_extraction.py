@@ -356,4 +356,3 @@ def _scan_for_transparency_and_alpha(
         return transparency_actual, alpha_actual
     except Exception:
         return False, False
-

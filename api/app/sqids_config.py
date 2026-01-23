@@ -32,10 +32,10 @@ sqids = Sqids(alphabet=SQIDS_ALPHABET, min_length=0)
 def encode_id(post_id: int) -> str:
     """
     Encode a post ID (integer) to a Sqids string using SQIDS_ALPHABET.
-    
+
     Args:
         post_id: The integer post ID
-        
+
     Returns:
         The encoded Sqids string (public_sqid)
     """
@@ -45,10 +45,10 @@ def encode_id(post_id: int) -> str:
 def decode_sqid(sqid: str) -> int | None:
     """
     Decode a Sqids string to a post ID (integer).
-    
+
     Args:
         sqid: The Sqids-encoded string (public_sqid)
-        
+
     Returns:
         The decoded post ID, or None if invalid
     """
@@ -58,17 +58,17 @@ def decode_sqid(sqid: str) -> int | None:
             return decoded[0]
     except Exception:
         pass
-    
+
     return None
 
 
 def encode_user_id(user_id: int) -> str:
     """
     Encode a user ID (integer) to a Sqids string using SQIDS_ALPHABET.
-    
+
     Args:
         user_id: The integer user ID
-        
+
     Returns:
         The encoded Sqids string (public_sqid)
     """
@@ -78,10 +78,10 @@ def encode_user_id(user_id: int) -> str:
 def decode_user_sqid(sqid: str) -> int | None:
     """
     Decode a Sqids string to a user ID (integer).
-    
+
     Args:
         sqid: The Sqids-encoded string (public_sqid)
-        
+
     Returns:
         The decoded user ID, or None if invalid
     """
@@ -91,17 +91,17 @@ def decode_user_sqid(sqid: str) -> int | None:
             return decoded[0]
     except Exception:
         pass
-    
+
     return None
 
 
 def encode_blog_post_id(blog_post_id: int) -> str:
     """
     Encode a blog post ID (integer) to a Sqids string using SQIDS_ALPHABET.
-    
+
     Args:
         blog_post_id: The integer blog post ID
-        
+
     Returns:
         The encoded Sqids string (public_sqid)
     """
@@ -111,10 +111,10 @@ def encode_blog_post_id(blog_post_id: int) -> str:
 def decode_blog_post_sqid(sqid: str) -> int | None:
     """
     Decode a Sqids string to a blog post ID (integer).
-    
+
     Args:
         sqid: The Sqids-encoded string (public_sqid)
-        
+
     Returns:
         The decoded blog post ID, or None if invalid
     """
@@ -124,6 +124,5 @@ def decode_blog_post_sqid(sqid: str) -> int | None:
             return decoded[0]
     except Exception:
         pass
-    
-    return None
 
+    return None

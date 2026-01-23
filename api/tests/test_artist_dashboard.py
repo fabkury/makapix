@@ -24,7 +24,7 @@ def test_artist_dashboard_response_structure(client: TestClient, db):
     # 4. Authenticating as that user
     # 5. Calling the dashboard endpoint
     # 6. Validating the response structure
-    
+
     # Expected response structure:
     # {
     #     "artist_stats": {

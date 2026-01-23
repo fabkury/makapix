@@ -15,4 +15,3 @@ __all__ = [
     "ALLOWED_SMALL_SIZES",
     "MAX_FRAMES_TO_SCAN",
 ]
-

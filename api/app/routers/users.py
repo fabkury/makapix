@@ -5,19 +5,39 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
-from ..auth import check_ownership, get_current_user, get_current_user_optional, require_moderator, require_ownership
+from ..auth import (
+    check_ownership,
+    get_current_user,
+    get_current_user_optional,
+    require_moderator,
+    require_ownership,
+)
 from ..constants import MONITORED_HASHTAGS
 from ..avatar_vault import ALLOWED_MIME_TYPES as AVATAR_ALLOWED_MIME_TYPES
 from ..avatar_vault import get_avatar_url, save_avatar_image
 from ..avatar_vault import try_delete_avatar_by_public_url
 from ..deps import get_db
 from ..utils.handles import validate_handle, is_handle_taken
-from ..pagination import apply_cursor_filter, create_page_response, decode_cursor, encode_cursor
+from ..pagination import (
+    apply_cursor_filter,
+    create_page_response,
+    decode_cursor,
+    encode_cursor,
+)
 from ..services.blog_post_stats import annotate_blog_posts_with_counts
 from ..services.artist_dashboard import get_artist_stats, get_posts_stats_list
 
@@ -46,7 +66,9 @@ def browse_users(
     query = query.filter(~models.User.roles.cast(JSONB).contains(["owner"]))
 
     # Apply additional visibility filters for non-moderators
-    is_moderator = current_user and ("moderator" in current_user.roles or "owner" in current_user.roles)
+    is_moderator = current_user and (
+        "moderator" in current_user.roles or "owner" in current_user.roles
+    )
     if not is_moderator:
         query = query.filter(
             models.User.hidden_by_user == False,
@@ -60,17 +82,21 @@ def browse_users(
     if q:
         search_term = f"%{q}%"
         query = query.filter(models.User.handle.ilike(search_term))
-    
+
     # Apply sorting and cursor pagination
     if sort == "alphabetical":
         sort_field = "handle"
         sort_desc = False
-        query = apply_cursor_filter(query, models.User, cursor, sort_field, sort_desc=sort_desc)
+        query = apply_cursor_filter(
+            query, models.User, cursor, sort_field, sort_desc=sort_desc
+        )
         query = query.order_by(models.User.handle.asc())
     elif sort == "recent":
         sort_field = "created_at"
         sort_desc = True
-        query = apply_cursor_filter(query, models.User, cursor, sort_field, sort_desc=sort_desc)
+        query = apply_cursor_filter(
+            query, models.User, cursor, sort_field, sort_desc=sort_desc
+        )
         query = query.order_by(models.User.created_at.desc())
     elif sort == "reputation":
         sort_field = "reputation"
@@ -86,16 +112,19 @@ def browse_users(
                         last_reputation = int(sort_value)
                         last_user_id = int(last_id)  # User.id is Integer, not UUID
                         query = query.filter(
-                            (models.User.reputation < last_reputation) |
-                            ((models.User.reputation == last_reputation) & (models.User.id < last_user_id))
+                            (models.User.reputation < last_reputation)
+                            | (
+                                (models.User.reputation == last_reputation)
+                                & (models.User.id < last_user_id)
+                            )
                         )
                     except (ValueError, TypeError):
                         pass
         query = query.order_by(models.User.reputation.desc(), models.User.id.desc())
-    
+
     # Fetch limit + 1 to check if there are more results
     users = query.limit(limit + 1).all()
-    
+
     # Create paginated response
     if sort == "reputation":
         # Handle reputation cursor encoding manually
@@ -105,13 +134,10 @@ def browse_users(
             if users:
                 last_user = users[-1]
                 next_cursor = encode_cursor(str(last_user.id), last_user.reputation)
-        page_data = {
-            "items": users,
-            "next_cursor": next_cursor
-        }
+        page_data = {"items": users, "next_cursor": next_cursor}
     else:
         page_data = create_page_response(users, limit, cursor, sort_field=sort_field)
-    
+
     return schemas.Page(
         items=[schemas.UserPublic.model_validate(u) for u in page_data["items"]],
         next_cursor=page_data["next_cursor"],
@@ -134,43 +160,46 @@ def list_users_admin(
     List users (moderator/owner only).
     """
     query = db.query(models.User)
-    
+
     # Apply search filter (search by handle only since display_name no longer exists)
     if q:
         search_term = f"%{q}%"
         query = query.filter(models.User.handle.ilike(search_term))
-    
+
     # Apply filters
     if hidden is not None:
         query = query.filter(models.User.hidden_by_user == hidden)
-    
+
     if banned is not None:
         if banned:
             query = query.filter(models.User.banned_until.isnot(None))
         else:
             query = query.filter(models.User.banned_until.is_(None))
-    
+
     if non_conformant is not None:
         query = query.filter(models.User.non_conformant == non_conformant)
-    
+
     if recent:
         # Show users created in the last 7 days
         from datetime import datetime, timedelta, timezone
+
         recent_date = datetime.now(timezone.utc) - timedelta(days=7)
         query = query.filter(models.User.created_at >= recent_date)
-    
+
     # Apply cursor pagination
-    query = apply_cursor_filter(query, models.User, cursor, "created_at", sort_desc=True)
-    
+    query = apply_cursor_filter(
+        query, models.User, cursor, "created_at", sort_desc=True
+    )
+
     # Order and limit
     query = query.order_by(models.User.created_at.desc())
-    
+
     # Fetch limit + 1 to check if there are more results
     users = query.limit(limit + 1).all()
-    
+
     # Create paginated response
     page_data = create_page_response(users, limit, cursor)
-    
+
     return schemas.Page(
         items=[schemas.UserFull.model_validate(u) for u in page_data["items"]],
         next_cursor=page_data["next_cursor"],
@@ -189,20 +218,21 @@ def create_user(
 ) -> schemas.UserFull:
     """
     Create user (post-OAuth bootstrap).
-    
+
     TODO: This should only be called after OAuth, not for new signups
     TODO: Validate that handle is unique
     TODO: Validate handle format (alphanumeric + hyphen/underscore)
     TODO: Validate website URL format
     """
     # Check if handle already exists
-    existing = db.query(models.User).filter(models.User.handle == payload.handle).first()
+    existing = (
+        db.query(models.User).filter(models.User.handle == payload.handle).first()
+    )
     if existing:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Handle already taken"
+            status_code=status.HTTP_409_CONFLICT, detail="Handle already taken"
         )
-    
+
     # PLACEHOLDER: Create user (in production this would be done during OAuth)
     user = models.User(
         handle=payload.handle,
@@ -212,14 +242,14 @@ def create_user(
     )
     db.add(user)
     db.flush()  # Get the user ID without committing
-    
+
     # Generate public_sqid from the assigned id
     from ..sqids_config import encode_user_id
-    
+
     user.public_sqid = encode_user_id(user.id)
     db.commit()
     db.refresh(user)
-    
+
     return schemas.UserFull.model_validate(user)
 
 
@@ -231,39 +261,55 @@ def get_user_by_sqid(
 ) -> schemas.UserPublic | schemas.UserFull:
     """
     Get user by public Sqids ID (canonical URL).
-    
+
     This is the canonical URL for user profiles sitewide.
     """
     # Decode the Sqids ID
     from ..sqids_config import decode_user_sqid
-    
+
     user_id = decode_user_sqid(public_sqid)
     if user_id is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
     # Query user
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
     # Verify public_sqid matches (safety check)
     if user.public_sqid != public_sqid:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # Check if user is hidden and current user doesn't have permission to see it
-    if user.hidden_by_user and (not current_user or not check_ownership(user.id, current_user)):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if user.hidden_by_user and (
+        not current_user or not check_ownership(user.id, current_user)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # Hide unverified users from public view (unless moderator or self)
-    is_moderator = current_user and ("moderator" in current_user.roles or "owner" in current_user.roles)
+    is_moderator = current_user and (
+        "moderator" in current_user.roles or "owner" in current_user.roles
+    )
     is_own_profile = current_user and current_user.id == user.id
     if not user.email_verified and not is_moderator and not is_own_profile:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # Hide owner from ALL view (only owner can see own profile)
     is_target_owner = "owner" in (user.roles or [])
     if is_target_owner and not is_own_profile:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # Return UserFull for moderators/owners, UserPublic for others
     if is_moderator:
@@ -280,29 +326,41 @@ def get_user(
 ) -> schemas.UserPublic | schemas.UserFull:
     """
     Get user by user_key (UUID).
-    
+
     Legacy endpoint - returns user data including public_sqid for redirect purposes.
     The canonical URL is /u/{public_sqid}.
     """
     # Look up by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # Check if user is hidden and current user doesn't have permission to see it
-    if user.hidden_by_user and (not current_user or not check_ownership(user.id, current_user)):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if user.hidden_by_user and (
+        not current_user or not check_ownership(user.id, current_user)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # Hide unverified users from public view (unless moderator or self)
-    is_moderator = current_user and ("moderator" in current_user.roles or "owner" in current_user.roles)
+    is_moderator = current_user and (
+        "moderator" in current_user.roles or "owner" in current_user.roles
+    )
     is_own_profile = current_user and current_user.id == user.id
     if not user.email_verified and not is_moderator and not is_own_profile:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # Hide owner from ALL view (only owner can see own profile)
     is_target_owner = "owner" in (user.roles or [])
     if is_target_owner and not is_own_profile:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # Return UserFull for moderators/owners, UserPublic for others
     if is_moderator:
@@ -324,7 +382,9 @@ def update_user(
     # Look up by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # Authorization:
     # - Users can always edit their own profile
@@ -349,7 +409,7 @@ def update_user(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have permission to access this resource",
             )
-    
+
     # Update handle if provided
     if payload.handle is not None:
         # Prevent owner from changing their handle
@@ -358,10 +418,10 @@ def update_user(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="The site owner's handle cannot be changed",
             )
-        
+
         # Strip whitespace but preserve original case
         new_handle = payload.handle.strip()
-        
+
         # Validate handle format
         is_valid, error_msg = validate_handle(new_handle)
         if not is_valid:
@@ -369,17 +429,17 @@ def update_user(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid handle: {error_msg}",
             )
-        
+
         # Check if handle is already taken (case-insensitive, excluding current user)
         if is_handle_taken(db, new_handle, exclude_user_id=user.id):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Handle already taken",
             )
-        
+
         # Preserve original case
         user.handle = new_handle
-    
+
     # Update fields
     if payload.bio is not None:
         user.bio = payload.bio
@@ -389,15 +449,19 @@ def update_user(
         user.website = payload.website
     if payload.avatar_url is not None:
         user.avatar_url = payload.avatar_url
-    
+
     # Only allow moderators to update hidden_by_user for other users
     if payload.hidden_by_user is not None:
-        if user.id == current_user.id or "moderator" in current_user.roles or "owner" in current_user.roles:
+        if (
+            user.id == current_user.id
+            or "moderator" in current_user.roles
+            or "owner" in current_user.roles
+        ):
             user.hidden_by_user = payload.hidden_by_user
         else:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only moderators can change hidden_by_user for other users"
+                detail="Only moderators can change hidden_by_user for other users",
             )
 
     # Update approved_hashtags (users can only set their own, moderators can set for anyone)
@@ -405,7 +469,7 @@ def update_user(
         if user.id != current_user.id and not is_actor_moderator:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only update your own approved hashtags"
+                detail="You can only update your own approved hashtags",
             )
         # Validate that all hashtags are in the monitored list
         invalid_tags = set(payload.approved_hashtags) - MONITORED_HASHTAGS
@@ -413,17 +477,19 @@ def update_user(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid hashtags: {', '.join(sorted(invalid_tags))}. "
-                       f"Allowed values: {', '.join(sorted(MONITORED_HASHTAGS))}"
+                f"Allowed values: {', '.join(sorted(MONITORED_HASHTAGS))}",
             )
         user.approved_hashtags = list(payload.approved_hashtags)
 
     db.commit()
     db.refresh(user)
-    
+
     return schemas.UserFull.model_validate(user)
 
 
-@router.post("/{id}/avatar", response_model=schemas.UserFull, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{id}/avatar", response_model=schemas.UserFull, status_code=status.HTTP_201_CREATED
+)
 async def upload_user_avatar(
     request: Request,
     id: UUID,
@@ -438,7 +504,9 @@ async def upload_user_avatar(
     """
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # Authorization (same policy as profile patch):
     # - Users can edit self
@@ -466,7 +534,9 @@ async def upload_user_avatar(
 
     file_content = await image.read()
     if not file_content:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file"
+        )
 
     # Determine MIME type
     mime_type = (image.content_type or "").lower()
@@ -522,7 +592,9 @@ def delete_user_avatar(
     """
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # Authorization (same policy as profile patch/upload):
     is_actor_owner = "owner" in (current_user.roles or [])
@@ -564,7 +636,7 @@ def delete_user_account(
 ) -> None:
     """
     Delete own profile (irreversible for user, but soft-delete).
-    
+
     TODO: Implement soft delete (set deactivated=True)
     TODO: Consider anonymizing user data instead of deletion
     TODO: Cascade hide all user's posts and comments
@@ -572,10 +644,12 @@ def delete_user_account(
     # Look up by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
     require_ownership(user.id, current_user)
-    
+
     # Soft delete
     user.deactivated = True
     user.hidden_by_user = True
@@ -605,7 +679,7 @@ def request_account_deletion(
     if "owner" in (current_user.roles or []):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="The site owner cannot delete their own account"
+            detail="The site owner cannot delete their own account",
         )
 
     # Immediately mark user as deactivated to prevent login during deletion
@@ -626,7 +700,10 @@ def request_account_deletion(
     except Exception as e:
         # Don't fail the request if audit logging fails
         import logging
-        logging.getLogger(__name__).error(f"Failed to log account deletion request: {e}")
+
+        logging.getLogger(__name__).error(
+            f"Failed to log account deletion request: {e}"
+        )
 
     # Queue the background task to perform full deletion
     delete_user_account_task.delay(current_user.id)
@@ -642,34 +719,37 @@ def get_user_recent_blog_posts(
 ) -> list[schemas.BlogPost]:
     """
     Get the 2 most recent blog posts for a user.
-    
+
     Used for displaying recent blog posts panel on user profile pages.
-    
+
     FEATURE POSTPONED: Blog posts are deferred to a later time.
     """
     # FEATURE POSTPONED - Remove this block to reactivate blog posts
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail="Blog posts are deferred to a later time"
+        detail="Blog posts are deferred to a later time",
     )
     # Look up user by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
     query = (
         db.query(models.BlogPost)
         .options(joinedload(models.BlogPost.owner))
         .filter(models.BlogPost.owner_id == user.id)
     )
-    
+
     # Only show visible posts for non-owners/non-moderators
-    is_viewing_own_posts = isinstance(current_user, models.User) and current_user.id == user.id
-    is_moderator = (
-        isinstance(current_user, models.User)
-        and ("moderator" in current_user.roles or "owner" in current_user.roles)
+    is_viewing_own_posts = (
+        isinstance(current_user, models.User) and current_user.id == user.id
     )
-    
+    is_moderator = isinstance(current_user, models.User) and (
+        "moderator" in current_user.roles or "owner" in current_user.roles
+    )
+
     if not is_viewing_own_posts and not is_moderator:
         query = query.filter(
             models.BlogPost.visible == True,
@@ -677,9 +757,9 @@ def get_user_recent_blog_posts(
             models.BlogPost.hidden_by_mod == False,
             models.BlogPost.public_visibility == True,
         )
-    
+
     posts = query.order_by(models.BlogPost.created_at.desc()).limit(2).all()
-    
+
     return [schemas.BlogPost.model_validate(p) for p in posts]
 
 
@@ -693,34 +773,37 @@ def get_user_blog_posts(
 ) -> schemas.Page[schemas.BlogPost]:
     """
     Get blog posts for a user.
-    
+
     Used for displaying blog posts on user profile pages.
-    
+
     FEATURE POSTPONED: Blog posts are deferred to a later time.
     """
     # FEATURE POSTPONED - Remove this block to reactivate blog posts
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail="Blog posts are deferred to a later time"
+        detail="Blog posts are deferred to a later time",
     )
     # Look up user by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
     query = (
         db.query(models.BlogPost)
         .options(joinedload(models.BlogPost.owner))
         .filter(models.BlogPost.owner_id == user.id)
     )
-    
+
     # Always show user's own posts on their profile, even if not publicly visible
-    is_viewing_own_posts = isinstance(current_user, models.User) and current_user.id == user.id
-    is_moderator = (
-        isinstance(current_user, models.User)
-        and ("moderator" in current_user.roles or "owner" in current_user.roles)
+    is_viewing_own_posts = (
+        isinstance(current_user, models.User) and current_user.id == user.id
     )
-    
+    is_moderator = isinstance(current_user, models.User) and (
+        "moderator" in current_user.roles or "owner" in current_user.roles
+    )
+
     if not is_viewing_own_posts and not is_moderator:
         # For other users, only show visible, non-hidden, publicly visible posts
         query = query.filter(
@@ -729,27 +812,31 @@ def get_user_blog_posts(
             models.BlogPost.hidden_by_mod == False,
             models.BlogPost.public_visibility == True,
         )
-    
+
     # Apply cursor pagination
-    query = apply_cursor_filter(query, models.BlogPost, cursor, "created_at", sort_desc=True)
+    query = apply_cursor_filter(
+        query, models.BlogPost, cursor, "created_at", sort_desc=True
+    )
     query = query.order_by(models.BlogPost.created_at.desc())
-    
+
     # Fetch limit + 1 to check if there are more results
     posts = query.limit(limit + 1).all()
-    
+
     # Add reaction and comment counts in batch (avoids N+1 queries on frontend)
     annotate_blog_posts_with_counts(db, posts)
-    
+
     # Create paginated response
     page_data = create_page_response(posts, limit, cursor)
-    
+
     return schemas.Page(
         items=[schemas.BlogPost.model_validate(p) for p in page_data["items"]],
         next_cursor=page_data["next_cursor"],
     )
 
 
-@router.get("/{user_key}/artist-dashboard", response_model=schemas.ArtistDashboardResponse)
+@router.get(
+    "/{user_key}/artist-dashboard", response_model=schemas.ArtistDashboardResponse
+)
 def get_artist_dashboard(
     user_key: str,
     page: int = Query(1, ge=1),
@@ -759,14 +846,14 @@ def get_artist_dashboard(
 ) -> schemas.ArtistDashboardResponse:
     """
     Get artist dashboard with aggregated statistics and post list.
-    
+
     Returns comprehensive statistics across all posts by the artist,
     plus a paginated list of individual post statistics.
-    
+
     **Authorization:**
     - Artist can view their own dashboard
     - Moderators and owners can view any artist's dashboard
-    
+
     **Query Parameters:**
     - `page`: Page number (1-indexed, default: 1)
     - `page_size`: Number of posts per page (1-100, default: 20)
@@ -774,45 +861,48 @@ def get_artist_dashboard(
     # Resolve user_key (could be user_key UUID or public_sqid)
     try:
         user_key_uuid = UUID(user_key)
-        user = db.query(models.User).filter(models.User.user_key == user_key_uuid).first()
+        user = (
+            db.query(models.User).filter(models.User.user_key == user_key_uuid).first()
+        )
     except ValueError:
         # Not a valid UUID, try as public_sqid
         user = db.query(models.User).filter(models.User.public_sqid == user_key).first()
-    
+
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
-    
+
     # Authorization: owner of profile OR moderator/owner role
     is_owner = user.id == current_user.id
     is_moderator = "moderator" in current_user.roles or "owner" in current_user.roles
-    
+
     if not is_owner and not is_moderator:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to view this artist dashboard"
+            detail="You don't have permission to view this artist dashboard",
         )
-    
+
     # Get aggregated artist stats
     artist_stats = get_artist_stats(db, user.user_key)
-    
+
     if artist_stats is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to compute artist statistics"
+            detail="Failed to compute artist statistics",
         )
-    
+
     # Get paginated post stats list
     offset = (page - 1) * page_size
-    posts_stats = get_posts_stats_list(db, user.user_key, limit=page_size + 1, offset=offset)
-    
+    posts_stats = get_posts_stats_list(
+        db, user.user_key, limit=page_size + 1, offset=offset
+    )
+
     # Check if there are more pages
     has_more = len(posts_stats) > page_size
     if has_more:
         posts_stats = posts_stats[:page_size]
-    
+
     # Convert artist stats to response schema
     artist_stats_response = schemas.ArtistStatsResponse(
         user_id=artist_stats.user_id,
@@ -832,11 +922,19 @@ def get_artist_dashboard(
         total_reactions_authenticated=artist_stats.total_reactions_authenticated,
         reactions_by_emoji_authenticated=artist_stats.reactions_by_emoji_authenticated,
         total_comments_authenticated=artist_stats.total_comments_authenticated,
-        first_post_at=datetime.fromisoformat(artist_stats.first_post_at) if artist_stats.first_post_at else None,
-        latest_post_at=datetime.fromisoformat(artist_stats.latest_post_at) if artist_stats.latest_post_at else None,
+        first_post_at=(
+            datetime.fromisoformat(artist_stats.first_post_at)
+            if artist_stats.first_post_at
+            else None
+        ),
+        latest_post_at=(
+            datetime.fromisoformat(artist_stats.latest_post_at)
+            if artist_stats.latest_post_at
+            else None
+        ),
         computed_at=datetime.fromisoformat(artist_stats.computed_at),
     )
-    
+
     # Convert post stats to response schema
     posts_response = [
         schemas.PostStatsListItem(
@@ -855,7 +953,7 @@ def get_artist_dashboard(
         )
         for ps in posts_stats
     ]
-    
+
     return schemas.ArtistDashboardResponse(
         artist_stats=artist_stats_response,
         posts=posts_response,
@@ -893,36 +991,52 @@ def get_user_profile_enhanced(
 
     user_id = decode_user_sqid(public_sqid)
     if user_id is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # Query user with badges
     user = (
         db.query(models.User)
         .options(joinedload(models.User.badges))
-        .options(joinedload(models.User.highlights).joinedload(models.UserHighlight.post))
+        .options(
+            joinedload(models.User.highlights).joinedload(models.UserHighlight.post)
+        )
         .filter(models.User.id == user_id)
         .first()
     )
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     if user.public_sqid != public_sqid:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # Check if user is hidden
     is_own_profile = current_user and current_user.id == user.id
-    is_moderator = current_user and ("moderator" in current_user.roles or "owner" in current_user.roles)
+    is_moderator = current_user and (
+        "moderator" in current_user.roles or "owner" in current_user.roles
+    )
     if user.hidden_by_user and not is_own_profile and not is_moderator:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # Hide unverified users from public view (unless moderator or self)
     if not user.email_verified and not is_own_profile and not is_moderator:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # Hide owner from ALL view (only owner can see own profile)
     is_target_owner = "owner" in (user.roles or [])
     if is_target_owner and not is_own_profile:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # Get tag badges
     user_badge_names = [bg.badge for bg in user.badges]
@@ -1039,11 +1153,15 @@ def follow_user(
 
     user_id = decode_user_sqid(public_sqid)
     if user_id is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     target_user = db.query(models.User).filter(models.User.id == user_id).first()
     if not target_user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # Can't follow yourself
     if target_user.id == current_user.id:
@@ -1108,11 +1226,15 @@ def unfollow_user(
 
     user_id = decode_user_sqid(public_sqid)
     if user_id is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     target_user = db.query(models.User).filter(models.User.id == user_id).first()
     if not target_user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # Delete follow relationship if it exists
     deleted = (
@@ -1155,11 +1277,15 @@ def get_user_followers(
 
     user_id = decode_user_sqid(public_sqid)
     if user_id is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # Get total count (only verified users)
     total = (
@@ -1184,7 +1310,9 @@ def get_user_followers(
     )
 
     # Apply cursor pagination
-    query = apply_cursor_filter(query, models.Follow, cursor, "created_at", sort_desc=True)
+    query = apply_cursor_filter(
+        query, models.Follow, cursor, "created_at", sort_desc=True
+    )
     query = query.order_by(models.Follow.created_at.desc())
 
     followers = query.limit(limit + 1).all()
@@ -1215,11 +1343,15 @@ def get_user_following(
 
     user_id = decode_user_sqid(public_sqid)
     if user_id is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # Get total count (only verified users)
     total = (
@@ -1244,7 +1376,9 @@ def get_user_following(
     )
 
     # Apply cursor pagination
-    query = apply_cursor_filter(query, models.Follow, cursor, "created_at", sort_desc=True)
+    query = apply_cursor_filter(
+        query, models.Follow, cursor, "created_at", sort_desc=True
+    )
     query = query.order_by(models.Follow.created_at.desc())
 
     following = query.limit(limit + 1).all()
@@ -1264,7 +1398,9 @@ def get_user_following(
 # ============================================================================
 
 
-@router.get("/u/{public_sqid}/highlights", response_model=schemas.UserHighlightsResponse)
+@router.get(
+    "/u/{public_sqid}/highlights", response_model=schemas.UserHighlightsResponse
+)
 def get_user_highlights(
     public_sqid: str,
     db: Session = Depends(get_db),
@@ -1277,11 +1413,15 @@ def get_user_highlights(
 
     user_id = decode_user_sqid(public_sqid)
     if user_id is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     highlights = (
         db.query(models.UserHighlight)
@@ -1311,7 +1451,11 @@ def get_user_highlights(
     return schemas.UserHighlightsResponse(items=items, total=len(items))
 
 
-@router.post("/me/highlights", response_model=schemas.AddHighlightResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/me/highlights",
+    response_model=schemas.AddHighlightResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def add_highlight(
     payload: schemas.AddHighlightRequest,
     db: Session = Depends(get_db),
@@ -1327,7 +1471,9 @@ def add_highlight(
     # Check if post exists and belongs to user
     post = db.query(models.Post).filter(models.Post.id == payload.post_id).first()
     if not post:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        )
 
     if post.owner_id != current_user.id:
         raise HTTPException(
@@ -1405,7 +1551,9 @@ def remove_highlight(
         .first()
     )
     if not highlight:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Highlight not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Highlight not found"
+        )
 
     removed_position = highlight.position
     db.delete(highlight)
@@ -1479,7 +1627,9 @@ def reorder_highlights(
 # ============================================================================
 
 
-@router.get("/u/{public_sqid}/reacted-posts", response_model=schemas.ReactedPostsResponse)
+@router.get(
+    "/u/{public_sqid}/reacted-posts", response_model=schemas.ReactedPostsResponse
+)
 def get_user_reacted_posts(
     public_sqid: str,
     cursor: str | None = None,
@@ -1497,11 +1647,15 @@ def get_user_reacted_posts(
 
     user_id = decode_user_sqid(public_sqid)
     if user_id is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # Query reactions with posts
     query = (

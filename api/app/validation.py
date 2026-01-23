@@ -17,11 +17,11 @@ MAX_FILE_SIZE = MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES  # per artwork (bytes)
 def is_safe_path(base_path: Path, target_path: str) -> bool:
     """
     Check if a path is safe (no path traversal).
-    
+
     Args:
         base_path: The base directory path
         target_path: The target path to validate
-        
+
     Returns:
         True if path is safe, False otherwise
     """
@@ -29,7 +29,7 @@ def is_safe_path(base_path: Path, target_path: str) -> bool:
         # Resolve both paths to absolute paths
         base = base_path.resolve()
         target = (base_path / target_path).resolve()
-        
+
         # Check if target is within base directory
         return target.is_relative_to(base)
     except (ValueError, OSError):
@@ -39,31 +39,31 @@ def is_safe_path(base_path: Path, target_path: str) -> bool:
 def validate_zip_structure(zip_path: Path) -> Tuple[bool, List[str]]:
     """Validate ZIP structure and safety."""
     errors = []
-    
+
     try:
-        with zipfile.ZipFile(zip_path, 'r') as zf:
+        with zipfile.ZipFile(zip_path, "r") as zf:
             # Check for path traversal and unsafe paths
             for name in zf.namelist():
                 # Reject absolute paths
-                if name.startswith('/') or name.startswith('\\'):
+                if name.startswith("/") or name.startswith("\\"):
                     errors.append(f"Absolute path not allowed: {name}")
                     continue
-                
+
                 # Reject parent directory references
-                if '..' in name.split(os.sep):
+                if ".." in name.split(os.sep):
                     errors.append(f"Parent directory reference not allowed: {name}")
                     continue
-                
+
                 # Reject paths with drive letters (Windows)
-                if ':' in name:
+                if ":" in name:
                     errors.append(f"Drive letter not allowed: {name}")
                     continue
-                
+
                 # Additional check using Path
-                if not is_safe_path(Path('.'), name):
+                if not is_safe_path(Path("."), name):
                     errors.append(f"Unsafe path: {name}")
                     continue
-                
+
                 # Check for symbolic links (security risk)
                 info = zf.getinfo(name)
                 # Check if it's a symbolic link using Unix file type
@@ -71,33 +71,35 @@ def validate_zip_structure(zip_path: Path) -> Tuple[bool, List[str]]:
                 UNIX_SYMLINK_TYPE = 0o120000
                 if info.external_attr >> 16 == UNIX_SYMLINK_TYPE:
                     errors.append(f"Symbolic links not allowed: {name}")
-            
+
             # Check total size
             total_size = sum(info.file_size for info in zf.infolist())
             if total_size > MAX_BUNDLE_SIZE:
-                errors.append(f"Bundle too large: {total_size} bytes (max: {MAX_BUNDLE_SIZE})")
-            
+                errors.append(
+                    f"Bundle too large: {total_size} bytes (max: {MAX_BUNDLE_SIZE})"
+                )
+
             # Require manifest.json
-            if 'manifest.json' not in zf.namelist():
+            if "manifest.json" not in zf.namelist():
                 errors.append("Missing manifest.json")
     except zipfile.BadZipFile:
         errors.append("Invalid ZIP file")
     except Exception as e:
         errors.append(f"Error reading ZIP file: {str(e)}")
-    
+
     return len(errors) == 0, errors
 
 
 def validate_manifest(manifest: dict) -> Tuple[bool, List[str]]:
     """Validate manifest schema and content."""
     errors = []
-    
+
     # Required fields
     required = ["artworks", "version"]
     for field in required:
         if field not in manifest:
             errors.append(f"Missing required field: {field}")
-    
+
     # Validate artworks
     if "artworks" in manifest:
         if not isinstance(manifest["artworks"], list):
@@ -107,7 +109,7 @@ def validate_manifest(manifest: dict) -> Tuple[bool, List[str]]:
                 if not isinstance(art, dict):
                     errors.append(f"Artwork {idx} must be an object")
                     continue
-                
+
                 # Title validation
                 title = art.get("title")
                 if not title:
@@ -116,36 +118,41 @@ def validate_manifest(manifest: dict) -> Tuple[bool, List[str]]:
                     errors.append(f"Invalid title type in artwork {idx}")
                 elif len(title) > 200:
                     errors.append(f"Title too long in artwork {idx} (max 200 chars)")
-                
+
                 # Canvas validation using the same logic as image uploads
                 canvas = art.get("canvas")
                 if canvas:
                     try:
                         # Parse canvas dimensions from "WxH" format
-                        width_str, height_str = canvas.split('x')
+                        width_str, height_str = canvas.split("x")
                         width = int(width_str)
                         height = int(height_str)
-                        
+
                         # Import here to avoid circular imports
                         from ..vault import validate_image_dimensions
+
                         is_valid, error = validate_image_dimensions(width, height)
                         if not is_valid:
                             errors.append(f"Invalid canvas in artwork {idx}: {error}")
                     except (ValueError, AttributeError):
-                        errors.append(f"Invalid canvas format in artwork {idx}: '{canvas}'. Expected format: WIDTHxHEIGHT (e.g., '64x64')")
+                        errors.append(
+                            f"Invalid canvas format in artwork {idx}: '{canvas}'. Expected format: WIDTHxHEIGHT (e.g., '64x64')"
+                        )
                 else:
                     errors.append(f"Missing canvas in artwork {idx}")
-                
+
                 # File size validation
                 file_bytes = art.get("file_bytes")
                 if file_bytes is None:
                     errors.append(f"Missing file_bytes in artwork {idx}")
                 elif not isinstance(file_bytes, int):
-                    errors.append(f"Invalid file_bytes type in artwork {idx} (expected int)")
+                    errors.append(
+                        f"Invalid file_bytes type in artwork {idx} (expected int)"
+                    )
                 else:
                     if file_bytes > MAX_FILE_SIZE:
                         errors.append(
                             f"File too large in artwork {idx}: {file_bytes} bytes exceeds limit of {MAX_FILE_SIZE} bytes"
                         )
-    
+
     return len(errors) == 0, errors

@@ -25,10 +25,12 @@ def upgrade() -> None:
     # Default is false - new posts require moderator approval for public visibility
     op.add_column(
         "posts",
-        sa.Column("public_visibility", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column(
+            "public_visibility", sa.Boolean(), nullable=False, server_default="false"
+        ),
     )
     op.create_index("ix_posts_public_visibility", "posts", ["public_visibility"])
-    
+
     # Add composite index for efficient Recent Artworks queries
     op.create_index(
         "ix_posts_public_visibility_created",
@@ -40,7 +42,9 @@ def upgrade() -> None:
     # Default is false - users need moderator to grant this privilege
     op.add_column(
         "users",
-        sa.Column("auto_public_approval", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column(
+            "auto_public_approval", sa.Boolean(), nullable=False, server_default="false"
+        ),
     )
     op.create_index("ix_users_auto_public_approval", "users", ["auto_public_approval"])
 
@@ -50,8 +54,7 @@ def downgrade() -> None:
     op.drop_index("ix_users_auto_public_approval", table_name="users")
     op.drop_index("ix_posts_public_visibility_created", table_name="posts")
     op.drop_index("ix_posts_public_visibility", table_name="posts")
-    
+
     # Remove columns
     op.drop_column("users", "auto_public_approval")
     op.drop_column("posts", "public_visibility")
-

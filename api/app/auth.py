@@ -72,13 +72,18 @@ def _validate_jwt_secret_entropy(key: str) -> None:
 _validate_jwt_secret_entropy(JWT_SECRET_KEY)
 
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES = int(
+    os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60")
+)
 JWT_REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "30"))
+
 
 def _utcnow() -> datetime:
     # Use timezone-aware UTC consistently for DB timestamps and comparisons.
     from datetime import timezone
+
     return datetime.now(timezone.utc)
+
 
 def _as_utc_aware(dt: datetime) -> datetime:
     """
@@ -86,6 +91,7 @@ def _as_utc_aware(dt: datetime) -> datetime:
     Some older rows may be stored as naive values; treat those as UTC.
     """
     from datetime import timezone
+
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
@@ -95,49 +101,55 @@ def check_user_can_authenticate(user: "models.User") -> None:
     """
     Check if a user is allowed to authenticate.
     Raises HTTPException if the user is banned or deactivated.
-    
+
     This function should be called during login, token refresh, and any other
     authentication flow to ensure consistent authorization checks.
     """
     from datetime import timezone
-    
+
     if user.deactivated:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Account deactivated",
         )
-    
-    if user.banned_until and user.banned_until > datetime.now(timezone.utc).replace(tzinfo=None):
+
+    if user.banned_until and user.banned_until > datetime.now(timezone.utc).replace(
+        tzinfo=None
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Account banned",
         )
 
 
-
-def create_access_token(user_id: uuid.UUID, expires_in_seconds: int | None = None) -> str:
+def create_access_token(
+    user_id: uuid.UUID, expires_in_seconds: int | None = None
+) -> str:
     """
     Create a JWT access token for a user.
     """
     if expires_in_seconds is None:
         expires_in_seconds = JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    
+
     from datetime import timezone
+
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     payload = {
         "user_id": str(user_id),
         "exp": now + timedelta(seconds=expires_in_seconds),
         "iat": now,
-        "type": "access"
+        "type": "access",
     }
-    
+
     return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
-def create_refresh_token(user_key: uuid.UUID, db: Session, expires_in_days: int | None = None) -> str:
+def create_refresh_token(
+    user_key: uuid.UUID, db: Session, expires_in_days: int | None = None
+) -> str:
     """
     Create a refresh token for a user and store it in the database.
-    
+
     Args:
         user_key: The user's UUID (user_key field)
         db: Database session
@@ -145,29 +157,28 @@ def create_refresh_token(user_key: uuid.UUID, db: Session, expires_in_days: int 
     """
     if expires_in_days is None:
         expires_in_days = JWT_REFRESH_TOKEN_EXPIRE_DAYS
-    
+
     # Look up user to get integer ID
     from . import models
+
     user = db.query(models.User).filter(models.User.user_key == user_key).first()
     if not user:
         raise ValueError(f"User not found with user_key: {user_key}")
-    
+
     # Generate secure random token
     token = secrets.token_urlsafe(32)
     # Hash the token for secure database storage
     token_hash = hashlib.sha256(token.encode()).hexdigest()
-    
+
     expires_at = _utcnow() + timedelta(days=expires_in_days)
-    
+
     # Store in database
     refresh_token = models.RefreshToken(
-        user_id=user.id,  # Use integer id
-        token_hash=token_hash,
-        expires_at=expires_at
+        user_id=user.id, token_hash=token_hash, expires_at=expires_at  # Use integer id
     )
     db.add(refresh_token)
     db.commit()
-    
+
     return token
 
 
@@ -176,19 +187,23 @@ def verify_refresh_token(token: str, db: Session) -> models.User | None:
     Verify a refresh token and return the associated user.
     """
     from . import models
-    
+
     # Hash the incoming token to compare with stored hash
     token_hash = hashlib.sha256(token.encode()).hexdigest()
-    
-    refresh_token = db.query(models.RefreshToken).filter(
-        models.RefreshToken.token_hash == token_hash,
-        models.RefreshToken.expires_at > _utcnow(),
-        models.RefreshToken.revoked == False
-    ).first()
-    
+
+    refresh_token = (
+        db.query(models.RefreshToken)
+        .filter(
+            models.RefreshToken.token_hash == token_hash,
+            models.RefreshToken.expires_at > _utcnow(),
+            models.RefreshToken.revoked == False,
+        )
+        .first()
+    )
+
     if not refresh_token:
         return None
-    
+
     return refresh_token.user
 
 
@@ -197,47 +212,54 @@ def revoke_refresh_token(token: str, db: Session) -> bool:
     Revoke a refresh token.
     """
     from . import models
-    
+
     # Hash the incoming token to compare with stored hash
     token_hash = hashlib.sha256(token.encode()).hexdigest()
-    
-    refresh_token = db.query(models.RefreshToken).filter(
-        models.RefreshToken.token_hash == token_hash
-    ).first()
-    
+
+    refresh_token = (
+        db.query(models.RefreshToken)
+        .filter(models.RefreshToken.token_hash == token_hash)
+        .first()
+    )
+
     if refresh_token:
         refresh_token.revoked = True
         db.commit()
         return True
-    
+
     return False
 
 
-def mark_refresh_token_rotated(token: str, db: Session, grace_seconds: int = 60) -> None:
+def mark_refresh_token_rotated(
+    token: str, db: Session, grace_seconds: int = 60
+) -> None:
     """
     Mark a refresh token as rotated with a grace period.
-    
+
     Instead of immediately revoking the token, we shorten its expiry to allow
     a grace period. This handles race conditions where:
     - Two browser tabs try to refresh simultaneously
     - Network issues cause the response to be lost
     - The browser closes before localStorage is updated
-    
+
     The token remains valid for grace_seconds after rotation, giving the client
     time to retry if the first response was lost.
-    
+
     Args:
         token: The raw refresh token string
         db: Database session
         grace_seconds: How long the old token remains valid (default 60s)
     """
     from . import models
+
     token_hash = hashlib.sha256(token.encode()).hexdigest()
-    
-    refresh_token = db.query(models.RefreshToken).filter(
-        models.RefreshToken.token_hash == token_hash
-    ).first()
-    
+
+    refresh_token = (
+        db.query(models.RefreshToken)
+        .filter(models.RefreshToken.token_hash == token_hash)
+        .first()
+    )
+
     if refresh_token and not refresh_token.revoked:
         # Set a grace period - token will be invalid after this time
         grace_expiry = _utcnow() + timedelta(seconds=grace_seconds)
@@ -257,59 +279,53 @@ async def get_current_user(
     Get current authenticated user from Bearer token.
     """
     from . import models
-    
+
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     try:
         # Decode and verify JWT
         payload = jwt.decode(
-            credentials.credentials,
-            JWT_SECRET_KEY,
-            algorithms=[JWT_ALGORITHM]
+            credentials.credentials, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM]
         )
-        
+
         # Extract user_id from claims
         user_id_str = payload.get("user_id")
         if not user_id_str:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token: missing user_id"
+                detail="Invalid token: missing user_id",
             )
-        
+
         user_key = uuid.UUID(user_id_str)
-        
+
         # Query database for user by user_key (UUID stored in token)
         user = db.query(models.User).filter(models.User.user_key == user_key).first()
         if not user:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User not found"
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found"
             )
-        
+
         # Check if user is allowed to authenticate
         check_user_can_authenticate(user)
-        
+
         return user
-        
+
     except jwt.ExpiredSignatureError:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token expired"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired"
         )
     except jwt.InvalidTokenError:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
         )
     except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid user ID in token"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user ID in token"
         )
 
 
@@ -319,12 +335,12 @@ async def get_current_user_optional(
 ) -> models.User | None:
     """
     Get current user if authenticated, None otherwise.
-    
+
     Used for endpoints that work differently for authenticated vs anonymous users.
     """
     if credentials is None:
         return None
-    
+
     try:
         return await get_current_user(credentials, db)
     except HTTPException:
@@ -338,7 +354,7 @@ def require_moderator(user: models.User = Depends(get_current_user)) -> models.U
     if "moderator" not in user.roles and "owner" not in user.roles:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Moderator or owner role required"
+            detail="Moderator or owner role required",
         )
     return user
 
@@ -349,8 +365,7 @@ def require_owner(user: models.User = Depends(get_current_user)) -> models.User:
     """
     if "owner" not in user.roles:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Owner role required"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Owner role required"
         )
     return user
 
@@ -365,72 +380,71 @@ def is_owner(user: models.User) -> bool:
 def ensure_not_owner_self(user: models.User, actor: models.User) -> None:
     """
     Ensure the actor is not trying to modify their own owner status.
-    
+
     Raises 403 Forbidden if trying to modify own owner role.
     """
     if is_owner(user) and user.id == actor.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You cannot modify your own owner status"
+            detail="You cannot modify your own owner status",
         )
 
 
 def ensure_not_owner(user: models.User) -> None:
     """
     Ensure the target user is not the owner.
-    
+
     Raises 403 Forbidden if trying to modify owner.
     """
     if is_owner(user):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot modify owner role"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Cannot modify owner role"
         )
 
 
 def ensure_authenticated_user(user: models.User, db: Session) -> None:
     """
     Ensure the user is authenticated (has at least one auth identity).
-    
+
     Raises 400 Bad Request if user is not authenticated.
     """
     from .services.auth_identities import get_user_identities
-    
+
     identities = get_user_identities(db, user.id)
     if not identities:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only authenticated users can be promoted to moderator"
+            detail="Only authenticated users can be promoted to moderator",
         )
 
 
 def check_ownership(resource_owner_id: int, current_user: models.User) -> bool:
     """
     Check if the current user owns a resource.
-    
+
     Returns True if:
     - User owns the resource, OR
     - User is a moderator/owner
     """
     if resource_owner_id == current_user.id:
         return True
-    
+
     if "moderator" in current_user.roles or "owner" in current_user.roles:
         return True
-    
+
     return False
 
 
 def require_ownership(resource_owner_id: int, current_user: models.User) -> None:
     """
     Require that the current user owns a resource or is a moderator.
-    
+
     Raises 403 Forbidden if not authorized.
     """
     if not check_ownership(resource_owner_id, current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to access this resource"
+            detail="You don't have permission to access this resource",
         )
 
 
@@ -442,14 +456,15 @@ def require_ownership(resource_owner_id: int, current_user: models.User) -> None
 @dataclass
 class AnonymousUser:
     """Represents an anonymous user identified by IP address."""
+
     ip: str
     guest_name: str
-    
+
     @property
     def id(self) -> None:
         """Anonymous users have no user ID."""
         return None
-    
+
     @property
     def is_authenticated(self) -> bool:
         """Anonymous users are not authenticated."""
@@ -459,7 +474,7 @@ class AnonymousUser:
 def get_client_ip(request: Request) -> str:
     """
     Extract client IP address from request, handling proxies.
-    
+
     Checks X-Forwarded-For header first (for reverse proxy setups),
     then falls back to direct client IP.
     """
@@ -468,11 +483,11 @@ def get_client_ip(request: Request) -> str:
     if forwarded_for:
         # X-Forwarded-For can contain multiple IPs; take the first one
         return forwarded_for.split(",")[0].strip()
-    
+
     # Fall back to direct client IP
     if request.client:
         return request.client.host
-    
+
     # Fallback if neither is available (shouldn't happen in practice)
     return "unknown"
 
@@ -480,16 +495,16 @@ def get_client_ip(request: Request) -> str:
 def generate_guest_name(ip: str) -> str:
     """
     Generate a deterministic guest name from an IP address.
-    
+
     Uses SHA256 hash to create a short, consistent identifier.
     Format: Guest_abc123
     """
     # Hash the IP address
     hash_digest = hashlib.sha256(ip.encode()).hexdigest()
-    
+
     # Take first 6 characters for a short identifier
     short_hash = hash_digest[:6]
-    
+
     return f"Guest_{short_hash}"
 
 
@@ -500,7 +515,7 @@ async def get_current_user_or_anonymous(
 ) -> models.User | AnonymousUser:
     """
     Get current authenticated user or create an anonymous user representation.
-    
+
     Returns:
         - User object if authenticated
         - AnonymousUser object if not authenticated (with IP and generated name)
@@ -513,11 +528,11 @@ async def get_current_user_or_anonymous(
         except HTTPException:
             # Authentication failed, treat as anonymous
             pass
-    
+
     # Create anonymous user representation
     ip = get_client_ip(request)
     guest_name = generate_guest_name(ip)
-    
+
     return AnonymousUser(ip=ip, guest_name=guest_name)
 
 
@@ -529,12 +544,12 @@ async def get_current_user_or_anonymous(
 def get_cookie_config(request: Request | None = None) -> dict[str, any]:
     """
     Get cookie configuration from environment variables.
-    
+
     Environment variables:
     - COOKIE_SECURE: Set to 'true' for HTTPS-only cookies (default: auto-detect from request)
     - COOKIE_DOMAIN: Cookie domain (default: '.makapix.club' for subdomain support)
     - COOKIE_SAMESITE: SameSite attribute (default: 'lax')
-    
+
     Returns dict with cookie settings for use with response.set_cookie()
     """
     # Determine if we're in production (HTTPS)
@@ -554,10 +569,10 @@ def get_cookie_config(request: Request | None = None) -> dict[str, any]:
         else:
             # Default to True for production safety
             secure = True
-    
+
     # Get domain from environment, or auto-detect from request
     domain_env = os.getenv("COOKIE_DOMAIN", "")
-    
+
     if domain_env:
         # Use explicitly configured domain
         # Empty string means omit domain (useful for localhost)
@@ -567,7 +582,7 @@ def get_cookie_config(request: Request | None = None) -> dict[str, any]:
         host = request.headers.get("host", "")
         # Remove port if present (e.g., "localhost:3000" -> "localhost")
         hostname = host.split(":")[0] if ":" in host else host
-        
+
         # For localhost/127.0.0.1, don't set domain attribute (browsers reject domain on localhost)
         if hostname in ("localhost", "127.0.0.1") or hostname.startswith("localhost"):
             domain = None  # Omit domain attribute for localhost
@@ -576,7 +591,9 @@ def get_cookie_config(request: Request | None = None) -> dict[str, any]:
             # Extract base domain (e.g., "www.makapix.club" -> ".makapix.club")
             parts = hostname.split(".")
             if len(parts) >= 2:
-                domain = "." + ".".join(parts[-2:])  # Last two parts (e.g., "makapix.club")
+                domain = "." + ".".join(
+                    parts[-2:]
+                )  # Last two parts (e.g., "makapix.club")
             else:
                 domain = None
         else:
@@ -585,12 +602,12 @@ def get_cookie_config(request: Request | None = None) -> dict[str, any]:
     else:
         # Default to .makapix.club for production (when no request available)
         domain = ".makapix.club"
-    
+
     # Get SameSite setting (default to 'lax' for CSRF protection)
     samesite = os.getenv("COOKIE_SAMESITE", "lax").lower()
     if samesite not in ["strict", "lax", "none"]:
         samesite = "lax"
-    
+
     cookie_config = {
         "httponly": True,
         "secure": secure,
@@ -598,35 +615,35 @@ def get_cookie_config(request: Request | None = None) -> dict[str, any]:
         "path": "/",
         "max_age": JWT_REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,  # 30 days in seconds
     }
-    
+
     # Only set domain if it's not None (None means omit the attribute, which works for localhost)
     if domain is not None:
         cookie_config["domain"] = domain
-    
+
     return cookie_config
 
 
-def set_refresh_token_cookie(response: Response, refresh_token: str, request: Request | None = None) -> None:
+def set_refresh_token_cookie(
+    response: Response, refresh_token: str, request: Request | None = None
+) -> None:
     """
     Set refresh token as HttpOnly cookie.
-    
+
     Args:
         response: FastAPI Response object
         refresh_token: The refresh token string to store
         request: Optional Request object for auto-detecting HTTPS
     """
     cookie_config = get_cookie_config(request)
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        **cookie_config
-    )
+    response.set_cookie(key="refresh_token", value=refresh_token, **cookie_config)
 
 
-def clear_refresh_token_cookie(response: Response, request: Request | None = None) -> None:
+def clear_refresh_token_cookie(
+    response: Response, request: Request | None = None
+) -> None:
     """
     Clear refresh token cookie.
-    
+
     Args:
         response: FastAPI Response object
         request: Optional Request object for auto-detecting domain
@@ -639,7 +656,5 @@ def clear_refresh_token_cookie(response: Response, request: Request | None = Non
     # Only include domain if it was set (None means omit, which works for localhost)
     if "domain" in cookie_config:
         delete_kwargs["domain"] = cookie_config["domain"]
-    
+
     response.delete_cookie(**delete_kwargs)
-
-

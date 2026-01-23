@@ -24,7 +24,6 @@ from __future__ import annotations
 from alembic import op
 from sqlalchemy import text
 
-
 # revision identifiers, used by Alembic.
 revision = "20251230000002"
 down_revision = "20251230000001"
@@ -62,5 +61,3 @@ def downgrade() -> None:
     # Downgrade is intentionally a no-op:
     # rewriting back would require knowing the prior alphabet/config.
     pass
-
-

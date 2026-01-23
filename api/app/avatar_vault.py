@@ -58,12 +58,7 @@ def get_avatar_folder_path(avatar_id: UUID) -> Path:
     """
     avatar_vault_location = get_avatar_vault_location()
     hash_value = hash_avatar_id(avatar_id)
-    return (
-        avatar_vault_location
-        / hash_value[0:2]
-        / hash_value[2:4]
-        / hash_value[4:6]
-    )
+    return avatar_vault_location / hash_value[0:2] / hash_value[2:4] / hash_value[4:6]
 
 
 def save_avatar_image(avatar_id: UUID, file_content: bytes, mime_type: str) -> Path:
@@ -160,5 +155,3 @@ def try_delete_avatar_by_public_url(avatar_url: str | None) -> bool:
     except Exception as e:
         logger.warning(f"Failed to delete avatar for url={avatar_url}: {e}")
         return False
-
-

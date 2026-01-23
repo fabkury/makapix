@@ -4,6 +4,7 @@ Test configuration with separate test database.
 Uses pytest_configure hook to set TEST_DATABASE_URL before any app modules
 are imported during test collection.
 """
+
 from __future__ import annotations
 
 import os
@@ -54,6 +55,7 @@ def _get_test_engine():
     global _test_engine
     if _test_engine is None:
         from sqlalchemy import create_engine
+
         _test_engine = create_engine(
             os.environ["TEST_DATABASE_URL"],
             pool_pre_ping=True,
@@ -65,10 +67,9 @@ def _get_test_session_local():
     global _TestSessionLocal
     if _TestSessionLocal is None:
         from sqlalchemy.orm import sessionmaker
+
         _TestSessionLocal = sessionmaker(
-            bind=_get_test_engine(),
-            autoflush=False,
-            autocommit=False
+            bind=_get_test_engine(), autoflush=False, autocommit=False
         )
     return _TestSessionLocal
 
@@ -99,17 +100,27 @@ def setup_test_database() -> Generator[None, None, None]:
 
     # Grant permissions to api_worker on all tables and sequences
     with admin_engine.begin() as conn:
-        conn.execute(text(f'GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA public TO "{api_worker}"'))
-        conn.execute(text(f'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO "{api_worker}"'))
+        conn.execute(
+            text(
+                f'GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA public TO "{api_worker}"'
+            )
+        )
+        conn.execute(
+            text(
+                f'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO "{api_worker}"'
+            )
+        )
 
     admin_engine.dispose()
 
     # Dispose the app engine pool to clear any stale connections
     from app.db import engine as app_engine
+
     app_engine.dispose()
 
     # Run seed data
     from app.seed import ensure_seed_data
+
     ensure_seed_data()
 
     yield

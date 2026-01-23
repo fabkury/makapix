@@ -64,7 +64,7 @@ def get_file_extension_from_mime(mime_type: str | None) -> str:
 def run_amp_inspector(file_path: Path) -> dict[str, Any] | None:
     """
     Run the AMP inspector on a file and return the result.
-    
+
     Returns None if the inspection failed.
     """
     try:
@@ -81,7 +81,7 @@ def run_amp_inspector(file_path: Path) -> dict[str, Any] | None:
             timeout=60,
             check=False,
         )
-        
+
         if result.returncode != 0:
             # Try to parse error from stdout
             try:
@@ -95,7 +95,7 @@ def run_amp_inspector(file_path: Path) -> dict[str, Any] | None:
                         "message": f"AMP inspector failed with code {result.returncode}: {result.stderr}",
                     },
                 }
-        
+
         return json.loads(result.stdout)
     except subprocess.TimeoutExpired:
         return {
@@ -115,30 +115,37 @@ def run_amp_inspector(file_path: Path) -> dict[str, Any] | None:
         }
 
 
-def backfill_post(db: SessionLocal, post: Post, dry_run: bool = False) -> tuple[bool, str | None]:
+def backfill_post(
+    db: SessionLocal, post: Post, dry_run: bool = False
+) -> tuple[bool, str | None]:
     """
     Backfill AMP metadata for a single post.
-    
+
     Returns (success, error_message).
     """
     # Get file path from vault
     extension = get_file_extension_from_mime(post.mime_type)
-    file_path = get_artwork_file_path(post.storage_key, extension)
-    
+    file_path = get_artwork_file_path(
+        post.storage_key, extension, storage_shard=post.storage_shard
+    )
+
     # Check if file exists
     if not file_path.exists():
         return False, f"File not found: {file_path}"
-    
+
     # Run AMP inspector
     result = run_amp_inspector(file_path)
-    
+
     if result is None:
         return False, "AMP inspector returned None"
-    
+
     if not result.get("success"):
         error = result.get("error", {})
-        return False, f"{error.get('code', 'UNKNOWN')}: {error.get('message', 'Unknown error')}"
-    
+        return (
+            False,
+            f"{error.get('code', 'UNKNOWN')}: {error.get('message', 'Unknown error')}",
+        )
+
     # Extract metadata
     metadata = result["metadata"]
 
@@ -153,13 +160,13 @@ def backfill_post(db: SessionLocal, post: Post, dry_run: bool = False) -> tuple[
             False,
             f"DUPLICATE_HASH: post {post.id} duplicates post {existing.id} (sha256={sha256})",
         )
-    
+
     if dry_run:
         logger.info(
             f"  [DRY-RUN] Would update post {post.id} with: {json.dumps(metadata, indent=2)}"
         )
         return True, None
-    
+
     # Update post with AMP metadata
     post.unique_colors = metadata.get("unique_colors")
     post.max_frame_duration_ms = metadata.get("longest_duration_ms")
@@ -170,78 +177,90 @@ def backfill_post(db: SessionLocal, post: Post, dry_run: bool = False) -> tuple[
     post.hash = sha256
     post.base = metadata.get("base")
     post.size = metadata.get("size")
-    
+
     # Also update min_frame_duration_ms if present
     if metadata.get("shortest_duration_ms") is not None:
         post.min_frame_duration_ms = metadata["shortest_duration_ms"]
-    
+
     return True, None
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Backfill AMP metadata for artwork posts")
-    parser.add_argument("--dry-run", action="store_true", help="Preview without making changes")
+    parser = argparse.ArgumentParser(
+        description="Backfill AMP metadata for artwork posts"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Preview without making changes"
+    )
     parser.add_argument("--limit", type=int, help="Only process N posts")
     parser.add_argument("--offset", type=int, default=0, help="Skip first N posts")
     parser.add_argument("--post-id", type=int, help="Process only a specific post ID")
-    parser.add_argument("--delay", type=float, default=0.5, help="Delay between posts in seconds")
+    parser.add_argument(
+        "--delay", type=float, default=0.5, help="Delay between posts in seconds"
+    )
     args = parser.parse_args()
-    
+
     logger.info("=" * 60)
     logger.info("AMP Metadata Backfill Script")
     logger.info("=" * 60)
-    
+
     if args.dry_run:
         logger.info("DRY RUN MODE - No changes will be made")
-    
+
     # Connect to database
     db = SessionLocal()
-    
+
     try:
         # Build query
         query = db.query(Post).filter(Post.kind == "artwork")
-        
+
         if args.post_id:
             query = query.filter(Post.id == args.post_id)
-        
+
         query = query.order_by(Post.id)
-        
+
         if args.offset:
             query = query.offset(args.offset)
-        
+
         if args.limit:
             query = query.limit(args.limit)
-        
+
         # Get total count for progress
         total_query = db.query(Post).filter(Post.kind == "artwork")
         if args.post_id:
             total_query = total_query.filter(Post.id == args.post_id)
         total_count = total_query.count()
-        
-        process_count = min(args.limit, total_count - args.offset) if args.limit else total_count - args.offset
-        
+
+        process_count = (
+            min(args.limit, total_count - args.offset)
+            if args.limit
+            else total_count - args.offset
+        )
+
         logger.info(f"Total artwork posts: {total_count}")
         logger.info(f"Posts to process: {process_count} (offset: {args.offset})")
         logger.info(f"Delay between posts: {args.delay}s")
         logger.info("-" * 60)
-        
+
         # Track statistics
         success_count = 0
         failure_count = 0
         failures = []
         duplicates = []
-        
+
         start_time = time.time()
-        
+
         # Process posts
         posts = query.all()
         for i, post in enumerate(posts, 1):
             progress = f"[{i}/{len(posts)}]"
-            
-            logger.info(f"{progress} Processing post {post.id} (storage_key: {post.storage_key})")
-            
+
+            logger.info(
+                f"{progress} Processing post {post.id} (storage_key: {post.storage_key})"
+            )
+
             success, error = backfill_post(db, post, dry_run=args.dry_run)
-            
+
             if success:
                 success_count += 1
                 logger.info(f"{progress} ✓ Post {post.id} - OK")
@@ -256,21 +275,21 @@ def main():
                     if not args.dry_run:
                         db.rollback()
                     break
-                
+
                 # Mark as non_conformant
                 if not args.dry_run:
                     post.non_conformant = True
-            
+
             # Commit after each post (to save progress)
             if not args.dry_run:
                 db.commit()
-            
+
             # Rate limiting
             if i < len(posts):  # Don't delay after the last post
                 time.sleep(args.delay)
-        
+
         elapsed_time = time.time() - start_time
-        
+
         # Summary
         logger.info("=" * 60)
         logger.info("BACKFILL COMPLETE")
@@ -279,35 +298,38 @@ def main():
         logger.info(f"Successful: {success_count}")
         logger.info(f"Failed: {failure_count}")
         logger.info(f"Elapsed time: {elapsed_time:.1f}s")
-        
+
         if failures:
             logger.info("-" * 60)
             logger.info("FAILURES:")
             for f in failures:
                 logger.info(f"  Post {f['post_id']}: {f['error']}")
-            
+
             # Write failures to file
             failures_file = Path("/workspace/api/scripts/backfill_failures.json")
             with open(failures_file, "w") as fp:
-                json.dump({
-                    "timestamp": datetime.now().isoformat(),
-                    "total_processed": success_count + failure_count,
-                    "successful": success_count,
-                    "failed": failure_count,
-                    "failures": failures,
-                }, fp, indent=2)
+                json.dump(
+                    {
+                        "timestamp": datetime.now().isoformat(),
+                        "total_processed": success_count + failure_count,
+                        "successful": success_count,
+                        "failed": failure_count,
+                        "failures": failures,
+                    },
+                    fp,
+                    indent=2,
+                )
             logger.info(f"Failures written to: {failures_file}")
 
         if duplicates:
             logger.error("Duplicate hashes found. Backfill aborted.")
             raise SystemExit(1)
-        
+
         logger.info("=" * 60)
-        
+
     finally:
         db.close()
 
 
 if __name__ == "__main__":
     main()
-

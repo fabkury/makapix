@@ -20,7 +20,7 @@ from ..sqids_config import decode_user_sqid
 def get_user_by_sqid(sqid: str, db: Session) -> models.User:
     """
     Look up a user by their public sqid.
-    
+
     Raises 404 if user not found or sqid invalid.
     """
     user_id = decode_user_sqid(sqid)
@@ -29,15 +29,17 @@ def get_user_by_sqid(sqid: str, db: Session) -> models.User:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
-    
+
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
-    
+
     return user
+
+
 from ..mqtt.cert_generator import (
     disconnect_mqtt_client,
     generate_client_certificate,
@@ -63,6 +65,7 @@ def get_client_ip(request: Request) -> str:
         return request.client.host
     return "unknown"
 
+
 router = APIRouter(tags=["Players"])
 
 # Constants
@@ -72,22 +75,28 @@ CERT_VALIDITY_DAYS = 365
 CERT_RENEWAL_THRESHOLD_DAYS = 30
 
 
-@router.post("/player/provision", response_model=schemas.PlayerProvisionResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/player/provision",
+    response_model=schemas.PlayerProvisionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def provision_player(
     payload: schemas.PlayerProvisionRequest,
     db: Session = Depends(get_db),
 ) -> schemas.PlayerProvisionResponse:
     """
     Provision a new player (device calls this).
-    
+
     Returns player_key and 6-character registration code that expires in 15 minutes.
     """
     from uuid import uuid4
-    
+
     player_key = uuid4()
     registration_code = generate_registration_code()
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=REGISTRATION_CODE_EXPIRY_MINUTES)
-    
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        minutes=REGISTRATION_CODE_EXPIRY_MINUTES
+    )
+
     # Create player record
     player = models.Player(
         player_key=player_key,
@@ -100,11 +109,11 @@ def provision_player(
     db.add(player)
     db.commit()
     db.refresh(player)
-    
+
     # Get MQTT broker info
     broker_host = os.getenv("MQTT_PUBLIC_HOST", "makapix.club")
     broker_port = int(os.getenv("MQTT_PUBLIC_PORT", "8883"))
-    
+
     return schemas.PlayerProvisionResponse(
         player_key=player_key,
         registration_code=registration_code,
@@ -113,7 +122,11 @@ def provision_player(
     )
 
 
-@router.post("/player/register", response_model=schemas.PlayerPublic, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/player/register",
+    response_model=schemas.PlayerPublic,
+    status_code=status.HTTP_201_CREATED,
+)
 def register_player(
     payload: schemas.PlayerRegisterRequest,
     db: Session = Depends(get_db),
@@ -121,18 +134,22 @@ def register_player(
 ) -> schemas.PlayerPublic:
     """
     Register a player to the current user's account.
-    
+
     Validates registration code and assigns ownership.
     Enforces 128 player limit per user.
     """
     # Check player limit
-    player_count = db.query(models.Player).filter(models.Player.owner_id == current_user.id).count()
+    player_count = (
+        db.query(models.Player)
+        .filter(models.Player.owner_id == current_user.id)
+        .count()
+    )
     if player_count >= MAX_PLAYERS_PER_USER:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Maximum {MAX_PLAYERS_PER_USER} players allowed per user",
         )
-    
+
     # Find player by registration code
     now = datetime.now(timezone.utc)
     player = (
@@ -144,20 +161,20 @@ def register_player(
         )
         .first()
     )
-    
+
     if not player:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Invalid or expired registration code",
         )
-    
+
     # Check if already registered
     if player.owner_id is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Player already registered",
         )
-    
+
     # Register player
     player.owner_id = current_user.id
     player.name = payload.name
@@ -165,55 +182,62 @@ def register_player(
     player.registered_at = now
     player.registration_code = None  # Clear code after registration
     player.registration_code_expires_at = None
-    
+
     # Add player_key to MQTT password file (empty password for username-only auth)
     passwd_file = os.getenv("MQTT_PASSWD_FILE", "/mqtt-config/passwords")
-    
+
     # Validate password file path to prevent path traversal
     # Use pathlib to resolve the path and ensure it's within allowed directories
     from pathlib import Path
+
     try:
         passwd_file_path = Path(passwd_file).resolve()
-        allowed_passwd_dirs = [Path("/mqtt-config").resolve(), Path("/mosquitto/config").resolve()]
-        
+        allowed_passwd_dirs = [
+            Path("/mqtt-config").resolve(),
+            Path("/mosquitto/config").resolve(),
+        ]
+
         # Check if resolved path is within any allowed directory
         is_valid = any(
-            passwd_file_path.is_relative_to(allowed_dir) 
+            passwd_file_path.is_relative_to(allowed_dir)
             for allowed_dir in allowed_passwd_dirs
         )
-        
+
         if not is_valid:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.error(f"Invalid MQTT password file path: {passwd_file_path}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Invalid MQTT configuration",
             )
-        
+
         # Use the validated resolved path
         passwd_file = str(passwd_file_path)
     except (ValueError, OSError) as e:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.error(f"Path validation error for MQTT password file: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Invalid MQTT configuration",
         )
-    
+
     # Validate player_key is a valid UUID (additional safety check)
     try:
         str(player.player_key)
     except (ValueError, AttributeError):
         import logging
+
         logger = logging.getLogger(__name__)
         logger.error("Invalid player_key format")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Invalid player configuration",
         )
-    
+
     try:
         subprocess.run(
             ["mosquitto_passwd", "-b", passwd_file, str(player.player_key), ""],
@@ -224,13 +248,15 @@ def register_player(
     except subprocess.CalledProcessError as e:
         # Log error but don't fail registration - password file might not exist yet
         import logging
+
         logger = logging.getLogger(__name__)
         logger.warning(f"Failed to add player_key to MQTT password file: {e}")
     except FileNotFoundError:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.warning("mosquitto_passwd not found - ensure MQTT broker is configured")
-    
+
     # Generate and store TLS certificates (CN = player_key for mTLS)
     ca_cert_path = os.getenv("MQTT_CA_FILE", "/certs/ca.crt")
     ca_key_path = os.getenv("MQTT_CA_KEY_FILE", "/certs/ca.key")
@@ -248,18 +274,20 @@ def register_player(
         player.cert_expires_at = now + timedelta(days=CERT_VALIDITY_DAYS)
     except FileNotFoundError as e:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.error(f"CA certificate files not found: {e}")
         # Don't fail registration if certs can't be generated
     except Exception as e:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.exception("Failed to generate player certificate")
         # Don't fail registration if certs can't be generated
-    
+
     db.commit()
     db.refresh(player)
-    
+
     # Log the device registration as a special "add_device" command
     log_command(
         db=db,
@@ -274,7 +302,7 @@ def register_player(
             "firmware_version": player.firmware_version,
         },
     )
-    
+
     return schemas.PlayerPublic.model_validate(player)
 
 
@@ -308,19 +336,19 @@ def get_player_credentials(
         )
         .first()
     )
-    
+
     if not player:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Player not found or not registered",
         )
-    
+
     if not player.cert_pem or not player.key_pem:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Certificates not available for this player",
         )
-    
+
     # Load CA certificate
     ca_cert_path = os.getenv("MQTT_CA_FILE", "/certs/ca.crt")
     try:
@@ -330,11 +358,11 @@ def get_player_credentials(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="CA certificate not found",
         )
-    
+
     # Get MQTT broker info
     broker_host = os.getenv("MQTT_PUBLIC_HOST", "makapix.club")
     broker_port = int(os.getenv("MQTT_PUBLIC_PORT", "8883"))
-    
+
     return schemas.TLSCertBundle(
         ca_pem=ca_pem,
         cert_pem=player.cert_pem,
@@ -352,9 +380,9 @@ def list_players(
     """List all players for a user."""
     user = get_user_by_sqid(sqid, db)
     require_ownership(user.id, current_user)
-    
+
     players = db.query(models.Player).filter(models.Player.owner_id == user.id).all()
-    
+
     return {"items": [schemas.PlayerPublic.model_validate(p) for p in players]}
 
 
@@ -368,19 +396,19 @@ def get_player(
     """Get a single player."""
     user = get_user_by_sqid(sqid, db)
     require_ownership(user.id, current_user)
-    
+
     player = (
         db.query(models.Player)
         .filter(models.Player.id == player_id, models.Player.owner_id == user.id)
         .first()
     )
-    
+
     if not player:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Player not found",
         )
-    
+
     return schemas.PlayerPublic.model_validate(player)
 
 
@@ -395,25 +423,25 @@ def update_player(
     """Update player name."""
     user = get_user_by_sqid(sqid, db)
     require_ownership(user.id, current_user)
-    
+
     player = (
         db.query(models.Player)
         .filter(models.Player.id == player_id, models.Player.owner_id == user.id)
         .first()
     )
-    
+
     if not player:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Player not found",
         )
-    
+
     if payload.name is not None:
         player.name = payload.name
-    
+
     db.commit()
     db.refresh(player)
-    
+
     return schemas.PlayerPublic.model_validate(player)
 
 
@@ -427,25 +455,25 @@ def download_player_certs(
     """Authenticated user downloads certificates for their player."""
     user = get_user_by_sqid(sqid, db)
     require_ownership(user.id, current_user)
-    
+
     player = (
         db.query(models.Player)
         .filter(models.Player.id == player_id, models.Player.owner_id == user.id)
         .first()
     )
-    
+
     if not player:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Player not found",
         )
-    
+
     if not player.cert_pem or not player.key_pem:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Certificates not available for this player",
         )
-    
+
     # Load CA certificate
     ca_cert_path = os.getenv("MQTT_CA_FILE", "/certs/ca.crt")
     try:
@@ -455,11 +483,11 @@ def download_player_certs(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="CA certificate not found",
         )
-    
+
     # Get MQTT broker info
     broker_host = os.getenv("MQTT_PUBLIC_HOST", "makapix.club")
     broker_port = int(os.getenv("MQTT_PUBLIC_PORT", "8883"))
-    
+
     return schemas.TLSCertBundle(
         ca_pem=ca_pem,
         cert_pem=player.cert_pem,
@@ -478,26 +506,26 @@ def delete_player(
     """Remove player registration. Preserves command logs for audit trail."""
     user = get_user_by_sqid(sqid, db)
     require_ownership(user.id, current_user)
-    
+
     player = (
         db.query(models.Player)
         .filter(models.Player.id == player_id, models.Player.owner_id == user.id)
         .first()
     )
-    
+
     if not player:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Player not found",
         )
-    
+
     # Store player info before deletion for logging and cleanup
     player_key_str = str(player.player_key)
     player_name = player.name
     device_model = player.device_model
     firmware_version = player.firmware_version
     cert_serial = player.cert_serial_number
-    
+
     # Log the device removal as a special "remove_device" command BEFORE deletion
     # This log entry will have player_id set to NULL after the player is deleted
     log_command(
@@ -514,17 +542,18 @@ def delete_player(
             "removed_by": str(current_user.id),
         },
     )
-    
+
     # Revoke TLS certificate to prevent reconnection via mTLS
     if cert_serial:
         ca_cert_path = os.getenv("MQTT_CA_FILE", "/certs/ca.crt")
         ca_key_path = os.getenv("MQTT_CA_KEY_FILE", "/certs/ca.key")
         crl_path = os.getenv("MQTT_CRL_FILE", "/certs/crl.pem")
-        
+
         try:
             import logging
+
             logger = logging.getLogger(__name__)
-            
+
             revoked = revoke_certificate(
                 serial_number=cert_serial,
                 ca_cert_path=ca_cert_path,
@@ -532,19 +561,25 @@ def delete_player(
                 crl_path=crl_path,
             )
             if revoked:
-                logger.info(f"Revoked certificate {cert_serial} for player {player_key_str}")
+                logger.info(
+                    f"Revoked certificate {cert_serial} for player {player_key_str}"
+                )
             else:
-                logger.warning(f"Failed to revoke certificate {cert_serial} for player {player_key_str}")
+                logger.warning(
+                    f"Failed to revoke certificate {cert_serial} for player {player_key_str}"
+                )
         except Exception as e:
-            logger.exception(f"Error revoking certificate for player {player_key_str}: {e}")
-    
+            logger.exception(
+                f"Error revoking certificate for player {player_key_str}: {e}"
+            )
+
     # Disconnect active MQTT connection (best effort)
     disconnect_mqtt_client(player.player_key)
-    
+
     # Delete player from database (command logs preserved with player_id = NULL)
     db.delete(player)
     db.commit()
-    
+
     # Remove player_key from MQTT password file
     passwd_file = os.getenv("MQTT_PASSWD_FILE", "/mqtt-config/passwords")
     try:
@@ -556,15 +591,19 @@ def delete_player(
     except subprocess.CalledProcessError as e:
         # Log error but don't fail - player is already deleted from DB
         import logging
+
         logger = logging.getLogger(__name__)
         logger.warning(f"Failed to remove player_key from MQTT password file: {e}")
     except FileNotFoundError:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.warning("mosquitto_passwd not found - MQTT password not cleaned up")
 
 
-@router.post("/u/{sqid}/player/{player_id}/command", response_model=schemas.PlayerCommandResponse)
+@router.post(
+    "/u/{sqid}/player/{player_id}/command", response_model=schemas.PlayerCommandResponse
+)
 def send_player_command(
     sqid: str,
     player_id: UUID,
@@ -575,48 +614,52 @@ def send_player_command(
     """Send command to a player."""
     user = get_user_by_sqid(sqid, db)
     require_ownership(user.id, current_user)
-    
+
     player = (
         db.query(models.Player)
         .filter(models.Player.id == player_id, models.Player.owner_id == user.id)
         .first()
     )
-    
+
     if not player:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Player not found",
         )
-    
+
     # Check rate limits
     player_key = f"ratelimit:player:{player_id}:cmd"
     user_key = f"ratelimit:user:{user.id}:cmd"
-    
-    allowed_player, remaining_player = check_rate_limit(player_key, limit=300, window_seconds=60)
-    allowed_user, remaining_user = check_rate_limit(user_key, limit=1000, window_seconds=60)
-    
+
+    allowed_player, remaining_player = check_rate_limit(
+        player_key, limit=300, window_seconds=60
+    )
+    allowed_user, remaining_user = check_rate_limit(
+        user_key, limit=1000, window_seconds=60
+    )
+
     if not allowed_player:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"Rate limit exceeded for player (300 commands/minute)",
         )
-    
+
     if not allowed_user:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"Rate limit exceeded for user (1000 commands/minute)",
         )
-    
+
     # Prepare command payload
     command_payload: dict[str, Any] = {}
-    
+
     if payload.command_type == "show_artwork":
         if not payload.post_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="post_id is required for show_artwork command",
             )
-        
+
         # Fetch post details
         post = db.query(models.Post).filter(models.Post.id == payload.post_id).first()
         if not post:
@@ -624,20 +667,20 @@ def send_player_command(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Post not found",
             )
-        
+
         # Check visibility
         if not post.visible or post.hidden_by_mod or post.non_conformant:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Post is not visible",
             )
-        
+
         command_payload = {
             "post_id": post.id,
             "storage_key": str(post.storage_key),
-            "art_url": post.art_url
+            "art_url": post.art_url,
         }
-    
+
     elif payload.command_type == "play_channel":
         # Validate channel parameters
         if not any([payload.channel_name, payload.hashtag, payload.user_sqid]):
@@ -645,7 +688,7 @@ def send_player_command(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="play_channel requires one of: channel_name, hashtag, or user_sqid",
             )
-        
+
         # Build channel payload
         if payload.channel_name:
             command_payload = {"channel_name": payload.channel_name}
@@ -660,14 +703,14 @@ def send_player_command(
                     detail="User not found",
                 )
             command_payload = {"user_sqid": payload.user_sqid}
-    
+
     # Publish command via MQTT
     command_id = publish_player_command(
         player_key=player.player_key,
         command_type=payload.command_type,
         payload=command_payload if command_payload else None,
     )
-    
+
     # Log command
     log_command(
         db=db,
@@ -675,11 +718,13 @@ def send_player_command(
         command_type=payload.command_type,
         payload=command_payload if command_payload else None,
     )
-    
+
     return schemas.PlayerCommandResponse(command_id=command_id, status="sent")
 
 
-@router.post("/u/{sqid}/player/command/all", response_model=schemas.PlayerCommandAllResponse)
+@router.post(
+    "/u/{sqid}/player/command/all", response_model=schemas.PlayerCommandAllResponse
+)
 def send_command_to_all_players(
     sqid: str,
     payload: schemas.PlayerCommandRequest,
@@ -689,58 +734,64 @@ def send_command_to_all_players(
     """Send command to all user's registered players."""
     user = get_user_by_sqid(sqid, db)
     require_ownership(user.id, current_user)
-    
+
     # Get all registered players
-    players = db.query(models.Player).filter(
-        models.Player.owner_id == user.id,
-        models.Player.registration_status == "registered",
-    ).all()
-    
+    players = (
+        db.query(models.Player)
+        .filter(
+            models.Player.owner_id == user.id,
+            models.Player.registration_status == "registered",
+        )
+        .all()
+    )
+
     if not players:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No registered players found",
         )
-    
+
     # Check user rate limit
     user_key = f"ratelimit:user:{user.id}:cmd"
-    allowed_user, remaining_user = check_rate_limit(user_key, limit=1000, window_seconds=60)
-    
+    allowed_user, remaining_user = check_rate_limit(
+        user_key, limit=1000, window_seconds=60
+    )
+
     if not allowed_user:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"Rate limit exceeded for user (1000 commands/minute)",
         )
-    
+
     # Prepare command payload
     command_payload: dict[str, Any] = {}
-    
+
     if payload.command_type == "show_artwork":
         if not payload.post_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="post_id is required for show_artwork command",
             )
-        
+
         post = db.query(models.Post).filter(models.Post.id == payload.post_id).first()
         if not post:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Post not found",
             )
-        
+
         if not post.visible or post.hidden_by_mod or post.non_conformant:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Post is not visible",
             )
-        
+
         command_payload = {
             "post_id": post.id,
             "storage_key": str(post.storage_key),
-            "art_url": post.art_url
+            "art_url": post.art_url,
         }
-    
+
     elif payload.command_type == "play_channel":
         # Validate channel parameters
         if not any([payload.channel_name, payload.hashtag, payload.user_sqid]):
@@ -748,7 +799,7 @@ def send_command_to_all_players(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="play_channel requires one of: channel_name, hashtag, or user_sqid",
             )
-        
+
         # Build channel payload
         if payload.channel_name:
             command_payload = {"channel_name": payload.channel_name}
@@ -763,34 +814,39 @@ def send_command_to_all_players(
                     detail="User not found",
                 )
             command_payload = {"user_sqid": payload.user_sqid}
-    
+
     # Send to all players
     commands = []
     for player in players:
         # Check per-player rate limit
         player_key = f"ratelimit:player:{player.id}:cmd"
         allowed_player, _ = check_rate_limit(player_key, limit=300, window_seconds=60)
-        
+
         if allowed_player:
             command_id = publish_player_command(
                 player_key=player.player_key,
                 command_type=payload.command_type,
                 payload=command_payload if command_payload else None,
             )
-            
+
             log_command(
                 db=db,
                 player_id=player.id,
                 command_type=payload.command_type,
                 payload=command_payload if command_payload else None,
             )
-            
-            commands.append(schemas.PlayerCommandResponse(command_id=command_id, status="sent"))
-    
+
+            commands.append(
+                schemas.PlayerCommandResponse(command_id=command_id, status="sent")
+            )
+
     return schemas.PlayerCommandAllResponse(sent_count=len(commands), commands=commands)
 
 
-@router.post("/u/{sqid}/player/{player_id}/renew-cert", response_model=schemas.PlayerRenewCertResponse)
+@router.post(
+    "/u/{sqid}/player/{player_id}/renew-cert",
+    response_model=schemas.PlayerRenewCertResponse,
+)
 def renew_player_certificate(
     sqid: str,
     player_id: UUID,
@@ -799,24 +855,24 @@ def renew_player_certificate(
 ) -> schemas.PlayerRenewCertResponse:
     """
     Renew player certificate.
-    
+
     Only available if certificate is within 30 days of expiry or already expired.
     """
     user = get_user_by_sqid(sqid, db)
     require_ownership(user.id, current_user)
-    
+
     player = (
         db.query(models.Player)
         .filter(models.Player.id == player_id, models.Player.owner_id == user.id)
         .first()
     )
-    
+
     if not player:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Player not found",
         )
-    
+
     # Check if renewal is needed
     now = datetime.now(timezone.utc)
     if player.cert_expires_at:
@@ -826,11 +882,11 @@ def renew_player_certificate(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Certificate is still valid for {days_until_expiry} days. Renewal only available within {CERT_RENEWAL_THRESHOLD_DAYS} days of expiry.",
             )
-    
+
     # Get CA certificate and key paths
     ca_cert_path = os.getenv("MQTT_CA_FILE", "/certs/ca.crt")
     ca_key_path = os.getenv("MQTT_CA_KEY_FILE", "/certs/ca.key")
-    
+
     # Generate new certificate (CN = player_key for mTLS)
     try:
         cert_pem, key_pem, serial_number = generate_client_certificate(
@@ -839,17 +895,17 @@ def renew_player_certificate(
             ca_key_path=ca_key_path,
             cert_validity_days=CERT_VALIDITY_DAYS,
         )
-        
+
         # Update player certificate info
         player.cert_pem = cert_pem
         player.key_pem = key_pem
         player.cert_serial_number = serial_number
         player.cert_issued_at = now
         player.cert_expires_at = now + timedelta(days=CERT_VALIDITY_DAYS)
-        
+
         db.commit()
         db.refresh(player)
-        
+
         return schemas.PlayerRenewCertResponse(
             cert_expires_at=player.cert_expires_at,
             message="Certificate renewed successfully",
@@ -861,10 +917,10 @@ def renew_player_certificate(
         )
     except Exception as e:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.exception("Failed to generate player certificate")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate certificate: {str(e)}",
         )
-

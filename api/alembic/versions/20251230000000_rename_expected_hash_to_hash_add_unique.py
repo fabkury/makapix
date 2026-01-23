@@ -11,7 +11,6 @@ Create Date: 2025-12-30 00:00:00.000000
 from alembic import op
 import sqlalchemy as sa
 
-
 # revision identifiers, used by Alembic.
 revision = "20251230000000"
 down_revision = "20251229000000"
@@ -42,5 +41,3 @@ def downgrade() -> None:
 
     # Restore old non-unique index for compatibility
     op.create_index("ix_posts_expected_hash", "posts", ["expected_hash"])
-
-

@@ -29,14 +29,16 @@ def adjust_reputation(
 ) -> schemas.ReputationAdjustResponse:
     """
     Adjust user reputation (moderator only).
-    
+
     TODO: Log in audit log
     TODO: Update User.reputation field
     """
     user = db.query(models.User).filter(models.User.id == id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
     # Add to history
     history = models.ReputationHistory(
         user_id=id,
@@ -44,11 +46,11 @@ def adjust_reputation(
         reason=payload.reason,
     )
     db.add(history)
-    
+
     # Update user total
     user.reputation += payload.delta
     db.commit()
-    
+
     # Log to audit
     log_moderation_action(
         db=db,
@@ -59,7 +61,7 @@ def adjust_reputation(
         reason_code=payload.reason_code,
         note=payload.note or payload.reason,
     )
-    
+
     return schemas.ReputationAdjustResponse(new_total=user.reputation)
 
 
@@ -68,8 +70,10 @@ def get_reputation(id: UUID, db: Session = Depends(get_db)) -> schemas.Reputatio
     """Get user reputation with history."""
     user = db.query(models.User).filter(models.User.id == id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
     history = (
         db.query(models.ReputationHistory)
         .filter(models.ReputationHistory.user_id == id)
@@ -77,7 +81,7 @@ def get_reputation(id: UUID, db: Session = Depends(get_db)) -> schemas.Reputatio
         .limit(100)
         .all()
     )
-    
+
     return schemas.ReputationView(
         total=user.reputation,
         history=[

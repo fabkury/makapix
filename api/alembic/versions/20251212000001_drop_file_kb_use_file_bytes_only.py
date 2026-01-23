@@ -21,7 +21,9 @@ depends_on = None
 
 def upgrade() -> None:
     # Drop old constraint if present (it referenced file_kb).
-    op.execute("ALTER TABLE posts DROP CONSTRAINT IF EXISTS ck_posts_artwork_fields_required")
+    op.execute(
+        "ALTER TABLE posts DROP CONSTRAINT IF EXISTS ck_posts_artwork_fields_required"
+    )
 
     # Drop the column (Postgres supports IF EXISTS).
     op.execute("ALTER TABLE posts DROP COLUMN IF EXISTS file_kb")
@@ -47,7 +49,9 @@ def downgrade() -> None:
     # Best-effort: restore column without reintroducing KiB conversions.
     op.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS file_kb INTEGER")
 
-    op.execute("ALTER TABLE posts DROP CONSTRAINT IF EXISTS ck_posts_artwork_fields_required")
+    op.execute(
+        "ALTER TABLE posts DROP CONSTRAINT IF EXISTS ck_posts_artwork_fields_required"
+    )
     op.create_check_constraint(
         "ck_posts_artwork_fields_required",
         "posts",
@@ -62,4 +66,3 @@ def downgrade() -> None:
         )
         """,
     )
-

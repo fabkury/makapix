@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Player, sendPlayerCommand, deletePlayer, renewPlayerCert, downloadPlayerCerts } from '../lib/api';
+import { Player, sendPlayerCommand, deletePlayer, renewPlayerCert, downloadPlayerCerts, updatePlayer } from '../lib/api';
 
 interface PlayerCardProps {
   player: Player;
@@ -11,6 +11,8 @@ interface PlayerCardProps {
 export default function PlayerCard({ player, sqid, onDelete, onRefresh }: PlayerCardProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(player.name || '');
 
   // Keep command types aligned with `PlayerCommandRequest` in `src/lib/api.ts`
   const handleCommand = async (commandType: 'swap_next' | 'swap_back') => {
@@ -51,6 +53,31 @@ export default function PlayerCard({ player, sqid, onDelete, onRefresh }: Player
       setError(err.message || 'Failed to renew certificate');
       setIsLoading(false);
     }
+  };
+
+  const handleRename = async () => {
+    const trimmedName = editName.trim();
+    if (!trimmedName) {
+      setError('Player name cannot be empty');
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    try {
+      await updatePlayer(sqid, player.id, trimmedName);
+      setIsEditing(false);
+      onRefresh();
+    } catch (err: any) {
+      setError(err.message || 'Failed to rename player');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditName(player.name || '');
+    setIsEditing(false);
+    setError(null);
   };
 
   const handleDownloadCerts = async () => {
@@ -94,7 +121,46 @@ export default function PlayerCard({ player, sqid, onDelete, onRefresh }: Player
     <div className="player-card">
       <div className="player-header">
         <div className="player-info">
-          <h3 className="player-name">{player.name || 'Unnamed Player'}</h3>
+          {isEditing ? (
+            <div className="edit-name-container">
+              <input
+                type="text"
+                className="edit-name-input"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                disabled={isLoading}
+                autoFocus
+                maxLength={100}
+              />
+              <button
+                className="save-name-btn"
+                onClick={handleRename}
+                disabled={isLoading}
+                title="Save"
+              >
+                Save
+              </button>
+              <button
+                className="cancel-edit-btn"
+                onClick={handleCancelEdit}
+                disabled={isLoading}
+                title="Cancel"
+              >
+                ✕
+              </button>
+            </div>
+          ) : (
+            <div className="name-row">
+              <h3 className="player-name">{player.name || 'Unnamed Player'}</h3>
+              <button
+                className="edit-name-btn"
+                onClick={() => setIsEditing(true)}
+                title="Rename player"
+              >
+                ✏️
+              </button>
+            </div>
+          )}
           <div className="player-meta">
             <span className={`status-indicator ${isOnline ? 'online' : 'offline'}`}>
               {isOnline ? '●' : '○'} {player.connection_status}
@@ -184,7 +250,92 @@ export default function PlayerCard({ player, sqid, onDelete, onRefresh }: Player
           font-size: 1.2rem;
           font-weight: 600;
           color: var(--text-primary);
-          margin: 0 0 8px 0;
+          margin: 0;
+        }
+
+        .name-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 8px;
+        }
+
+        .edit-name-btn {
+          background: none;
+          border: none;
+          padding: 2px 4px;
+          cursor: pointer;
+          font-size: 0.9rem;
+          opacity: 0.6;
+          transition: opacity var(--transition-fast);
+        }
+
+        .edit-name-btn:hover {
+          opacity: 1;
+        }
+
+        .edit-name-container {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 8px;
+        }
+
+        .edit-name-input {
+          flex: 1;
+          padding: 6px 10px;
+          font-size: 1rem;
+          background: var(--bg-tertiary);
+          border: 2px solid var(--accent-cyan);
+          border-radius: 6px;
+          color: var(--text-primary);
+          outline: none;
+        }
+
+        .edit-name-input:disabled {
+          opacity: 0.6;
+        }
+
+        .save-name-btn {
+          background: var(--accent-cyan);
+          color: var(--bg-primary);
+          border: none;
+          border-radius: 6px;
+          padding: 6px 12px;
+          font-size: 0.85rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+        }
+
+        .save-name-btn:hover:not(:disabled) {
+          transform: translateY(-1px);
+        }
+
+        .save-name-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .cancel-edit-btn {
+          background: var(--bg-tertiary);
+          border: none;
+          border-radius: 6px;
+          padding: 6px 10px;
+          font-size: 0.9rem;
+          cursor: pointer;
+          color: var(--text-secondary);
+          transition: all var(--transition-fast);
+        }
+
+        .cancel-edit-btn:hover:not(:disabled) {
+          background: var(--bg-secondary);
+          color: var(--text-primary);
+        }
+
+        .cancel-edit-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
 
         .player-meta {

@@ -9,7 +9,13 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
-from ..auth import AnonymousUser, get_current_user, get_current_user_or_anonymous, require_moderator, require_ownership
+from ..auth import (
+    AnonymousUser,
+    get_current_user,
+    get_current_user_or_anonymous,
+    require_moderator,
+    require_ownership,
+)
 from ..deps import get_db
 from ..services.social_notifications import SocialNotificationService
 from ..services.rate_limit import check_rate_limit
@@ -30,30 +36,33 @@ def list_comments(
 ) -> schemas.Page[schemas.Comment]:
     """
     List comments for a post.
-    
+
     Returns comments with guest names for anonymous users.
     Moderators can see hidden comments; regular users cannot.
     Filters out comments with invalid depth (> 2) to prevent widget errors.
     Deleted comments are filtered out unless they have child comments (to maintain thread structure).
     """
-    query = db.query(models.Comment).options(joinedload(models.Comment.author)).filter(models.Comment.post_id == id)
-    
+    query = (
+        db.query(models.Comment)
+        .options(joinedload(models.Comment.author))
+        .filter(models.Comment.post_id == id)
+    )
+
     # Hide comments hidden by moderators unless current user is a moderator
-    is_moderator = (
-        isinstance(current_user, models.User) 
-        and ("moderator" in current_user.roles or "owner" in current_user.roles)
+    is_moderator = isinstance(current_user, models.User) and (
+        "moderator" in current_user.roles or "owner" in current_user.roles
     )
     if not is_moderator:
         query = query.filter(models.Comment.hidden_by_mod == False)
-    
+
     # Filter out comments with invalid depth (> 2) to prevent widget errors
     query = query.filter(models.Comment.depth <= 2)
-    
+
     # Order by creation time and apply limit
     query = query.order_by(models.Comment.created_at.asc()).limit(limit)
-    
+
     comments = query.all()
-    
+
     # Filter out deleted comments recursively using bottom-up approach
     # Build a map of comment ID -> list of children comment IDs
     comment_dict = {c.id: c for c in comments}
@@ -63,7 +72,7 @@ def list_comments(
             if comment.parent_id not in children_map:
                 children_map[comment.parent_id] = []
             children_map[comment.parent_id].append(comment.id)
-    
+
     # Iteratively remove deleted comments that have no children (bottom-up)
     # Continue until no more deletions occur
     removed_ids: set[UUID] = set()
@@ -80,19 +89,19 @@ def list_comments(
                         if child_id not in removed_ids:
                             has_children = True
                             break
-                
+
                 # If no children, remove this deleted comment
                 if not has_children:
                     removed_ids.add(comment_id)
                     changed = True
-    
+
     # Filter out removed comments
     comments = [c for c in comments if c.id not in removed_ids]
-    
+
     # Additional validation: filter out comments that reference invalid parents
     valid_comments = []
     comment_ids = {c.id for c in comments}
-    
+
     for comment in comments:
         # Skip comments with parent_id that doesn't exist in the result set
         # (orphaned comments or invalid parent references)
@@ -101,7 +110,7 @@ def list_comments(
         elif comment.parent_id in comment_ids:
             valid_comments.append(comment)
         # else: skip orphaned comment
-    
+
     return schemas.Page(
         items=[schemas.Comment.model_validate(c) for c in valid_comments],
         next_cursor=None,
@@ -147,40 +156,45 @@ def create_comment(
         )
 
     # Check comment count limit (1000 per post)
-    comment_count = db.query(func.count(models.Comment.id)).filter(
-        models.Comment.post_id == id
-    ).scalar()
-    
+    comment_count = (
+        db.query(func.count(models.Comment.id))
+        .filter(models.Comment.post_id == id)
+        .scalar()
+    )
+
     if comment_count >= 1000:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Maximum comments per post (1000) exceeded"
+            detail="Maximum comments per post (1000) exceeded",
         )
-    
+
     # Validate parent comment and calculate depth
     depth = 0
     if payload.parent_id:
-        parent = db.query(models.Comment).filter(models.Comment.id == payload.parent_id).first()
+        parent = (
+            db.query(models.Comment)
+            .filter(models.Comment.id == payload.parent_id)
+            .first()
+        )
         if not parent or parent.post_id != id:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid parent comment"
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid parent comment"
             )
-        
+
         # Validate parent depth is valid (< 2)
         if parent.depth >= 2:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot reply to comment at maximum depth"
+                detail="Cannot reply to comment at maximum depth",
             )
-        
+
         depth = parent.depth + 1
         if depth > 2:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Maximum comment depth (2) exceeded"
+                detail="Maximum comment depth (2) exceeded",
             )
-    
+
     # Create comment with appropriate author identification
     comment = models.Comment(
         post_id=id,
@@ -207,9 +221,12 @@ def create_comment(
             )
 
     # Reload comment with author relationship to ensure display name is available
-    comment = db.query(models.Comment).options(
-        joinedload(models.Comment.author)
-    ).filter(models.Comment.id == comment.id).first()
+    comment = (
+        db.query(models.Comment)
+        .options(joinedload(models.Comment.author))
+        .filter(models.Comment.id == comment.id)
+        .first()
+    )
 
     return schemas.Comment.model_validate(comment)
 
@@ -223,30 +240,35 @@ def update_comment(
 ) -> schemas.Comment:
     """
     Update comment (authenticated users only).
-    
+
     Anonymous users cannot edit their comments.
     """
     comment = db.query(models.Comment).filter(models.Comment.id == commentId).first()
     if not comment:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
+        )
+
     # Anonymous comments cannot be edited
     if comment.author_id is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Anonymous comments cannot be edited"
+            detail="Anonymous comments cannot be edited",
         )
-    
+
     require_ownership(comment.author_id, current_user)
-    
+
     comment.body = payload.body
     db.commit()
-    
+
     # Reload comment with author relationship to ensure display name is available
-    comment = db.query(models.Comment).options(
-        joinedload(models.Comment.author)
-    ).filter(models.Comment.id == comment.id).first()
-    
+    comment = (
+        db.query(models.Comment)
+        .options(joinedload(models.Comment.author))
+        .filter(models.Comment.id == comment.id)
+        .first()
+    )
+
     return schemas.Comment.model_validate(comment)
 
 
@@ -259,23 +281,28 @@ def delete_comment(
 ) -> None:
     """
     Delete comment (soft delete).
-    
+
     Supports both authenticated and anonymous users.
     For anonymous users, ownership is verified by IP address.
     """
     comment = db.query(models.Comment).filter(models.Comment.id == commentId).first()
     if not comment:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
+        )
+
     # Check ownership
     if isinstance(current_user, models.User):
         # Authenticated user: check by user_id
         if comment.author_id != current_user.id:
             # Check if user is moderator/owner
-            if "moderator" not in current_user.roles and "owner" not in current_user.roles:
+            if (
+                "moderator" not in current_user.roles
+                and "owner" not in current_user.roles
+            ):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You don't have permission to delete this comment"
+                    detail="You don't have permission to delete this comment",
                 )
     else:
         # Anonymous user: check by IP
@@ -283,14 +310,14 @@ def delete_comment(
             # Comment was created by authenticated user, anonymous can't delete it
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to delete this comment"
+                detail="You don't have permission to delete this comment",
             )
         if comment.author_ip != current_user.ip:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to delete this comment"
+                detail="You don't have permission to delete this comment",
             )
-    
+
     comment.deleted_by_owner = True
     comment.body = "[deleted]"
     db.commit()
@@ -309,11 +336,13 @@ def undelete_comment(
     """Undelete comment (moderator only)."""
     comment = db.query(models.Comment).filter(models.Comment.id == commentId).first()
     if not comment:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
+        )
+
     comment.deleted_by_owner = False
     db.commit()
-    
+
     # Log to audit
     log_moderation_action(
         db=db,
@@ -337,11 +366,13 @@ def hide_comment(
     """Hide comment (moderator only)."""
     comment = db.query(models.Comment).filter(models.Comment.id == commentId).first()
     if not comment:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
+        )
+
     comment.hidden_by_mod = True
     db.commit()
-    
+
     # Log to audit
     log_moderation_action(
         db=db,
@@ -365,11 +396,13 @@ def unhide_comment(
     """Unhide comment (moderator only)."""
     comment = db.query(models.Comment).filter(models.Comment.id == commentId).first()
     if not comment:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
+        )
+
     comment.hidden_by_mod = False
     db.commit()
-    
+
     # Log to audit
     log_moderation_action(
         db=db,

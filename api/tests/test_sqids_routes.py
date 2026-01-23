@@ -16,6 +16,7 @@ from app.sqids_config import encode_id
 def test_user(db: Session) -> User:
     """Create a test user with a unique handle."""
     import uuid
+
     unique_id = str(uuid.uuid4())[:8]
     user = User(
         handle=f"testuser_{unique_id}",
@@ -32,6 +33,7 @@ def test_user(db: Session) -> User:
 def test_moderator(db: Session) -> User:
     """Create a test moderator with a unique handle."""
     import uuid
+
     unique_id = str(uuid.uuid4())[:8]
     user = User(
         handle=f"moderator_{unique_id}",
@@ -49,11 +51,13 @@ def test_post(test_user: User, db: Session) -> Post:
     """Create a test post."""
     import uuid
     from app.sqids_config import encode_id
+    from app.vault import compute_storage_shard
 
     storage_key = uuid.uuid4()
     now = datetime.now(timezone.utc)
     post = Post(
         storage_key=storage_key,
+        storage_shard=compute_storage_shard(storage_key),
         owner_id=test_user.id,
         kind="artwork",
         title="Test Art",
@@ -89,11 +93,13 @@ def test_hidden_post(test_user: User, db: Session) -> Post:
     """Create a hidden test post."""
     import uuid
     from app.sqids_config import encode_id
+    from app.vault import compute_storage_shard
 
     storage_key = uuid.uuid4()
     now = datetime.now(timezone.utc)
     post = Post(
         storage_key=storage_key,
+        storage_shard=compute_storage_shard(storage_key),
         owner_id=test_user.id,
         kind="artwork",
         title="Hidden Art",
@@ -127,7 +133,7 @@ def test_get_post_by_sqid_anonymous(test_post: Post):
     """Test getting a promoted post by sqid as anonymous user."""
     client = TestClient(app)
     response = client.get(f"/p/{test_post.public_sqid}")
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["id"] == test_post.id
@@ -140,7 +146,7 @@ def test_get_post_by_sqid_not_found():
     """Test getting a non-existent post by sqid."""
     client = TestClient(app)
     response = client.get("/p/invalid_sqid")
-    
+
     assert response.status_code == 404
 
 
@@ -148,7 +154,7 @@ def test_get_post_by_sqid_hidden_anonymous(test_hidden_post: Post):
     """Test that anonymous users cannot access hidden posts."""
     client = TestClient(app)
     response = client.get(f"/p/{test_hidden_post.public_sqid}")
-    
+
     assert response.status_code == 404
 
 
@@ -156,27 +162,29 @@ def test_get_post_by_sqid_hidden_owner(test_user: User, test_hidden_post: Post):
     """Test that post owner can access their hidden post."""
     client = TestClient(app)
     token = create_access_token(test_user.user_key)
-    
+
     response = client.get(
         f"/p/{test_hidden_post.public_sqid}",
-        headers={"Authorization": f"Bearer {token}"}
+        headers={"Authorization": f"Bearer {token}"},
     )
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["id"] == test_hidden_post.id
 
 
-def test_get_post_by_sqid_hidden_moderator(test_moderator: User, test_hidden_post: Post):
+def test_get_post_by_sqid_hidden_moderator(
+    test_moderator: User, test_hidden_post: Post
+):
     """Test that moderators can access hidden posts."""
     client = TestClient(app)
     token = create_access_token(test_moderator.user_key)
-    
+
     response = client.get(
         f"/p/{test_hidden_post.public_sqid}",
-        headers={"Authorization": f"Bearer {token}"}
+        headers={"Authorization": f"Bearer {token}"},
     )
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["id"] == test_hidden_post.id
@@ -185,10 +193,11 @@ def test_get_post_by_sqid_hidden_moderator(test_moderator: User, test_hidden_pos
 def test_legacy_route_not_found():
     """Test that legacy route returns 404 for non-existent post."""
     import uuid
+
     client = TestClient(app)
     fake_uuid = uuid.uuid4()
     response = client.get(f"/post/{fake_uuid}")
-    
+
     assert response.status_code == 404
 
 
@@ -196,23 +205,26 @@ def test_legacy_route_hidden_anonymous(test_hidden_post: Post):
     """Test that legacy route returns 404 for hidden posts (anonymous)."""
     client = TestClient(app)
     response = client.get(f"/post/{test_hidden_post.storage_key}")
-    
+
     assert response.status_code == 404
 
 
 def test_migration_storage_key_populated(test_post: Post):
     """Test that storage_key is populated after migration."""
     assert test_post.storage_key is not None
-    assert isinstance(test_post.storage_key, type(test_post.storage_key))  # Should be UUID type
+    assert isinstance(
+        test_post.storage_key, type(test_post.storage_key)
+    )  # Should be UUID type
 
 
 def test_migration_public_sqid_populated(test_post: Post):
     """Test that public_sqid is populated and unique."""
     assert test_post.public_sqid is not None
     assert len(test_post.public_sqid) <= 16
-    
+
     # Verify it can be decoded back to the post ID
     from app.sqids_config import decode_sqid
+
     decoded_id = decode_sqid(test_post.public_sqid)
     assert decoded_id == test_post.id
 
@@ -223,7 +235,7 @@ def test_download_by_sqid(test_post: Post):
     # In a real scenario, you'd need to create the file first
     client = TestClient(app)
     response = client.get(f"/d/{test_post.public_sqid}")
-    
+
     # Should return 404 if file doesn't exist, or 200 if it does
     assert response.status_code in [200, 404]
 
@@ -232,7 +244,7 @@ def test_download_by_storage_key(test_post: Post):
     """Test downloading file by storage_key."""
     client = TestClient(app)
     response = client.get(f"/download/{test_post.storage_key}")
-    
+
     # Should return 404 if file doesn't exist, or 200 if it does
     assert response.status_code in [200, 404]
 
@@ -241,7 +253,7 @@ def test_download_hidden_post_anonymous(test_hidden_post: Post):
     """Test that anonymous users cannot download hidden posts."""
     client = TestClient(app)
     response = client.get(f"/d/{test_hidden_post.public_sqid}")
-    
+
     assert response.status_code == 404
 
 
@@ -249,16 +261,18 @@ def test_download_hidden_post_owner(test_user: User, test_hidden_post: Post):
     """Test that post owner can download their hidden post."""
     client = TestClient(app)
     token = create_access_token(test_user.user_key)
-    
+
     response = client.get(
         f"/d/{test_hidden_post.public_sqid}",
-        headers={"Authorization": f"Bearer {token}"}
+        headers={"Authorization": f"Bearer {token}"},
     )
-    
+
     # Should return 404 if file doesn't exist, or 200 if it does
     # But should NOT return 404 due to visibility check
     assert response.status_code in [200, 404]
     # If 404, it should be because file doesn't exist, not because of visibility
     if response.status_code == 404:
-        assert "Post not found" in response.json()["detail"] or "File not found" in response.json()["detail"]
-
+        assert (
+            "Post not found" in response.json()["detail"]
+            or "File not found" in response.json()["detail"]
+        )

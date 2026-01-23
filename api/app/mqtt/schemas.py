@@ -9,7 +9,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, HttpUrl, model_validator
 
-
 # ============================================================================
 # AMP Criteria Filtering Enums and Constants
 # ============================================================================
@@ -95,7 +94,18 @@ NULLABLE_FIELDS = {
 }
 
 # Valid operators per field type
-NUMERIC_OPERATORS = {"eq", "neq", "lt", "gt", "lte", "gte", "in", "not_in", "is_null", "is_not_null"}
+NUMERIC_OPERATORS = {
+    "eq",
+    "neq",
+    "lt",
+    "gt",
+    "lte",
+    "gte",
+    "in",
+    "not_in",
+    "is_null",
+    "is_not_null",
+}
 BOOLEAN_OPERATORS = {"eq", "neq"}
 STRING_ENUM_OPERATORS = {"eq", "neq", "in", "not_in", "is_null", "is_not_null"}
 
@@ -120,18 +130,30 @@ class FilterCriterion(BaseModel):
         # Check operator validity for field type
         if field_name in NUMERIC_FIELDS:
             if op_name not in NUMERIC_OPERATORS:
-                raise ValueError(f"Operator '{op_name}' not valid for numeric field '{field_name}'")
+                raise ValueError(
+                    f"Operator '{op_name}' not valid for numeric field '{field_name}'"
+                )
             # Only allow null checks on nullable numeric fields
-            if op_name in ("is_null", "is_not_null") and field_name not in NULLABLE_FIELDS:
+            if (
+                op_name in ("is_null", "is_not_null")
+                and field_name not in NULLABLE_FIELDS
+            ):
                 raise ValueError(f"Field '{field_name}' is not nullable")
         elif field_name in BOOLEAN_FIELDS:
             if op_name not in BOOLEAN_OPERATORS:
-                raise ValueError(f"Operator '{op_name}' not valid for boolean field '{field_name}'")
+                raise ValueError(
+                    f"Operator '{op_name}' not valid for boolean field '{field_name}'"
+                )
         elif field_name in STRING_ENUM_FIELDS:
             if op_name not in STRING_ENUM_OPERATORS:
-                raise ValueError(f"Operator '{op_name}' not valid for string field '{field_name}'")
+                raise ValueError(
+                    f"Operator '{op_name}' not valid for string field '{field_name}'"
+                )
             # Only allow null checks on nullable string fields
-            if op_name in ("is_null", "is_not_null") and field_name not in NULLABLE_FIELDS:
+            if (
+                op_name in ("is_null", "is_not_null")
+                and field_name not in NULLABLE_FIELDS
+            ):
                 raise ValueError(f"Field '{field_name}' is not nullable")
 
         # Validate value presence/type
@@ -154,10 +176,14 @@ class FilterCriterion(BaseModel):
             if field_name in NUMERIC_FIELDS:
                 if op_name in ("in", "not_in"):
                     if not all(isinstance(v, (int, float)) for v in self.value):
-                        raise ValueError(f"All values must be numeric for field '{field_name}'")
+                        raise ValueError(
+                            f"All values must be numeric for field '{field_name}'"
+                        )
                 else:
                     if not isinstance(self.value, (int, float)):
-                        raise ValueError(f"Value must be numeric for field '{field_name}'")
+                        raise ValueError(
+                            f"Value must be numeric for field '{field_name}'"
+                        )
             elif field_name in BOOLEAN_FIELDS:
                 if not isinstance(self.value, bool):
                     raise ValueError(f"Value must be boolean for field '{field_name}'")
@@ -215,7 +241,7 @@ class PostNotificationPayload(BaseModel):
 
 class PlayerRequestBase(BaseModel):
     """Base schema for all player requests."""
-    
+
     request_id: str = Field(..., description="Unique request ID for correlation")
     request_type: str = Field(..., description="Type of request")
     player_key: UUID = Field(..., description="Player's unique key for authentication")
@@ -223,42 +249,38 @@ class PlayerRequestBase(BaseModel):
 
 class QueryPostsRequest(PlayerRequestBase):
     """Request to query posts with filters and pagination."""
-    
+
     request_type: Literal["query_posts"] = "query_posts"
-    channel: Literal["all", "promoted", "user", "by_user", "artwork", "hashtag"] = Field(
-        "all",
-        description="Channel to query: 'all', 'promoted', 'user', 'by_user', 'artwork', 'hashtag' (device protocol compatibility)"
+    channel: Literal["all", "promoted", "user", "by_user", "artwork", "hashtag"] = (
+        Field(
+            "all",
+            description="Channel to query: 'all', 'promoted', 'user', 'by_user', 'artwork', 'hashtag' (device protocol compatibility)",
+        )
     )
     user_handle: str | None = Field(
         None,
-        description="User handle for 'by_user' channel (e.g., 'artist123'). Required when channel='by_user'."
+        description="User handle for 'by_user' channel (e.g., 'artist123'). Required when channel='by_user'.",
     )
     user_sqid: str | None = Field(
         None,
-        description="User sqid for 'by_user' channel (alternative to user_handle). Required when channel='by_user' and user_handle is not provided."
+        description="User sqid for 'by_user' channel (alternative to user_handle). Required when channel='by_user' and user_handle is not provided.",
     )
     hashtag: str | None = Field(
         None,
-        description="Hashtag (without #) for 'hashtag' channel. Required when channel='hashtag'."
+        description="Hashtag (without #) for 'hashtag' channel. Required when channel='hashtag'.",
     )
     sort: Literal["server_order", "created_at", "random"] = Field(
         "server_order",
-        description="Sorting order: 'server_order' (original order), 'created_at' (chronological), 'random' (with seed)"
+        description="Sorting order: 'server_order' (original order), 'created_at' (chronological), 'random' (with seed)",
     )
     random_seed: int | None = Field(
         None,
-        description="Random seed for reproducible random ordering (only used when sort='random')"
+        description="Random seed for reproducible random ordering (only used when sort='random')",
     )
     cursor: str | None = Field(
-        None,
-        description="Cursor for pagination (from previous response)"
+        None, description="Cursor for pagination (from previous response)"
     )
-    limit: int = Field(
-        50,
-        ge=1,
-        le=50,
-        description="Number of posts to return (1-50)"
-    )
+    limit: int = Field(50, ge=1, le=50, description="Number of posts to return (1-50)")
     criteria: list[FilterCriterion] = Field(
         default_factory=list,
         description="AMP field criteria for filtering (0-64 items, AND-ed together)",
@@ -306,7 +328,7 @@ PlayerPostPayload = Annotated[
 
 class QueryPostsResponse(BaseModel):
     """Response with list of posts."""
-    
+
     request_id: str
     success: bool = True
     posts: list[PlayerPostPayload]
@@ -335,7 +357,7 @@ class GetPostResponse(BaseModel):
 
 class SubmitReactionRequest(PlayerRequestBase):
     """Request to add an emoji reaction."""
-    
+
     request_type: Literal["submit_reaction"] = "submit_reaction"
     post_id: int = Field(..., description="Post ID to react to")
     emoji: str = Field(..., description="Emoji to add", min_length=1, max_length=20)
@@ -343,7 +365,7 @@ class SubmitReactionRequest(PlayerRequestBase):
 
 class SubmitReactionResponse(BaseModel):
     """Response after submitting a reaction."""
-    
+
     request_id: str
     success: bool = True
     error: str | None = None
@@ -351,7 +373,7 @@ class SubmitReactionResponse(BaseModel):
 
 class RevokeReactionRequest(PlayerRequestBase):
     """Request to revoke an emoji reaction."""
-    
+
     request_type: Literal["revoke_reaction"] = "revoke_reaction"
     post_id: int = Field(..., description="Post ID to revoke reaction from")
     emoji: str = Field(..., description="Emoji to revoke", min_length=1, max_length=20)
@@ -359,7 +381,7 @@ class RevokeReactionRequest(PlayerRequestBase):
 
 class RevokeReactionResponse(BaseModel):
     """Response after revoking a reaction."""
-    
+
     request_id: str
     success: bool = True
     error: str | None = None
@@ -367,24 +389,23 @@ class RevokeReactionResponse(BaseModel):
 
 class GetCommentsRequest(PlayerRequestBase):
     """Request to retrieve comments for a post."""
-    
+
     request_type: Literal["get_comments"] = "get_comments"
     post_id: int = Field(..., description="Post ID to get comments for")
     cursor: str | None = Field(
-        None,
-        description="Cursor for pagination (from previous response)"
+        None, description="Cursor for pagination (from previous response)"
     )
     limit: int = Field(
         50,
         ge=1,
         le=200,
-        description="Number of comments to return (1-200). Higher limit than posts due to typically smaller payload size."
+        description="Number of comments to return (1-200). Higher limit than posts due to typically smaller payload size.",
     )
 
 
 class CommentSummary(BaseModel):
     """Summary of a comment for player display."""
-    
+
     comment_id: UUID
     post_id: int
     author_handle: str | None  # None for anonymous
@@ -397,7 +418,7 @@ class CommentSummary(BaseModel):
 
 class GetCommentsResponse(BaseModel):
     """Response with list of comments."""
-    
+
     request_id: str
     success: bool = True
     comments: list[CommentSummary]
@@ -408,7 +429,7 @@ class GetCommentsResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     """Generic error response."""
-    
+
     request_id: str
     success: bool = False
     error: str
@@ -423,25 +444,38 @@ class ErrorResponse(BaseModel):
 class P3AViewEvent(BaseModel):
     """
     Fire-and-forget view event from p3a player devices.
-    
+
     Published to: makapix/player/{player_key}/view
     Optional acknowledgment can be requested via request_ack field.
     If requested, ack is sent to: makapix/player/{player_key}/view/ack
     """
-    
+
     post_id: int = Field(..., description="Artwork post ID")
-    timestamp: str = Field(..., description="ISO 8601 UTC timestamp (e.g., '2025-12-22T16:24:15Z')")
-    timezone: str = Field(..., description="Reserved for future use. Currently empty string.")
+    timestamp: str = Field(
+        ..., description="ISO 8601 UTC timestamp (e.g., '2025-12-22T16:24:15Z')"
+    )
+    timezone: str = Field(
+        ..., description="Reserved for future use. Currently empty string."
+    )
     intent: Literal["artwork", "channel"] = Field(
         ...,
-        description="View origin: 'artwork' (explicit request) or 'channel' (automated playback)"
+        description="View origin: 'artwork' (explicit request) or 'channel' (automated playback)",
     )
-    play_order: int = Field(..., ge=0, le=2, description="Playback order: 0=server, 1=created, 2=random")
-    channel: str = Field(..., description="Active channel (e.g., 'all', 'promoted', 'hashtag', etc.)")
+    play_order: int = Field(
+        ..., ge=0, le=2, description="Playback order: 0=server, 1=created, 2=random"
+    )
+    channel: str = Field(
+        ..., description="Active channel (e.g., 'all', 'promoted', 'hashtag', etc.)"
+    )
     player_key: str = Field(..., description="UUID identifying the p3a device")
-    
-    # Optional fields for future compatibility (not currently sent by p3a)
-    channel_user_sqid: str | None = Field(None, description="User sqid for 'by_user' channel")
-    channel_hashtag: str | None = Field(None, description="Hashtag for 'hashtag' channel")
-    request_ack: bool = Field(False, description="Whether to send acknowledgment to view/ack topic")
 
+    # Optional fields for future compatibility (not currently sent by p3a)
+    channel_user_sqid: str | None = Field(
+        None, description="User sqid for 'by_user' channel"
+    )
+    channel_hashtag: str | None = Field(
+        None, description="Hashtag for 'hashtag' channel"
+    )
+    request_ack: bool = Field(
+        False, description="Whether to send acknowledgment to view/ack topic"
+    )

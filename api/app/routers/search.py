@@ -79,7 +79,9 @@ def search_all(
             models.User.non_conformant == False,
             models.User.deactivated == False,
             models.User.email_verified == True,
-            ~models.User.roles.cast(JSONB).contains(["owner"]),  # Always hide owner from search
+            ~models.User.roles.cast(JSONB).contains(
+                ["owner"]
+            ),  # Always hide owner from search
         )
 
         # Apply cursor pagination (using similarity as sort field)
@@ -139,7 +141,9 @@ def search_all(
         )
 
         # Apply monitored hashtag filtering
-        post_query = apply_monitored_hashtag_filter(post_query, models.Post, current_user)
+        post_query = apply_monitored_hashtag_filter(
+            post_query, models.Post, current_user
+        )
 
         # Apply cursor pagination
         if cursor:
@@ -199,12 +203,15 @@ def search_all(
                 models.Post.hidden_by_mod == False,
                 models.Post.hidden_by_user == False,
                 models.Post.non_conformant == False,
-                models.Post.public_visibility == True,  # Only show publicly visible posts
+                models.Post.public_visibility
+                == True,  # Only show publicly visible posts
                 models.Post.deleted_by_user == False,  # Exclude user-deleted posts
             )
 
             # Apply monitored hashtag filtering
-            post_query = apply_monitored_hashtag_filter(post_query, models.Post, current_user)
+            post_query = apply_monitored_hashtag_filter(
+                post_query, models.Post, current_user
+            )
 
             # Limit results
             hashtag_posts = (
@@ -373,7 +380,9 @@ async def list_hashtag_posts(
     if cached_result:
         response = schemas.Page(**cached_result)
         # Apply monitored hashtag filtering (user-specific)
-        response.items = filter_posts_by_monitored_hashtags(response.items, current_user)
+        response.items = filter_posts_by_monitored_hashtags(
+            response.items, current_user
+        )
         # Add user-specific like status if authenticated
         if current_user and response.items:
             post_ids = [item.id for item in response.items]
@@ -613,7 +622,9 @@ def feed_promoted(
     if cached_result:
         response = schemas.Page(**cached_result)
         # Apply monitored hashtag filtering (user-specific)
-        response.items = filter_posts_by_monitored_hashtags(response.items, current_user)
+        response.items = filter_posts_by_monitored_hashtags(
+            response.items, current_user
+        )
         # Add user-specific like status if authenticated
         if current_user and response.items:
             post_ids = [item.id for item in response.items]

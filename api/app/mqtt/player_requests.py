@@ -292,7 +292,11 @@ def _handle_query_posts(
         query = (
             db.query(models.Post)
             .options(joinedload(models.Post.owner))
-            .filter(models.Post.kind.in_(["artwork", "playlist"]))
+            .filter(
+                models.Post.kind.in_(["artwork", "playlist"]),
+                models.Post.public_sqid.isnot(None),
+                models.Post.public_sqid != "",
+            )
         )
 
         # Apply channel filter
@@ -364,24 +368,26 @@ def _handle_query_posts(
             pass
         # "all" requires no additional filter
 
-        # Apply visibility filters (respect user privileges)
-        is_moderator = (
-            "moderator" in player.owner.roles or "owner" in player.owner.roles
-        )
+        # Apply visibility filters (aligned with /api/post endpoint behavior)
+        # Determine if viewing own posts (for public_visibility exemption)
+        is_viewing_own_posts = request.channel == "user"
 
         # Always exclude user-deleted posts
         query = query.filter(~models.Post.deleted_by_user)
 
-        if not is_moderator:
-            query = query.filter(
-                models.Post.visible,
-                ~models.Post.hidden_by_user,
-                ~models.Post.hidden_by_mod,
-                ~models.Post.non_conformant,
-            )
-        else:
-            # Moderators see everything except non-visible
-            query = query.filter(models.Post.visible, ~models.Post.hidden_by_user)
+        # Apply standard visibility filters (no moderator exceptions here;
+        # moderator-only views are handled in the Moderator Dashboard)
+        query = query.filter(
+            models.Post.visible,
+            ~models.Post.hidden_by_user,
+            ~models.Post.hidden_by_mod,
+            ~models.Post.non_conformant,
+        )
+
+        # Apply public_visibility filter unless viewing own posts
+        # Posts pending approval are visible only to their owner
+        if not is_viewing_own_posts:
+            query = query.filter(models.Post.public_visibility.is_(True))
 
         # Apply monitored hashtag filtering based on player owner's preferences
         query = apply_monitored_hashtag_filter(query, models.Post, player.owner)

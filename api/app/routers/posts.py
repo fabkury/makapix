@@ -56,6 +56,7 @@ from ..services.rate_limit import check_rate_limit
 from ..vault import (
     ALLOWED_MIME_TYPES,
     MAX_FILE_SIZE_BYTES,
+    compute_storage_shard,
     delete_artwork_from_vault,
     get_artwork_url,
     save_artwork_to_vault,
@@ -123,7 +124,9 @@ def list_posts(
     # Base/Size badge filters (new simplified dimension filtering)
     base: list[int] | None = Query(None),  # Exact base values (min dimension)
     base_gte: int | None = Query(None, ge=1),  # For 128+ case
-    size: list[int] | None = Query(None),  # Exact size values (max dimension) with OR logic
+    size: list[int] | None = Query(
+        None
+    ),  # Exact size values (max dimension) with OR logic
     size_gte: int | None = Query(None, ge=1),  # For 128+ case
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
@@ -640,8 +643,9 @@ async def upload_artwork(
     # Parse hidden_by_user from form (string "true"/"false" to bool)
     user_hidden = hidden_by_user.lower() in ("true", "1", "yes")
 
-    # Generate UUID for storage_key
+    # Generate UUID for storage_key and pre-compute storage shard
     storage_key = uuid.uuid4()
+    storage_shard = compute_storage_shard(storage_key)
 
     # Create the post record first to get the ID
     from datetime import datetime, timezone
@@ -649,6 +653,7 @@ async def upload_artwork(
     now = datetime.now(timezone.utc)
     post = models.Post(
         storage_key=storage_key,
+        storage_shard=storage_shard,
         owner_id=current_user.id,
         kind="artwork",
         title=title,
@@ -715,10 +720,17 @@ async def upload_artwork(
         from ..vault import FORMAT_TO_EXT
 
         extension = FORMAT_TO_EXT[file_format]
-        save_artwork_to_vault(post.storage_key, file_content, file_format)
+        save_artwork_to_vault(
+            post.storage_key,
+            file_content,
+            file_format,
+            storage_shard=post.storage_shard,
+        )
 
         # Update the art_url to point to the vault
-        art_url = get_artwork_url(post.storage_key, extension)
+        art_url = get_artwork_url(
+            post.storage_key, extension, storage_shard=post.storage_shard
+        )
         post.art_url = art_url
 
         db.commit()
@@ -787,7 +799,9 @@ def list_recent_posts(
     if cached_result:
         response = schemas.Page(**cached_result)
         # Apply monitored hashtag filtering (user-specific)
-        response.items = filter_posts_by_monitored_hashtags(response.items, current_user)
+        response.items = filter_posts_by_monitored_hashtags(
+            response.items, current_user
+        )
         # Add user-specific like status if authenticated
         if current_user and response.items:
             post_ids = [item.id for item in response.items]
@@ -1093,7 +1107,9 @@ def permanent_delete_post(
             formats_to_delete = post.formats_available or (
                 [post.file_format] if post.file_format else []
             )
-            vault.delete_all_artwork_formats(post.storage_key, formats_to_delete)
+            vault.delete_all_artwork_formats(
+                post.storage_key, formats_to_delete, storage_shard=post.storage_shard
+            )
         except Exception as e:
             logger.warning(f"Failed to delete artwork files for post {id}: {e}")
 
@@ -1539,13 +1555,15 @@ async def replace_artwork(
     from ..vault import FORMAT_TO_EXT
 
     new_extension = FORMAT_TO_EXT[file_format]
-    new_art_url = get_artwork_url(post.storage_key, new_extension)
+    new_art_url = get_artwork_url(
+        post.storage_key, new_extension, storage_shard=post.storage_shard
+    )
 
     # Update post first (flush) so UNIQUE constraint blocks races before vault write
     from datetime import datetime, timezone
 
     now = datetime.now(timezone.utc)
-    old_art_url = post.art_url
+    old_file_format = post.file_format  # Capture before overwriting
     post.art_url = new_art_url
     post.width = width
     post.height = height
@@ -1573,19 +1591,25 @@ async def replace_artwork(
             detail="Artwork already exists",
         )
 
-    # If extension changed, delete the old file (best-effort) after flush but before overwrite
+    # If format changed, delete the old file (best-effort) after flush but before overwrite
     try:
-        old_ext = None
-        if old_art_url:
-            old_ext = "." + old_art_url.rsplit(".", 1)[-1].lower()
-        if old_ext and old_ext != new_extension and old_ext in FORMAT_TO_EXT.values():
-            delete_artwork_from_vault(post.storage_key, old_ext)
+        if old_file_format and old_file_format != file_format:
+            old_ext = FORMAT_TO_EXT.get(old_file_format)
+            if old_ext:
+                delete_artwork_from_vault(
+                    post.storage_key, old_ext, storage_shard=post.storage_shard
+                )
     except Exception as e:
         logger.warning(f"Failed to delete old artwork file for post {post.id}: {e}")
 
     # Overwrite vault file at storage_key
     try:
-        save_artwork_to_vault(post.storage_key, file_content, file_format)
+        save_artwork_to_vault(
+            post.storage_key,
+            file_content,
+            file_format,
+            storage_shard=post.storage_shard,
+        )
         db.commit()
         db.refresh(post)
     except Exception as e:

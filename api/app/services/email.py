@@ -27,30 +27,30 @@ def _init_resend() -> bool:
 
 
 def send_verification_email(
-    to_email: str, 
-    token: str, 
+    to_email: str,
+    token: str,
     handle: str | None = None,
     password: str | None = None,
 ) -> dict[str, Any] | None:
     """
     Send email verification email to a user.
-    
+
     Args:
         to_email: The recipient's email address
         token: The verification token (plain, not hashed)
         handle: User's handle for personalization
         password: Optional generated password to include in the email
-        
+
     Returns:
         Resend API response if successful, None if email sending is disabled or fails
     """
     if not _init_resend():
         logger.info(f"Email sending disabled - would send verification to {to_email}")
         return None
-    
+
     verification_url = f"{BASE_URL}/verify-email?token={token}"
     greeting = f"Hi {handle}!" if handle else "Hi there!"
-    
+
     # Build credentials section if password is provided
     credentials_html = ""
     credentials_text = ""
@@ -72,7 +72,7 @@ Your Login Credentials:
 
 You can change your password and handle after verifying your email.
 """
-    
+
     html_content = f"""
 <!DOCTYPE html>
 <html>
@@ -153,34 +153,38 @@ If you didn't create an account on Makapix Club, you can safely ignore this emai
             "html": html_content,
             "text": text_content,
         }
-        
+
         response = resend.Emails.send(params)
-        logger.info(f"Verification email sent to {to_email}, id: {response.get('id', 'unknown')}")
+        logger.info(
+            f"Verification email sent to {to_email}, id: {response.get('id', 'unknown')}"
+        )
         return response
     except Exception as e:
         logger.error(f"Failed to send verification email to {to_email}: {e}")
         return None
 
 
-def send_password_reset_email(to_email: str, token: str, handle: str | None = None) -> dict[str, Any] | None:
+def send_password_reset_email(
+    to_email: str, token: str, handle: str | None = None
+) -> dict[str, Any] | None:
     """
     Send password reset email to a user.
-    
+
     Args:
         to_email: The recipient's email address
         token: The reset token (plain, not hashed)
         handle: Optional handle for personalization
-        
+
     Returns:
         Resend API response if successful, None if email sending is disabled or fails
     """
     if not _init_resend():
         logger.info(f"Email sending disabled - would send password reset to {to_email}")
         return None
-    
+
     reset_url = f"{BASE_URL}/reset-password?token={token}"
     greeting = f"Hi {handle}!" if handle else "Hi there!"
-    
+
     html_content = f"""
 <!DOCTYPE html>
 <html>
@@ -257,9 +261,11 @@ If you didn't request a password reset, you can safely ignore this email.
             "html": html_content,
             "text": text_content,
         }
-        
+
         response = resend.Emails.send(params)
-        logger.info(f"Password reset email sent to {to_email}, id: {response.get('id', 'unknown')}")
+        logger.info(
+            f"Password reset email sent to {to_email}, id: {response.get('id', 'unknown')}"
+        )
         return response
     except Exception as e:
         logger.error(f"Failed to send password reset email to {to_email}: {e}")
@@ -381,9 +387,10 @@ If you didn't request this download, you can safely ignore this email.
         }
 
         response = resend.Emails.send(params)
-        logger.info(f"BDR ready email sent to {to_email}, id: {response.get('id', 'unknown')}")
+        logger.info(
+            f"BDR ready email sent to {to_email}, id: {response.get('id', 'unknown')}"
+        )
         return response
     except Exception as e:
         logger.error(f"Failed to send BDR ready email to {to_email}: {e}")
         return None
-

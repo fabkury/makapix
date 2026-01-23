@@ -7,9 +7,8 @@ from sqlalchemy.orm import Session
 
 from .. import models
 
-
 # Storage quota tiers (in bytes)
-QUOTA_TIER_NEW = 50 * 1024 * 1024       # 50MB for reputation < 100
+QUOTA_TIER_NEW = 50 * 1024 * 1024  # 50MB for reputation < 100
 QUOTA_TIER_ESTABLISHED = 100 * 1024 * 1024  # 100MB for reputation 100-499
 QUOTA_TIER_TRUSTED = 250 * 1024 * 1024  # 250MB for reputation 500-999
 QUOTA_TIER_VETERAN = 500 * 1024 * 1024  # 500MB for reputation 1000+
@@ -55,10 +54,14 @@ def get_user_storage_used(db: Session, user_id: int) -> int:
     Returns:
         Storage used in bytes
     """
-    result = db.query(func.coalesce(func.sum(models.Post.file_bytes), 0)).filter(
-        models.Post.owner_id == user_id,
-        models.Post.deleted_by_user == False,
-    ).scalar()
+    result = (
+        db.query(func.coalesce(func.sum(models.Post.file_bytes), 0))
+        .filter(
+            models.Post.owner_id == user_id,
+            models.Post.deleted_by_user == False,
+        )
+        .scalar()
+    )
     return int(result)
 
 

@@ -77,6 +77,7 @@ export default function RegisterPlayerModal({
             <input
               id="code"
               type="text"
+              className="code-input"
               value={code}
               onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
               placeholder="A3F8X2"
@@ -209,6 +210,9 @@ export default function RegisterPlayerModal({
           border-radius: 6px;
           color: var(--text-primary);
           transition: border-color var(--transition-fast);
+        }
+
+        .form-group input.code-input {
           font-family: monospace;
           letter-spacing: 2px;
           text-transform: uppercase;

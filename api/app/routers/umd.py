@@ -26,14 +26,20 @@ def get_user_by_sqid_or_404(db: Session, sqid: str) -> models.User:
     """Look up user by public_sqid, raise 404 if not found."""
     user_id = decode_user_sqid(sqid)
     if user_id is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     if user.public_sqid != sqid:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     return user
 
@@ -68,7 +74,9 @@ def get_umd_user_data(
     protect_owner(user, moderator)
 
     # Load badges
-    badges = db.query(models.BadgeGrant).filter(models.BadgeGrant.user_id == user.id).all()
+    badges = (
+        db.query(models.BadgeGrant).filter(models.BadgeGrant.user_id == user.id).all()
+    )
 
     return schemas.UMDUserData(
         id=user.id,
@@ -144,7 +152,9 @@ def list_badges(
     _moderator: models.User = Depends(require_moderator),
 ) -> schemas.UMDBadgeListResponse:
     """List all available badges (moderator only)."""
-    badges = db.query(models.BadgeDefinition).order_by(models.BadgeDefinition.label).all()
+    badges = (
+        db.query(models.BadgeDefinition).order_by(models.BadgeDefinition.label).all()
+    )
     return schemas.UMDBadgeListResponse(
         badges=[schemas.BadgeDefinition.model_validate(b) for b in badges]
     )
@@ -162,18 +172,30 @@ def grant_badge(
     protect_owner(user, moderator)
 
     # Check badge exists
-    badge_def = db.query(models.BadgeDefinition).filter(models.BadgeDefinition.badge == badge).first()
+    badge_def = (
+        db.query(models.BadgeDefinition)
+        .filter(models.BadgeDefinition.badge == badge)
+        .first()
+    )
     if not badge_def:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Badge not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Badge not found"
+        )
 
     # Check if user already has badge
-    existing = db.query(models.BadgeGrant).filter(
-        models.BadgeGrant.user_id == user.id,
-        models.BadgeGrant.badge == badge,
-    ).first()
+    existing = (
+        db.query(models.BadgeGrant)
+        .filter(
+            models.BadgeGrant.user_id == user.id,
+            models.BadgeGrant.badge == badge,
+        )
+        .first()
+    )
 
     if existing:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already has this badge")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="User already has this badge"
+        )
 
     # Grant badge
     grant = models.BadgeGrant(user_id=user.id, badge=badge)
@@ -205,13 +227,20 @@ def revoke_badge(
     protect_owner(user, moderator)
 
     # Find existing badge grant
-    grant = db.query(models.BadgeGrant).filter(
-        models.BadgeGrant.user_id == user.id,
-        models.BadgeGrant.badge == badge,
-    ).first()
+    grant = (
+        db.query(models.BadgeGrant)
+        .filter(
+            models.BadgeGrant.user_id == user.id,
+            models.BadgeGrant.badge == badge,
+        )
+        .first()
+    )
 
     if not grant:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User does not have this badge")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User does not have this badge",
+        )
 
     db.delete(grant)
     db.commit()
@@ -251,7 +280,9 @@ def get_user_comments(
     query = db.query(models.Comment).filter(models.Comment.author_id == user.id)
 
     # Apply cursor pagination
-    query = apply_cursor_filter(query, models.Comment, cursor, "created_at", sort_desc=True)
+    query = apply_cursor_filter(
+        query, models.Comment, cursor, "created_at", sort_desc=True
+    )
     query = query.order_by(models.Comment.created_at.desc()).limit(limit + 1)
     comments = query.all()
 
@@ -261,16 +292,18 @@ def get_user_comments(
     items = []
     for comment in page_data["items"]:
         post = db.query(models.Post).filter(models.Post.id == comment.post_id).first()
-        items.append(schemas.UMDCommentItem(
-            id=comment.id,
-            post_id=comment.post_id,
-            post_public_sqid=post.public_sqid if post else "",
-            post_title=post.title if post else "[Deleted]",
-            post_art_url=post.art_url if post else None,
-            body=comment.body,
-            hidden_by_mod=comment.hidden_by_mod,
-            created_at=comment.created_at,
-        ))
+        items.append(
+            schemas.UMDCommentItem(
+                id=comment.id,
+                post_id=comment.post_id,
+                post_public_sqid=post.public_sqid if post else "",
+                post_title=post.title if post else "[Deleted]",
+                post_art_url=post.art_url if post else None,
+                body=comment.body,
+                hidden_by_mod=comment.hidden_by_mod,
+                created_at=comment.created_at,
+            )
+        )
 
     return schemas.UMDCommentsResponse(
         items=items,
@@ -288,7 +321,9 @@ def hide_comment(
     """Hide comment (moderator only)."""
     comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
     if not comment:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
+        )
 
     comment.hidden_by_mod = True
     db.commit()
@@ -314,7 +349,9 @@ def unhide_comment(
     """Unhide comment (moderator only)."""
     comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
     if not comment:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
+        )
 
     comment.hidden_by_mod = False
     db.commit()
@@ -338,7 +375,9 @@ def delete_comment(
     """Delete comment permanently (moderator only)."""
     comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
     if not comment:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
+        )
 
     # Store info for audit before deletion
     post_id = comment.post_id
@@ -376,13 +415,17 @@ def get_user_violations(
     protect_owner(user, moderator)
 
     # Count total
-    total = db.query(models.Violation).filter(models.Violation.user_id == user.id).count()
+    total = (
+        db.query(models.Violation).filter(models.Violation.user_id == user.id).count()
+    )
 
     # Query violations
     query = db.query(models.Violation).filter(models.Violation.user_id == user.id)
 
     # Apply cursor pagination
-    query = apply_cursor_filter(query, models.Violation, cursor, "created_at", sort_desc=True)
+    query = apply_cursor_filter(
+        query, models.Violation, cursor, "created_at", sort_desc=True
+    )
     query = query.order_by(models.Violation.created_at.desc()).limit(limit + 1)
     violations = query.all()
 
@@ -391,14 +434,20 @@ def get_user_violations(
     # Build response items with moderator handles
     items = []
     for violation in page_data["items"]:
-        moderator = db.query(models.User).filter(models.User.id == violation.moderator_id).first()
-        items.append(schemas.ViolationItem(
-            id=violation.id,
-            reason=violation.reason,
-            moderator_id=violation.moderator_id,
-            moderator_handle=moderator.handle if moderator else "[Unknown]",
-            created_at=violation.created_at,
-        ))
+        moderator = (
+            db.query(models.User)
+            .filter(models.User.id == violation.moderator_id)
+            .first()
+        )
+        items.append(
+            schemas.ViolationItem(
+                id=violation.id,
+                reason=violation.reason,
+                moderator_id=violation.moderator_id,
+                moderator_handle=moderator.handle if moderator else "[Unknown]",
+                created_at=violation.created_at,
+            )
+        )
 
     return schemas.ViolationsResponse(
         items=items,
@@ -448,9 +497,13 @@ def delete_violation(
     moderator: models.User = Depends(require_moderator),
 ) -> None:
     """Delete/revoke violation (moderator only)."""
-    violation = db.query(models.Violation).filter(models.Violation.id == violation_id).first()
+    violation = (
+        db.query(models.Violation).filter(models.Violation.id == violation_id).first()
+    )
     if not violation:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Violation not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Violation not found"
+        )
 
     user_id = violation.user_id
     reason = violation.reason
@@ -573,19 +626,21 @@ def unhide_user(
 @router.post("/user/{sqid}/ban", status_code=status.HTTP_201_CREATED)
 def ban_user(
     sqid: str,
-    duration_days: int | None = Query(None, ge=1, le=365, description="Ban duration in days (null = permanent)"),
+    duration_days: int | None = Query(
+        None, ge=1, le=365, description="Ban duration in days (null = permanent)"
+    ),
     db: Session = Depends(get_db),
     moderator: models.User = Depends(require_moderator),
 ) -> dict:
     """
     Ban user (moderator only).
-    
+
     Banning a user prevents them from authenticating but does NOT delete their account.
     The user profile and all associated data remain in the database.
-    
+
     - No duration (None) = permanent ban (banned_until = None)
     - With duration = temporary ban (banned_until = current_time + duration_days)
-    
+
     Note: There is no automatic cleanup of banned user profiles. They remain in the
     database indefinitely unless manually deleted by an administrator.
     """
@@ -620,7 +675,7 @@ def unban_user(
 ) -> None:
     """
     Unban user (moderator only).
-    
+
     Removes the ban by setting banned_until to NULL, allowing the user to
     authenticate again immediately. Does not delete the user's profile or data.
     """

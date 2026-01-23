@@ -11,10 +11,10 @@ Revises: 20260118000000
 Create Date: 2026-01-19
 
 """
+
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
-
 
 # revision identifiers, used by Alembic.
 revision = "20260119000000"

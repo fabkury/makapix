@@ -11,7 +11,6 @@ for displaying artwork thumbnails in the notifications list.
 from alembic import op
 import sqlalchemy as sa
 
-
 # revision identifiers, used by Alembic.
 revision = "20251231000001"
 down_revision = "20251231000000"
@@ -22,7 +21,7 @@ depends_on = None
 def upgrade() -> None:
     op.add_column(
         "social_notifications",
-        sa.Column("content_art_url", sa.String(1000), nullable=True)
+        sa.Column("content_art_url", sa.String(1000), nullable=True),
     )
 
 

@@ -11,7 +11,6 @@ Enforce that artwork posts always have a SHA256 hash:
 
 from alembic import op
 
-
 # revision identifiers, used by Alembic.
 revision = "20251230000001"
 down_revision = "20251230000000"
@@ -20,18 +19,14 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        """
+    op.execute("""
         ALTER TABLE posts
         ADD CONSTRAINT ck_posts_artwork_hash_required
         CHECK (kind <> 'artwork' OR hash IS NOT NULL)
-        """
-    )
+        """)
 
 
 def downgrade() -> None:
     op.execute(
         "ALTER TABLE posts DROP CONSTRAINT IF EXISTS ck_posts_artwork_hash_required"
     )
-
-

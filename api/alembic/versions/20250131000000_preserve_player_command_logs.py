@@ -23,8 +23,10 @@ depends_on = None
 
 def upgrade() -> None:
     # Drop existing foreign key constraint
-    op.drop_constraint("player_command_logs_player_id_fkey", "player_command_logs", type_="foreignkey")
-    
+    op.drop_constraint(
+        "player_command_logs_player_id_fkey", "player_command_logs", type_="foreignkey"
+    )
+
     # Make player_id nullable
     op.alter_column(
         "player_command_logs",
@@ -32,7 +34,7 @@ def upgrade() -> None:
         existing_type=postgresql.UUID(as_uuid=True),
         nullable=True,
     )
-    
+
     # Re-create foreign key with SET NULL on delete
     op.create_foreign_key(
         "player_command_logs_player_id_fkey",
@@ -46,11 +48,13 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # Drop the SET NULL foreign key
-    op.drop_constraint("player_command_logs_player_id_fkey", "player_command_logs", type_="foreignkey")
-    
+    op.drop_constraint(
+        "player_command_logs_player_id_fkey", "player_command_logs", type_="foreignkey"
+    )
+
     # Delete orphaned logs (where player_id is null)
     op.execute("DELETE FROM player_command_logs WHERE player_id IS NULL")
-    
+
     # Make player_id non-nullable again
     op.alter_column(
         "player_command_logs",
@@ -58,7 +62,7 @@ def downgrade() -> None:
         existing_type=postgresql.UUID(as_uuid=True),
         nullable=False,
     )
-    
+
     # Re-create foreign key with CASCADE on delete
     op.create_foreign_key(
         "player_command_logs_player_id_fkey",
@@ -68,4 +72,3 @@ def downgrade() -> None:
         ["id"],
         ondelete="CASCADE",
     )
-

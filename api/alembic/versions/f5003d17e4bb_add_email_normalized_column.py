@@ -5,12 +5,13 @@ Revises: 20260113000004
 Create Date: 2026-01-15 01:37:51.259956
 
 """
+
 from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision = 'f5003d17e4bb'
-down_revision = '20260113000004'
+revision = "f5003d17e4bb"
+down_revision = "20260113000004"
 branch_labels = None
 depends_on = None
 
@@ -45,7 +46,7 @@ def normalize_email(email: str) -> str:
 
 def upgrade() -> None:
     # Add email_normalized column (nullable initially for backfill)
-    op.add_column('users', sa.Column('email_normalized', sa.String(255), nullable=True))
+    op.add_column("users", sa.Column("email_normalized", sa.String(255), nullable=True))
 
     # Backfill existing users with normalized emails
     connection = op.get_bind()
@@ -54,14 +55,18 @@ def upgrade() -> None:
     for user_id, email in users:
         normalized = normalize_email(email)
         connection.execute(
-            sa.text("UPDATE users SET email_normalized = :normalized WHERE id = :user_id"),
-            {"normalized": normalized, "user_id": user_id}
+            sa.text(
+                "UPDATE users SET email_normalized = :normalized WHERE id = :user_id"
+            ),
+            {"normalized": normalized, "user_id": user_id},
         )
 
     # Add unique constraint and index
-    op.create_index('ix_users_email_normalized', 'users', ['email_normalized'], unique=True)
+    op.create_index(
+        "ix_users_email_normalized", "users", ["email_normalized"], unique=True
+    )
 
 
 def downgrade() -> None:
-    op.drop_index('ix_users_email_normalized', table_name='users')
-    op.drop_column('users', 'email_normalized')
+    op.drop_index("ix_users_email_normalized", table_name="users")
+    op.drop_column("users", "email_normalized")

@@ -57,12 +57,15 @@ def test_player(test_user: User, db: Session) -> Player:
 @pytest.fixture
 def test_posts(test_user: User, db: Session) -> list[Post]:
     """Create test posts."""
+    from app.vault import compute_storage_shard
+
     now = datetime.now(timezone.utc)
     posts = []
     for i in range(5):
         storage_key = uuid.uuid4()
         post = Post(
             storage_key=storage_key,
+            storage_shard=compute_storage_shard(storage_key),
             owner_id=test_user.id,
             kind="artwork",
             title=f"Test Art {i}",
@@ -108,10 +111,13 @@ def other_user(db: Session) -> User:
 @pytest.fixture
 def other_user_post(other_user: User, db: Session) -> Post:
     """Create a post by another user."""
+    from app.vault import compute_storage_shard
+
     storage_key = uuid.uuid4()
     now = datetime.now(timezone.utc)
     post = Post(
         storage_key=storage_key,
+        storage_shard=compute_storage_shard(storage_key),
         owner_id=other_user.id,
         kind="artwork",
         title="Other User Art",
@@ -164,7 +170,7 @@ class TestAuthentication:
         )
         db.add(pending_player)
         db.commit()
-        
+
         player = _authenticate_player(pending_player.player_key, db)
         assert player is None
 
@@ -187,17 +193,21 @@ class TestReactions:
             post_id=other_user_post.id,
             emoji="❤️",
         )
-        
+
         _handle_submit_reaction(test_player, request, db)
-        
+
         # Verify reaction was created
-        reaction = db.query(Reaction).filter(
-            Reaction.post_id == other_user_post.id,
-            Reaction.user_id == test_player.owner_id,
-            Reaction.emoji == "❤️",
-        ).first()
+        reaction = (
+            db.query(Reaction)
+            .filter(
+                Reaction.post_id == other_user_post.id,
+                Reaction.user_id == test_player.owner_id,
+                Reaction.emoji == "❤️",
+            )
+            .first()
+        )
         assert reaction is not None
-        
+
         # Verify success response
         assert mock_publish.called
         payload = mock_publish.call_args[1]["payload"]
@@ -220,27 +230,31 @@ class TestReactions:
         )
         db.add(reaction)
         db.commit()
-        
+
         request = SubmitReactionRequest(
             request_id="test-react-2",
             player_key=test_player.player_key,
             post_id=other_user_post.id,
             emoji="👍",
         )
-        
+
         _handle_submit_reaction(test_player, request, db)
-        
+
         # Should still return success
         assert mock_publish.called
         payload = mock_publish.call_args[1]["payload"]
         assert payload["success"] is True
-        
+
         # Should not create duplicate
-        count = db.query(Reaction).filter(
-            Reaction.post_id == other_user_post.id,
-            Reaction.user_id == test_player.owner_id,
-            Reaction.emoji == "👍",
-        ).count()
+        count = (
+            db.query(Reaction)
+            .filter(
+                Reaction.post_id == other_user_post.id,
+                Reaction.user_id == test_player.owner_id,
+                Reaction.emoji == "👍",
+            )
+            .count()
+        )
         assert count == 1
 
     @patch("app.mqtt.player_requests.publish")
@@ -260,24 +274,28 @@ class TestReactions:
         )
         db.add(reaction)
         db.commit()
-        
+
         request = RevokeReactionRequest(
             request_id="test-revoke-1",
             player_key=test_player.player_key,
             post_id=other_user_post.id,
             emoji="😊",
         )
-        
+
         _handle_revoke_reaction(test_player, request, db)
-        
+
         # Verify reaction was deleted
-        exists = db.query(Reaction).filter(
-            Reaction.post_id == other_user_post.id,
-            Reaction.user_id == test_player.owner_id,
-            Reaction.emoji == "😊",
-        ).first()
+        exists = (
+            db.query(Reaction)
+            .filter(
+                Reaction.post_id == other_user_post.id,
+                Reaction.user_id == test_player.owner_id,
+                Reaction.emoji == "😊",
+            )
+            .first()
+        )
         assert exists is None
-        
+
         # Verify success response
         assert mock_publish.called
         payload = mock_publish.call_args[1]["payload"]
@@ -298,9 +316,9 @@ class TestReactions:
             post_id=other_user_post.id,
             emoji="🎉",
         )
-        
+
         _handle_revoke_reaction(test_player, request, db)
-        
+
         # Should still return success
         assert mock_publish.called
         payload = mock_publish.call_args[1]["payload"]
@@ -311,7 +329,9 @@ class TestGetComments:
     """Test get_comments functionality."""
 
     @pytest.fixture
-    def test_comments(self, other_user_post: Post, test_user: User, db: Session) -> list[Comment]:
+    def test_comments(
+        self, other_user_post: Post, test_user: User, db: Session
+    ) -> list[Comment]:
         """Create test comments."""
         comments = []
         for i in range(3):
@@ -344,15 +364,15 @@ class TestGetComments:
             post_id=other_user_post.id,
             limit=10,
         )
-        
+
         _handle_get_comments(test_player, request, db)
-        
+
         # Verify success response
         assert mock_publish.called
         payload = mock_publish.call_args[1]["payload"]
         assert payload["success"] is True
         assert len(payload["comments"]) == len(test_comments)
-        
+
         # Verify comment data
         for comment_data in payload["comments"]:
             assert "body" in comment_data
@@ -374,16 +394,14 @@ class TestGetComments:
             post_id=other_user_post.id,
             limit=2,
         )
-        
+
         _handle_get_comments(test_player, request, db)
-        
+
         assert mock_publish.called
         payload = mock_publish.call_args[1]["payload"]
-        
+
         # Should return only 2 comments
         assert len(payload["comments"]) == 2
         # Should have more results
         assert payload["has_more"] is True
         assert payload["next_cursor"] is not None
-
-

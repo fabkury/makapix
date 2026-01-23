@@ -37,7 +37,9 @@ def upgrade() -> None:
     # 1) posts.kind: "art" -> "artwork"
     # ---------------------------------------------------------------------
     op.execute("UPDATE posts SET kind = 'artwork' WHERE kind = 'art'")
-    op.alter_column("posts", "kind", server_default="artwork", existing_type=sa.String(length=20))
+    op.alter_column(
+        "posts", "kind", server_default="artwork", existing_type=sa.String(length=20)
+    )
 
     # ---------------------------------------------------------------------
     # 2) Add dwell + modified timestamps
@@ -52,24 +54,22 @@ def upgrade() -> None:
     )
     op.add_column(
         "posts",
-        sa.Column("dwell_time_ms", sa.Integer(), nullable=False, server_default="30000"),
+        sa.Column(
+            "dwell_time_ms", sa.Integer(), nullable=False, server_default="30000"
+        ),
     )
 
     # Backfill modified timestamps for existing posts
-    op.execute(
-        """
+    op.execute("""
         UPDATE posts
         SET metadata_modified_at = COALESCE(updated_at, created_at)
         WHERE metadata_modified_at IS NULL
-        """
-    )
-    op.execute(
-        """
+        """)
+    op.execute("""
         UPDATE posts
         SET artwork_modified_at = COALESCE(updated_at, created_at)
         WHERE artwork_modified_at IS NULL
-        """
-    )
+        """)
 
     # Make timestamps non-null now that they're backfilled
     op.alter_column("posts", "metadata_modified_at", nullable=False)
@@ -109,22 +109,53 @@ def upgrade() -> None:
     # ---------------------------------------------------------------------
     op.create_table(
         "playlist_posts",
-        sa.Column("post_id", sa.Integer(), sa.ForeignKey("posts.id", ondelete="CASCADE"), primary_key=True),
-        sa.Column("legacy_playlist_id", postgresql.UUID(as_uuid=True), nullable=True, unique=True),
+        sa.Column(
+            "post_id",
+            sa.Integer(),
+            sa.ForeignKey("posts.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
+        sa.Column(
+            "legacy_playlist_id",
+            postgresql.UUID(as_uuid=True),
+            nullable=True,
+            unique=True,
+        ),
     )
     op.create_index("ix_playlist_posts_post_id", "playlist_posts", ["post_id"])
 
     op.create_table(
         "playlist_items",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
-        sa.Column("playlist_post_id", sa.Integer(), sa.ForeignKey("posts.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("artwork_post_id", sa.Integer(), sa.ForeignKey("posts.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "playlist_post_id",
+            sa.Integer(),
+            sa.ForeignKey("posts.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "artwork_post_id",
+            sa.Integer(),
+            sa.ForeignKey("posts.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("position", sa.Integer(), nullable=False),
-        sa.Column("dwell_time_ms", sa.Integer(), nullable=False, server_default="30000"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "dwell_time_ms", sa.Integer(), nullable=False, server_default="30000"
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
     )
-    op.create_index("ix_playlist_items_playlist_post_id", "playlist_items", ["playlist_post_id"])
-    op.create_index("ix_playlist_items_artwork_post_id", "playlist_items", ["artwork_post_id"])
+    op.create_index(
+        "ix_playlist_items_playlist_post_id", "playlist_items", ["playlist_post_id"]
+    )
+    op.create_index(
+        "ix_playlist_items_artwork_post_id", "playlist_items", ["artwork_post_id"]
+    )
     op.create_unique_constraint(
         "uq_playlist_items_playlist_position",
         "playlist_items",
@@ -146,9 +177,7 @@ def upgrade() -> None:
         return
 
     # Fetch legacy playlists
-    legacy_rows = connection.execute(
-        sql_text(
-            """
+    legacy_rows = connection.execute(sql_text("""
             SELECT
               id,
               owner_id,
@@ -162,9 +191,7 @@ def upgrade() -> None:
               updated_at
             FROM playlists
             ORDER BY created_at ASC
-            """
-        )
-    ).fetchall()
+            """)).fetchall()
 
     if not legacy_rows:
         return
@@ -173,7 +200,8 @@ def upgrade() -> None:
     from sqids import Sqids
 
     sqids_alphabet = os.getenv(
-        "SQIDS_ALPHABET", "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        "SQIDS_ALPHABET",
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
     )
     sqids = Sqids(alphabet=sqids_alphabet, min_length=0)
 
@@ -198,8 +226,7 @@ def upgrade() -> None:
         modified_at = updated_at or created_at
 
         post_id = connection.execute(
-            sql_text(
-                """
+            sql_text("""
                 INSERT INTO posts (
                   storage_key,
                   public_sqid,
@@ -264,8 +291,7 @@ def upgrade() -> None:
                   30000
                 )
                 RETURNING id
-                """
-            ),
+                """),
             {
                 "storage_key": storage_key,
                 "owner_id": owner_id,
@@ -284,12 +310,10 @@ def upgrade() -> None:
 
         # Insert playlist_posts row linking to legacy UUID
         connection.execute(
-            sql_text(
-                """
+            sql_text("""
                 INSERT INTO playlist_posts (post_id, legacy_playlist_id)
                 VALUES (:post_id, :legacy_playlist_id)
-                """
-            ),
+                """),
             {"post_id": post_id, "legacy_playlist_id": legacy_id},
         )
 
@@ -300,8 +324,7 @@ def upgrade() -> None:
         # Legacy playlists.post_ids is an array already in play order.
         for idx, artwork_post_id in enumerate(list(post_ids)):
             connection.execute(
-                sql_text(
-                    """
+                sql_text("""
                     INSERT INTO playlist_items (
                       playlist_post_id,
                       artwork_post_id,
@@ -313,9 +336,12 @@ def upgrade() -> None:
                       :position,
                       30000
                     )
-                    """
-                ),
-                {"playlist_post_id": post_id, "artwork_post_id": int(artwork_post_id), "position": idx},
+                    """),
+                {
+                    "playlist_post_id": post_id,
+                    "artwork_post_id": int(artwork_post_id),
+                    "position": idx,
+                },
             )
 
     # Backfill public_sqid for newly inserted playlist posts
@@ -334,14 +360,10 @@ def downgrade() -> None:
     # Remove migrated playlist posts (best-effort)
     # Only delete posts that are linked to playlist_posts (to avoid deleting user-created posts
     # if the system later supports playlist posts natively).
-    connection.execute(
-        sql_text(
-            """
+    connection.execute(sql_text("""
             DELETE FROM posts
             WHERE id IN (SELECT post_id FROM playlist_posts)
-            """
-        )
-    )
+            """))
 
     op.drop_table("playlist_items")
     op.drop_index("ix_playlist_posts_post_id", table_name="playlist_posts")
@@ -363,5 +385,6 @@ def downgrade() -> None:
 
     # Revert kind default and values
     op.execute("UPDATE posts SET kind = 'art' WHERE kind = 'artwork'")
-    op.alter_column("posts", "kind", server_default="art", existing_type=sa.String(length=20))
-
+    op.alter_column(
+        "posts", "kind", server_default="art", existing_type=sa.String(length=20)
+    )

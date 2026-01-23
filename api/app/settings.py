@@ -20,5 +20,6 @@ def _int_env(name: str, default: int) -> int:
 
 # Global maximum size for a single artwork upload / asset (bytes).
 # Configured via .env: MAKAPIX_ARTWORK_SIZE_LIMIT=5242880  (5 MiB)
-MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES: int = _int_env("MAKAPIX_ARTWORK_SIZE_LIMIT", 5 * 1024 * 1024)
-
+MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES: int = _int_env(
+    "MAKAPIX_ARTWORK_SIZE_LIMIT", 5 * 1024 * 1024
+)

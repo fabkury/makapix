@@ -22,20 +22,21 @@ def get_admin_url() -> str:
     url = config.get_main_option("sqlalchemy.url") or os.getenv("DB_ADMIN_URL")
     if url:
         return url
-    
+
     # Otherwise construct from components
     admin_user = os.getenv("DB_ADMIN_USER")
     admin_pass = os.getenv("DB_ADMIN_PASSWORD")
     db_name = os.getenv("DB_DATABASE")
     db_host = os.getenv("DB_HOST", "db")
     db_port = os.getenv("DB_PORT", "5432")
-    
+
     if admin_user and admin_pass and db_name:
         # URL-encode the password in case it contains special characters
         from urllib.parse import quote_plus
+
         encoded_pass = quote_plus(admin_pass)
         return f"postgresql+psycopg://{admin_user}:{encoded_pass}@{db_host}:{db_port}/{db_name}"
-    
+
     raise RuntimeError(
         "DB_ADMIN_URL must be set, or DB_ADMIN_USER, DB_ADMIN_PASSWORD, and DB_DATABASE must all be set."
     )

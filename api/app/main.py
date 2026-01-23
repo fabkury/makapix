@@ -57,12 +57,12 @@ def run_migrations() -> None:
     try:
         logger.info("Running Alembic migrations...")
         alembic_cfg = _alembic_config()
-        
+
         # Check current revision first to avoid unnecessary upgrade calls
         from alembic.runtime.migration import MigrationContext
         from alembic.script import ScriptDirectory
         from .db import engine
-        
+
         try:
             with engine.connect() as connection:
                 context = MigrationContext.configure(connection)
@@ -73,30 +73,41 @@ def run_migrations() -> None:
                 else:
                     # If multiple heads, check if any of them match the available heads
                     current_rev = current_heads[0] if len(current_heads) == 1 else None
-                
+
                 script = ScriptDirectory.from_config(alembic_cfg)
                 heads = script.get_heads()
-                
+
                 # If we have a single current revision and it's in heads, we're up to date
                 if current_rev and current_rev in heads:
-                    logger.info(f"Database is up to date (revision: {current_rev}), skipping migrations.")
+                    logger.info(
+                        f"Database is up to date (revision: {current_rev}), skipping migrations."
+                    )
                     return
-                
+
                 # If multiple heads, upgrade to the latest one (highest revision number)
                 if len(heads) > 1:
-                    logger.info(f"Multiple heads detected: {heads}. Upgrading to latest...")
+                    logger.info(
+                        f"Multiple heads detected: {heads}. Upgrading to latest..."
+                    )
                     # Sort heads by revision number and take the latest
-                    latest_head = max(heads, key=lambda h: int(h.split('_')[0]) if h.split('_')[0].isdigit() else 0)
+                    latest_head = max(
+                        heads,
+                        key=lambda h: (
+                            int(h.split("_")[0]) if h.split("_")[0].isdigit() else 0
+                        ),
+                    )
                     logger.info(f"Selected latest head: {latest_head}")
                     target_rev = latest_head
                 else:
                     target_rev = heads[0]
-                
-                logger.info(f"Current revision(s): {current_heads}, Target revision: {target_rev}. Running migrations...")
+
+                logger.info(
+                    f"Current revision(s): {current_heads}, Target revision: {target_rev}. Running migrations..."
+                )
         finally:
             # Ensure connection is closed before calling command.upgrade
             engine.dispose()
-        
+
         # Now run migrations with a fresh connection pool
         command.upgrade(alembic_cfg, target_rev)
         logger.info("run_migrations: command.upgrade() returned")
@@ -127,6 +138,7 @@ def run_startup_tasks() -> None:
         logger.info("run_startup_tasks: Seed data completed, ensuring CRL exists...")
         # Initialize empty CRL if it doesn't exist
         from .mqtt.crl_init import ensure_crl_exists
+
         ensure_crl_exists()
         _STARTUP_COMPLETE = True
         logger.info("Startup tasks completed.")
@@ -145,6 +157,7 @@ async def lifespan(app: FastAPI):
     from .mqtt.player_status import start_status_subscriber
     from .mqtt.player_requests import start_request_subscriber
     from .mqtt.player_views import start_view_subscriber
+
     start_status_subscriber()
     start_request_subscriber()
     start_view_subscriber()
@@ -155,6 +168,7 @@ async def lifespan(app: FastAPI):
     # Stop MQTT subscribers
     from .mqtt.player_status import stop_status_subscriber
     from .mqtt.player_requests import stop_request_subscriber
+
     stop_status_subscriber()
     stop_request_subscriber()
 
@@ -181,7 +195,13 @@ app.add_middleware(
     allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "Accept",
+        "Origin",
+        "X-Requested-With",
+    ],
     max_age=600,  # Cache preflight requests for 10 minutes
 )
 

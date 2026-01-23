@@ -22,7 +22,6 @@ from sqlalchemy.orm import relationship, backref
 
 from .db import Base
 
-
 # ============================================================================
 # CORE ENTITIES
 # ============================================================================
@@ -244,6 +243,9 @@ class Post(Base):
     storage_key = Column(
         UUID(as_uuid=True), unique=True, nullable=False, index=True
     )  # UUID used for vault lookup
+    storage_shard = Column(
+        String(8), nullable=True
+    )  # Pre-computed folder path: "8c/4f/2a" derived from SHA-256(storage_key)
     public_sqid = Column(
         String(16), unique=True, nullable=True, index=True
     )  # Sqids-encoded public ID (set after insert)
@@ -259,6 +261,8 @@ class Post(Base):
 
     # Art metadata
     # NOTE: These are nullable to allow kind="playlist" rows in this table.
+    # DEPRECATED: art_url will be retired in favor of storage_shard. New code should use
+    # vault.get_artwork_url(storage_key, extension, storage_shard=storage_shard)
     art_url = Column(String(1000), nullable=True)
     canvas = Column(
         String(50), nullable=True
@@ -614,7 +618,9 @@ class UserHighlight(Base):
 
     __table_args__ = (
         UniqueConstraint("user_id", "post_id", name="uq_user_highlights_user_post"),
-        UniqueConstraint("user_id", "position", name="uq_user_highlights_user_position"),
+        UniqueConstraint(
+            "user_id", "position", name="uq_user_highlights_user_position"
+        ),
         Index("ix_user_highlights_user_position", user_id, position),
     )
 
@@ -710,9 +716,7 @@ class Violation(Base):
     user = relationship("User", foreign_keys=[user_id], backref="violations")
     moderator = relationship("User", foreign_keys=[moderator_id])
 
-    __table_args__ = (
-        Index("ix_violations_user_created", user_id, created_at.desc()),
-    )
+    __table_args__ = (Index("ix_violations_user_created", user_id, created_at.desc()),)
 
 
 # ============================================================================
@@ -1495,10 +1499,10 @@ class BatchDownloadRequest(Base):
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
     )
-    started_at = Column(DateTime(timezone=True), nullable=True)  # When processing started
-    completed_at = Column(
+    started_at = Column(
         DateTime(timezone=True), nullable=True
-    )  # When ready/failed
+    )  # When processing started
+    completed_at = Column(DateTime(timezone=True), nullable=True)  # When ready/failed
     expires_at = Column(
         DateTime(timezone=True), nullable=True, index=True
     )  # When download link expires

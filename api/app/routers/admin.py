@@ -40,10 +40,10 @@ def ban_user(
 
     Banning a user prevents them from authenticating but does NOT delete their account.
     The user profile and all associated data remain in the database indefinitely.
-    
+
     - No duration (None/0) = permanent ban (banned_until = None)
     - With duration = temporary ban (banned_until = current_time + duration_days)
-    
+
     Note: There is no automatic cleanup of banned user profiles. To completely remove
     a user's data, a separate deletion process would need to be implemented.
 
@@ -95,7 +95,7 @@ def unban_user(
 ) -> None:
     """
     Unban user (moderator only).
-    
+
     Removes the ban by setting banned_until to NULL, allowing the user to
     authenticate again immediately. Does not delete the user's profile or data.
     """

@@ -27,10 +27,10 @@ def record_site_event(
 ) -> None:
     """
     Queue a sitewide event for async writing via Celery.
-    
+
     Zero database interaction in the request path - all data is
     serialized and dispatched to the Celery task queue.
-    
+
     Args:
         request: FastAPI Request object
         event_type: Type of event (page_view, signup, upload, api_call, error)
@@ -46,24 +46,24 @@ def record_site_event(
         )
         from ..geoip import get_country_code
         from ..tasks import write_site_event
-        
+
         # Extract request metadata synchronously
         client_ip = get_client_ip(request)
         user_agent = request.headers.get("User-Agent")
         referrer = request.headers.get("Referer")
-        
+
         # Use client-provided path if available (for frontend tracking), otherwise use request path
         if event_data and "client_path" in event_data:
             page_path = event_data["client_path"]
         else:
             page_path = str(request.url.path)
-        
+
         # Detect device type
         device_type = detect_device_type(user_agent)
-        
+
         # Resolve country code from IP
         country_code = get_country_code(client_ip)
-        
+
         # Prepare event payload for Celery
         event_payload = {
             "event_type": event_type,
@@ -76,13 +76,12 @@ def record_site_event(
             "event_data": event_data,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
-        
+
         # Dispatch to Celery for async write (non-blocking)
         write_site_event.delay(event_payload)
-        
+
         logger.debug(f"Queued site event: {event_type} on {page_path}")
-        
+
     except Exception as e:
         # Log error but don't fail the request
         logger.warning(f"Failed to queue site event {event_type}: {e}", exc_info=True)
-

@@ -17,7 +17,7 @@ router = APIRouter(prefix="", tags=["MQTT", "RateLimit"])
 def mqtt_bootstrap() -> schemas.MQTTBootstrap:
     """
     MQTT broker bootstrap info.
-    
+
     TODO: Load from environment variables
     """
     return schemas.MQTTBootstrap(
@@ -29,15 +29,18 @@ def mqtt_bootstrap() -> schemas.MQTTBootstrap:
 
 
 @router.post("/mqtt/demo", response_model=schemas.MQTTPublishResponse, tags=["MQTT"])
-def mqtt_demo(current_user: models.User = Depends(get_current_user)) -> schemas.MQTTPublishResponse:
+def mqtt_demo(
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.MQTTPublishResponse:
     """
     Publish demo MQTT message.
-    
+
     Requires authentication. Should only be used in development/testing.
     """
     import logging
+
     logger = logging.getLogger(__name__)
-    
+
     # Check if in production environment
     environment = os.getenv("ENVIRONMENT", "development")
     if environment == "production":
@@ -45,7 +48,7 @@ def mqtt_demo(current_user: models.User = Depends(get_current_user)) -> schemas.
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Demo endpoint is disabled in production",
         )
-    
+
     try:
         topic = publish_demo_message()
     except Exception as exc:  # pragma: no cover
@@ -58,10 +61,12 @@ def mqtt_demo(current_user: models.User = Depends(get_current_user)) -> schemas.
 
 
 @router.get("/rate-limit", response_model=schemas.RateLimitStatus, tags=["RateLimit"])
-def get_rate_limit(current_user: models.User = Depends(get_current_user)) -> schemas.RateLimitStatus:
+def get_rate_limit(
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.RateLimitStatus:
     """
     Get caller's rate limit budgets.
-    
+
     TODO: Implement Redis-based rate limiter
     TODO: Return actual bucket status
     TODO: Add rate limit headers to response

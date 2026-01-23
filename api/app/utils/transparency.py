@@ -18,7 +18,6 @@ from dataclasses import dataclass
 
 from PIL import Image
 
-
 MAX_FRAMES_TO_SCAN = 256
 
 
@@ -100,12 +99,12 @@ def compute_transparency_metadata(img: Image.Image) -> TransparencyMetadata:
                 # uses_alpha implies uses_transparency, so we can stop early.
                 break
 
-        return TransparencyMetadata(uses_alpha=uses_alpha, uses_transparency=uses_transparency)
+        return TransparencyMetadata(
+            uses_alpha=uses_alpha, uses_transparency=uses_transparency
+        )
     finally:
         # Best-effort restore original frame to avoid surprising callers.
         try:
             img.seek(original_frame)
         except Exception:
             pass
-
-

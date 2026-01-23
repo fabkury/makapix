@@ -113,7 +113,9 @@ class UserPublic(BaseModel):
     )
     handle: str
     bio: str | None = None
-    tagline: str | None = None  # Short one-liner displayed under username (max 48 chars)
+    tagline: str | None = (
+        None  # Short one-liner displayed under username (max 48 chars)
+    )
     website: str | None = None
     # Avatar URL may be an external absolute URL (GitHub) or a site-relative vault URL
     # (e.g. /api/vault/avatar/...). We store raw strings to support relative URLs.
@@ -1595,7 +1597,9 @@ class HashUrlResponse(BaseModel):
 class SocialNotificationBase(BaseModel):
     """Base schema for social notifications."""
 
-    notification_type: str  # 'reaction', 'comment', 'moderator_granted', 'moderator_revoked'
+    notification_type: (
+        str  # 'reaction', 'comment', 'moderator_granted', 'moderator_revoked'
+    )
     post_id: int | None = None  # Nullable for system notifications
     actor_handle: str | None = None
     actor_avatar_url: str | None = None  # For system notifications

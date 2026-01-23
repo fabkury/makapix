@@ -315,4 +315,3 @@ def _validate_dimensions(width: int, height: int) -> str | None:
         return f"Image size {width}x{height} is not allowed. Under 128x128, only these sizes are allowed: {allowed_str}"
 
     return None
-

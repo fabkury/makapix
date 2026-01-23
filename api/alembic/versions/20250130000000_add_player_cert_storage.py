@@ -28,4 +28,3 @@ def downgrade() -> None:
     # Remove certificate PEM storage columns
     op.drop_column("players", "key_pem")
     op.drop_column("players", "cert_pem")
-

@@ -67,9 +67,7 @@ def apply_monitored_hashtag_filter(
     # PostgreSQL array overlap operator: hashtags && ARRAY['tag1', 'tag2']
     # We negate this to exclude posts that have ANY of the excluded tags
     excluded_array = cast(list(excluded_tags), ARRAY(String))
-    return query.filter(
-        not_(post_model.hashtags.overlap(excluded_array))
-    )
+    return query.filter(not_(post_model.hashtags.overlap(excluded_array)))
 
 
 def filter_posts_by_monitored_hashtags(
@@ -103,11 +101,7 @@ def filter_posts_by_monitored_hashtags(
         return posts
 
     # Filter out posts that have any of the excluded monitored hashtags
-    return [
-        post
-        for post in posts
-        if not (set(post.hashtags or []) & excluded_tags)
-    ]
+    return [post for post in posts if not (set(post.hashtags or []) & excluded_tags)]
 
 
 def post_has_unapproved_monitored_hashtags(

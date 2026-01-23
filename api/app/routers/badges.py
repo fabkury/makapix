@@ -16,7 +16,9 @@ router = APIRouter(prefix="/badge", tags=["Badges"])
 
 
 @router.get("", response_model=dict[str, list[schemas.BadgeDefinition]])
-def list_badges(db: Session = Depends(get_db)) -> dict[str, list[schemas.BadgeDefinition]]:
+def list_badges(
+    db: Session = Depends(get_db),
+) -> dict[str, list[schemas.BadgeDefinition]]:
     """
     List all badge definitions from the database.
     """
@@ -38,7 +40,9 @@ def list_badges(db: Session = Depends(get_db)) -> dict[str, list[schemas.BadgeDe
 
 
 @router.get("/tag-badges", response_model=dict[str, list[schemas.TagBadgeInfo]])
-def list_tag_badges(db: Session = Depends(get_db)) -> dict[str, list[schemas.TagBadgeInfo]]:
+def list_tag_badges(
+    db: Session = Depends(get_db),
+) -> dict[str, list[schemas.TagBadgeInfo]]:
     """
     List all tag badges (badges displayed under username).
     """
@@ -64,14 +68,18 @@ def list_tag_badges(db: Session = Depends(get_db)) -> dict[str, list[schemas.Tag
 
 
 @router.get("/user/{id}/badge", response_model=dict[str, list[schemas.BadgeGrant]])
-def list_user_badges(id: UUID, db: Session = Depends(get_db)) -> dict[str, list[schemas.BadgeGrant]]:
+def list_user_badges(
+    id: UUID, db: Session = Depends(get_db)
+) -> dict[str, list[schemas.BadgeGrant]]:
     """List badges for a user (by user_key UUID)."""
     # Look up user by user_key
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
         return {"items": []}
 
-    badges = db.query(models.BadgeGrant).filter(models.BadgeGrant.user_id == user.id).all()
+    badges = (
+        db.query(models.BadgeGrant).filter(models.BadgeGrant.user_id == user.id).all()
+    )
 
     return {"items": [schemas.BadgeGrant.model_validate(b) for b in badges]}
 
@@ -109,10 +117,14 @@ def grant_badge(
         raise HTTPException(status_code=400, detail="Invalid badge")
 
     # Check if badge already granted
-    existing = db.query(models.BadgeGrant).filter(
-        models.BadgeGrant.user_id == user.id,
-        models.BadgeGrant.badge == payload.badge,
-    ).first()
+    existing = (
+        db.query(models.BadgeGrant)
+        .filter(
+            models.BadgeGrant.user_id == user.id,
+            models.BadgeGrant.badge == payload.badge,
+        )
+        .first()
+    )
 
     if not existing:
         badge = models.BadgeGrant(user_id=user.id, badge=payload.badge)

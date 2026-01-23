@@ -19,24 +19,24 @@ router = APIRouter(prefix="/playlist", tags=["Playlists"])
 def validate_post_visibility(post_ids: list[int], db: Session) -> list[int]:
     """
     Validate that posts exist and are visible.
-    
+
     Returns list of valid (visible) post IDs.
     Raises HTTPException if any post doesn't exist.
     """
     if not post_ids:
         return []
-    
+
     valid_post_ids = []
-    
+
     for post_id in post_ids:
         post = db.query(models.Post).filter(models.Post.id == post_id).first()
-        
+
         if not post:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Post {post_id} not found"
+                detail=f"Post {post_id} not found",
             )
-        
+
         # Only include visible, non-hidden posts
         if (
             post.kind == "artwork"
@@ -45,7 +45,7 @@ def validate_post_visibility(post_ids: list[int], db: Session) -> list[int]:
             and not post.non_conformant
         ):
             valid_post_ids.append(post_id)
-    
+
     return valid_post_ids
 
 
@@ -112,7 +112,7 @@ def list_playlists(
 ) -> schemas.Page[schemas.Playlist]:
     """
     List playlists.
-    
+
     TODO: Implement search query
     TODO: Implement cursor pagination
     TODO: Apply visibility filters
@@ -123,18 +123,18 @@ def list_playlists(
         models.Post.visible == True,
         models.Post.hidden_by_mod == False,
     )
-    
+
     if owner_id:
         # owner_id is a legacy user_key UUID in API; map to integer users.id
         owner = db.query(models.User).filter(models.User.user_key == owner_id).first()
         if not owner:
             return schemas.Page(items=[], next_cursor=None)
         query = query.filter(models.Post.owner_id == owner.id)
-    
+
     # TODO: Implement q/cursor/sort/order for playlists in a future iteration.
     query = query.order_by(models.Post.created_at.desc()).limit(limit)
     playlist_posts = query.all()
-    
+
     return schemas.Page(
         items=[_playlist_schema_from_post(p, db) for p in playlist_posts],
         next_cursor=None,
@@ -153,17 +153,18 @@ def create_playlist(
 ) -> schemas.Playlist:
     """
     Create playlist.
-    
+
     Validates that all posts exist and are visible.
     """
     # Validate all posts exist and filter to visible ones
     valid_post_ids = validate_post_visibility(payload.post_ids, db)
-    
+
     now = datetime.now(timezone.utc)
 
     # Create an underlying post(kind="playlist")
     playlist_post = models.Post(
         storage_key=uuid.uuid4(),
+        storage_shard=None,  # No artwork for playlists
         owner_id=current_user.id,
         kind="playlist",
         title=payload.title,
@@ -237,12 +238,12 @@ def update_playlist(
 ) -> schemas.Playlist:
     """
     Update playlist.
-    
+
     Validates ownership and post visibility.
     """
     playlist_post = _get_playlist_post_by_legacy_id(id, db)
     require_ownership(playlist_post.owner_id, current_user)
-    
+
     if payload.title is not None:
         playlist_post.title = payload.title
     if payload.description is not None:
@@ -269,10 +270,10 @@ def update_playlist(
         playlist_post.hidden_by_mod = payload.hidden_by_mod
 
     playlist_post.metadata_modified_at = datetime.now(timezone.utc)
-    
+
     db.commit()
     db.refresh(playlist_post)
-    
+
     return _playlist_schema_from_post(playlist_post, db)
 
 
