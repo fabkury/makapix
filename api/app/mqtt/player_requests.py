@@ -43,6 +43,19 @@ from .schemas import (
 
 logger = logging.getLogger(__name__)
 
+# Valid optional field names for artwork payloads
+OPTIONAL_ARTWORK_FIELDS = frozenset({
+    "owner_handle",
+    "metadata_modified_at",
+    "artwork_modified_at",
+    "width",
+    "height",
+    "frame_count",
+    "dwell_time_ms",
+    "transparency_actual",
+    "alpha_actual",
+})
+
 # Subscriber client instance
 _request_client: mqtt_client.Client | None = None
 _request_client_lock = threading.Lock()
@@ -122,24 +135,33 @@ def _payload_size_bytes(payload: dict[str, Any]) -> int:
     )
 
 
-def _build_artwork_payload(post: models.Post) -> ArtworkPostPayload:
+def _build_artwork_payload(
+    post: models.Post,
+    include_fields: set[str] | None = None,
+) -> ArtworkPostPayload:
+    """Build artwork payload with optional field inclusion."""
+    include = include_fields or set()
+
     return ArtworkPostPayload(
+        # Mandatory fields (always included)
         post_id=post.id,
         kind="artwork",
-        owner_handle=post.owner.handle,
         created_at=post.created_at,
-        metadata_modified_at=post.metadata_modified_at,
         storage_key=str(post.storage_key),
         art_url=post.art_url or "",
-        width=int(post.width or 0),
-        height=int(post.height or 0),
-        frame_count=int(post.frame_count or 1),
-        transparency_actual=bool(getattr(post, "transparency_actual", False)),
-        alpha_actual=bool(getattr(post, "alpha_actual", False)),
-        artwork_modified_at=post.artwork_modified_at,
+        storage_shard=post.storage_shard or "",
+        # Optional fields (None if not requested)
+        owner_handle=post.owner.handle if "owner_handle" in include else None,
+        metadata_modified_at=post.metadata_modified_at if "metadata_modified_at" in include else None,
+        artwork_modified_at=post.artwork_modified_at if "artwork_modified_at" in include else None,
+        width=int(post.width or 0) if "width" in include else None,
+        height=int(post.height or 0) if "height" in include else None,
+        frame_count=int(post.frame_count or 1) if "frame_count" in include else None,
         dwell_time_ms=int(
             getattr(post, "dwell_time_ms", DEFAULT_DWELL_MS) or DEFAULT_DWELL_MS
-        ),
+        ) if "dwell_time_ms" in include else None,
+        transparency_actual=bool(getattr(post, "transparency_actual", False)) if "transparency_actual" in include else None,
+        alpha_actual=bool(getattr(post, "alpha_actual", False)) if "alpha_actual" in include else None,
     )
 
 
@@ -445,11 +467,16 @@ def _handle_query_posts(
         if has_more:
             next_cursor = str(offset + request.limit)
 
+        # Compute valid include_fields set
+        include_fields: set[str] | None = None
+        if request.include_fields:
+            include_fields = set(request.include_fields) & OPTIONAL_ARTWORK_FIELDS
+
         # Build response payload posts
         payload_posts: list[PlayerPostPayload] = []
         for post in posts:
             if post.kind == "artwork":
-                payload_posts.append(_build_artwork_payload(post))
+                payload_posts.append(_build_artwork_payload(post, include_fields))
             elif post.kind == "playlist":
                 payload_posts.append(_build_playlist_payload(post, db))
 
@@ -461,7 +488,7 @@ def _handle_query_posts(
         )
 
         # Enforce payload size limit (128KiB)
-        response_dict = response.model_dump(mode="json")
+        response_dict = response.model_dump(mode="json", exclude_none=True)
         response_dict = _trim_posts_payload_to_limit(response_dict)
 
         # Send response
@@ -560,8 +587,13 @@ def _handle_get_post(
             )
             return
 
+        # Compute valid include_fields set
+        include_fields: set[str] | None = None
+        if request.include_fields:
+            include_fields = set(request.include_fields) & OPTIONAL_ARTWORK_FIELDS
+
         if post.kind == "artwork":
-            payload_post: PlayerPostPayload = _build_artwork_payload(post)
+            payload_post: PlayerPostPayload = _build_artwork_payload(post, include_fields)
         elif post.kind == "playlist":
             payload_post = _build_playlist_payload(post, db)
         else:
@@ -579,7 +611,7 @@ def _handle_get_post(
             post=payload_post,
         )
 
-        response_dict = response.model_dump(mode="json")
+        response_dict = response.model_dump(mode="json", exclude_none=True)
 
         response_topic = (
             f"makapix/player/{player.player_key}/response/{request.request_id}"

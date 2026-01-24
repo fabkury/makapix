@@ -286,26 +286,36 @@ class QueryPostsRequest(PlayerRequestBase):
         description="AMP field criteria for filtering (0-64 items, AND-ed together)",
         max_length=64,
     )
+    include_fields: list[str] | None = Field(
+        None,
+        description="Optional fields to include in artwork payloads. "
+        "Valid values: owner_handle, metadata_modified_at, artwork_modified_at, "
+        "width, height, frame_count, dwell_time_ms, transparency_actual, alpha_actual. "
+        "If omitted, only mandatory fields are returned.",
+    )
 
 
 class ArtworkPostPayload(BaseModel):
     """Artwork post payload for players (firmware protocol)."""
 
+    # Mandatory fields (always included)
     post_id: int
     kind: Literal["artwork"]
-    owner_handle: str
     created_at: datetime
-    metadata_modified_at: datetime
-
     storage_key: str
     art_url: str
-    width: int
-    height: int
-    frame_count: int
-    transparency_actual: bool
-    alpha_actual: bool
-    artwork_modified_at: datetime
-    dwell_time_ms: int
+    storage_shard: str  # Always included for vault path resolution
+
+    # Optional fields (included only if requested via include_fields)
+    owner_handle: str | None = None
+    metadata_modified_at: datetime | None = None
+    artwork_modified_at: datetime | None = None
+    width: int | None = None
+    height: int | None = None
+    frame_count: int | None = None
+    dwell_time_ms: int | None = None
+    transparency_actual: bool | None = None
+    alpha_actual: bool | None = None
 
 
 class PlaylistPostPayload(BaseModel):
@@ -343,6 +353,10 @@ class GetPostRequest(PlayerRequestBase):
 
     request_type: Literal["get_post"] = "get_post"
     post_id: int = Field(..., description="Post ID to fetch")
+    include_fields: list[str] | None = Field(
+        None,
+        description="Optional fields to include (same as query_posts)",
+    )
 
 
 class GetPostResponse(BaseModel):

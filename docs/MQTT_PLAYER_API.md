@@ -43,7 +43,8 @@ Query N posts from a channel with sorting and pagination.
   "sort": "server_order",  // "server_order", "created_at", or "random"
   "random_seed": 12345,  // optional, only used when sort="random"
   "cursor": null,  // optional, for pagination
-  "limit": 50  // 1-50
+  "limit": 50,  // 1-50
+  "include_fields": ["owner_handle", "width", "height"]  // optional, see below
 }
 ```
 
@@ -58,11 +59,28 @@ Query N posts from a channel with sorting and pagination.
 - `created_at`: Chronological order by creation timestamp
 - `random`: Random order with optional seed for reproducibility
 
+**Optional Fields (`include_fields`):**
+
+By default, artwork responses only include mandatory fields to minimize payload size. To receive additional fields, specify them in the `include_fields` array.
+
+**Valid `include_fields` values:**
+- `owner_handle` - Creator's username
+- `metadata_modified_at` - When post metadata was last modified
+- `artwork_modified_at` - When artwork file was last modified
+- `width` - Canvas width in pixels
+- `height` - Canvas height in pixels
+- `frame_count` - Animation frame count (1 for static)
+- `dwell_time_ms` - Display duration in milliseconds
+- `transparency_actual` - Whether artwork has transparent pixels
+- `alpha_actual` - Whether artwork has semi-transparent pixels
+
+Fields not in `include_fields` are omitted from the response (not sent as null).
+
 **Response Schema:**
 
-The response contains a list of posts, where each post is either an artwork or a playlist. The `kind` field indicates the post type.
+The response contains a list of posts, where each post is either an artwork or a playlist. The `kind` field indicates the post type. Fields with `null` values are omitted from the response.
 
-**Artwork Post:**
+**Artwork Post (minimal response - no include_fields):**
 ```json
 {
   "request_id": "unique-request-id",
@@ -71,23 +89,66 @@ The response contains a list of posts, where each post is either an artwork or a
     {
       "post_id": 123,
       "kind": "artwork",
-      "owner_handle": "artist123",
       "created_at": "2025-12-08T17:00:00Z",
-      "metadata_modified_at": "2025-12-08T17:00:00Z",
       "storage_key": "uuid",
       "art_url": "https://...",
-      "width": 64,
-      "height": 64,
-      "frame_count": 1,
-      "transparency_actual": false,
-      "alpha_actual": false,
-      "artwork_modified_at": "2025-12-08T17:00:00Z",
-      "dwell_time_ms": 30000
+      "storage_shard": "ab/cd/ef"
     }
   ],
   "next_cursor": "50",
-  "has_more": false,
-  "error": null
+  "has_more": false
+}
+```
+
+**Artwork Post (with include_fields: ["owner_handle", "width", "height"]):**
+```json
+{
+  "request_id": "unique-request-id",
+  "success": true,
+  "posts": [
+    {
+      "post_id": 123,
+      "kind": "artwork",
+      "created_at": "2025-12-08T17:00:00Z",
+      "storage_key": "uuid",
+      "art_url": "https://...",
+      "storage_shard": "ab/cd/ef",
+      "owner_handle": "artist123",
+      "width": 64,
+      "height": 64
+    }
+  ],
+  "next_cursor": "50",
+  "has_more": false
+}
+```
+
+**Artwork Post (with all optional fields):**
+```json
+{
+  "request_id": "unique-request-id",
+  "success": true,
+  "posts": [
+    {
+      "post_id": 123,
+      "kind": "artwork",
+      "created_at": "2025-12-08T17:00:00Z",
+      "storage_key": "uuid",
+      "art_url": "https://...",
+      "storage_shard": "ab/cd/ef",
+      "owner_handle": "artist123",
+      "metadata_modified_at": "2025-12-08T17:00:00Z",
+      "artwork_modified_at": "2025-12-08T17:00:00Z",
+      "width": 64,
+      "height": 64,
+      "frame_count": 1,
+      "dwell_time_ms": 30000,
+      "transparency_actual": false,
+      "alpha_actual": false
+    }
+  ],
+  "next_cursor": "50",
+  "has_more": false
 }
 ```
 
@@ -115,7 +176,7 @@ The response contains a list of posts, where each post is either an artwork or a
 
 **Example:**
 ```python
-# Query first 10 promoted posts
+# Query first 10 promoted posts (minimal payload)
 request = {
     "request_id": "req-001",
     "request_type": "query_posts",
@@ -125,15 +186,31 @@ request = {
     "limit": 10
 }
 
-# Query posts from a specific user
+# Query posts with specific fields included
 request = {
     "request_id": "req-002",
+    "request_type": "query_posts",
+    "player_key": "your-player-uuid",
+    "channel": "promoted",
+    "sort": "created_at",
+    "limit": 10,
+    "include_fields": ["owner_handle", "width", "height", "frame_count"]
+}
+
+# Query posts from a specific user with all optional fields
+request = {
+    "request_id": "req-003",
     "request_type": "query_posts",
     "player_key": "your-player-uuid",
     "channel": "by_user",
     "user_handle": "artist123",
     "sort": "created_at",
-    "limit": 20
+    "limit": 20,
+    "include_fields": [
+        "owner_handle", "metadata_modified_at", "artwork_modified_at",
+        "width", "height", "frame_count", "dwell_time_ms",
+        "transparency_actual", "alpha_actual"
+    ]
 }
 ```
 
@@ -262,14 +339,16 @@ Fetch a single post by ID.
   "request_id": "unique-request-id",
   "request_type": "get_post",
   "player_key": "player-uuid",
-  "post_id": 123
+  "post_id": 123,
+  "include_fields": ["owner_handle", "width", "height"]  // optional, same as query_posts
 }
 ```
 
 **Response Schema:**
 
-Returns a single post object (artwork or playlist) with the same structure as `query_posts`.
+Returns a single post object (artwork or playlist) with the same structure as `query_posts`. Supports the same `include_fields` parameter for optional field selection.
 
+**Minimal response (no include_fields):**
 ```json
 {
   "request_id": "unique-request-id",
@@ -277,20 +356,30 @@ Returns a single post object (artwork or playlist) with the same structure as `q
   "post": {
     "post_id": 123,
     "kind": "artwork",
-    "owner_handle": "artist123",
     "created_at": "2025-12-08T17:00:00Z",
-    "metadata_modified_at": "2025-12-08T17:00:00Z",
     "storage_key": "uuid",
     "art_url": "https://...",
+    "storage_shard": "ab/cd/ef"
+  }
+}
+```
+
+**With include_fields:**
+```json
+{
+  "request_id": "unique-request-id",
+  "success": true,
+  "post": {
+    "post_id": 123,
+    "kind": "artwork",
+    "created_at": "2025-12-08T17:00:00Z",
+    "storage_key": "uuid",
+    "art_url": "https://...",
+    "storage_shard": "ab/cd/ef",
+    "owner_handle": "artist123",
     "width": 64,
-    "height": 64,
-    "frame_count": 1,
-    "transparency_actual": false,
-    "alpha_actual": false,
-    "artwork_modified_at": "2025-12-08T17:00:00Z",
-    "dwell_time_ms": 30000
-  },
-  "error": null
+    "height": 64
+  }
 }
 ```
 
@@ -301,11 +390,21 @@ Returns a single post object (artwork or playlist) with the same structure as `q
 
 **Example:**
 ```python
+# Get post with minimal payload
 request = {
     "request_id": "get-post-1",
     "request_type": "get_post",
     "player_key": "your-player-uuid",
     "post_id": 123
+}
+
+# Get post with specific fields
+request = {
+    "request_id": "get-post-2",
+    "request_type": "get_post",
+    "player_key": "your-player-uuid",
+    "post_id": 123,
+    "include_fields": ["owner_handle", "width", "height", "dwell_time_ms"]
 }
 ```
 
@@ -598,7 +697,8 @@ request = {
     "player_key": PLAYER_KEY,
     "channel": "promoted",
     "sort": "created_at",
-    "limit": 10
+    "limit": 10,
+    "include_fields": ["owner_handle", "width", "height"]  # optional field selection
 }
 client.publish(request_topic, json.dumps(request), qos=1)
 print(f"Sent request {request_id}")
@@ -641,6 +741,15 @@ python3 scripts/validate_mqtt_player_api.py \
 The script will run through all API operations and report success/failure for each.
 
 ## Changelog
+
+### Version 1.4 (2026-01-24)
+- Added `include_fields` parameter to `query_posts` and `get_post` operations for optional field selection
+- Artwork responses now return minimal payload by default (only mandatory fields)
+- Added `storage_shard` as a mandatory field in artwork responses (for vault path resolution)
+- Mandatory fields (always included): `post_id`, `kind`, `created_at`, `storage_key`, `art_url`, `storage_shard`
+- Optional fields (opt-in via `include_fields`): `owner_handle`, `metadata_modified_at`, `artwork_modified_at`, `width`, `height`, `frame_count`, `dwell_time_ms`, `transparency_actual`, `alpha_actual`
+- Responses now exclude `null` values for cleaner payloads
+- **Breaking change**: Clients relying on optional fields must now explicitly request them via `include_fields`
 
 ### Version 1.3 (2026-01-03)
 - Removed `bit_depth` field from queryable fields (no longer extracted)
