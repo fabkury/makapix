@@ -4,9 +4,9 @@ import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 
-type TabValue = 'about' | 'rules' | 'moderation';
+type TabValue = 'about' | 'rules' | 'moderation' | 'licenses';
 
-const validTabs: TabValue[] = ['about', 'rules', 'moderation'];
+const validTabs: TabValue[] = ['about', 'rules', 'moderation', 'licenses'];
 
 export default function AboutPage() {
   const router = useRouter();
@@ -35,6 +35,7 @@ export default function AboutPage() {
             <TabsTrigger value="about" className="tab-trigger">About</TabsTrigger>
             <TabsTrigger value="rules" className="tab-trigger">Rules</TabsTrigger>
             <TabsTrigger value="moderation" className="tab-trigger">Moderation</TabsTrigger>
+            <TabsTrigger value="licenses" className="tab-trigger">Licenses</TabsTrigger>
           </TabsList>
 
           <TabsContent value="about" className="tab-content">
@@ -47,6 +48,10 @@ export default function AboutPage() {
 
           <TabsContent value="moderation" className="tab-content">
             <ModerationTab />
+          </TabsContent>
+
+          <TabsContent value="licenses" className="tab-content">
+            <LicensesTab />
           </TabsContent>
         </Tabs>
       </div>
@@ -673,6 +678,270 @@ function ModerationTab() {
 
           .tab-article h3 {
             font-size: 0.95rem;
+          }
+        }
+      `}</style>
+    </article>
+  );
+}
+
+function LicensesTab() {
+  const licenses = [
+    {
+      identifier: 'CC-BY-4.0',
+      title: 'Creative Commons Attribution 4.0 International',
+      url: 'https://creativecommons.org/licenses/by/4.0/',
+      badge: '/licenses/by.svg',
+    },
+    {
+      identifier: 'CC-BY-SA-4.0',
+      title: 'Creative Commons Attribution-ShareAlike 4.0 International',
+      url: 'https://creativecommons.org/licenses/by-sa/4.0/',
+      badge: '/licenses/by-sa.svg',
+    },
+    {
+      identifier: 'CC-BY-ND-4.0',
+      title: 'Creative Commons Attribution-NoDerivatives 4.0 International',
+      url: 'https://creativecommons.org/licenses/by-nd/4.0/',
+      badge: '/licenses/by-nd.svg',
+    },
+    {
+      identifier: 'CC-BY-NC-4.0',
+      title: 'Creative Commons Attribution-NonCommercial 4.0 International',
+      url: 'https://creativecommons.org/licenses/by-nc/4.0/',
+      badge: '/licenses/by-nc.svg',
+    },
+    {
+      identifier: 'CC-BY-NC-SA-4.0',
+      title: 'Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International',
+      url: 'https://creativecommons.org/licenses/by-nc-sa/4.0/',
+      badge: '/licenses/by-nc-sa.svg',
+    },
+    {
+      identifier: 'CC-BY-NC-ND-4.0',
+      title: 'Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International',
+      url: 'https://creativecommons.org/licenses/by-nc-nd/4.0/',
+      badge: '/licenses/by-nc-nd.svg',
+    },
+    {
+      identifier: 'CC0-1.0',
+      title: 'CC0 1.0 Universal Public Domain Dedication',
+      url: 'https://creativecommons.org/publicdomain/zero/1.0/',
+      badge: '/licenses/cc-zero.svg',
+    },
+    {
+      identifier: 'PDM-1.0',
+      title: 'Public Domain Mark 1.0',
+      url: 'https://creativecommons.org/publicdomain/mark/1.0/',
+      badge: '/licenses/publicdomain.svg',
+    },
+  ];
+
+  return (
+    <article className="tab-article">
+      <h1>Licenses</h1>
+
+      <p className="lead">
+        By posting artwork on Makapix Club, you agree to certain terms regarding your work
+        and how it may be displayed.
+      </p>
+
+      <h2>Terms of Posting</h2>
+
+      <p>
+        When you upload artwork to Makapix Club, you affirm that:
+      </p>
+
+      <ul>
+        <li>You own the artwork or have permission to post it.</li>
+        <li>
+          You authorize Makapix Club to display your artwork on the website and on
+          integrated player devices.
+        </li>
+      </ul>
+
+      <h2>Integrated Player Devices</h2>
+
+      <p>
+        An <em>integrated player device</em> is a device that meets all of the following criteria:
+      </p>
+
+      <ul>
+        <li>Connects to Makapix Club via the MQTT backend on behalf of its owner.</li>
+        <li>Downloads and displays artworks from Makapix Club.</li>
+        <li>Reports view data back to Makapix Club for the artworks it displays.</li>
+      </ul>
+
+      <p className="warning">
+        Downloading artworks from Makapix Club for display on non-integrated devices
+        is not permitted.
+      </p>
+
+      <h2>Creative Commons Licenses</h2>
+
+      <p>
+        Beyond the display rights granted above, you retain control over your work.
+        When uploading, you can select from the full suite of Creative Commons licenses
+        to specify how others may use your artwork.
+      </p>
+
+      <p>
+        The following licenses are available on Makapix Club:
+      </p>
+
+      <div className="license-list">
+        {licenses.map((license) => (
+          <a
+            key={license.identifier}
+            href={license.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="license-item"
+          >
+            <img
+              src={license.badge}
+              alt={license.identifier}
+              className="license-badge"
+            />
+            <div className="license-info">
+              <span className="license-identifier">{license.identifier}</span>
+              <span className="license-title">{license.title}</span>
+            </div>
+          </a>
+        ))}
+      </div>
+
+      <style jsx>{`
+        .tab-article {
+          color: var(--text-secondary);
+          line-height: 1.7;
+        }
+
+        .tab-article h1 {
+          font-size: 1.75rem;
+          font-weight: 700;
+          color: var(--text-primary);
+          margin: 0 0 24px 0;
+          text-align: center;
+        }
+
+        .tab-article h2 {
+          font-size: 1.15rem;
+          font-weight: 600;
+          color: var(--text-primary);
+          margin: 32px 0 12px 0;
+        }
+
+        .tab-article h2:first-of-type {
+          margin-top: 24px;
+        }
+
+        .tab-article p {
+          margin: 0 0 16px 0;
+          font-size: 0.95rem;
+        }
+
+        .tab-article .lead {
+          font-size: 1.05rem;
+          color: var(--text-primary);
+          margin-bottom: 24px;
+        }
+
+        .tab-article strong {
+          color: var(--text-primary);
+        }
+
+        .tab-article em {
+          color: var(--accent-cyan);
+          font-style: normal;
+          font-weight: 500;
+        }
+
+        .tab-article ul {
+          margin: 0 0 16px 0;
+          padding-left: 24px;
+          font-size: 0.95rem;
+        }
+
+        .tab-article li {
+          margin: 8px 0;
+        }
+
+        .warning {
+          background: rgba(255, 110, 180, 0.1);
+          border-left: 3px solid var(--accent-pink);
+          padding: 12px 16px;
+          border-radius: 0 8px 8px 0;
+        }
+
+        .license-list {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          margin-top: 20px;
+        }
+
+        .license-item {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          padding: 16px;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid var(--bg-tertiary);
+          border-radius: 10px;
+          text-decoration: none;
+          transition: all var(--transition-fast);
+        }
+
+        .license-item:hover {
+          border-color: var(--accent-cyan);
+          background: rgba(0, 212, 255, 0.05);
+        }
+
+        .license-badge {
+          width: 88px;
+          height: 31px;
+          flex-shrink: 0;
+        }
+
+        .license-info {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          min-width: 0;
+        }
+
+        .license-identifier {
+          font-family: monospace;
+          font-size: 0.9rem;
+          color: var(--accent-cyan);
+          font-weight: 500;
+        }
+
+        .license-title {
+          font-size: 0.85rem;
+          color: var(--text-secondary);
+          line-height: 1.4;
+        }
+
+        @media (max-width: 480px) {
+          .tab-article h1 {
+            font-size: 1.5rem;
+          }
+
+          .tab-article h2 {
+            font-size: 1.1rem;
+          }
+
+          .license-item {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 12px;
+          }
+
+          .license-badge {
+            width: 80px;
+            height: auto;
           }
         }
       `}</style>

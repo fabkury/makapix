@@ -222,6 +222,7 @@ export default function ContributePage() {
           flex-direction: column;
           gap: 16px;
           animation: fadeIn 0.3s ease;
+          padding-bottom: 50vh;
         }
 
         @keyframes fadeIn {

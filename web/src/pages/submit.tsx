@@ -1041,7 +1041,16 @@ function SubmitPageContent() {
               {/* License Selection Accordion */}
               <div className="accordion">
                 <button className={`accordion-trigger ${showLicenseOptions ? 'open' : ''}`} onClick={() => setShowLicenseOptions(!showLicenseOptions)}>
-                  <span className="accordion-title">License</span>
+                  <div className="accordion-header-content">
+                    <span className="accordion-title">License</span>
+                    {!showLicenseOptions && (
+                      <span className="accordion-selected-value">
+                        {selectedLicenseId
+                          ? licenses.find((l) => l.id === selectedLicenseId)?.identifier || 'Selected'
+                          : 'No License'}
+                      </span>
+                    )}
+                  </div>
                   <span className="accordion-icon">{showLicenseOptions ? '▲' : '▼'}</span>
                 </button>
 
@@ -1049,35 +1058,48 @@ function SubmitPageContent() {
                   <div className="accordion-content">
                     <div className="license-section">
                       <label className="form-label">Select License</label>
-                      <select
-                        className="form-input license-select"
-                        value={selectedLicenseId ?? ''}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setSelectedLicenseId(val ? Number(val) : null);
-                        }}
-                      >
-                        <option value="">No License</option>
+                      <div className="license-radio-group">
+                        <label className="license-radio-option">
+                          <input
+                            type="radio"
+                            name="license"
+                            checked={selectedLicenseId === null}
+                            onChange={() => setSelectedLicenseId(null)}
+                          />
+                          <div className="license-option-content">
+                            <div className="license-option-text">
+                              <span className="license-option-identifier">No License</span>
+                              <span className="license-option-title">All rights reserved</span>
+                            </div>
+                          </div>
+                        </label>
+
                         {licenses.map((license) => (
-                          <option key={license.id} value={license.id}>
-                            {license.title}
-                          </option>
+                          <label key={license.id} className="license-radio-option">
+                            <input
+                              type="radio"
+                              name="license"
+                              checked={selectedLicenseId === license.id}
+                              onChange={() => setSelectedLicenseId(license.id)}
+                            />
+                            <div className="license-option-content">
+                              <img src={license.badge_path} alt={license.identifier} className="license-option-badge" />
+                              <div className="license-option-text">
+                                <span className="license-option-identifier">{license.identifier}</span>
+                                <span className="license-option-title">{license.title}</span>
+                              </div>
+                            </div>
+                          </label>
                         ))}
-                      </select>
+                      </div>
 
                       {selectedLicenseId && (() => {
                         const selected = licenses.find((l) => l.id === selectedLicenseId);
                         if (!selected) return null;
                         return (
-                          <div className="license-preview">
-                            <a href={selected.canonical_url} target="_blank" rel="noopener noreferrer">
-                              <img src={selected.badge_path} alt={selected.identifier} className="license-badge" />
-                            </a>
-                            <p className="license-title">{selected.title}</p>
-                            <a href={selected.canonical_url} target="_blank" rel="noopener noreferrer" className="license-link">
-                              Learn more
-                            </a>
-                          </div>
+                          <a href={selected.canonical_url} target="_blank" rel="noopener noreferrer" className="license-learn-more">
+                            Learn more about this license
+                          </a>
                         );
                       })()}
                     </div>
@@ -1186,6 +1208,8 @@ function SubmitPageContent() {
         .accordion { border: 1px solid var(--bg-tertiary); border-radius: 12px; overflow: hidden; background: var(--bg-secondary); }
         .accordion-trigger { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; background: transparent; color: var(--accent-cyan); font-weight: 600; cursor: pointer; transition: background var(--transition-fast); }
         .accordion-trigger:hover { background: rgba(0, 212, 255, 0.05); }
+        .accordion-header-content { display: flex; align-items: center; gap: 12px; }
+        .accordion-selected-value { font-size: 0.8rem; font-family: monospace; color: var(--text-secondary); font-weight: 400; padding: 4px 8px; background: rgba(255, 255, 255, 0.05); border-radius: 4px; }
         .accordion-icon { font-size: 0.8rem; color: var(--text-secondary); }
         .accordion-content { padding: 0 20px 20px; display: flex; flex-direction: column; gap: 20px; }
         .tabs { display: flex; border-radius: 8px; overflow: hidden; border: 1px solid var(--bg-tertiary); }
@@ -1229,12 +1253,18 @@ function SubmitPageContent() {
         .options-card { background: var(--bg-secondary); border: 1px solid var(--bg-tertiary); border-radius: 12px; padding: 20px; }
         .options-title { color: var(--accent-pink); font-size: 1rem; font-weight: 600; margin-bottom: 16px; }
         .license-section { display: flex; flex-direction: column; gap: 12px; }
-        .license-select { cursor: pointer; }
-        .license-preview { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px; background: rgba(255, 255, 255, 0.05); border-radius: 8px; margin-top: 8px; }
-        .license-badge { max-width: 200px; height: auto; }
-        .license-title { font-size: 0.85rem; color: var(--text-secondary); text-align: center; }
-        .license-link { font-size: 0.8rem; color: var(--accent-cyan); }
-        .license-link:hover { text-decoration: underline; }
+        .license-radio-group { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+        .license-radio-option { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; padding: 12px; border: 1px solid var(--bg-tertiary); border-radius: 8px; transition: all var(--transition-fast); }
+        .license-radio-option:hover { border-color: var(--accent-cyan); background: rgba(0, 212, 255, 0.05); }
+        .license-radio-option:has(input:checked) { border-color: var(--accent-cyan); background: rgba(0, 212, 255, 0.1); }
+        .license-radio-option input[type="radio"] { width: 18px; height: 18px; accent-color: var(--accent-cyan); flex-shrink: 0; margin-top: 2px; }
+        .license-option-content { display: flex; align-items: flex-start; gap: 12px; flex: 1; min-width: 0; }
+        .license-option-badge { width: 88px; height: 31px; flex-shrink: 0; }
+        .license-option-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .license-option-identifier { font-family: monospace; font-size: 0.85rem; color: var(--accent-cyan); }
+        .license-option-title { font-size: 0.8rem; color: var(--text-secondary); line-height: 1.3; }
+        .license-learn-more { font-size: 0.8rem; color: var(--accent-cyan); margin-top: 8px; display: inline-block; }
+        .license-learn-more:hover { text-decoration: underline; }
         .checkbox-group { display: flex; flex-direction: column; gap: 12px; }
         .checkbox-option { display: flex; align-items: center; gap: 10px; cursor: pointer; }
         .checkbox-option input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent-cyan); }
