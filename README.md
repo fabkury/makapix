@@ -4,6 +4,8 @@
 
 Makapix Club is a community platform where pixel artists can share their creations, engage with other makers through reactions and comments, and showcase their work both on the web and through physical player devices that display artwork in real spaces.
 
+**Join our community!** 💬 [Join us on Discord](https://discord.gg/xk9umcujXV) to discuss the project, share ideas, and stay up to date on the latest news.
+
 ## What Makes Makapix Special
 
 - **Pixel Art First**: Focused exclusively on pixel art with validation for proper formats and dimensions
@@ -161,6 +163,7 @@ For detailed attribution information, see [NOTICE](NOTICE).
 
 - **Website**: https://makapix.club
 - **Repository**: https://github.com/fabkury/makapix
+- **Discord**: https://discord.gg/xk9umcujXV - Join our community to discuss the project and stay up to date on news!
 
 ---
 
