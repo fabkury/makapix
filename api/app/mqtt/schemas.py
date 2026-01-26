@@ -493,3 +493,48 @@ class P3AViewEvent(BaseModel):
     request_ack: bool = Field(
         False, description="Whether to send acknowledgment to view/ack topic"
     )
+
+
+# ============================================================================
+# Playset Request/Response Schemas
+# ============================================================================
+
+
+class GetPlaysetRequest(PlayerRequestBase):
+    """Request to fetch a playset configuration."""
+
+    request_type: Literal["get_playset"] = "get_playset"
+    playset_name: str = Field(
+        ..., description="Name of the playset to fetch (e.g., 'followed_artists')"
+    )
+
+
+class PlaysetChannelPayload(BaseModel):
+    """Single channel in a playset response."""
+
+    type: Literal["named", "user", "hashtag", "sdcard"] = Field(
+        ..., description="Channel type"
+    )
+    name: str | None = Field(
+        None, description="Channel name for 'named' type (e.g., 'all', 'promoted')"
+    )
+    identifier: str | None = Field(
+        None, description="Identifier: sqid for user, tag for hashtag"
+    )
+    display_name: str | None = Field(
+        None, description="Display name (e.g., '@handle' or '#tag')"
+    )
+    weight: int | None = Field(None, description="Weight for manual exposure mode")
+
+
+class GetPlaysetResponse(BaseModel):
+    """Response with playset configuration."""
+
+    request_id: str
+    success: bool = True
+    playset_name: str | None = None
+    channels: list[PlaysetChannelPayload] = Field(default_factory=list)
+    exposure_mode: Literal["equal", "manual", "proportional"] | None = None
+    pick_mode: Literal["recency", "random"] | None = None
+    error: str | None = None
+    error_code: str | None = None

@@ -4,7 +4,7 @@ export default function Document() {
   return (
     <Html
       lang="en"
-      style={{ backgroundColor: '#0a0a0f' }}
+      style={{ backgroundColor: '#000000' }}
       // In development, some tooling can inject extra attributes into the SSR HTML
       // (e.g. "data-cursor-ref"), which can trigger noisy hydration warnings.
       // We don't want these to obscure real issues during local/dev work.
@@ -55,7 +55,7 @@ export default function Document() {
           crossOrigin="anonymous"
         />
       </Head>
-      <body style={{ backgroundColor: '#0a0a0f' }} suppressHydrationWarning>
+      <body style={{ backgroundColor: '#000000' }} suppressHydrationWarning>
         <Main />
         <NextScript />
       </body>

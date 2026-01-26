@@ -39,6 +39,14 @@ interface ValidationError {
   message: string;
 }
 
+interface License {
+  id: number;
+  identifier: string;
+  title: string;
+  canonical_url: string;
+  badge_path: string;
+}
+
 type ResamplingAlgorithm = 'nearest-neighbor' | 'lanczos3';
 
 const MAX_FILE_SIZE_BYTES = (() => {
@@ -201,6 +209,11 @@ function SubmitPageContent() {
   const [uploadedArtwork, setUploadedArtwork] = useState<UploadedArtwork | null>(null);
   const [showClearDialog, setShowClearDialog] = useState(false);
 
+  // License state
+  const [licenses, setLicenses] = useState<License[]>([]);
+  const [selectedLicenseId, setSelectedLicenseId] = useState<number | null>(null);
+  const [showLicenseOptions, setShowLicenseOptions] = useState(false);
+
   // Processing state (managed locally since we use direct function calls)
   const [processingState, setProcessingState] = useState<{
     isProcessing: boolean;
@@ -224,6 +237,29 @@ function SubmitPageContent() {
       setIsAuthenticated(true);
     }
   }, [router]);
+
+  // Fetch available licenses on mount
+  useEffect(() => {
+    const fetchLicenses = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/license`);
+        if (response.ok) {
+          const data = await response.json();
+          setLicenses(data.items || []);
+          // Default to CC BY-ND 4.0
+          const defaultLicense = (data.items || []).find(
+            (l: License) => l.identifier === 'CC-BY-ND-4.0'
+          );
+          if (defaultLicense) {
+            setSelectedLicenseId(defaultLicense.id);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch licenses:', err);
+      }
+    };
+    fetchLicenses();
+  }, [API_BASE_URL]);
 
   // Track if we've processed Piskel/Pixelc import
   const [editorImportProcessed, setEditorImportProcessed] = useState(false);
@@ -636,12 +672,18 @@ function SubmitPageContent() {
     setUploadedArtwork(null);
     setShowScalingOptions(false);
     setPreviewScaling(false);
+    setShowLicenseOptions(false);
+    // Reset license to default (CC BY-ND 4.0)
+    const defaultLicense = licenses.find((l) => l.identifier === 'CC-BY-ND-4.0');
+    if (defaultLicense) {
+      setSelectedLicenseId(defaultLicense.id);
+    }
     setProcessingState({ isProcessing: false, progress: null, error: null });
     clearDraft();
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  }, [previewUrl]);
+  }, [previewUrl, licenses]);
 
   const handleClearAll = useCallback(() => {
     clearSelection();
@@ -700,6 +742,9 @@ function SubmitPageContent() {
       formData.append('description', description.trim());
       formData.append('hashtags', hashtags.trim());
       formData.append('hidden_by_user', postAsHidden.toString());
+      if (selectedLicenseId !== null) {
+        formData.append('license_id', selectedLicenseId.toString());
+      }
 
       const response = await authenticatedFetch(`${API_BASE_URL}/api/post/upload`, {
         method: 'POST',
@@ -993,6 +1038,53 @@ function SubmitPageContent() {
                 )}
               </div>
 
+              {/* License Selection Accordion */}
+              <div className="accordion">
+                <button className={`accordion-trigger ${showLicenseOptions ? 'open' : ''}`} onClick={() => setShowLicenseOptions(!showLicenseOptions)}>
+                  <span className="accordion-title">License</span>
+                  <span className="accordion-icon">{showLicenseOptions ? '▲' : '▼'}</span>
+                </button>
+
+                {showLicenseOptions && (
+                  <div className="accordion-content">
+                    <div className="license-section">
+                      <label className="form-label">Select License</label>
+                      <select
+                        className="form-input license-select"
+                        value={selectedLicenseId ?? ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSelectedLicenseId(val ? Number(val) : null);
+                        }}
+                      >
+                        <option value="">No License</option>
+                        {licenses.map((license) => (
+                          <option key={license.id} value={license.id}>
+                            {license.title}
+                          </option>
+                        ))}
+                      </select>
+
+                      {selectedLicenseId && (() => {
+                        const selected = licenses.find((l) => l.id === selectedLicenseId);
+                        if (!selected) return null;
+                        return (
+                          <div className="license-preview">
+                            <a href={selected.canonical_url} target="_blank" rel="noopener noreferrer">
+                              <img src={selected.badge_path} alt={selected.identifier} className="license-badge" />
+                            </a>
+                            <p className="license-title">{selected.title}</p>
+                            <a href={selected.canonical_url} target="_blank" rel="noopener noreferrer" className="license-link">
+                              Learn more
+                            </a>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="options-card">
                 <h3 className="options-title">Upload Options</h3>
                 <div className="checkbox-group">
@@ -1136,6 +1228,13 @@ function SubmitPageContent() {
         .preview-scaling-btn.active { background: var(--accent-pink); }
         .options-card { background: var(--bg-secondary); border: 1px solid var(--bg-tertiary); border-radius: 12px; padding: 20px; }
         .options-title { color: var(--accent-pink); font-size: 1rem; font-weight: 600; margin-bottom: 16px; }
+        .license-section { display: flex; flex-direction: column; gap: 12px; }
+        .license-select { cursor: pointer; }
+        .license-preview { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px; background: rgba(255, 255, 255, 0.05); border-radius: 8px; margin-top: 8px; }
+        .license-badge { max-width: 200px; height: auto; }
+        .license-title { font-size: 0.85rem; color: var(--text-secondary); text-align: center; }
+        .license-link { font-size: 0.8rem; color: var(--accent-cyan); }
+        .license-link:hover { text-decoration: underline; }
         .checkbox-group { display: flex; flex-direction: column; gap: 12px; }
         .checkbox-option { display: flex; align-items: center; gap: 10px; cursor: pointer; }
         .checkbox-option input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent-cyan); }

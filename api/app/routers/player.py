@@ -47,6 +47,7 @@ from ..mqtt.cert_generator import (
     revoke_certificate,
 )
 from ..mqtt.player_commands import log_command, publish_player_command
+from ..services.playset import PlaysetService
 from ..services.rate_limit import check_rate_limit
 from ..utils.registration import generate_registration_code
 
@@ -689,12 +690,9 @@ def send_player_command(
                 detail="play_channel requires one of: channel_name, hashtag, or user_sqid",
             )
 
-        # Build channel payload
-        if payload.channel_name:
-            command_payload = {"channel_name": payload.channel_name}
-        elif payload.hashtag:
-            command_payload = {"hashtag": payload.hashtag}
-        elif payload.user_sqid:
+        # Build channel payload - check user_sqid first since it may come with
+        # channel_name="by_user" and we need to include user_sqid/user_handle
+        if payload.user_sqid:
             # Validate that the user exists
             target_user = get_user_by_sqid(payload.user_sqid, db)
             if not target_user:
@@ -702,7 +700,33 @@ def send_player_command(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="User not found",
                 )
-            command_payload = {"user_sqid": payload.user_sqid}
+            command_payload = {
+                "channel_name": "by_user",
+                "user_sqid": payload.user_sqid,
+                "user_handle": payload.user_handle or target_user.handle,
+            }
+        elif payload.hashtag:
+            command_payload = {"channel_name": "hashtag", "hashtag": payload.hashtag}
+        elif payload.channel_name:
+            command_payload = {"channel_name": payload.channel_name}
+
+    elif payload.command_type == "play_playset":
+        if not payload.playset_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="playset_name is required for play_playset command",
+            )
+
+        # Get playset from service
+        playset = PlaysetService.get_playset(db, user, payload.playset_name)
+        if not playset:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Playset '{payload.playset_name}' not found",
+            )
+
+        # Build command payload from playset
+        command_payload = playset.to_dict()
 
     # Publish command via MQTT
     command_id = publish_player_command(
@@ -800,12 +824,9 @@ def send_command_to_all_players(
                 detail="play_channel requires one of: channel_name, hashtag, or user_sqid",
             )
 
-        # Build channel payload
-        if payload.channel_name:
-            command_payload = {"channel_name": payload.channel_name}
-        elif payload.hashtag:
-            command_payload = {"hashtag": payload.hashtag}
-        elif payload.user_sqid:
+        # Build channel payload - check user_sqid first since it may come with
+        # channel_name="by_user" and we need to include user_sqid/user_handle
+        if payload.user_sqid:
             # Validate that the user exists
             target_user = get_user_by_sqid(payload.user_sqid, db)
             if not target_user:
@@ -813,7 +834,33 @@ def send_command_to_all_players(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="User not found",
                 )
-            command_payload = {"user_sqid": payload.user_sqid}
+            command_payload = {
+                "channel_name": "by_user",
+                "user_sqid": payload.user_sqid,
+                "user_handle": payload.user_handle or target_user.handle,
+            }
+        elif payload.hashtag:
+            command_payload = {"channel_name": "hashtag", "hashtag": payload.hashtag}
+        elif payload.channel_name:
+            command_payload = {"channel_name": payload.channel_name}
+
+    elif payload.command_type == "play_playset":
+        if not payload.playset_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="playset_name is required for play_playset command",
+            )
+
+        # Get playset from service
+        playset = PlaysetService.get_playset(db, user, payload.playset_name)
+        if not playset:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Playset '{payload.playset_name}' not found",
+            )
+
+        # Build command payload from playset
+        command_payload = playset.to_dict()
 
     # Send to all players
     commands = []

@@ -138,7 +138,7 @@ def list_posts(
     # Playlist posts are used primarily for players (MQTT) and have a different shape.
     query = (
         db.query(models.Post)
-        .options(joinedload(models.Post.owner))
+        .options(joinedload(models.Post.owner), joinedload(models.Post.license))
         .filter(
             models.Post.kind == "artwork",
             models.Post.deleted_by_user == False,  # Exclude user-deleted posts
@@ -502,6 +502,7 @@ async def upload_artwork(
     description: str | None = Form(None, max_length=5000),
     hashtags: str = Form(""),  # Comma-separated hashtags
     hidden_by_user: str = Form("false"),  # User can choose to hide their artwork
+    license_id: int | None = Form(None),  # Creative Commons license ID
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> schemas.ArtworkUploadResponse:
@@ -643,6 +644,28 @@ async def upload_artwork(
     # Parse hidden_by_user from form (string "true"/"false" to bool)
     user_hidden = hidden_by_user.lower() in ("true", "1", "yes")
 
+    # Handle license: validate if provided, default to CC BY-ND 4.0 if not
+    resolved_license_id = license_id
+    if license_id is not None:
+        # Validate the provided license_id exists
+        license_obj = (
+            db.query(models.License).filter(models.License.id == license_id).first()
+        )
+        if not license_obj:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid license_id",
+            )
+    else:
+        # Default to CC BY-ND 4.0
+        default_license = (
+            db.query(models.License)
+            .filter(models.License.identifier == "CC-BY-ND-4.0")
+            .first()
+        )
+        if default_license:
+            resolved_license_id = default_license.id
+
     # Generate UUID for storage_key and pre-compute storage shard
     storage_key = uuid.uuid4()
     storage_shard = compute_storage_shard(storage_key)
@@ -680,6 +703,7 @@ async def upload_artwork(
         metadata_modified_at=now,
         artwork_modified_at=now,
         dwell_time_ms=30000,
+        license_id=resolved_license_id,
     )
     # Fast-path duplicate check (user-friendly error); partial unique index is the
     # authoritative protection against races.
@@ -814,7 +838,7 @@ def list_recent_posts(
 
     query = (
         db.query(models.Post)
-        .options(joinedload(models.Post.owner))
+        .options(joinedload(models.Post.owner), joinedload(models.Post.license))
         .filter(
             models.Post.kind == "artwork",
             models.Post.visible == True,
@@ -880,10 +904,10 @@ def get_post_by_storage_key(
     from ..utils.visibility import can_access_post
     from ..services.post_stats import annotate_posts_with_counts
 
-    # Query post with owner relationship
+    # Query post with owner and license relationships
     post = (
         db.query(models.Post)
-        .options(joinedload(models.Post.owner))
+        .options(joinedload(models.Post.owner), joinedload(models.Post.license))
         .filter(models.Post.storage_key == storage_key, models.Post.kind == "artwork")
         .first()
     )

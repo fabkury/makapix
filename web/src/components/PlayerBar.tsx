@@ -95,11 +95,12 @@ export default function PlayerBar() {
         // Send play_channel command
         const channelCommand: PlayerCommandRequest = {
           command_type: 'play_channel',
-          channel_name: currentChannel.channelName,
+          channel_name: currentChannel.userSqid ? 'by_user' : currentChannel.channelName,
           hashtag: currentChannel.hashtag,
           user_sqid: currentChannel.userSqid,
+          user_handle: currentChannel.userHandle,
         };
-        
+
         await sendPlayerCommand(userSqid, playerId, channelCommand);
         triggerPulse();
       }

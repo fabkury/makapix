@@ -27,6 +27,23 @@ from .db import Base
 # ============================================================================
 
 
+class License(Base):
+    """Creative Commons license definition."""
+
+    __tablename__ = "licenses"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
+    identifier = Column(String(50), unique=True, nullable=False, index=True)
+    title = Column(String(200), nullable=False)
+    canonical_url = Column(String(500), nullable=False)
+    badge_path = Column(String(200), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    posts = relationship("Post", back_populates="license")
+
+
 class User(Base):
     """User account with authentication and profile information."""
 
@@ -350,8 +367,17 @@ class Post(Base):
     # Display timing (milliseconds)
     dwell_time_ms = Column(Integer, nullable=False, default=30000)
 
+    # License (Creative Commons)
+    license_id = Column(
+        Integer,
+        ForeignKey("licenses.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     # Relationships
     owner = relationship("User", back_populates="posts", foreign_keys=[owner_id])
+    license = relationship("License", back_populates="posts", foreign_keys=[license_id])
     comments = relationship(
         "Comment", back_populates="post", cascade="all, delete-orphan"
     )

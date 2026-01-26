@@ -39,22 +39,28 @@ from .schemas import (
     ErrorResponse,
     FilterCriterion,
     FileFormatValue,
+    GetPlaysetRequest,
+    GetPlaysetResponse,
+    PlaysetChannelPayload,
 )
+from ..services.playset import PlaysetService
 
 logger = logging.getLogger(__name__)
 
 # Valid optional field names for artwork payloads
-OPTIONAL_ARTWORK_FIELDS = frozenset({
-    "owner_handle",
-    "metadata_modified_at",
-    "artwork_modified_at",
-    "width",
-    "height",
-    "frame_count",
-    "dwell_time_ms",
-    "transparency_actual",
-    "alpha_actual",
-})
+OPTIONAL_ARTWORK_FIELDS = frozenset(
+    {
+        "owner_handle",
+        "metadata_modified_at",
+        "artwork_modified_at",
+        "width",
+        "height",
+        "frame_count",
+        "dwell_time_ms",
+        "transparency_actual",
+        "alpha_actual",
+    }
+)
 
 # Subscriber client instance
 _request_client: mqtt_client.Client | None = None
@@ -152,16 +158,30 @@ def _build_artwork_payload(
         storage_shard=post.storage_shard or "",
         # Optional fields (None if not requested)
         owner_handle=post.owner.handle if "owner_handle" in include else None,
-        metadata_modified_at=post.metadata_modified_at if "metadata_modified_at" in include else None,
-        artwork_modified_at=post.artwork_modified_at if "artwork_modified_at" in include else None,
+        metadata_modified_at=(
+            post.metadata_modified_at if "metadata_modified_at" in include else None
+        ),
+        artwork_modified_at=(
+            post.artwork_modified_at if "artwork_modified_at" in include else None
+        ),
         width=int(post.width or 0) if "width" in include else None,
         height=int(post.height or 0) if "height" in include else None,
         frame_count=int(post.frame_count or 1) if "frame_count" in include else None,
-        dwell_time_ms=int(
-            getattr(post, "dwell_time_ms", DEFAULT_DWELL_MS) or DEFAULT_DWELL_MS
-        ) if "dwell_time_ms" in include else None,
-        transparency_actual=bool(getattr(post, "transparency_actual", False)) if "transparency_actual" in include else None,
-        alpha_actual=bool(getattr(post, "alpha_actual", False)) if "alpha_actual" in include else None,
+        dwell_time_ms=(
+            int(getattr(post, "dwell_time_ms", DEFAULT_DWELL_MS) or DEFAULT_DWELL_MS)
+            if "dwell_time_ms" in include
+            else None
+        ),
+        transparency_actual=(
+            bool(getattr(post, "transparency_actual", False))
+            if "transparency_actual" in include
+            else None
+        ),
+        alpha_actual=(
+            bool(getattr(post, "alpha_actual", False))
+            if "alpha_actual" in include
+            else None
+        ),
     )
 
 
@@ -593,7 +613,9 @@ def _handle_get_post(
             include_fields = set(request.include_fields) & OPTIONAL_ARTWORK_FIELDS
 
         if post.kind == "artwork":
-            payload_post: PlayerPostPayload = _build_artwork_payload(post, include_fields)
+            payload_post: PlayerPostPayload = _build_artwork_payload(
+                post, include_fields
+            )
         elif post.kind == "playlist":
             payload_post = _build_playlist_payload(post, db)
         else:
@@ -935,6 +957,79 @@ def _handle_get_comments(
         )
 
 
+def _handle_get_playset(
+    player: models.Player,
+    request: GetPlaysetRequest,
+    db: Session,
+) -> None:
+    """
+    Handle get_playset request.
+
+    Args:
+        player: Authenticated player instance
+        request: Parsed request
+        db: Database session
+    """
+    try:
+        # Get playset from service
+        playset = PlaysetService.get_playset(db, player.owner, request.playset_name)
+
+        if playset is None:
+            # Unknown playset name
+            response = GetPlaysetResponse(
+                request_id=request.request_id,
+                success=False,
+                error=f"Playset '{request.playset_name}' not found",
+                error_code="playset_not_found",
+            )
+        else:
+            # Convert playset channels to response format
+            channels = [
+                PlaysetChannelPayload(
+                    type=ch.type,
+                    name=ch.name,
+                    identifier=ch.identifier,
+                    display_name=ch.display_name,
+                    weight=ch.weight,
+                )
+                for ch in playset.channels
+            ]
+
+            response = GetPlaysetResponse(
+                request_id=request.request_id,
+                success=True,
+                playset_name=playset.name,
+                channels=channels,
+                exposure_mode=playset.exposure_mode,
+                pick_mode=playset.pick_mode,
+            )
+
+        # Send response
+        response_topic = (
+            f"makapix/player/{player.player_key}/response/{request.request_id}"
+        )
+        publish(
+            topic=response_topic,
+            payload=response.model_dump(mode="json", exclude_none=True),
+            qos=1,
+            retain=False,
+        )
+
+        logger.info(
+            f"Sent get_playset response to player {player.player_key}: "
+            f"playset={request.playset_name}, channels={len(response.channels)}"
+        )
+
+    except Exception as e:
+        logger.error(f"Error handling get_playset: {e}", exc_info=True)
+        _send_error_response(
+            player.player_key,
+            request.request_id,
+            f"Internal error fetching playset: {str(e)}",
+            "internal_error",
+        )
+
+
 def _on_request_message(
     client: mqtt_client.Client, userdata: Any, msg: mqtt_client.MQTTMessage
 ) -> None:
@@ -1017,6 +1112,9 @@ def _on_request_message(
             elif request_type == "get_comments":
                 request_obj = GetCommentsRequest(**payload)
                 _handle_get_comments(player, request_obj, db)
+            elif request_type == "get_playset":
+                request_obj = GetPlaysetRequest(**payload)
+                _handle_get_playset(player, request_obj, db)
             else:
                 logger.warning(f"Unknown request_type: {request_type}")
                 _send_error_response(

@@ -75,10 +75,10 @@ def get_post_by_sqid(
             status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
         )
 
-    # Query post with owner relationship
+    # Query post with owner and license relationships
     post = (
         db.query(models.Post)
-        .options(joinedload(models.Post.owner))
+        .options(joinedload(models.Post.owner), joinedload(models.Post.license))
         .filter(models.Post.id == post_id)
         .first()
     )

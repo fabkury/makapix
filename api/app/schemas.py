@@ -49,6 +49,29 @@ class Roles(RootModel[list[Literal["user", "moderator", "owner"]]]):
 
 
 # ============================================================================
+# LICENSE SCHEMAS
+# ============================================================================
+
+
+class License(BaseModel):
+    """Creative Commons license information."""
+
+    id: int
+    identifier: str
+    title: str
+    canonical_url: str
+    badge_path: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LicenseList(BaseModel):
+    """List of licenses."""
+
+    items: list[License]
+
+
+# ============================================================================
 # HEALTH & CONFIG
 # ============================================================================
 
@@ -252,6 +275,8 @@ class Post(BaseModel):
     user_has_liked: bool = False  # Whether the current user has liked (👍) this post
     formats_available: list[str] = []  # Available formats after SSAFPP processing
     file_format: str | None = None  # Original file format: png, gif, webp, bmp
+    license_id: int | None = None  # FK to licenses table
+    license: License | None = None  # Creative Commons license info
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -792,12 +817,17 @@ class PlayerUpdateRequest(BaseModel):
 class PlayerCommandRequest(BaseModel):
     """Player command request."""
 
-    command_type: Literal["swap_next", "swap_back", "show_artwork", "play_channel"]
+    command_type: Literal[
+        "swap_next", "swap_back", "show_artwork", "play_channel", "play_playset"
+    ]
     post_id: int | None = None  # Required for show_artwork
     # Channel identification (for play_channel)
-    channel_name: str | None = None  # 'promoted' or 'all'
+    channel_name: str | None = None  # 'promoted', 'all', or 'by_user'
     hashtag: str | None = None  # hashtag without #
     user_sqid: str | None = None  # user's sqid for profile channels
+    user_handle: str | None = None  # user's handle (for by_user channel)
+    # Playset identification (for play_playset)
+    playset_name: str | None = None  # e.g., 'followed_artists'
 
 
 class PlayerCommandResponse(BaseModel):

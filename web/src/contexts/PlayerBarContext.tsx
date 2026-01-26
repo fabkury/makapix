@@ -13,6 +13,7 @@ export interface ChannelInfo {
   channelName?: string;  // 'promoted' or 'all'
   hashtag?: string;      // hashtag without #
   userSqid?: string;     // user's sqid
+  userHandle?: string;   // user's handle (for by_user channel)
 }
 
 interface PlayerBarContextValue {

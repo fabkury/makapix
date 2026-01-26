@@ -192,6 +192,7 @@ export default function UserProfilePage() {
       playerBarContext.setCurrentChannel({
         displayName: profile.handle,
         userSqid: sqid,
+        userHandle: profile.handle,
       });
     }
     return () => {

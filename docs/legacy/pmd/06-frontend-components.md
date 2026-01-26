@@ -614,7 +614,7 @@ Reference `web/src/styles/globals.css`:
 
 ```css
 /* Backgrounds */
-var(--bg-primary)    /* #0a0a0f */
+var(--bg-primary)    /* #000000 */
 var(--bg-secondary)  /* #12121a */
 var(--bg-tertiary)   /* #1a1a24 */
 var(--bg-card)       /* #16161f */

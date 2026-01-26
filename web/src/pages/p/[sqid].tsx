@@ -16,6 +16,14 @@ import {
 } from '../../lib/navigation-context';
 import { useSwipeNavigation } from '../../hooks/useSwipeNavigation';
 
+interface License {
+  id: number;
+  identifier: string;
+  title: string;
+  canonical_url: string;
+  badge_path: string;
+}
+
 interface Post {
   id: number;
   storage_key: string;
@@ -35,6 +43,8 @@ interface Post {
   public_visibility?: boolean;
   promoted?: boolean;
   promoted_category?: string;
+  license_id?: number | null;
+  license?: License | null;
   owner?: {
     id: string;
     handle: string;
@@ -893,6 +903,25 @@ export default function PostPage() {
               </div>
             )}
 
+            {/* License badge */}
+            {post.license && (
+              <div className="license-section">
+                <a
+                  href={post.license.canonical_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="license-link"
+                  title={post.license.title}
+                >
+                  <img
+                    src={post.license.badge_path}
+                    alt={post.license.identifier}
+                    className="license-badge"
+                  />
+                </a>
+              </div>
+            )}
+
             {/* Stats button - visible to owner and moderators */}
             {(isOwner || isModerator) && (
               <div className="stats-action">
@@ -1177,6 +1206,27 @@ export default function PostPage() {
         .hashtag:hover {
           background: linear-gradient(135deg, rgba(180, 78, 255, 0.4), rgba(78, 159, 255, 0.4));
           box-shadow: var(--glow-purple);
+        }
+
+        .license-section {
+          margin-top: 16px;
+          padding-top: 16px;
+          border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .license-link {
+          display: inline-block;
+        }
+
+        .license-badge {
+          max-width: 180px;
+          height: auto;
+          opacity: 0.85;
+          transition: opacity var(--transition-fast);
+        }
+
+        .license-badge:hover {
+          opacity: 1;
         }
 
         .owner-actions {

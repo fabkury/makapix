@@ -23,6 +23,7 @@ from .routers import (
     categories,
     comments,
     legacy,
+    licenses,
     mqtt,
     player,
     playlists,
@@ -226,6 +227,7 @@ app.include_router(reactions.router)
 app.include_router(social_notifications.router)
 app.include_router(reports.router)
 app.include_router(badges.router)
+app.include_router(licenses.router)
 app.include_router(reputation.router)
 app.include_router(player.router)
 app.include_router(categories.router)

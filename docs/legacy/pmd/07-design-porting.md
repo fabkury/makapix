@@ -34,7 +34,7 @@ inbox/Post Management Dashboard/src/app/
 
 | Element | Mock-up (Light) | Makapix (Dark) |
 |---------|-----------------|----------------|
-| Page background | `#f3f4f6` (gray-50) | `var(--bg-primary)` #0a0a0f |
+| Page background | `#f3f4f6` (gray-50) | `var(--bg-primary)` #000000 |
 | Card background | `#ffffff` | `var(--bg-secondary)` #12121a |
 | Table header | `#f9fafb` (gray-50) | `var(--bg-tertiary)` #1a1a24 |
 | Text primary | `#111827` (gray-900) | `var(--text-primary)` #e8e8f0 |

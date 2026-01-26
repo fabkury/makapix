@@ -444,9 +444,10 @@ export interface PlayerCommandRequest {
   command_type: "swap_next" | "swap_back" | "show_artwork" | "play_channel";
   post_id?: number;
   // Channel identification (for play_channel)
-  channel_name?: string;  // 'promoted' or 'all'
+  channel_name?: string;  // 'promoted', 'all', or 'by_user'
   hashtag?: string;       // hashtag without #
   user_sqid?: string;     // user's sqid for profile channels
+  user_handle?: string;   // user's handle (for by_user channel)
 }
 
 export interface PlayerCommandResponse {

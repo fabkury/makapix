@@ -1641,6 +1641,7 @@ export default function SelectedPostOverlay({
 
           const isHorizontal = absX > absY * 1.25 && absX > 70;
           const isUp = dy < -90 || (vy < -650 && dy < -35);
+          const isDown = dy > 90 || (vy > 650 && dy > 35);
 
           if (isHorizontal) {
             if (dx < 0) {
@@ -1659,7 +1660,7 @@ export default function SelectedPostOverlay({
             return;
           }
 
-          if (isUp) {
+          if (isUp || isDown) {
             await dismissToOriginAndClose();
             return;
           }
