@@ -156,6 +156,7 @@ def _build_artwork_payload(
         storage_key=str(post.storage_key),
         art_url=post.art_url or "",
         storage_shard=post.storage_shard or "",
+        native_format=post.file_format,
         # Optional fields (None if not requested)
         owner_handle=post.owner.handle if "owner_handle" in include else None,
         metadata_modified_at=(

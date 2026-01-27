@@ -150,6 +150,9 @@ export default function WelcomePage() {
             <p className="recommended-link">
               <Link href="/recommended">See our Recommended artworks without logging in →</Link>
             </p>
+            <p className="recommended-link">
+              <Link href="/about">About Makapix Club →</Link>
+            </p>
           </div>
         </section>
 

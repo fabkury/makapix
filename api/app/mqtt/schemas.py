@@ -305,6 +305,7 @@ class ArtworkPostPayload(BaseModel):
     storage_key: str
     art_url: str
     storage_shard: str  # Always included for vault path resolution
+    native_format: str | None  # File format (png, gif, webp, bmp)
 
     # Optional fields (included only if requested via include_fields)
     owner_handle: str | None = None
