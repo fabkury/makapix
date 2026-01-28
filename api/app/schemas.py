@@ -1237,6 +1237,13 @@ class HashtagStatsList(BaseModel):
     next_cursor: str | None = None
 
 
+class TopHashtagsResponse(BaseModel):
+    """Top hashtags for header trending display."""
+
+    hashtags: list[str]
+    cached_until: datetime
+
+
 class SearchResultUser(BaseModel):
     """Search result: user."""
 

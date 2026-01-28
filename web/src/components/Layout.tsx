@@ -20,6 +20,10 @@ interface NavItem {
   matchPaths?: string[];
 }
 
+// Feature flag and configuration for header bottom-row with trending hashtags
+const SHOW_BOTTOM_ROW = true;  // Set to false to disable bottom-row entirely
+const BOTTOM_ROW_PAGES = ['/', '/recommended', '/hashtags', '/hashtags/[tag]'];  // Pages where bottom-row appears
+
 const navItems: NavItem[] = [
   {
     href: '/contribute',
@@ -69,9 +73,15 @@ export default function Layout({ children, title, description }: LayoutProps) {
     return localStorage.getItem('avatar_url');
   });
   const [isHeaderHidden, setIsHeaderHidden] = useState(false);
+  const [topHashtags, setTopHashtags] = useState<string[]>([]);
   // Note: We intentionally do NOT change --header-offset when the header hides.
   // The header uses transform to slide out, but the page layout stays fixed.
   // This prevents scroll jumps when the header shows/hides.
+
+  // Check if current page should show bottom-row
+  const isBottomRowPage = BOTTOM_ROW_PAGES.includes(router.pathname);
+  // bottom-row shows only when: feature enabled, user logged in, correct page, and hashtags loaded
+  const showBottomRow = SHOW_BOTTOM_ROW && isLoggedIn && isBottomRowPage && topHashtags.length > 0;
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
@@ -165,24 +175,59 @@ export default function Layout({ children, title, description }: LayoutProps) {
     return () => window.removeEventListener('makapix:user-updated', handler as EventListener);
   }, []);
 
-  // Hide the header after scrolling down ~2 rows of artwork tiles.
-  // Scrolling is document-based (window), enabling native pull-to-refresh on mobile.
+  // Delta-based header show/hide: scrolling down 256px hides, scrolling up 256px shows.
+  // This allows repeated hide/show cycles anywhere on the page.
+  const scrollAnchorRef = useRef(0);
+  const lastScrollYRef = useRef(0);
+
   useEffect(() => {
     let rafId: number | null = null;
 
-    const HIDE_AT = 128 * 2; // ~2 rows
-    const SHOW_AT = 64; // hysteresis to avoid flicker near the top
+    const SCROLL_DELTA = 256; // Trigger hide/show after scrolling this much
+    const SHOW_AT_TOP = 64;   // Always show when near the top
 
     const onScroll = () => {
       if (rafId !== null) return;
       rafId = window.requestAnimationFrame(() => {
         rafId = null;
         const y = window.scrollY || 0;
+        const lastY = lastScrollYRef.current;
+        const scrollingDown = y > lastY;
+        const scrollingUp = y < lastY;
+
         setIsHeaderHidden((prev) => {
-          if (!prev && y >= HIDE_AT) return true;
-          if (prev && y <= SHOW_AT) return false;
+          // Always show when near the top
+          if (y <= SHOW_AT_TOP) {
+            scrollAnchorRef.current = y;
+            return false;
+          }
+
+          if (scrollingDown && !prev) {
+            // Header is visible, scrolling down - check if we've scrolled enough to hide
+            const scrolledDown = y - scrollAnchorRef.current;
+            if (scrolledDown >= SCROLL_DELTA) {
+              scrollAnchorRef.current = y;
+              return true; // Hide
+            }
+          } else if (scrollingUp && prev) {
+            // Header is hidden, scrolling up - check if we've scrolled enough to show
+            const scrolledUp = scrollAnchorRef.current - y;
+            if (scrolledUp >= SCROLL_DELTA) {
+              scrollAnchorRef.current = y;
+              return false; // Show
+            }
+          } else if (scrollingDown && prev) {
+            // Already hidden, scrolling down - update anchor to track position
+            scrollAnchorRef.current = y;
+          } else if (scrollingUp && !prev) {
+            // Already visible, scrolling up - update anchor to track position
+            scrollAnchorRef.current = y;
+          }
+
           return prev;
         });
+
+        lastScrollYRef.current = y;
       });
     };
 
@@ -194,6 +239,27 @@ export default function Layout({ children, title, description }: LayoutProps) {
       window.removeEventListener('scroll', onScroll);
     };
   }, []);
+
+  // Fetch top hashtags for header bottom-row
+  useEffect(() => {
+    // Fetch hashtags once when user logs in (regardless of current page)
+    // This avoids re-fetching when navigating between pages
+    if (!SHOW_BOTTOM_ROW || !isLoggedIn) return;
+
+    const fetchTopHashtags = async () => {
+      try {
+        const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+        const res = await authenticatedFetch(`${apiBaseUrl}/api/hashtags/top`);
+        if (res.ok) {
+          const data = await res.json();
+          setTopHashtags(data.hashtags || []);
+        }
+      } catch {
+        // Silently fail - bottom row will be empty
+      }
+    };
+    fetchTopHashtags();
+  }, [isLoggedIn]);
 
   // Listen for OAuth success message from popup
   useEffect(() => {
@@ -275,115 +341,129 @@ export default function Layout({ children, title, description }: LayoutProps) {
       </Head>
 
       <div className="app-container">
-        <header className={`header ${isHeaderHidden ? 'header-hidden' : ''}`}>
-          <div className="header-left">
-            <Link
-              href="/about"
-              className="logo-link"
-              aria-label="About Makapix Club"
-              // In dev, some tooling can inject extra attributes into SSR output, triggering
-              // noisy hydration warnings (e.g. "Extra attributes from the server: data-cursor-ref").
-              // Suppress that specific warning for these nav anchors.
-              suppressHydrationWarning
-            >
-              <div className="logo-container">
-                <img
-                  src="/button/makapix-club/mpx-logo-32px-1x.png"
-                  srcSet="/button/makapix-club/mpx-logo-32px-1x.png 1x, /button/makapix-club/mpx-logo-40px-1_25x.png 1.25x, /button/makapix-club/mpx-logo-48px-1_5x.png 1.5x, /button/makapix-club/mpx-logo-56px-1_75x.png 1.75x, /button/makapix-club/mpx-logo-64px-2x.png 2x, /button/makapix-club/mpx-logo-72px-2_25x.png 2.25x, /button/makapix-club/mpx-logo-80px-2_5x.png 2.5x, /button/makapix-club/mpx-logo-88px-2_75x.png 2.75x, /button/makapix-club/mpx-logo-96px-3x.png 3x, /button/makapix-club/mpx-logo-104px-3_25x.png 3.25x, /button/makapix-club/mpx-logo-112px-3_5x.png 3.5x, /button/makapix-club/mpx-logo-128px-4x.png 4x"
-                  alt="Makapix Club"
-                  className="logo"
-                />
-              </div>
-            </Link>
-            
-            {isLoggedIn && publicSqid && (
+        <header className={`header ${isHeaderHidden ? 'header-hidden' : ''} ${showBottomRow ? 'header-with-bottom-row' : ''}`}>
+          <div className="header-top-row">
+            <div className="header-left">
               <Link
-                href={`/u/${publicSqid}`}
-                className={`user-profile-link ${router.pathname === '/u/[sqid]' && router.query.sqid === publicSqid ? 'active' : ''}`}
-                aria-label="My Profile"
+                href="/about"
+                className="logo-link"
+                aria-label="About Makapix Club"
+                // In dev, some tooling can inject extra attributes into SSR output, triggering
+                // noisy hydration warnings (e.g. "Extra attributes from the server: data-cursor-ref").
+                // Suppress that specific warning for these nav anchors.
                 suppressHydrationWarning
               >
-                <div className="user-icon">
-                  {avatarUrl ? (
-                    <img
-                      src={avatarUrl.startsWith('http') ? avatarUrl : `${typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin) : ''}${avatarUrl}`}
-                      alt="Profile"
-                      className="user-avatar"
-                    />
-                  ) : (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                    </svg>
-                  )}
+                <div className="logo-container">
+                  <img
+                    src="/button/makapix-club/mpx-logo-32px-1x.png"
+                    srcSet="/button/makapix-club/mpx-logo-32px-1x.png 1x, /button/makapix-club/mpx-logo-40px-1_25x.png 1.25x, /button/makapix-club/mpx-logo-48px-1_5x.png 1.5x, /button/makapix-club/mpx-logo-56px-1_75x.png 1.75x, /button/makapix-club/mpx-logo-64px-2x.png 2x, /button/makapix-club/mpx-logo-72px-2_25x.png 2.25x, /button/makapix-club/mpx-logo-80px-2_5x.png 2.5x, /button/makapix-club/mpx-logo-88px-2_75x.png 2.75x, /button/makapix-club/mpx-logo-96px-3x.png 3x, /button/makapix-club/mpx-logo-104px-3_25x.png 3.25x, /button/makapix-club/mpx-logo-112px-3_5x.png 3.5x, /button/makapix-club/mpx-logo-128px-4x.png 4x"
+                    alt="Makapix Club"
+                    className="logo"
+                  />
                 </div>
               </Link>
-            )}
 
-            {isLoggedIn && (
-              <SocialNotificationBadge />
-            )}
-
-            {isLoggedIn && isModerator && (
-              <Link
-                href="/mod-dashboard"
-                className={`mod-dashboard-link ${router.pathname === '/mod-dashboard' ? 'active' : ''}`}
-                aria-label="Moderator Dashboard"
-                suppressHydrationWarning
-              >
-                <div className="mod-icon">🎛️</div>
-              </Link>
-            )}
-          </div>
-
-          <nav className="nav" aria-label="Main navigation">
-            {navItems.map((item) => {
-              const active = isActive(item);
-              // Auth checks and redirects
-              const handleClick = (e: React.MouseEvent) => {
-                // For Recent artworks (/), redirect unauthenticated users to /welcome
-                if (item.href === '/' && !isLoggedIn) {
-                  e.preventDefault();
-                  markWelcomeAsInternalNav();
-                  router.push('/welcome');
-                }
-                // Contribute requires authentication
-                if (item.href === '/contribute' && !isLoggedIn) {
-                  e.preventDefault();
-                  router.push('/auth?redirect=/contribute');
-                }
-              };
-              return (
+              {isLoggedIn && publicSqid && (
                 <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={handleClick}
-                  className={`nav-item ${active ? 'nav-item-active' : ''}`}
-                  aria-label={item.label}
-                  aria-current={active ? 'page' : undefined}
+                  href={`/u/${publicSqid}`}
+                  className={`user-profile-link ${router.pathname === '/u/[sqid]' && router.query.sqid === publicSqid ? 'active' : ''}`}
+                  aria-label="My Profile"
                   suppressHydrationWarning
                 >
-                  {item.iconSrc ? (
-                    <img
-                      src={item.iconSrc}
-                      srcSet={item.iconSrcSet}
-                      alt=""
-                      width={32}
-                      height={32}
-                      className="nav-icon-img"
-                      aria-hidden="true"
-                    />
-                  ) : (
-                    <span className={`nav-icon ${item.icon === '#' ? 'nav-icon-hash' : ''}`}>
-                      {item.icon}
-                    </span>
-                  )}
+                  <div className="user-icon">
+                    {avatarUrl ? (
+                      <img
+                        src={avatarUrl.startsWith('http') ? avatarUrl : `${typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin) : ''}${avatarUrl}`}
+                        alt="Profile"
+                        className="user-avatar"
+                      />
+                    ) : (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                      </svg>
+                    )}
+                  </div>
                 </Link>
-              );
-            })}
-          </nav>
+              )}
+
+              {isLoggedIn && (
+                <SocialNotificationBadge />
+              )}
+
+              {isLoggedIn && isModerator && (
+                <Link
+                  href="/mod-dashboard"
+                  className={`mod-dashboard-link ${router.pathname === '/mod-dashboard' ? 'active' : ''}`}
+                  aria-label="Moderator Dashboard"
+                  suppressHydrationWarning
+                >
+                  <div className="mod-icon">🎛️</div>
+                </Link>
+              )}
+            </div>
+
+            <nav className="nav" aria-label="Main navigation">
+              {navItems.map((item) => {
+                const active = isActive(item);
+                // Auth checks and redirects
+                const handleClick = (e: React.MouseEvent) => {
+                  // For Recent artworks (/), redirect unauthenticated users to /welcome
+                  if (item.href === '/' && !isLoggedIn) {
+                    e.preventDefault();
+                    markWelcomeAsInternalNav();
+                    router.push('/welcome');
+                  }
+                  // Contribute requires authentication
+                  if (item.href === '/contribute' && !isLoggedIn) {
+                    e.preventDefault();
+                    router.push('/auth?redirect=/contribute');
+                  }
+                };
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={handleClick}
+                    className={`nav-item ${active ? 'nav-item-active' : ''}`}
+                    aria-label={item.label}
+                    aria-current={active ? 'page' : undefined}
+                    suppressHydrationWarning
+                  >
+                    {item.iconSrc ? (
+                      <img
+                        src={item.iconSrc}
+                        srcSet={item.iconSrcSet}
+                        alt=""
+                        width={32}
+                        height={32}
+                        className="nav-icon-img"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <span className={`nav-icon ${item.icon === '#' ? 'nav-icon-hash' : ''}`}>
+                        {item.icon}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+
+          {showBottomRow && (
+            <div className="header-bottom-row">
+              <div className="hashtag-scroll">
+                {topHashtags.map((tag) => (
+                  <Link key={tag} href={`/hashtags/${encodeURIComponent(tag)}`} className="hashtag-link">
+                    #{tag}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
         </header>
 
-        <main className="main-content">
+        <main className="main-content" style={{ paddingTop: showBottomRow ? 'calc(var(--header-height) + var(--header-bottom-row-height))' : 'var(--header-height)' }}>
           {children}
         </main>
       </div>
@@ -400,14 +480,12 @@ export default function Layout({ children, title, description }: LayoutProps) {
           left: 0;
           right: 0;
           z-index: 100;
-          height: var(--header-height);
+          height: auto;
           background: #000;
           backdrop-filter: none;
           border-bottom: 1px solid #fff;
           display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 0 16px;
+          flex-direction: column;
           /* Only animate transform for show/hide - no height/padding changes that cause reflow */
           transition: transform 200ms ease-out, opacity 200ms ease-out;
         }
@@ -416,6 +494,60 @@ export default function Layout({ children, title, description }: LayoutProps) {
           transform: translateY(-100%);
           opacity: 0;
           pointer-events: none;
+        }
+
+        .header.header-with-bottom-row {
+          border-bottom-color: #666;
+        }
+
+        .header-top-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          height: var(--header-height);
+          padding: 0 16px;
+          flex-shrink: 0;
+        }
+
+        .header.header-with-bottom-row .header-top-row {
+          border-bottom: 1px solid #fff;
+        }
+
+        .header-bottom-row {
+          height: var(--header-bottom-row-height);
+          background: #000;
+          overflow: hidden;
+          flex-shrink: 0;
+        }
+
+        .hashtag-scroll {
+          display: flex;
+          gap: 24px;
+          padding: 0 16px;
+          height: 100%;
+          align-items: center;
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+
+        .hashtag-scroll::-webkit-scrollbar {
+          display: none;
+        }
+
+        .hashtag-scroll :global(a.hashtag-link) {
+          color: var(--text-secondary);
+          font-size: 13px;
+          text-decoration: none;
+          flex-shrink: 0;
+          white-space: nowrap;
+          transition: color var(--transition-fast);
+        }
+
+        .hashtag-scroll :global(a.hashtag-link:hover) {
+          color: var(--accent-cyan);
+          text-decoration: underline;
         }
 
         .header-left {
@@ -619,14 +751,18 @@ export default function Layout({ children, title, description }: LayoutProps) {
         .main-content {
           width: 100%;
           /* Document scrolling: keep main in normal flow and reserve space for header.
-             Always use --header-height (not a dynamic offset) so the layout never shifts
-             when the header hides/shows. The header slides out via transform, not height. */
-          padding-top: var(--header-height);
+             padding-top is set via inline style to dynamically adjust for bottom-row.
+             The header slides out via transform, not height. */
         }
 
         @media (max-width: 480px) {
-          .header {
+          .header-top-row {
             padding: 0 8px;
+          }
+
+          .hashtag-scroll {
+            padding: 0 8px;
+            gap: 16px;
           }
 
           .nav {

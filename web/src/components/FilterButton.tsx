@@ -4,9 +4,9 @@ import { Slider } from "./ui/Slider";
 import { Select } from "./ui/Select";
 import { FilterConfig } from "../hooks/useFilters";
 
-// Same thresholds as Layout.tsx header hide/show
-const HIDE_AT = 128 * 2; // ~2 rows
-const SHOW_AT = 64; // hysteresis to avoid flicker near the top
+// Delta-based scroll tracking to sync with Layout.tsx header hide/show
+const SCROLL_DELTA = 256; // Trigger hide/show after scrolling this much
+const SHOW_AT_TOP = 64;   // Always show when near the top
 
 // Badge values for base and size
 const BADGE_VALUES = [8, 16, 32, 64, 128] as const;
@@ -94,7 +94,10 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen, draftFilters, appliedFilters]);
 
-  // Track scroll to hide/show with header
+  // Delta-based scroll tracking to sync with header hide/show
+  const scrollAnchorRef = useRef(0);
+  const lastScrollYRef = useRef(0);
+
   useEffect(() => {
     let rafId: number | null = null;
 
@@ -103,11 +106,39 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
       rafId = window.requestAnimationFrame(() => {
         rafId = null;
         const y = window.scrollY || 0;
+        const lastY = lastScrollYRef.current;
+        const scrollingDown = y > lastY;
+        const scrollingUp = y < lastY;
+
         setIsHidden((prev) => {
-          if (!prev && y >= HIDE_AT) return true;
-          if (prev && y <= SHOW_AT) return false;
+          // Always show when near the top
+          if (y <= SHOW_AT_TOP) {
+            scrollAnchorRef.current = y;
+            return false;
+          }
+
+          if (scrollingDown && !prev) {
+            const scrolledDown = y - scrollAnchorRef.current;
+            if (scrolledDown >= SCROLL_DELTA) {
+              scrollAnchorRef.current = y;
+              return true;
+            }
+          } else if (scrollingUp && prev) {
+            const scrolledUp = scrollAnchorRef.current - y;
+            if (scrolledUp >= SCROLL_DELTA) {
+              scrollAnchorRef.current = y;
+              return false;
+            }
+          } else if (scrollingDown && prev) {
+            scrollAnchorRef.current = y;
+          } else if (scrollingUp && !prev) {
+            scrollAnchorRef.current = y;
+          }
+
           return prev;
         });
+
+        lastScrollYRef.current = y;
       });
     };
 
@@ -377,8 +408,8 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
         .filter-container {
           position: fixed;
           top: calc(var(--header-height) + 16px);
-          left: 16px;
-          z-index: 50;
+          right: 16px;
+          z-index: 200;
           transition: transform 200ms ease-out, opacity 200ms ease-out;
         }
 
@@ -428,14 +459,14 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
         .filter-menu {
           position: fixed;
           top: var(--header-height);
-          left: 0;
+          right: 0;
           width: 320px;
           max-width: 80vw;
           max-height: 50vh;
           background: var(--bg-secondary);
-          border-right: 1px solid rgba(255, 255, 255, 0.1);
+          border-left: 1px solid rgba(255, 255, 255, 0.1);
           overflow: hidden;
-          box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3);
+          box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
           display: flex;
           flex-direction: column;
         }
@@ -594,7 +625,7 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
         @media (max-width: 640px) {
           .filter-container {
             top: calc(var(--header-height) + 8px);
-            left: 8px;
+            right: 8px;
           }
 
           .filter-toggle {

@@ -28,6 +28,7 @@
   
   /* Layout */
   --header-height: 56px;
+  --header-bottom-row-height: 34px;
   /* Dynamic header offset: equals header height when visible, 0 when hidden */
   --header-offset: var(--header-height);
   --content-max-width: 1400px;

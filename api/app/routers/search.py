@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import random
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, or_
@@ -32,6 +34,7 @@ HASHTAG_LIST_CACHE_TTL = 600  # 10 minutes - hashtag counts change slowly
 HASHTAG_POSTS_CACHE_TTL = 300  # 5 minutes - post lists update more frequently
 HASHTAG_STATS_CACHE_TTL = 600  # 10 minutes - aggregated stats change slowly
 PROMOTED_FEED_CACHE_TTL = 300  # 5 minutes
+TOP_HASHTAGS_CACHE_TTL = 7200  # 2 hours - trending hashtags for header
 
 router = APIRouter(prefix="", tags=["Search", "Feed", "Hashtags"])
 
@@ -595,6 +598,82 @@ async def list_hashtags_with_stats(
 
     # Cache for 10 minutes - aggregated statistics change slowly
     cache_set(cache_key, response.model_dump(), ttl=HASHTAG_STATS_CACHE_TTL)
+
+    return response
+
+
+@router.get(
+    "/hashtags/top",
+    response_model=schemas.TopHashtagsResponse,
+    tags=["Hashtags"],
+)
+async def get_top_hashtags(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.TopHashtagsResponse:
+    """
+    Get top trending hashtags for header display.
+
+    Returns up to 10 randomly selected hashtags from the top 15% by artwork count.
+    Requires authentication. Result is cached for 2 hours and shared across all users.
+    """
+    cache_key = "hashtags:top:trending"
+
+    # Try to get from cache
+    cached_result = cache_get(cache_key)
+    if cached_result:
+        return schemas.TopHashtagsResponse(**cached_result)
+
+    # Build base query for visible posts
+    base_query = db.query(models.Post).filter(
+        models.Post.visible == True,
+        models.Post.hidden_by_mod == False,
+        models.Post.non_conformant == False,
+        models.Post.public_visibility == True,
+        models.Post.deleted_by_user == False,
+    )
+
+    # Get all matching posts
+    matching_posts = base_query.all()
+
+    # Aggregate hashtags with counts
+    hashtag_counts: dict[str, int] = {}
+    for post in matching_posts:
+        for hashtag in post.hashtags:
+            hashtag_counts[hashtag] = hashtag_counts.get(hashtag, 0) + 1
+
+    if not hashtag_counts:
+        # No hashtags found
+        cached_until = datetime.now(timezone.utc) + timedelta(
+            seconds=TOP_HASHTAGS_CACHE_TTL
+        )
+        response = schemas.TopHashtagsResponse(hashtags=[], cached_until=cached_until)
+        cache_set(
+            cache_key, response.model_dump(mode="json"), ttl=TOP_HASHTAGS_CACHE_TTL
+        )
+        return response
+
+    # Sort by count descending
+    sorted_hashtags = sorted(hashtag_counts.items(), key=lambda x: -x[1])
+
+    # Calculate top 15% threshold
+    top_15_percent_count = max(1, int(len(sorted_hashtags) * 0.15))
+    top_hashtags_pool = [tag for tag, _ in sorted_hashtags[:top_15_percent_count]]
+
+    # Randomly select up to 10 from the pool
+    selected_count = min(10, len(top_hashtags_pool))
+    selected_hashtags = random.sample(top_hashtags_pool, selected_count)
+
+    cached_until = datetime.now(timezone.utc) + timedelta(
+        seconds=TOP_HASHTAGS_CACHE_TTL
+    )
+    response = schemas.TopHashtagsResponse(
+        hashtags=selected_hashtags,
+        cached_until=cached_until,
+    )
+
+    # Cache for 2 hours
+    cache_set(cache_key, response.model_dump(mode="json"), ttl=TOP_HASHTAGS_CACHE_TTL)
 
     return response
 
