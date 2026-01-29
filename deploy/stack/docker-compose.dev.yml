@@ -182,6 +182,9 @@ services:
   # ---------------------------------------------------------------------------
   pixelc:
     container_name: makapix-dev-pixelc
+    build:
+      context: /opt/Pixelc-dev
+      dockerfile: Dockerfile
     labels:
       caddy: pixelc-dev.makapix.club
       caddy.encode: "gzip zstd"
