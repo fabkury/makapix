@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { getAccessToken } from '../lib/api';
 
-const PIXELC_ORIGIN = 'https://pixelc.makapix.club';
+const PIXELC_ORIGIN = process.env.NEXT_PUBLIC_PIXELC_ORIGIN || 'https://pixelc-dev.makapix.club';
 
 export default function PixelcPage() {
   const router = useRouter();

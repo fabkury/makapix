@@ -12,7 +12,7 @@ import {
   DecodingProgress 
 } from '../utils/webpDecoder';
 
-const PISKEL_ORIGIN = 'https://piskel.makapix.club';
+const PISKEL_ORIGIN = process.env.NEXT_PUBLIC_PISKEL_ORIGIN || 'https://piskel-dev.makapix.club';
 
 interface EditContext {
   postSqid: string;
