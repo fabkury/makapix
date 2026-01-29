@@ -1,0 +1,213 @@
+# =============================================================================
+# Development Environment Overrides (EB)
+# =============================================================================
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+#     --env-file .env.dev -p makapix-dev up -d
+#
+# Access: https://development.makapix.club (requires HTTP Basic Auth)
+# MQTT: Port 8884 (for developer player devices)
+#
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Database - Development (separate from production)
+  # ---------------------------------------------------------------------------
+  db:
+    container_name: makapix-dev-db
+    env_file:
+      - .env.dev
+    ports:
+      - "127.0.0.1:5433:5432"  # Different port to avoid conflict with prod
+    volumes:
+      - pg_data_dev:/var/lib/postgresql/data
+      - ../../db/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+      - ../../db/init-users.sh:/docker-entrypoint-initdb.d/20-init-users.sh:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+
+  # ---------------------------------------------------------------------------
+  # Cache - Development
+  # ---------------------------------------------------------------------------
+  cache:
+    container_name: makapix-dev-cache
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+
+  # ---------------------------------------------------------------------------
+  # MQTT - Development on port 8884
+  # ---------------------------------------------------------------------------
+  mqtt:
+    container_name: makapix-dev-mqtt
+    env_file:
+      - .env.dev
+    ports:
+      - "1884:1883"
+      - "8884:8883"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 64M
+
+  # ---------------------------------------------------------------------------
+  # API - Development
+  # ---------------------------------------------------------------------------
+  api:
+    container_name: makapix-dev-api
+    env_file:
+      - .env.dev
+    environment:
+      MQTT_PUBLIC_HOST: development.makapix.club
+      MQTT_PUBLIC_PORT: 8884
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 768M
+
+  # ---------------------------------------------------------------------------
+  # Worker - Development
+  # ---------------------------------------------------------------------------
+  worker:
+    container_name: makapix-dev-worker
+    env_file:
+      - .env.dev
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # Web - Development routing for development.makapix.club
+  # ---------------------------------------------------------------------------
+  web:
+    container_name: makapix-dev-web
+    build:
+      context: ../..
+      dockerfile: web/Dockerfile
+      args:
+        - NEXT_PUBLIC_API_BASE_URL=https://development.makapix.club
+        - NEXT_PUBLIC_MQTT_WS_URL=wss://development.makapix.club/mqtt
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=https://development.makapix.club
+      - NEXT_PUBLIC_MQTT_WS_URL=wss://development.makapix.club/mqtt
+    labels:
+      caddy: development.makapix.club
+      # Block search engines
+      caddy.header.X-Robots-Tag: "noindex, nofollow, noarchive"
+
+      # API endpoints - NO basicauth (API has its own JWT auth)
+      caddy.@api.path: /api/*
+      caddy.handle_0: "@api"
+      caddy.handle_0.handle_path: /api/*
+      caddy.handle_0.handle_path.reverse_proxy: makapix-dev-api:8000
+
+      # MQTT WebSocket proxy - NO basicauth (for player devices)
+      caddy.@mqtt.path: /mqtt
+      caddy.handle_1: "@mqtt"
+      caddy.handle_1.reverse_proxy: makapix-dev-mqtt:9001
+
+      # Frontend pages require Basic Auth (except auth-related pages)
+      caddy.@noauth.path: /new-account-welcome /login /welcome /verify-email
+      caddy.handle_2: "@noauth"
+      caddy.handle_2.reverse_proxy: "{{upstreams 3000}}"
+
+      # All other frontend pages require Basic Auth
+      caddy.handle_3.basicauth: "*"
+      caddy.handle_3.basicauth.developer: "$$2a$$14$$HuDhfHqjGJJ3Mm9pamHDwum90R/HrCWVDRuTrc92pk.gy83XHCT.a"
+      caddy.handle_3.reverse_proxy: "{{upstreams 3000}}"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # Vault HTTP - Development (for player devices in dev mode)
+  # ---------------------------------------------------------------------------
+  vault:
+    container_name: makapix-dev-vault
+    labels:
+      caddy: http://vault-dev.makapix.club
+      caddy.file_server: "*"
+      caddy.root: "* /srv/vault-dev"
+      caddy.encode: "gzip"
+      caddy.header.Access-Control-Allow-Origin: "*"
+      caddy.header.X-Content-Type-Options: "nosniff"
+      caddy.header.X-Robots-Tag: "noindex, nofollow"
+      caddy.log.output: "file /var/log/caddy/vault-dev-access.log"
+      caddy.log.format: "json"
+      caddy.log.level: "INFO"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 64M
+
+  # ---------------------------------------------------------------------------
+  # WWW Redirect - Not needed for development, disable
+  # ---------------------------------------------------------------------------
+  www-redirect:
+    container_name: makapix-dev-www-redirect
+    profiles:
+      - disabled
+
+  # ---------------------------------------------------------------------------
+  # Piskel Editor - Development (allow framing from dev domain)
+  # ---------------------------------------------------------------------------
+  piskel:
+    container_name: makapix-dev-piskel
+    labels:
+      caddy: piskel-dev.makapix.club
+      caddy.encode: "gzip zstd"
+      caddy.header.X-Content-Type-Options: "nosniff"
+      caddy.header.Content-Security-Policy: "frame-ancestors 'self' https://development.makapix.club"
+      caddy.header.X-Robots-Tag: "noindex, nofollow"
+      caddy.reverse_proxy: "{{upstreams 80}}"
+
+  # ---------------------------------------------------------------------------
+  # Pixelc Editor - Development (allow framing from dev domain)
+  # ---------------------------------------------------------------------------
+  pixelc:
+    container_name: makapix-dev-pixelc
+    labels:
+      caddy: pixelc-dev.makapix.club
+      caddy.encode: "gzip zstd"
+      caddy.header.X-Content-Type-Options: "nosniff"
+      caddy.header.Cross-Origin-Opener-Policy: "same-origin"
+      caddy.header.Cross-Origin-Embedder-Policy: "require-corp"
+      caddy.header.Content-Security-Policy: "frame-ancestors 'self' https://development.makapix.club"
+      caddy.header.X-Robots-Tag: "noindex, nofollow"
+      caddy.reverse_proxy: "{{upstreams 80}}"
+
+  # ---------------------------------------------------------------------------
+  # Redis (rate limiting) - Development
+  # ---------------------------------------------------------------------------
+  redis:
+    container_name: makapix-dev-redis
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 64M
+
+  # ---------------------------------------------------------------------------
+  # Caddy - Shared with production, don't start a second instance
+  # ---------------------------------------------------------------------------
+  caddy:
+    profiles:
+      - disabled
+
+volumes:
+  pg_data_dev:
+    name: makapix-dev_pg_data

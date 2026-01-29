@@ -1,1 +1,9 @@
+# Environment files (contain secrets)
 .env
+.env.prod
+.env.dev
+.env.*
+
+# Keep template files
+!.env.example
+!env.example

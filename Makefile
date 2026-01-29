@@ -1,80 +1,86 @@
-.PHONY: help up down restart rebuild logs logs-api logs-web logs-db test shell-api shell-db fmt clean deploy
+.PHONY: help up down restart rebuild logs ps deploy test shell-api shell-db fmt clean
 
-# Default stack directory
+# Stack directory
 STACK_DIR := deploy/stack
 
+# Docker compose command for production
+COMPOSE := docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod -p makapix-prod
+
 help:
-	@echo "Makapix Commands"
+	@echo "Makapix Production (EA) Commands"
+	@echo "================================="
 	@echo ""
-	@echo "Services:"
-	@echo "  make up             - Start all services"
-	@echo "  make down           - Stop all services"
-	@echo "  make restart        - Restart all services"
-	@echo "  make rebuild        - Rebuild and restart all services"
+	@echo "  make up        - Start production services"
+	@echo "  make down      - Stop production services"
+	@echo "  make restart   - Restart production services"
+	@echo "  make rebuild   - Rebuild and restart production"
+	@echo "  make logs      - Show production logs"
+	@echo "  make ps        - Show container status"
+	@echo "  make deploy    - Pull latest code and rebuild"
 	@echo ""
-	@echo "Logs:"
-	@echo "  make logs           - Show logs for all services"
-	@echo "  make logs-api       - Show logs for API service"
-	@echo "  make logs-web       - Show logs for web service"
-	@echo "  make logs-db        - Show logs for database"
+	@echo "  make test      - Run API tests"
+	@echo "  make shell-api - Open shell in API container"
+	@echo "  make shell-db  - Open PostgreSQL shell"
+	@echo "  make fmt       - Format Python code"
 	@echo ""
-	@echo "Development:"
-	@echo "  make test           - Run API tests"
-	@echo "  make shell-api      - Open shell in API container"
-	@echo "  make shell-db       - Open PostgreSQL shell (db.shell)"
-	@echo "  make fmt            - Format Python code"
-	@echo ""
-	@echo "Deployment:"
-	@echo "  make deploy         - Pull latest code and restart services"
-	@echo ""
-	@echo "Cleanup:"
-	@echo "  make clean          - Remove all containers and volumes"
+	@echo "NOTE: This is the PRODUCTION environment."
+	@echo "      For development, use /opt/makapix-dev/"
 
 up:
-	@cd $(STACK_DIR) && docker compose up -d
+	@cd $(STACK_DIR) && $(COMPOSE) up -d
 
 down:
-	@cd $(STACK_DIR) && docker compose down
+	@cd $(STACK_DIR) && $(COMPOSE) down
 
 restart:
-	@cd $(STACK_DIR) && docker compose restart
+	@cd $(STACK_DIR) && $(COMPOSE) restart
 
 rebuild:
-	@cd $(STACK_DIR) && docker compose down && docker compose up -d --build
+	@cd $(STACK_DIR) && $(COMPOSE) down && $(COMPOSE) up -d --build
 
 logs:
-	@cd $(STACK_DIR) && docker compose logs -f
+	@cd $(STACK_DIR) && $(COMPOSE) logs -f
 
 logs-api:
-	@cd $(STACK_DIR) && docker compose logs -f api
+	@cd $(STACK_DIR) && $(COMPOSE) logs -f api
 
 logs-web:
-	@cd $(STACK_DIR) && docker compose logs -f web
+	@cd $(STACK_DIR) && $(COMPOSE) logs -f web
 
 logs-db:
-	@cd $(STACK_DIR) && docker compose logs -f db
+	@cd $(STACK_DIR) && $(COMPOSE) logs -f db
 
-test:
-	@cd $(STACK_DIR) && docker compose exec api pytest tests/
-
-shell-api:
-	@cd $(STACK_DIR) && docker compose exec api bash
-
-shell-db db.shell:
-	@cd $(STACK_DIR) && docker compose exec db psql -U makapix -d makapix
-
-fmt:
-	@cd $(STACK_DIR) && docker compose exec api black .
-
-clean:
-	@cd $(STACK_DIR) && docker compose down -v
-	@echo "Cleaned up containers and volumes"
+ps:
+	@cd $(STACK_DIR) && $(COMPOSE) ps
 
 deploy:
-	@echo "Deploying Makapix..."
-	@git pull origin main
-	@cd $(STACK_DIR) && docker compose down
-	@cd $(STACK_DIR) && docker compose up -d --build
+	@echo "Deploying to Production..."
 	@echo ""
-	@echo "Deployment complete!"
-	@cd $(STACK_DIR) && docker compose ps
+	@echo "WARNING: This will update the LIVE production site!"
+	@echo "Press Ctrl+C within 5 seconds to cancel..."
+	@sleep 5
+	@git pull origin main
+	@cd $(STACK_DIR) && $(COMPOSE) down
+	@cd $(STACK_DIR) && $(COMPOSE) up -d --build
+	@echo ""
+	@echo "Production deployment complete!"
+	@cd $(STACK_DIR) && $(COMPOSE) ps
+
+test:
+	@cd $(STACK_DIR) && $(COMPOSE) exec api pytest tests/
+
+shell-api:
+	@cd $(STACK_DIR) && $(COMPOSE) exec api bash
+
+shell-db db.shell:
+	@cd $(STACK_DIR) && $(COMPOSE) exec db psql -U owner -d makapix
+
+fmt:
+	@cd $(STACK_DIR) && $(COMPOSE) exec api black .
+
+clean:
+	@echo "WARNING: This will remove all production containers and volumes!"
+	@echo "Press Ctrl+C within 10 seconds to cancel..."
+	@sleep 10
+	@cd $(STACK_DIR) && $(COMPOSE) down -v
+	@echo "Cleaned up production containers and volumes"

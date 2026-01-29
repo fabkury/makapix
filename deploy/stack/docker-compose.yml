@@ -1,18 +1,16 @@
 # =============================================================================
-# Makapix Stack - Complete VPS Deployment
+# Makapix Stack - Base Configuration
 # =============================================================================
 #
-# This compose file contains ALL services for the VPS deployment.
-# There is no separate local development environment.
+# This is the base compose file. Use with environment-specific overrides:
 #
-# Common commands (run from deploy/stack/):
-#   docker compose up -d                        # Start all services
-#   docker compose down                         # Stop all services
-#   docker compose logs -f                      # View all logs
-#   docker compose logs -f api                  # View API logs
-#   docker compose build --no-cache web         # Rebuild web after changes
-#   docker compose exec api pytest              # Run tests
-#   docker compose exec db psql -U makapix -d makapix  # Database shell
+# Production (EA):
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#     --env-file .env.prod -p makapix-prod up -d
+#
+# Development (EB):
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+#     --env-file .env.dev -p makapix-dev up -d
 #
 # =============================================================================
 
@@ -22,7 +20,6 @@ services:
   # ---------------------------------------------------------------------------
   db:
     image: postgres:17-alpine
-    container_name: makapix-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_ADMIN_USER}
@@ -30,12 +27,6 @@ services:
       POSTGRES_DB: ${DB_DATABASE}
       DB_API_WORKER_USER: ${DB_API_WORKER_USER}
       DB_API_WORKER_PASSWORD: ${DB_API_WORKER_PASSWORD}
-    volumes:
-      - pg_data:/var/lib/postgresql/data
-      - ../../db/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
-      - ../../db/init-users.sh:/docker-entrypoint-initdb.d/20-init-users.sh:ro
-    ports:
-      - "127.0.0.1:5432:5432"  # Expose to localhost only for SSH tunnel access
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
       interval: 10s
@@ -50,7 +41,6 @@ services:
   # ---------------------------------------------------------------------------
   cache:
     image: redis:7-alpine
-    container_name: makapix-cache
     restart: unless-stopped
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
@@ -70,7 +60,6 @@ services:
     build:
       context: ../..
       dockerfile: mqtt/Dockerfile
-    container_name: makapix-mqtt
     restart: unless-stopped
     env_file:
       - .env
@@ -79,9 +68,6 @@ services:
     volumes:
       - ../../mqtt/certs:/mosquitto/certs
       - ../../mqtt/config:/mosquitto/config
-    ports:
-      - "1883:1883"
-      - "8883:8883"
     healthcheck:
       test: ["CMD-SHELL", "netstat -tlnp | grep -q ':1883' || exit 1"]
       interval: 30s
@@ -101,7 +87,6 @@ services:
     build:
       context: ../..
       dockerfile: api/Dockerfile
-    container_name: makapix-api
     restart: unless-stopped
     working_dir: /workspace/api
     env_file:
@@ -120,8 +105,6 @@ services:
       MQTT_TLS_ENABLED: "false"
       MQTT_USERNAME: svc_backend
       MQTT_PASSWORD: ${MQTT_PASSWORD:-}
-      MQTT_PUBLIC_HOST: makapix.club
-      MQTT_PUBLIC_PORT: 8883
       VAULT_LOCATION: ${VAULT_LOCATION}
       MAKAPIX_ADMIN_USER: ${MAKAPIX_ADMIN_USER}
       MAKAPIX_ADMIN_PASSWORD: ${MAKAPIX_ADMIN_PASSWORD}
@@ -158,7 +141,6 @@ services:
     build:
       context: ../..
       dockerfile: worker/Dockerfile
-    container_name: makapix-worker
     restart: unless-stopped
     env_file:
       - .env
@@ -186,6 +168,7 @@ services:
 
   # ---------------------------------------------------------------------------
   # Caddy Reverse Proxy (auto-discovers containers via Docker labels)
+  # Shared between all environments - routes based on domain labels
   # ---------------------------------------------------------------------------
   caddy:
     image: lucaslorentz/caddy-docker-proxy:${CADDY_DOCKER_PROXY_TAG}
@@ -205,7 +188,9 @@ services:
       - caddy_data:/data
       - caddy_config:/config
       - /var/log/caddy:/var/log/caddy
-      - ${VAULT_HOST_PATH}:/srv/vault:ro
+      # Mount both vaults for multi-environment support
+      - /mnt/vault-1:/srv/vault-prod:ro
+      - /mnt/vault-dev:/srv/vault-dev:ro
     logging:
       driver: "json-file"
       options:
@@ -215,55 +200,22 @@ services:
       - caddy_net
 
   # ---------------------------------------------------------------------------
-  # CTA (Call-To-Action) - DISABLED: Web app now serves makapix.club directly
-  # ---------------------------------------------------------------------------
-  # cta:
-  #   image: caddy:${CADDY_TAG}
-  #   container_name: makapix-cta
-  #   restart: unless-stopped
-  #   volumes:
-  #     - ../../apps/cta:/usr/share/caddy:ro
-  #   labels:
-  #     caddy: ${ROOT_DOMAIN}, www.${ROOT_DOMAIN}
-  #     caddy.encode: "gzip zstd"
-  #     caddy.header.Strict-Transport-Security: "max-age=31536000"
-  #     caddy.header.Content-Security-Policy: "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:"
-  #     caddy.header.X-Content-Type-Options: "nosniff"
-  #     caddy.header.Referrer-Policy: "strict-origin-when-cross-origin"
-  #     caddy.reverse_proxy: "{{upstreams 80}}"
-  #     caddy.log.output: "file /var/log/caddy/access.log"
-  #     caddy.log.format: "json"
-  #     caddy.log.level: "INFO"
-  #   networks:
-  #     - caddy_net
-
-  # ---------------------------------------------------------------------------
-  # Vault HTTP - HTTP-only static file server for physical players
+  # Vault HTTP - Static file server for physical players
+  # Labels set in environment-specific override files
   # ---------------------------------------------------------------------------
   vault:
     image: alpine:latest
-    container_name: makapix-vault
     restart: unless-stopped
     command: ["sleep", "infinity"]
-    labels:
-      caddy: http://${VAULT_DOMAIN:-vault.makapix.club}
-      caddy.file_server: "*"
-      caddy.root: "* /srv/vault"
-      caddy.encode: "gzip"
-      caddy.header.Access-Control-Allow-Origin: "*"
-      caddy.header.X-Content-Type-Options: "nosniff"
-      caddy.log.output: "file /var/log/caddy/vault-access.log"
-      caddy.log.format: "json"
-      caddy.log.level: "INFO"
     networks:
       - caddy_net
 
   # ---------------------------------------------------------------------------
   # WWW Redirect - Redirect www.makapix.club to makapix.club
+  # Only used in production
   # ---------------------------------------------------------------------------
   www-redirect:
     image: alpine:latest
-    container_name: makapix-www-redirect
     restart: unless-stopped
     command: ["sleep", "infinity"]
     labels:
@@ -273,37 +225,19 @@ services:
       - caddy_net
 
   # ---------------------------------------------------------------------------
-  # Web Application (Next.js) - makapix.club
+  # Web Application (Next.js)
+  # Build args and labels set in environment-specific override files
   # ---------------------------------------------------------------------------
   web:
     build:
       context: ../..
       dockerfile: web/Dockerfile
-      args:
-        - NEXT_PUBLIC_API_BASE_URL=https://makapix.club
-        - NEXT_PUBLIC_MQTT_WS_URL=wss://makapix.club/mqtt
-    container_name: makapix-web
     restart: unless-stopped
     environment:
       - NODE_ENV=production
       - HOST=0.0.0.0
       - PORT=3000
       - NEXT_TELEMETRY_DISABLED=1
-      - NEXT_PUBLIC_API_BASE_URL=https://makapix.club
-      - NEXT_PUBLIC_MQTT_WS_URL=wss://makapix.club/mqtt
-    labels:
-      caddy: makapix.club
-      # Route /api/* to FastAPI backend (strip /api prefix)
-      caddy.@api.path: /api/*
-      caddy.handle_0: "@api"
-      caddy.handle_0.handle_path: /api/*
-      caddy.handle_0.handle_path.reverse_proxy: api:8000
-      # MQTT WebSocket proxy at /mqtt path
-      caddy.@mqtt.path: /mqtt
-      caddy.handle_1: "@mqtt"
-      caddy.handle_1.reverse_proxy: mqtt:9001
-      # Default: proxy to Next.js web app
-      caddy.handle_2.reverse_proxy: "{{upstreams 3000}}"
     volumes:
       - web_next_static:/app/.next/static
     depends_on:
@@ -313,40 +247,26 @@ services:
       - caddy_net
 
   # ---------------------------------------------------------------------------
-  # Piskel Editor - piskel.makapix.club
+  # Piskel Editor
+  # Labels set in environment-specific override files
   # ---------------------------------------------------------------------------
   piskel:
     build:
       context: ../../apps/piskel
       dockerfile: Dockerfile
-    container_name: makapix-piskel
     restart: unless-stopped
-    labels:
-      caddy: piskel.makapix.club
-      caddy.encode: "gzip zstd"
-      caddy.header.X-Content-Type-Options: "nosniff"
-      caddy.header.Content-Security-Policy: "frame-ancestors 'self' https://makapix.club"
-      caddy.reverse_proxy: "{{upstreams 80}}"
     networks:
       - caddy_net
 
   # ---------------------------------------------------------------------------
-  # Pixelc Editor - pixelc.makapix.club
+  # Pixelc Editor
+  # Labels set in environment-specific override files
   # ---------------------------------------------------------------------------
   pixelc:
     build:
       context: /opt/Pixelc
       dockerfile: Dockerfile
-    container_name: makapix-pixelc
     restart: unless-stopped
-    labels:
-      caddy: pixelc.makapix.club
-      caddy.encode: "gzip zstd"
-      caddy.header.X-Content-Type-Options: "nosniff"
-      caddy.header.Cross-Origin-Opener-Policy: "same-origin"
-      caddy.header.Cross-Origin-Embedder-Policy: "require-corp"
-      caddy.header.Content-Security-Policy: "frame-ancestors 'self' https://makapix.club"
-      caddy.reverse_proxy: "{{upstreams 80}}"
     networks:
       - caddy_net
 
@@ -355,7 +275,6 @@ services:
   # ---------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
-    container_name: makapix-redis
     restart: unless-stopped
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
@@ -375,9 +294,6 @@ networks:
     external: true
 
 volumes:
-  pg_data:
-    external: true
-    name: makapix_pg_data
   cache_data:
   api_pip_cache:
   caddy_data:
