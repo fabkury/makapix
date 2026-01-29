@@ -98,9 +98,11 @@ services:
       args:
         - NEXT_PUBLIC_API_BASE_URL=https://development.makapix.club
         - NEXT_PUBLIC_MQTT_WS_URL=wss://development.makapix.club/mqtt
+        - NEXT_PUBLIC_MQTT_WEBCLIENT_PASSWORD=${MQTT_WEBCLIENT_PASSWORD}
     environment:
       - NEXT_PUBLIC_API_BASE_URL=https://development.makapix.club
       - NEXT_PUBLIC_MQTT_WS_URL=wss://development.makapix.club/mqtt
+      - NEXT_PUBLIC_MQTT_WEBCLIENT_PASSWORD=${MQTT_WEBCLIENT_PASSWORD}
     labels:
       caddy: development.makapix.club
       # Block search engines
