@@ -125,17 +125,49 @@ makapix/player/{key}/status  # Player status reports
 
 ## Deployment
 
-The entire stack runs from `deploy/stack/docker-compose.yml`. There is no other development environment.
+This repository uses a dual-environment setup with `main` and `develop` branches:
 
-**To deploy changes:**
+| Environment | Directory | Branch | URL |
+|-------------|-----------|--------|-----|
+| Production | `/opt/makapix` | `main` | makapix.club |
+| Development | `/opt/makapix-dev` | `develop` | development.makapix.club |
+
+### Development Workflow
+
+1. **Develop features** in `/opt/makapix-dev` on the `develop` branch
+2. **Test locally** with `make rebuild` and verify at development.makapix.club
+3. **Push changes**: `git push origin develop`
+4. **Create PR** on GitHub: `develop` → `main`
+5. **Merge PR** on GitHub
+6. **Deploy to production**: `cd /opt/makapix && make deploy`
+
+### Development Commands
+
 ```bash
-make deploy   # Pulls latest code and rebuilds services
+make up        # Start development services
+make rebuild   # Rebuild and restart
+make sync      # Sync with remote develop branch
+make deploy-to-prod  # Instructions for production deployment
 ```
 
-**Manual deployment:**
+### Production Commands (in /opt/makapix)
+
 ```bash
+make deploy    # Pulls latest main and rebuilds services
+```
+
+### Manual Deployment
+
+```bash
+# Development
+git pull origin develop
+cd deploy/stack && docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.dev down
+cd deploy/stack && docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.dev up -d --build
+
+# Production
 git pull origin main
-cd deploy/stack && docker compose down && docker compose up -d --build
+cd deploy/stack && docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod down
+cd deploy/stack && docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
 
 ## Code Style
