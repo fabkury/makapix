@@ -6,6 +6,30 @@ Makapix Club is a community platform where pixel artists can share their creatio
 
 **Join our community!** 💬 [Join us on Discord](https://discord.gg/xk9umcujXV) to discuss the project, share ideas, and stay up to date on the latest news.
 
+## Key Features
+
+### For Artists
+
+- **Upload and Share**: Post pixel art with titles, descriptions, and hashtags
+- **Organize**: Create playlists to curate collections of artwork
+- **Engage**: Receive reactions and comments from the community
+- **Reputation**: Earn reputation points through community participation
+- **Badges**: Display achievement badges on your profile
+
+### For Viewers
+
+- **Discover**: Browse promoted artworks, recent posts, and search by hashtags
+- **Interact**: React with up to 5 emojis per post, leave threaded comments
+- **Follow**: Create playlists of your favorite artworks
+- **Real-Time**: Get instant updates via MQTT when new artwork is posted
+
+### For Physical Players
+
+- **MQTT Integration**: Devices receive real-time notifications of new artwork
+- **Vault Access**: Direct download of artwork images from the VPS vault
+- **Remote Control**: Owners can control what displays on their devices
+- **Status Reporting**: Devices report online/offline status and current artwork
+
 ## What Makes Makapix Special
 
 - **Pixel Art First**: Focused exclusively on pixel art with validation for proper formats and dimensions
@@ -71,42 +95,16 @@ make down
 - **[Naming Conventions](docs/NAMING_CONVENTIONS.md)** - Service names and conventions
 - **[Physical Player Integration](docs/PHYSICAL_PLAYER.md)** - Guide for integrating display devices
 
-## Key Features
-
-### For Artists
-
-- **Upload and Share**: Post pixel art with titles, descriptions, and hashtags
-- **Organize**: Create playlists to curate collections of artwork
-- **Engage**: Receive reactions and comments from the community
-- **Reputation**: Earn reputation points through community participation
-- **Badges**: Display achievement badges on your profile
-
-### For Viewers
-
-- **Discover**: Browse promoted artworks, recent posts, and search by hashtags
-- **Interact**: React with up to 5 emojis per post, leave threaded comments
-- **Follow**: Create playlists of your favorite artworks
-- **Real-Time**: Get instant updates via MQTT when new artwork is posted
-
-### For Physical Players
-
-- **MQTT Integration**: Devices receive real-time notifications of new artwork
-- **Vault Access**: Direct download of artwork images from the VPS vault
-- **Remote Control**: Owners can control what displays on their devices
-- **Status Reporting**: Devices report online/offline status and current artwork
-
 ## Image Storage
 
-Makapix uses a **local vault** storage system:
+Makapix uses a **vault** storage system:
 
 - Images are stored directly on the VPS in a hash-based folder structure
 - Files are organized using the first 6 characters of the artwork ID's hash (e.g., `/vault/a1/b2/c3/artwork-id.png`)
 - The vault is mounted as a Docker volume and served directly by the API
-- Maximum file size: 5 MB per image
-- Supported formats: PNG, GIF, WebP
+- Maximum file size: 5 MiB per image
+- Supported formats: PNG, GIF, WebP, BMP
 - Canvas dimensions: Configurable, validated on upload
-
-This approach eliminates third-party hosting costs while keeping the system simple and performant.
 
 ## Development Commands
 
