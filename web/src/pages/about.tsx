@@ -4,9 +4,9 @@ import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 
-type TabValue = 'about' | 'rules' | 'moderation' | 'licenses';
+type TabValue = 'about' | 'features' | 'rules' | 'moderation' | 'licenses';
 
-const validTabs: TabValue[] = ['about', 'rules', 'moderation', 'licenses'];
+const validTabs: TabValue[] = ['about', 'features', 'rules', 'moderation', 'licenses'];
 
 export default function AboutPage() {
   const router = useRouter();
@@ -33,6 +33,7 @@ export default function AboutPage() {
         <Tabs value={activeTab} onValueChange={handleTabChange} className="tabs-root">
           <TabsList className="tabs-list">
             <TabsTrigger value="about" className="tab-trigger">About</TabsTrigger>
+            <TabsTrigger value="features" className="tab-trigger">Features</TabsTrigger>
             <TabsTrigger value="rules" className="tab-trigger">Rules</TabsTrigger>
             <TabsTrigger value="moderation" className="tab-trigger">Moderation</TabsTrigger>
             <TabsTrigger value="licenses" className="tab-trigger">Licenses</TabsTrigger>
@@ -40,6 +41,10 @@ export default function AboutPage() {
 
           <TabsContent value="about" className="tab-content">
             <AboutTab />
+          </TabsContent>
+
+          <TabsContent value="features" className="tab-content">
+            <FeaturesTab />
           </TabsContent>
 
           <TabsContent value="rules" className="tab-content">
@@ -259,6 +264,242 @@ function AboutTab() {
 
           .tab-article h2 {
             font-size: 1.1rem;
+          }
+        }
+      `}</style>
+    </article>
+  );
+}
+
+function FeaturesTab() {
+  const artistFeatures = [
+    {
+      icon: '📜',
+      title: 'License Selection',
+      description: 'Choose from Creative Commons licenses when posting your artwork',
+    },
+    {
+      icon: '📺',
+      title: 'Real-World Reach',
+      description: 'Your art reaches LED matrices and pixel displays, not just screens',
+    },
+    {
+      icon: '📊',
+      title: 'Detailed Statistics',
+      description: 'Private analytics showing impressions, unique viewers, device types',
+    },
+    {
+      icon: '💬',
+      title: 'Community Engagement',
+      description: 'Receive reactions (likes, emojis) and comments from your audience',
+    },
+    {
+      icon: '🎨',
+      title: 'Integrated Editors',
+      description: 'Create art using Pixelc or Piskel directly in browser, or upload files',
+    },
+    {
+      icon: '🔄',
+      title: 'Edit & Remix',
+      description: "Build on other artists' work when their license permits",
+    },
+    {
+      icon: '⚙️',
+      title: 'Full Control',
+      description: 'Hide, unhide, delete, or download your artwork files anytime',
+    },
+    {
+      icon: '🖼️',
+      title: 'Free Portfolio',
+      description: 'Host your ad-free pixel art portfolio page at no cost',
+    },
+  ];
+
+  const makerFeatures = [
+    {
+      icon: '🔌',
+      title: 'MQTT + HTTP API',
+      description: 'Connect microcontrollers via MQTT for real-time updates, HTTP for downloads',
+    },
+    {
+      icon: '🔍',
+      title: 'Smart Filtering',
+      description: 'Query artworks by canvas size, file size, format, tags, and more',
+    },
+    {
+      icon: '🔀',
+      title: 'Format Conversion',
+      description: 'All images available in WEBP, GIF, PNG, and BMP—server-side conversion',
+    },
+    {
+      icon: '🔒',
+      title: 'Dual Protocol',
+      description: 'Download via HTTPS (secure) or HTTP (for constrained devices)',
+    },
+  ];
+
+  return (
+    <article className="tab-article">
+      <h1>Features</h1>
+
+      <p className="lead">
+        Makapix Club is built for two communities: pixel artists who create amazing work,
+        and DIY makers who bring that art into the physical world.
+      </p>
+
+      <div className="feature-section artist-section">
+        <h2>For Artists</h2>
+        <div className="feature-list">
+          {artistFeatures.map((feature) => (
+            <div key={feature.title} className="feature-item">
+              <span className="feature-icon">{feature.icon}</span>
+              <div className="feature-content">
+                <span className="feature-title">{feature.title}</span>
+                <span className="feature-description">{feature.description}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="feature-section maker-section">
+        <h2>For DIY Makers</h2>
+        <div className="feature-list">
+          {makerFeatures.map((feature) => (
+            <div key={feature.title} className="feature-item">
+              <span className="feature-icon">{feature.icon}</span>
+              <div className="feature-content">
+                <span className="feature-title">{feature.title}</span>
+                <span className="feature-description">{feature.description}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <style jsx>{`
+        .tab-article {
+          color: var(--text-secondary);
+          line-height: 1.7;
+        }
+
+        .tab-article h1 {
+          font-size: 1.75rem;
+          font-weight: 700;
+          color: var(--text-primary);
+          margin: 0 0 24px 0;
+          text-align: center;
+        }
+
+        .tab-article .lead {
+          font-size: 1.05rem;
+          color: var(--text-primary);
+          margin-bottom: 32px;
+        }
+
+        .feature-section {
+          margin-bottom: 32px;
+          padding: 20px;
+          background: rgba(255, 255, 255, 0.02);
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .feature-section h2 {
+          font-size: 1.15rem;
+          font-weight: 600;
+          margin: 0 0 16px 0;
+        }
+
+        .artist-section {
+          border-left: 3px solid var(--accent-cyan);
+        }
+
+        .artist-section h2 {
+          color: var(--accent-cyan);
+        }
+
+        .maker-section {
+          border-left: 3px solid var(--accent-pink);
+        }
+
+        .maker-section h2 {
+          color: var(--accent-pink);
+        }
+
+        .feature-list {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .feature-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          padding: 12px;
+          background: rgba(255, 255, 255, 0.02);
+          border-radius: 8px;
+          transition: background var(--transition-fast);
+        }
+
+        .feature-item:hover {
+          background: rgba(255, 255, 255, 0.05);
+        }
+
+        .feature-icon {
+          font-size: 1.25rem;
+          flex-shrink: 0;
+          width: 28px;
+          text-align: center;
+        }
+
+        .feature-content {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .feature-title {
+          font-weight: 600;
+          color: var(--text-primary);
+          font-size: 0.95rem;
+        }
+
+        .feature-description {
+          font-size: 0.9rem;
+          color: var(--text-secondary);
+          line-height: 1.5;
+        }
+
+        @media (max-width: 480px) {
+          .tab-article h1 {
+            font-size: 1.5rem;
+          }
+
+          .feature-section {
+            padding: 16px;
+          }
+
+          .feature-section h2 {
+            font-size: 1.1rem;
+          }
+
+          .feature-item {
+            padding: 10px;
+          }
+
+          .feature-icon {
+            font-size: 1.1rem;
+            width: 24px;
+          }
+
+          .feature-title {
+            font-size: 0.9rem;
+          }
+
+          .feature-description {
+            font-size: 0.85rem;
           }
         }
       `}</style>
