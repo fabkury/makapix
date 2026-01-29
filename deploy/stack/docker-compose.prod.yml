@@ -60,9 +60,11 @@ services:
       args:
         - NEXT_PUBLIC_API_BASE_URL=https://makapix.club
         - NEXT_PUBLIC_MQTT_WS_URL=wss://makapix.club/mqtt
+        - NEXT_PUBLIC_MQTT_WEBCLIENT_PASSWORD=${MQTT_WEBCLIENT_PASSWORD}
     environment:
       - NEXT_PUBLIC_API_BASE_URL=https://makapix.club
       - NEXT_PUBLIC_MQTT_WS_URL=wss://makapix.club/mqtt
+      - NEXT_PUBLIC_MQTT_WEBCLIENT_PASSWORD=${MQTT_WEBCLIENT_PASSWORD}
     labels:
       caddy: makapix.club
       # Route /api/* to FastAPI backend

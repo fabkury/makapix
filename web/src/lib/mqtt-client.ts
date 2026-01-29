@@ -81,7 +81,7 @@ export class MQTTClient {
         connectTimeout: 10000,
         // Shared webclient user for all web browser clients
         username: "webclient",
-        password: "N0d3z0nNg2JntJWA",
+        password: process.env.NEXT_PUBLIC_MQTT_WEBCLIENT_PASSWORD || "",
         // Client ID includes userId for debugging/tracking
         clientId: `web-${userId}-${Date.now()}`,
         clean: true,
