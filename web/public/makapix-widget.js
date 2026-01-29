@@ -10,7 +10,7 @@
   'use strict';
 
   // Configuration
-  const API_BASE_URL = window.MAKAPIX_API_URL || 'https://makapix.club/api';
+  const API_BASE_URL = window.MAKAPIX_API_URL || 'https://development.makapix.club/api';
 
   const SESSION_TRANSFER_FLAG = 'makapix-session-transfer-attempted';
 

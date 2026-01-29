@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Resend configuration from environment
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
-RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "noreply@notification.makapix.club")
+RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "noreply@dev.makapix.club")
 BASE_URL = os.getenv("BASE_URL", "http://localhost")
 
 

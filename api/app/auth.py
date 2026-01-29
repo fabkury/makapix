@@ -600,8 +600,9 @@ def get_cookie_config(request: Request | None = None) -> dict[str, any]:
             # Single-word hostname without dots - likely localhost variant
             domain = None
     else:
-        # Default to .makapix.club for production (when no request available)
-        domain = ".makapix.club"
+        # Default to env var or None (when no request available)
+        # Each environment should set COOKIE_DOMAIN appropriately
+        domain = os.getenv("COOKIE_DOMAIN")
 
     # Get SameSite setting (default to 'lax' for CSRF protection)
     samesite = os.getenv("COOKIE_SAMESITE", "lax").lower()

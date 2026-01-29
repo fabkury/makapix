@@ -91,3 +91,7 @@ deploy/stack/cta-stats.csv
 # GeoIP database files (download from MaxMind, see api/app/geoip/README.md)
 *.mmdb
 api/app/geoip/*.mmdb
+
+# Claude Code configuration (environment-specific, not tracked)
+CLAUDE.md
+AGENTS.md
