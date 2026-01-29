@@ -3,10 +3,35 @@
 # Stack directory
 STACK_DIR := deploy/stack
 
-# Docker compose command for development
-COMPOSE := docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.dev -p makapix-dev
+# Auto-detect environment based on directory
+ifeq ($(shell pwd),/opt/makapix)
+    ENV := prod
+    COMPOSE := docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod -p makapix-prod
+else
+    ENV := dev
+    COMPOSE := docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.dev -p makapix-dev
+endif
 
 help:
+ifeq ($(ENV),prod)
+	@echo "Makapix PRODUCTION Commands"
+	@echo "==========================="
+	@echo ""
+	@echo "  make up        - Start production services"
+	@echo "  make down      - Stop production services"
+	@echo "  make restart   - Restart production services"
+	@echo "  make rebuild   - Rebuild and restart production"
+	@echo "  make logs      - Show production logs"
+	@echo "  make ps        - Show container status"
+	@echo "  make deploy    - Pull latest main and rebuild"
+	@echo ""
+	@echo "  make test      - Run API tests"
+	@echo "  make shell-api - Open shell in API container"
+	@echo "  make shell-db  - Open PostgreSQL shell"
+	@echo "  make fmt       - Format Python code"
+	@echo ""
+	@echo "Environment: PRODUCTION (/opt/makapix)"
+else
 	@echo "Makapix Development Commands"
 	@echo "============================"
 	@echo ""
@@ -26,8 +51,8 @@ help:
 	@echo ""
 	@echo "  make deploy-to-prod - Instructions for production deployment"
 	@echo ""
-	@echo "NOTE: This is the DEVELOPMENT environment."
-	@echo "      For production, use /opt/makapix/"
+	@echo "Environment: DEVELOPMENT (/opt/makapix-dev)"
+endif
 
 up:
 	@cd $(STACK_DIR) && $(COMPOSE) up -d
@@ -57,6 +82,15 @@ ps:
 	@cd $(STACK_DIR) && $(COMPOSE) ps
 
 deploy:
+ifeq ($(ENV),prod)
+	@echo "Deploying to Production..."
+	@git pull origin main
+	@cd $(STACK_DIR) && $(COMPOSE) down
+	@cd $(STACK_DIR) && $(COMPOSE) up -d --build
+	@echo ""
+	@echo "Production deployment complete!"
+	@cd $(STACK_DIR) && $(COMPOSE) ps
+else
 	@echo "Deploying to Development..."
 	@git pull origin develop
 	@cd $(STACK_DIR) && $(COMPOSE) down
@@ -64,6 +98,7 @@ deploy:
 	@echo ""
 	@echo "Development deployment complete!"
 	@cd $(STACK_DIR) && $(COMPOSE) ps
+endif
 
 sync:
 	@echo "Syncing with develop branch..."
