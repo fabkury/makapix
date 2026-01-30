@@ -27,7 +27,8 @@ export interface PostNotification {
   owner_handle: string;
   title: string;
   art_url: string;
-  canvas: string;
+  width: number;
+  height: number;
   promoted_category: string | null;
   created_at: string;
 }

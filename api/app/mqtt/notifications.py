@@ -39,7 +39,8 @@ def publish_new_post_notification(post_id: int, db: Session) -> None:
         owner_handle=owner.handle,
         title=post.title,
         art_url=post.art_url,
-        canvas=post.canvas,
+        width=post.width,
+        height=post.height,
         promoted_category=post.promoted_category,
         created_at=post.created_at,
     ).model_dump(mode="json")
@@ -121,7 +122,8 @@ def publish_category_promotion_notification(
         owner_handle=owner.handle,
         title=post.title,
         art_url=post.art_url,
-        canvas=post.canvas,
+        width=post.width,
+        height=post.height,
         promoted_category=category,
         created_at=post.created_at,
     ).model_dump(mode="json")

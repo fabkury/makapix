@@ -46,7 +46,6 @@ def test_post(test_user: User, db: Session) -> Post:
         description="A test artwork",
         hashtags=["test", "art"],
         art_url="https://example.com/test.png",
-        canvas="64x64",
         width=64,
         height=64,
         file_bytes=32 * 1024,
@@ -74,8 +73,10 @@ def test_create_post_requires_auth():
         json={
             "title": "Test Post",
             "art_url": "https://example.com/test.png",
-            "canvas": "64x64",
+            "width": 64,
+            "height": 64,
             "file_bytes": 32 * 1024,
+            "hash": "a" * 64,
         },
     )
 
@@ -125,7 +126,6 @@ def test_update_post_requires_ownership(test_user: User, db: Session):
         kind="artwork",
         title="Other's Post",
         art_url="https://example.com/other.png",
-        canvas="64x64",
         width=64,
         height=64,
         file_bytes=32 * 1024,
@@ -207,7 +207,6 @@ def test_delete_post_requires_ownership(test_user: User, db: Session):
         kind="artwork",
         title="Other's Post",
         art_url="https://example.com/other.png",
-        canvas="64x64",
         width=64,
         height=64,
         file_bytes=32 * 1024,

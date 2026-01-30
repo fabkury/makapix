@@ -171,7 +171,6 @@ def create_playlist(
         description=payload.description,
         hashtags=[],
         art_url=None,
-        canvas=None,
         width=None,
         height=None,
         file_bytes=None,

@@ -32,7 +32,6 @@ interface Post {
   description?: string;
   hashtags?: string[];
   art_url: string;
-  canvas: string;
   width: number;
   height: number;
   owner_id: string;
@@ -879,7 +878,7 @@ export default function PostPage() {
               <span className="meta-separator">•</span>
               <span className="post-date">{new Date(post.created_at).toLocaleDateString()}</span>
               <span className="meta-separator">•</span>
-              <span className="post-canvas">{post.canvas}</span>
+              <span className="post-canvas">{post.width}x{post.height}</span>
             </div>
 
             {post.description && (

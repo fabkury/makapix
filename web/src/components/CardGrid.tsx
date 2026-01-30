@@ -28,7 +28,6 @@ interface Post {
   description?: string;
   hashtags?: string[];
   art_url: string;
-  canvas: string;
   width: number;
   height: number;
   owner_id: string;
@@ -168,7 +167,6 @@ export default function CardGrid({
         title: p.title,
         description: p.description,
         art_url: p.art_url,
-        canvas: p.canvas,
         owner: p.owner ? {
           handle: p.owner.handle,
           avatar_url: p.owner.avatar_url,
@@ -205,12 +203,8 @@ export default function CardGrid({
         const card = image.closest('a.artwork-card') as HTMLAnchorElement | null;
         const tileSize = card?.classList.contains('super-post') ? TILE_SIZE * 2 : TILE_SIZE;
 
-        const canvasStr = image.getAttribute('data-canvas') || '';
-        if (!canvasStr) return;
-
-        const [widthStr, heightStr] = canvasStr.split('x');
-        const nativeWidth = parseInt(widthStr, 10);
-        const nativeHeight = parseInt(heightStr, 10);
+        const nativeWidth = parseInt(image.getAttribute('data-width') || '', 10);
+        const nativeHeight = parseInt(image.getAttribute('data-height') || '', 10);
 
         if (!nativeWidth || !nativeHeight || isNaN(nativeWidth) || isNaN(nativeHeight)) return;
 
@@ -373,7 +367,8 @@ export default function CardGrid({
                     src={post.art_url}
                     alt={post.title}
                     className="artwork-image pixel-art"
-                    data-canvas={post.canvas}
+                    data-width={post.width}
+                    data-height={post.height}
                     loading="lazy"
                     style={{ visibility: isSelected ? 'hidden' : 'visible' }}
                   />

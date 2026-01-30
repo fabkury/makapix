@@ -393,19 +393,8 @@ def create_post(
     """
     Create a new post.
     """
-    # Parse canvas dimensions from "WxH" format
-    try:
-        width_str, height_str = payload.canvas.split("x")
-        width = int(width_str)
-        height = int(height_str)
-    except (ValueError, AttributeError):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid canvas format '{payload.canvas}'. Expected format: WIDTHxHEIGHT (e.g., '64x64')",
-        )
-
-    # Validate canvas dimensions using the same validation logic as image uploads
-    is_valid, error = validate_image_dimensions(width, height)
+    # Validate dimensions using the same validation logic as image uploads
+    is_valid, error = validate_image_dimensions(payload.width, payload.height)
     if not is_valid:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -444,9 +433,8 @@ def create_post(
         description=payload.description,
         hashtags=normalized_hashtags,
         art_url=str(payload.art_url),
-        canvas=payload.canvas,
-        width=width,
-        height=height,
+        width=payload.width,
+        height=payload.height,
         file_bytes=payload.file_bytes,
         frame_count=1,
         min_frame_duration_ms=None,
@@ -683,7 +671,6 @@ async def upload_artwork(
         description=description,
         hashtags=parsed_hashtags,
         art_url="",  # Will be updated after saving to vault
-        canvas=f"{width}x{height}",
         width=width,
         height=height,
         file_bytes=file_size,
@@ -1591,7 +1578,6 @@ async def replace_artwork(
     post.art_url = new_art_url
     post.width = width
     post.height = height
-    post.canvas = f"{width}x{height}"
     post.file_bytes = file_bytes
     post.frame_count = frame_count
     post.min_frame_duration_ms = min_frame_duration_ms

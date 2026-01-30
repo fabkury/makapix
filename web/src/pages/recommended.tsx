@@ -22,7 +22,6 @@ interface Post {
   description?: string;
   hashtags?: string[];
   art_url: string;
-  canvas: string;
   width: number;
   height: number;
   owner_id: string;

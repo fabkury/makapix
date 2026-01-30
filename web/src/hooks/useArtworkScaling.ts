@@ -73,15 +73,10 @@ export function useArtworkScaling(gridRef: RefObject<HTMLDivElement>) {
         cardElement.style.width = `${cardSize}px`;
         cardElement.style.height = `${cardSize}px`;
         
-        // Get canvas dimensions from data attribute
-        const canvasStr = image.getAttribute('data-canvas') || '';
-        if (!canvasStr) return;
-        
-        // Parse canvas string (e.g., "64x64", "128x128", "256x256")
-        const [widthStr, heightStr] = canvasStr.split('x');
-        const nativeWidth = parseInt(widthStr, 10);
-        const nativeHeight = parseInt(heightStr, 10);
-        
+        // Get native dimensions from data attributes
+        const nativeWidth = parseInt(image.getAttribute('data-width') || '', 10);
+        const nativeHeight = parseInt(image.getAttribute('data-height') || '', 10);
+
         if (!nativeWidth || !nativeHeight || isNaN(nativeWidth) || isNaN(nativeHeight)) return;
         
         // Use the larger dimension to ensure it fits (for square artworks)
