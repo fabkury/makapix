@@ -11,7 +11,7 @@ from .settings import MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES
 MAX_BUNDLE_SIZE = 50 * 1024 * 1024  # 50 MB
 MAX_FILE_SIZE = MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES  # per artwork (bytes)
 
-# Note: Canvas validation now uses validate_image_dimensions from vault.py
+# Note: Dimension validation uses validate_image_dimensions from vault.py
 
 
 def is_safe_path(base_path: Path, target_path: str) -> bool:
@@ -119,27 +119,20 @@ def validate_manifest(manifest: dict) -> Tuple[bool, List[str]]:
                 elif len(title) > 200:
                     errors.append(f"Title too long in artwork {idx} (max 200 chars)")
 
-                # Canvas validation using the same logic as image uploads
-                canvas = art.get("canvas")
-                if canvas:
-                    try:
-                        # Parse canvas dimensions from "WxH" format
-                        width_str, height_str = canvas.split("x")
-                        width = int(width_str)
-                        height = int(height_str)
-
-                        # Import here to avoid circular imports
-                        from ..vault import validate_image_dimensions
-
-                        is_valid, error = validate_image_dimensions(width, height)
-                        if not is_valid:
-                            errors.append(f"Invalid canvas in artwork {idx}: {error}")
-                    except (ValueError, AttributeError):
-                        errors.append(
-                            f"Invalid canvas format in artwork {idx}: '{canvas}'. Expected format: WIDTHxHEIGHT (e.g., '64x64')"
-                        )
+                # Dimension validation using width/height fields
+                width = art.get("width")
+                height = art.get("height")
+                if width is None or height is None:
+                    errors.append(f"Missing width or height in artwork {idx}")
+                elif not isinstance(width, int) or not isinstance(height, int):
+                    errors.append(f"Invalid width/height type in artwork {idx}")
                 else:
-                    errors.append(f"Missing canvas in artwork {idx}")
+                    # Import here to avoid circular imports
+                    from ..vault import validate_image_dimensions
+
+                    is_valid, error = validate_image_dimensions(width, height)
+                    if not is_valid:
+                        errors.append(f"Invalid dimensions in artwork {idx}: {error}")
 
                 # File size validation
                 file_bytes = art.get("file_bytes")

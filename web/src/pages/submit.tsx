@@ -28,7 +28,6 @@ interface UploadedArtwork {
   public_sqid: string;
   title: string;
   art_url: string;
-  canvas: string;
   width: number;
   height: number;
   public_visibility: boolean;
@@ -768,7 +767,6 @@ function SubmitPageContent() {
         public_sqid: data.post.public_sqid,
         title: data.post.title,
         art_url: data.post.art_url,
-        canvas: data.post.canvas,
         width: data.post.width,
         height: data.post.height,
         public_visibility: data.post.public_visibility,
@@ -831,7 +829,7 @@ function SubmitPageContent() {
                 />
               </div>
               <p className="success-name">{uploadedArtwork.title}</p>
-              <p className="success-canvas">{uploadedArtwork.canvas}</p>
+              <p className="success-canvas">{uploadedArtwork.width}x{uploadedArtwork.height}</p>
 
               {!uploadedArtwork.public_visibility && (
                 <div className="pending-notice">

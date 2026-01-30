@@ -411,12 +411,12 @@ async def validate_manifest_endpoint(
     TODO: Fetch manifest.json from URL
     TODO: Validate JSON schema
     TODO: Check that all art URLs are accessible
-    TODO: Validate canvas dimensions
+    TODO: Validate dimensions
     TODO: Calculate summary statistics
     """
     # PLACEHOLDER: Return valid result
     return schemas.ManifestValidationResult(
         valid=True,
         issues=[],
-        summary={"art_count": 0, "canvases": [], "avg_kb": 0},
+        summary={"art_count": 0, "dimensions": [], "avg_kb": 0},
     )

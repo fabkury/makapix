@@ -17,7 +17,8 @@ interface Post {
   description?: string;
   hashtags?: string[];
   art_url: string;
-  canvas: string;
+  width: number;
+  height: number;
   owner_id: string;
   created_at: string;
   owner?: PostOwner;
@@ -142,12 +143,8 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
         const image = area.querySelector('.artwork-image') as HTMLImageElement;
         if (!image) return;
 
-        const canvasStr = image.getAttribute('data-canvas') || '';
-        if (!canvasStr) return;
-
-        const [widthStr, heightStr] = canvasStr.split('x');
-        const nativeWidth = parseInt(widthStr, 10);
-        const nativeHeight = parseInt(heightStr, 10);
+        const nativeWidth = parseInt(image.getAttribute('data-width') || '', 10);
+        const nativeHeight = parseInt(image.getAttribute('data-height') || '', 10);
 
         if (!nativeWidth || !nativeHeight || isNaN(nativeWidth) || isNaN(nativeHeight)) return;
 
@@ -224,7 +221,8 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
                   src={post.art_url}
                   alt={post.title}
                   className="artwork-image pixel-art"
-                  data-canvas={post.canvas}
+                  data-width={post.width}
+                  data-height={post.height}
                   loading="lazy"
                 />
               </div>

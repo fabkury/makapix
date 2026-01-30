@@ -90,21 +90,21 @@ class Config(BaseModel):
     max_comments_per_post: int = 1000
     max_emojis_per_user_per_post: int = 5
     max_hashtags_per_post: int = 64
-    allowed_canvases: list[str] = [
-        "8x8",
-        "8x16",
-        "16x8",
-        "8x32",
-        "32x8",
-        "16x16",
-        "16x32",
-        "32x16",
-        "32x32",
-        "32x64",
-        "64x32",
-        "64x64",
-        "64x128",
-        "128x64",
+    allowed_dimensions: list[tuple[int, int]] = [
+        (8, 8),
+        (8, 16),
+        (16, 8),
+        (8, 32),
+        (32, 8),
+        (16, 16),
+        (16, 32),
+        (32, 16),
+        (32, 32),
+        (32, 64),
+        (64, 32),
+        (64, 64),
+        (64, 128),
+        (128, 64),
     ]
     # Note: Sizes from 128x128 to 256x256 (inclusive) are also allowed but not listed here
     # All 90-degree rotations of the listed sizes are allowed (e.g., 8x16 and 16x8 are both valid)
@@ -234,7 +234,6 @@ class Post(BaseModel):
     description: str | None = None
     hashtags: list[str] = []
     art_url: str  # Can be relative URL for vault-hosted images or full URL for external
-    canvas: str  # Kept for backward compatibility, computed from width x height
     width: int  # Canvas width in pixels
     height: int  # Canvas height in pixels
     file_bytes: int  # Exact file size in bytes
@@ -289,7 +288,8 @@ class PostCreate(BaseModel):
     description: str | None = Field(None, max_length=5000)
     hashtags: list[str] = Field(default_factory=list, max_length=64)
     art_url: str  # Can be relative URL for vault-hosted images or full URL for external
-    canvas: str = Field(..., pattern=r"^\d+x\d+$")
+    width: int = Field(..., gt=0, le=256)
+    height: int = Field(..., gt=0, le=256)
     file_bytes: int = Field(..., gt=0, le=MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES)
     hash: str = Field(..., min_length=64, max_length=64)
 

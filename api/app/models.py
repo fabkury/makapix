@@ -281,9 +281,6 @@ class Post(Base):
     # DEPRECATED: art_url will be retired in favor of storage_shard. New code should use
     # vault.get_artwork_url(storage_key, extension, storage_shard=storage_shard)
     art_url = Column(String(1000), nullable=True)
-    canvas = Column(
-        String(50), nullable=True
-    )  # e.g., "64x64", "128x128" - kept for backward compatibility
     width = Column(Integer, nullable=True, index=True)  # Canvas width in pixels
     height = Column(Integer, nullable=True, index=True)  # Canvas height in pixels
     base = Column(Integer, nullable=True, index=True)  # min(width, height)

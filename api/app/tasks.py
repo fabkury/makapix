@@ -53,7 +53,8 @@ def generate_artwork_html(
             "filename", artwork_files[idx] if idx < len(artwork_files) else ""
         )
         title = artwork.get("title", "Untitled")
-        canvas = artwork.get("canvas", "Unknown")
+        width = artwork.get("width", 0)
+        height = artwork.get("height", 0)
         file_bytes = artwork.get("file_bytes", 0)
         description = artwork.get("description", "")
         hashtags = artwork.get("hashtags", [])
@@ -61,25 +62,14 @@ def generate_artwork_html(
         # Get post ID for this artwork (use empty string if not available)
         post_id = post_ids[idx] if idx < len(post_ids) else ""
 
-        # Parse canvas dimensions for scaling
-        canvas_match = canvas.split("x") if "x" in canvas else None
-        canvas_width = (
-            int(canvas_match[0]) if canvas_match and canvas_match[0].isdigit() else None
-        )
-        canvas_height = (
-            int(canvas_match[1])
-            if canvas_match and len(canvas_match) > 1 and canvas_match[1].isdigit()
-            else None
-        )
-
         artwork_html += f"""
         <div class="artwork-card">
             <div class="artwork-image" id="artwork-container-{idx}">
-                <img src="{filename}" alt="{title}" class="pixel-art-image" data-canvas="{canvas}" data-artwork-idx="{idx}" />
+                <img src="{filename}" alt="{title}" class="pixel-art-image" data-width="{width}" data-height="{height}" data-artwork-idx="{idx}" />
             </div>
             <div class="artwork-info">
                 <h2>{title}</h2>
-                <p class="metadata">Canvas: {canvas} • Size: {file_bytes} bytes</p>
+                <p class="metadata">{width}x{height} • {file_bytes} bytes</p>
                 {f'<p class="description">{description}</p>' if description else ''}
                 {f'<p class="hashtags">{"".join(f"#{tag} " for tag in hashtags)}</p>' if hashtags else ''}
             </div>
@@ -252,55 +242,50 @@ def generate_artwork_html(
     <!-- Pixel Art Scaling Script -->
     <script>
         (function() {{
-            function parseCanvas(canvas) {{
-                const match = canvas.match(/(\\d+)x(\\d+)/);
-                if (!match) return null;
-                return {{
-                    width: parseInt(match[1], 10),
-                    height: parseInt(match[2], 10)
-                }};
+            function getImageSize(img) {{
+                const width = parseInt(img.getAttribute('data-width'), 10);
+                const height = parseInt(img.getAttribute('data-height'), 10);
+                if (!width || !height) return null;
+                return {{ width: width, height: height }};
             }}
-            
+
             function calculateScaledSize(originalSize, containerWidth, maxHeight, padding) {{
                 const availableWidth = containerWidth - padding;
                 const availableHeight = maxHeight - padding;
-                
+
                 const scaleX = Math.floor(availableWidth / originalSize.width);
                 const scaleY = Math.floor(availableHeight / originalSize.height);
                 const scale = Math.max(1, Math.min(scaleX, scaleY));
-                
+
                 return {{
                     width: originalSize.width * scale,
                     height: originalSize.height * scale
                 }};
             }}
-            
+
             function updateImageSize(img) {{
                 const container = img.closest('.artwork-image');
                 if (!container) return;
-                
-                const canvas = img.getAttribute('data-canvas');
-                if (!canvas) return;
-                
-                const originalSize = parseCanvas(canvas);
+
+                const originalSize = getImageSize(img);
                 if (!originalSize) return;
-                
+
                 const containerRect = container.getBoundingClientRect();
                 if (containerRect.width === 0) {{
                     setTimeout(function() {{ updateImageSize(img); }}, 50);
                     return;
                 }}
-                
+
                 const maxHeight = window.innerHeight * 0.7;
                 const scaledSize = calculateScaledSize(originalSize, containerRect.width, maxHeight, 120);
-                
+
                 if (scaledSize.width > 0 && scaledSize.height > 0) {{
                     img.style.width = scaledSize.width + 'px';
                     img.style.height = scaledSize.height + 'px';
                     img.style.imageRendering = 'pixelated';
                 }}
             }}
-            
+
             function initializeImages() {{
                 const images = document.querySelectorAll('.pixel-art-image');
                 images.forEach(function(img) {{
@@ -311,18 +296,18 @@ def generate_artwork_html(
                     }}, {{ once: true }});
                 }});
             }}
-            
+
             function handleResize() {{
                 const images = document.querySelectorAll('.pixel-art-image');
                 images.forEach(updateImageSize);
             }}
-            
+
             if (document.readyState === 'loading') {{
                 document.addEventListener('DOMContentLoaded', initializeImages);
             }} else {{
                 setTimeout(initializeImages, 0);
             }}
-            
+
             let resizeTimeout;
             window.addEventListener('resize', function() {{
                 clearTimeout(resizeTimeout);
@@ -813,14 +798,9 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
         manifest = job.manifest_data
         post_ids = []
         for idx, artwork in enumerate(manifest.get("artworks", [])):
-            # Parse canvas "WxH" into width/height (required for artwork posts)
-            try:
-                w_str, h_str = artwork["canvas"].split("x")
-                width = int(w_str)
-                height = int(h_str)
-            except Exception:
-                width = None
-                height = None
+            # Get width/height directly from manifest
+            width = artwork.get("width")
+            height = artwork.get("height")
 
             from datetime import datetime, timezone
 
@@ -833,7 +813,6 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
                 description=artwork.get("description"),
                 hashtags=artwork.get("hashtags", []),
                 art_url=f"https://{owner}.github.io/{repo_name}/{artwork['filename']}",
-                canvas=artwork["canvas"],
                 width=width,
                 height=height,
                 file_bytes=int(artwork["file_bytes"]),

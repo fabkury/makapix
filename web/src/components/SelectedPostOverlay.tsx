@@ -16,7 +16,6 @@ export interface SelectedPostOverlayPost {
   title: string;
   description?: string;
   art_url: string;
-  canvas: string; // e.g. "64x64"
   owner?: {
     handle: string;
     avatar_url?: string | null;

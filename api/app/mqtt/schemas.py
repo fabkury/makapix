@@ -227,7 +227,8 @@ class PostNotificationPayload(BaseModel):
     owner_handle: str
     title: str
     art_url: HttpUrl
-    canvas: str
+    width: int
+    height: int
     promoted_category: str | None = None
     created_at: datetime
 
