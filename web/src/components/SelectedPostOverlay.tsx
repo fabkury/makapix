@@ -1420,8 +1420,8 @@ export default function SelectedPostOverlay({
             >
               Edit in Piskel
             </button>
-            {/* Edit in Pixelc: enabled for animated WebP posts */}
-            {post.frame_count > 1 && post.file_format?.toLowerCase() === 'webp' ? (
+            {/* Edit in Pixelc: enabled for all supported formats */}
+            {['png', 'webp', 'gif', 'bmp'].includes(post.file_format?.toLowerCase() || '') ? (
               <button
                 style={menuItemStyles}
                 onClick={handleEditInPixelc}

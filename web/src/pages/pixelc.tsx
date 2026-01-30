@@ -11,6 +11,7 @@ const PIXELC_ORIGIN = process.env.NEXT_PUBLIC_PIXELC_ORIGIN || 'https://pixelc-d
 
 interface EditContext {
   postSqid: string;
+  fileFormat: 'png' | 'webp' | 'gif' | 'bmp';
 }
 
 interface Post {
@@ -26,7 +27,7 @@ interface Post {
 export default function PixelcPage() {
   const router = useRouter();
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const webpDataRef = useRef<ArrayBuffer | null>(null);
+  const imageDataRef = useRef<ArrayBuffer | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -88,33 +89,44 @@ export default function PixelcPage() {
           ? `${API_BASE_URL}${post.art_url}`
           : post.art_url;
 
-        // Check if it's an animated WebP
+        // Check if it's a supported format (PNG, WebP, GIF, or BMP)
+        const isPNG = post.mime_type === 'image/png' ||
+          post.file_format === 'png' ||
+          artworkUrl.toLowerCase().endsWith('.png');
         const isWebP = post.mime_type === 'image/webp' ||
           post.file_format === 'webp' ||
           artworkUrl.toLowerCase().endsWith('.webp');
-        const isAnimated = (post.frame_count ?? 1) > 1;
+        const isGIF = post.mime_type === 'image/gif' ||
+          post.file_format === 'gif' ||
+          artworkUrl.toLowerCase().endsWith('.gif');
+        const isBMP = post.mime_type === 'image/bmp' ||
+          post.file_format === 'bmp' ||
+          artworkUrl.toLowerCase().endsWith('.bmp');
 
-        if (!isWebP || !isAnimated) {
-          throw new Error('Edit in Pixelc only supports animated WebP files');
+        if (!isPNG && !isWebP && !isGIF && !isBMP) {
+          throw new Error('Edit in Pixelc only supports PNG, WebP, GIF, and BMP files');
         }
 
-        // Fetch raw WebP bytes (no decoding needed - Pixelc will handle it)
+        const fileFormat: 'png' | 'webp' | 'gif' | 'bmp' = isPNG ? 'png' : (isBMP ? 'bmp' : (isGIF ? 'gif' : 'webp'));
+
+        // Fetch raw image bytes (no decoding needed - Pixelc will handle it)
         setLoadingStatus('Fetching artwork...');
-        const webpRes = await authenticatedFetch(artworkUrl);
-        if (!webpRes.ok) {
+        const imageRes = await authenticatedFetch(artworkUrl);
+        if (!imageRes.ok) {
           throw new Error('Failed to fetch artwork file');
         }
 
-        const webpData = await webpRes.arrayBuffer();
+        const imageData = await imageRes.arrayBuffer();
 
         if (cancelled) return;
 
-        // Store raw WebP bytes
-        webpDataRef.current = webpData;
+        // Store raw image bytes
+        imageDataRef.current = imageData;
 
         // Set edit context
         setEditContext({
           postSqid: post.public_sqid,
+          fileFormat,
         });
 
         setLoadingStatus(null);
@@ -146,22 +158,58 @@ export default function PixelcPage() {
       userSqid: publicSqid,
     }, PIXELC_ORIGIN);
 
-    // If we have WebP data to send, send it as a separate message
-    if (editContext && webpDataRef.current) {
-      const webpData = webpDataRef.current;
+    // If we have image data to send, send it as a separate message
+    if (editContext && imageDataRef.current) {
+      const imageData = imageDataRef.current;
 
-      const editMessage = {
-        type: 'MAKAPIX_EDIT_WEBP',
-        postSqid: editContext.postSqid,
-        webpData: webpData,
-        webpDataSize: webpData.byteLength,
-      };
+      if (editContext.fileFormat === 'png') {
+        // Send PNG data
+        const editMessage = {
+          type: 'MAKAPIX_EDIT_PNG',
+          postSqid: editContext.postSqid,
+          pngData: imageData,
+          pngDataSize: imageData.byteLength,
+        };
 
-      // Send with transferable (zero-copy transfer of ArrayBuffer)
-      iframeRef.current.contentWindow.postMessage(editMessage, PIXELC_ORIGIN, [webpData]);
+        // Send with transferable (zero-copy transfer of ArrayBuffer)
+        iframeRef.current.contentWindow.postMessage(editMessage, PIXELC_ORIGIN, [imageData]);
+      } else if (editContext.fileFormat === 'gif') {
+        // Send GIF data
+        const editMessage = {
+          type: 'MAKAPIX_EDIT_GIF',
+          postSqid: editContext.postSqid,
+          gifData: imageData,
+          gifDataSize: imageData.byteLength,
+        };
+
+        // Send with transferable (zero-copy transfer of ArrayBuffer)
+        iframeRef.current.contentWindow.postMessage(editMessage, PIXELC_ORIGIN, [imageData]);
+      } else if (editContext.fileFormat === 'bmp') {
+        // Send BMP data
+        const editMessage = {
+          type: 'MAKAPIX_EDIT_BMP',
+          postSqid: editContext.postSqid,
+          bmpData: imageData,
+          bmpDataSize: imageData.byteLength,
+        };
+
+        // Send with transferable (zero-copy transfer of ArrayBuffer)
+        iframeRef.current.contentWindow.postMessage(editMessage, PIXELC_ORIGIN, [imageData]);
+      } else {
+        // Send WebP data
+        const editMessage = {
+          type: 'MAKAPIX_EDIT_WEBP',
+          postSqid: editContext.postSqid,
+          webpData: imageData,
+          webpDataSize: imageData.byteLength,
+        };
+
+        // Send with transferable (zero-copy transfer of ArrayBuffer)
+        iframeRef.current.contentWindow.postMessage(editMessage, PIXELC_ORIGIN, [imageData]);
+      }
 
       // Release memory on parent side after transfer
-      webpDataRef.current = null;
+      imageDataRef.current = null;
     }
   }, [editContext]);
 
