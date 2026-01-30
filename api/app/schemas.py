@@ -1895,9 +1895,15 @@ class ReactedPostItem(BaseModel):
     art_url: str
     width: int
     height: int
+    owner_id: int
     owner_handle: str
+    owner: UserPublic | None = None
     reacted_at: datetime
     emoji: str  # The emoji used in the reaction
+    created_at: datetime
+    file_bytes: int = 0
+    frame_count: int = 1
+    file_format: str | None = None
 
 
 class ReactedPostsResponse(BaseModel):
