@@ -1692,9 +1692,15 @@ def get_user_reacted_posts(
                 art_url=post.art_url,
                 width=post.width,
                 height=post.height,
+                owner_id=post.owner_id,
                 owner_handle=owner.handle if owner else "unknown",
+                owner=schemas.UserPublic.model_validate(owner) if owner else None,
                 reacted_at=reaction.created_at,
                 emoji=reaction.emoji,
+                created_at=post.created_at,
+                file_bytes=post.file_bytes or 0,
+                frame_count=post.frame_count or 1,
+                file_format=post.file_format,
             )
         )
 
