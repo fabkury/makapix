@@ -815,6 +815,12 @@ export default function SelectedPostOverlay({
     router.push(`/editor?edit=${post.public_sqid}`);
   }, [post, router]);
 
+  const handleEditInPixelc = useCallback(() => {
+    if (!post) return;
+    setShowMoreMenu(false);
+    router.push(`/pixelc?edit=${post.public_sqid}`);
+  }, [post, router]);
+
   const handleDownloadNative = useCallback(async () => {
     if (!post) return;
     setShowMoreMenu(false);
@@ -1414,9 +1420,21 @@ export default function SelectedPostOverlay({
             >
               Edit in Piskel
             </button>
-            <button style={menuItemDisabledStyles} disabled>
-              Edit in Pixelc
-            </button>
+            {/* Edit in Pixelc: enabled for animated WebP posts */}
+            {post.frame_count > 1 && post.file_format?.toLowerCase() === 'webp' ? (
+              <button
+                style={menuItemStyles}
+                onClick={handleEditInPixelc}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                Edit in Pixelc
+              </button>
+            ) : (
+              <button style={menuItemDisabledStyles} disabled>
+                Edit in Pixelc
+              </button>
+            )}
 
             <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '4px 0' }} />
 
