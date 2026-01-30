@@ -45,6 +45,7 @@ interface Post {
   promoted_category?: string;
   license_id?: number | null;
   license?: License | null;
+  file_format?: string;
   owner?: {
     id: string;
     handle: string;
@@ -945,6 +946,15 @@ export default function PostPage() {
                 >
                   🖌️ Edit in Piskel
                 </button>
+                {post.file_format?.toLowerCase() === 'webp' && (
+                  <button
+                    onClick={() => router.push(`/pixelc?edit=${post.public_sqid}`)}
+                    className="action-button pixelc-edit"
+                    title="Edit in Pixelc"
+                  >
+                    🎨 Edit in Pixelc
+                  </button>
+                )}
                 <button
                   onClick={handleHide}
                   className={`action-button ${post.hidden_by_user ? 'unhide' : 'hide'}`}
@@ -1308,6 +1318,16 @@ export default function PostPage() {
         .action-button.piskel-edit:hover:not(:disabled) {
           background: rgba(255, 165, 0, 0.3);
           box-shadow: 0 0 12px rgba(255, 165, 0, 0.3);
+        }
+
+        .action-button.pixelc-edit {
+          background: rgba(0, 212, 255, 0.2);
+          color: #00d4ff;
+        }
+
+        .action-button.pixelc-edit:hover:not(:disabled) {
+          background: rgba(0, 212, 255, 0.3);
+          box-shadow: 0 0 12px rgba(0, 212, 255, 0.3);
         }
 
         .stats-action {
