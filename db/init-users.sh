@@ -13,10 +13,13 @@ if [ -n "$DB_API_WORKER_USER" ] && [ -n "$DB_API_WORKER_PASSWORD" ]; then
         DO \$\$
         BEGIN
             IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$DB_API_WORKER_USER') THEN
-                CREATE ROLE "$DB_API_WORKER_USER" WITH LOGIN PASSWORD '$DB_API_WORKER_PASSWORD';
+                CREATE ROLE "$DB_API_WORKER_USER" WITH LOGIN;
             END IF;
         END
         \$\$;
+
+        -- Always update password (ensures password matches .env even if role existed)
+        ALTER ROLE "$DB_API_WORKER_USER" WITH PASSWORD '$DB_API_WORKER_PASSWORD';
         
         -- Grant connect privilege to the database
         GRANT CONNECT ON DATABASE "$POSTGRES_DB" TO "$DB_API_WORKER_USER";

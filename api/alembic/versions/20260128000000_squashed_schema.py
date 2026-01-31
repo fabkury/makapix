@@ -64,7 +64,9 @@ def upgrade() -> None:
     op.create_table(
         "users",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
-        sa.Column("user_key", postgresql.UUID(as_uuid=True), unique=True, nullable=False),
+        sa.Column(
+            "user_key", postgresql.UUID(as_uuid=True), unique=True, nullable=False
+        ),
         sa.Column("public_sqid", sa.String(16), unique=True, nullable=True),
         sa.Column("handle", sa.String(50), unique=True, nullable=False),
         sa.Column("bio", sa.Text(), nullable=True),
@@ -73,16 +75,28 @@ def upgrade() -> None:
         sa.Column("avatar_url", sa.String(500), nullable=True),
         sa.Column("email", sa.String(255), unique=True, nullable=False),
         sa.Column("email_normalized", sa.String(255), unique=True, nullable=True),
-        sa.Column("email_verified", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("welcome_completed", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column(
+            "email_verified", sa.Boolean(), nullable=False, server_default="false"
+        ),
+        sa.Column(
+            "welcome_completed", sa.Boolean(), nullable=False, server_default="false"
+        ),
         sa.Column("reputation", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("roles", postgresql.JSON(), nullable=False, server_default="[]"),
-        sa.Column("hidden_by_user", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("hidden_by_mod", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("non_conformant", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column(
+            "hidden_by_user", sa.Boolean(), nullable=False, server_default="false"
+        ),
+        sa.Column(
+            "hidden_by_mod", sa.Boolean(), nullable=False, server_default="false"
+        ),
+        sa.Column(
+            "non_conformant", sa.Boolean(), nullable=False, server_default="false"
+        ),
         sa.Column("deactivated", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("banned_until", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("auto_public_approval", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column(
+            "auto_public_approval", sa.Boolean(), nullable=False, server_default="false"
+        ),
         sa.Column(
             "approved_hashtags",
             postgresql.ARRAY(sa.String(50)),
@@ -102,7 +116,9 @@ def upgrade() -> None:
     op.create_index("ix_users_public_sqid", "users", ["public_sqid"], unique=True)
     op.create_index("ix_users_handle", "users", ["handle"], unique=True)
     op.create_index("ix_users_email", "users", ["email"], unique=True)
-    op.create_index("ix_users_email_normalized", "users", ["email_normalized"], unique=True)
+    op.create_index(
+        "ix_users_email_normalized", "users", ["email_normalized"], unique=True
+    )
     op.create_index("ix_users_email_verified", "users", ["email_verified"])
     op.create_index("ix_users_welcome_completed", "users", ["welcome_completed"])
     op.create_index("ix_users_reputation", "users", ["reputation"])
@@ -151,9 +167,13 @@ def upgrade() -> None:
     op.create_index("ix_auth_identities_id", "auth_identities", ["id"])
     op.create_index("ix_auth_identities_user_id", "auth_identities", ["user_id"])
     op.create_index("ix_auth_identities_provider", "auth_identities", ["provider"])
-    op.create_index("ix_auth_identities_provider_user_id", "auth_identities", ["provider_user_id"])
+    op.create_index(
+        "ix_auth_identities_provider_user_id", "auth_identities", ["provider_user_id"]
+    )
     op.create_index("ix_auth_identities_email", "auth_identities", ["email"])
-    op.create_index("ix_auth_identities_user_provider", "auth_identities", ["user_id", "provider"])
+    op.create_index(
+        "ix_auth_identities_user_provider", "auth_identities", ["user_id", "provider"]
+    )
     op.create_index("ix_auth_identities_created_at", "auth_identities", ["created_at"])
     op.create_unique_constraint(
         "uq_auth_identity_provider_user",
@@ -183,7 +203,9 @@ def upgrade() -> None:
     )
     op.create_index("ix_refresh_tokens_id", "refresh_tokens", ["id"])
     op.create_index("ix_refresh_tokens_user_id", "refresh_tokens", ["user_id"])
-    op.create_index("ix_refresh_tokens_token_hash", "refresh_tokens", ["token_hash"], unique=True)
+    op.create_index(
+        "ix_refresh_tokens_token_hash", "refresh_tokens", ["token_hash"], unique=True
+    )
     op.create_index("ix_refresh_tokens_expires_at", "refresh_tokens", ["expires_at"])
     op.create_index("ix_refresh_tokens_revoked", "refresh_tokens", ["revoked"])
     op.create_index("ix_refresh_tokens_created_at", "refresh_tokens", ["created_at"])
@@ -209,16 +231,28 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
-    op.create_index("ix_email_verification_tokens_id", "email_verification_tokens", ["id"])
-    op.create_index("ix_email_verification_tokens_user_id", "email_verification_tokens", ["user_id"])
+    op.create_index(
+        "ix_email_verification_tokens_id", "email_verification_tokens", ["id"]
+    )
+    op.create_index(
+        "ix_email_verification_tokens_user_id", "email_verification_tokens", ["user_id"]
+    )
     op.create_index(
         "ix_email_verification_tokens_token_hash",
         "email_verification_tokens",
         ["token_hash"],
         unique=True,
     )
-    op.create_index("ix_email_verification_tokens_expires_at", "email_verification_tokens", ["expires_at"])
-    op.create_index("ix_email_verification_tokens_created_at", "email_verification_tokens", ["created_at"])
+    op.create_index(
+        "ix_email_verification_tokens_expires_at",
+        "email_verification_tokens",
+        ["expires_at"],
+    )
+    op.create_index(
+        "ix_email_verification_tokens_created_at",
+        "email_verification_tokens",
+        ["created_at"],
+    )
 
     # Password reset tokens table
     op.create_table(
@@ -241,15 +275,21 @@ def upgrade() -> None:
         ),
     )
     op.create_index("ix_password_reset_tokens_id", "password_reset_tokens", ["id"])
-    op.create_index("ix_password_reset_tokens_user_id", "password_reset_tokens", ["user_id"])
+    op.create_index(
+        "ix_password_reset_tokens_user_id", "password_reset_tokens", ["user_id"]
+    )
     op.create_index(
         "ix_password_reset_tokens_token_hash",
         "password_reset_tokens",
         ["token_hash"],
         unique=True,
     )
-    op.create_index("ix_password_reset_tokens_expires_at", "password_reset_tokens", ["expires_at"])
-    op.create_index("ix_password_reset_tokens_created_at", "password_reset_tokens", ["created_at"])
+    op.create_index(
+        "ix_password_reset_tokens_expires_at", "password_reset_tokens", ["expires_at"]
+    )
+    op.create_index(
+        "ix_password_reset_tokens_created_at", "password_reset_tokens", ["created_at"]
+    )
 
     # ========================================================================
     # POSTS
@@ -258,7 +298,9 @@ def upgrade() -> None:
     op.create_table(
         "posts",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
-        sa.Column("storage_key", postgresql.UUID(as_uuid=True), unique=True, nullable=False),
+        sa.Column(
+            "storage_key", postgresql.UUID(as_uuid=True), unique=True, nullable=False
+        ),
         sa.Column("storage_shard", sa.String(8), nullable=True),
         sa.Column("public_sqid", sa.String(16), unique=True, nullable=True),
         sa.Column("kind", sa.String(20), nullable=False, server_default="artwork"),
@@ -287,9 +329,13 @@ def upgrade() -> None:
         sa.Column("min_frame_duration_ms", sa.Integer(), nullable=True),
         sa.Column("max_frame_duration_ms", sa.Integer(), nullable=True),
         sa.Column("unique_colors", sa.Integer(), nullable=True),
-        sa.Column("transparency_meta", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column(
+            "transparency_meta", sa.Boolean(), nullable=False, server_default="false"
+        ),
         sa.Column("alpha_meta", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("transparency_actual", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column(
+            "transparency_actual", sa.Boolean(), nullable=False, server_default="false"
+        ),
         sa.Column("alpha_actual", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("hash", sa.String(64), nullable=True),
         sa.Column("file_format", sa.String(20), nullable=True),
@@ -300,11 +346,21 @@ def upgrade() -> None:
             server_default="{}",
         ),
         sa.Column("visible", sa.Boolean(), nullable=False, server_default="true"),
-        sa.Column("hidden_by_user", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("hidden_by_mod", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("non_conformant", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("public_visibility", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("deleted_by_user", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column(
+            "hidden_by_user", sa.Boolean(), nullable=False, server_default="false"
+        ),
+        sa.Column(
+            "hidden_by_mod", sa.Boolean(), nullable=False, server_default="false"
+        ),
+        sa.Column(
+            "non_conformant", sa.Boolean(), nullable=False, server_default="false"
+        ),
+        sa.Column(
+            "public_visibility", sa.Boolean(), nullable=False, server_default="false"
+        ),
+        sa.Column(
+            "deleted_by_user", sa.Boolean(), nullable=False, server_default="false"
+        ),
         sa.Column("deleted_by_user_date", sa.DateTime(timezone=True), nullable=True),
         sa.Column("promoted", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("promoted_category", sa.String(50), nullable=True),
@@ -327,7 +383,9 @@ def upgrade() -> None:
             server_default=sa.func.now(),
             nullable=False,
         ),
-        sa.Column("dwell_time_ms", sa.Integer(), nullable=False, server_default="30000"),
+        sa.Column(
+            "dwell_time_ms", sa.Integer(), nullable=False, server_default="30000"
+        ),
         sa.Column(
             "license_id",
             sa.Integer(),
@@ -355,7 +413,9 @@ def upgrade() -> None:
     op.create_index("ix_posts_artwork_modified_at", "posts", ["artwork_modified_at"])
     op.create_index("ix_posts_license_id", "posts", ["license_id"])
     op.create_index("ix_posts_hashtags", "posts", ["hashtags"], postgresql_using="gin")
-    op.create_index("ix_posts_owner_created", "posts", ["owner_id", sa.text("created_at DESC")])
+    op.create_index(
+        "ix_posts_owner_created", "posts", ["owner_id", sa.text("created_at DESC")]
+    )
     op.create_index(
         "ix_posts_non_conformant_created",
         "posts",
@@ -381,9 +441,19 @@ def upgrade() -> None:
             sa.ForeignKey("posts.id", ondelete="CASCADE"),
             primary_key=True,
         ),
-        sa.Column("legacy_playlist_id", postgresql.UUID(as_uuid=True), unique=True, nullable=True),
+        sa.Column(
+            "legacy_playlist_id",
+            postgresql.UUID(as_uuid=True),
+            unique=True,
+            nullable=True,
+        ),
     )
-    op.create_index("ix_playlist_posts_legacy_playlist_id", "playlist_posts", ["legacy_playlist_id"], unique=True)
+    op.create_index(
+        "ix_playlist_posts_legacy_playlist_id",
+        "playlist_posts",
+        ["legacy_playlist_id"],
+        unique=True,
+    )
 
     # Playlist items (ordered items in a playlist)
     op.create_table(
@@ -402,7 +472,9 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("position", sa.Integer(), nullable=False),
-        sa.Column("dwell_time_ms", sa.Integer(), nullable=False, server_default="30000"),
+        sa.Column(
+            "dwell_time_ms", sa.Integer(), nullable=False, server_default="30000"
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -410,10 +482,18 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
-    op.create_index("ix_playlist_items_playlist_post_id", "playlist_items", ["playlist_post_id"])
-    op.create_index("ix_playlist_items_artwork_post_id", "playlist_items", ["artwork_post_id"])
+    op.create_index(
+        "ix_playlist_items_playlist_post_id", "playlist_items", ["playlist_post_id"]
+    )
+    op.create_index(
+        "ix_playlist_items_artwork_post_id", "playlist_items", ["artwork_post_id"]
+    )
     op.create_index("ix_playlist_items_created_at", "playlist_items", ["created_at"])
-    op.create_index("ix_playlist_items_playlist_position", "playlist_items", ["playlist_post_id", "position"])
+    op.create_index(
+        "ix_playlist_items_playlist_position",
+        "playlist_items",
+        ["playlist_post_id", "position"],
+    )
     op.create_unique_constraint(
         "uq_playlist_items_playlist_position",
         "playlist_items",
@@ -448,8 +528,12 @@ def upgrade() -> None:
         ),
         sa.Column("depth", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("body", sa.Text(), nullable=False),
-        sa.Column("hidden_by_mod", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("deleted_by_owner", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column(
+            "hidden_by_mod", sa.Boolean(), nullable=False, server_default="false"
+        ),
+        sa.Column(
+            "deleted_by_owner", sa.Boolean(), nullable=False, server_default="false"
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -465,7 +549,9 @@ def upgrade() -> None:
     op.create_index("ix_comments_parent_id", "comments", ["parent_id"])
     op.create_index("ix_comments_hidden_by_mod", "comments", ["hidden_by_mod"])
     op.create_index("ix_comments_created_at", "comments", ["created_at"])
-    op.create_index("ix_comments_post_created", "comments", ["post_id", sa.text("created_at DESC")])
+    op.create_index(
+        "ix_comments_post_created", "comments", ["post_id", sa.text("created_at DESC")]
+    )
 
     # ========================================================================
     # LEGACY PLAYLISTS (UUID-based, kept for backwards compatibility)
@@ -489,8 +575,12 @@ def upgrade() -> None:
             server_default="{}",
         ),
         sa.Column("visible", sa.Boolean(), nullable=False, server_default="true"),
-        sa.Column("hidden_by_user", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("hidden_by_mod", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column(
+            "hidden_by_user", sa.Boolean(), nullable=False, server_default="false"
+        ),
+        sa.Column(
+            "hidden_by_mod", sa.Boolean(), nullable=False, server_default="false"
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -577,8 +667,14 @@ def upgrade() -> None:
     op.create_index("ix_follows_follower_id", "follows", ["follower_id"])
     op.create_index("ix_follows_following_id", "follows", ["following_id"])
     op.create_index("ix_follows_created_at", "follows", ["created_at"])
-    op.create_index("ix_follows_following_created", "follows", ["following_id", sa.text("created_at DESC")])
-    op.create_unique_constraint("uq_follow_follower_following", "follows", ["follower_id", "following_id"])
+    op.create_index(
+        "ix_follows_following_created",
+        "follows",
+        ["following_id", sa.text("created_at DESC")],
+    )
+    op.create_unique_constraint(
+        "uq_follow_follower_following", "follows", ["follower_id", "following_id"]
+    )
 
     # Category follows table
     op.create_table(
@@ -600,13 +696,17 @@ def upgrade() -> None:
     )
     op.create_index("ix_category_follows_user_id", "category_follows", ["user_id"])
     op.create_index("ix_category_follows_category", "category_follows", ["category"])
-    op.create_index("ix_category_follows_created_at", "category_follows", ["created_at"])
+    op.create_index(
+        "ix_category_follows_created_at", "category_follows", ["created_at"]
+    )
     op.create_index(
         "ix_category_follows_category_created",
         "category_follows",
         ["category", sa.text("created_at DESC")],
     )
-    op.create_unique_constraint("uq_category_follow_user_category", "category_follows", ["user_id", "category"])
+    op.create_unique_constraint(
+        "uq_category_follow_user_category", "category_follows", ["user_id", "category"]
+    )
 
     # Social notifications table
     op.create_table(
@@ -649,11 +749,21 @@ def upgrade() -> None:
         ),
     )
     op.create_index("ix_social_notifications_id", "social_notifications", ["id"])
-    op.create_index("ix_social_notifications_user_id", "social_notifications", ["user_id"])
-    op.create_index("ix_social_notifications_post_id", "social_notifications", ["post_id"])
-    op.create_index("ix_social_notifications_actor_id", "social_notifications", ["actor_id"])
-    op.create_index("ix_social_notifications_is_read", "social_notifications", ["is_read"])
-    op.create_index("ix_social_notifications_created_at", "social_notifications", ["created_at"])
+    op.create_index(
+        "ix_social_notifications_user_id", "social_notifications", ["user_id"]
+    )
+    op.create_index(
+        "ix_social_notifications_post_id", "social_notifications", ["post_id"]
+    )
+    op.create_index(
+        "ix_social_notifications_actor_id", "social_notifications", ["actor_id"]
+    )
+    op.create_index(
+        "ix_social_notifications_is_read", "social_notifications", ["is_read"]
+    )
+    op.create_index(
+        "ix_social_notifications_created_at", "social_notifications", ["created_at"]
+    )
     op.create_index(
         "ix_social_notifications_user_created",
         "social_notifications",
@@ -687,7 +797,9 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
-    op.create_index("ix_badge_definitions_badge", "badge_definitions", ["badge"], unique=True)
+    op.create_index(
+        "ix_badge_definitions_badge", "badge_definitions", ["badge"], unique=True
+    )
 
     # Badge grants table
     op.create_table(
@@ -709,7 +821,9 @@ def upgrade() -> None:
     )
     op.create_index("ix_badge_grants_user_id", "badge_grants", ["user_id"])
     op.create_index("ix_badge_grants_granted_at", "badge_grants", ["granted_at"])
-    op.create_unique_constraint("uq_badge_grant_user_badge", "badge_grants", ["user_id", "badge"])
+    op.create_unique_constraint(
+        "uq_badge_grant_user_badge", "badge_grants", ["user_id", "badge"]
+    )
 
     # User highlights table
     op.create_table(
@@ -737,9 +851,15 @@ def upgrade() -> None:
     )
     op.create_index("ix_user_highlights_user_id", "user_highlights", ["user_id"])
     op.create_index("ix_user_highlights_post_id", "user_highlights", ["post_id"])
-    op.create_index("ix_user_highlights_user_position", "user_highlights", ["user_id", "position"])
-    op.create_unique_constraint("uq_user_highlights_user_post", "user_highlights", ["user_id", "post_id"])
-    op.create_unique_constraint("uq_user_highlights_user_position", "user_highlights", ["user_id", "position"])
+    op.create_index(
+        "ix_user_highlights_user_position", "user_highlights", ["user_id", "position"]
+    )
+    op.create_unique_constraint(
+        "uq_user_highlights_user_post", "user_highlights", ["user_id", "post_id"]
+    )
+    op.create_unique_constraint(
+        "uq_user_highlights_user_position", "user_highlights", ["user_id", "position"]
+    )
 
     # Reputation history table
     op.create_table(
@@ -761,7 +881,9 @@ def upgrade() -> None:
         ),
     )
     op.create_index("ix_reputation_history_user_id", "reputation_history", ["user_id"])
-    op.create_index("ix_reputation_history_created_at", "reputation_history", ["created_at"])
+    op.create_index(
+        "ix_reputation_history_created_at", "reputation_history", ["created_at"]
+    )
 
     # ========================================================================
     # MODERATION
@@ -797,7 +919,9 @@ def upgrade() -> None:
     op.create_index("ix_reports_target_id", "reports", ["target_id"])
     op.create_index("ix_reports_status", "reports", ["status"])
     op.create_index("ix_reports_created_at", "reports", ["created_at"])
-    op.create_index("ix_reports_status_created", "reports", ["status", sa.text("created_at DESC")])
+    op.create_index(
+        "ix_reports_status_created", "reports", ["status", sa.text("created_at DESC")]
+    )
     op.create_index("ix_reports_target", "reports", ["target_type", "target_id"])
 
     # Admin notes table
@@ -857,7 +981,11 @@ def upgrade() -> None:
     op.create_index("ix_violations_user_id", "violations", ["user_id"])
     op.create_index("ix_violations_moderator_id", "violations", ["moderator_id"])
     op.create_index("ix_violations_created_at", "violations", ["created_at"])
-    op.create_index("ix_violations_user_created", "violations", ["user_id", sa.text("created_at DESC")])
+    op.create_index(
+        "ix_violations_user_created",
+        "violations",
+        ["user_id", sa.text("created_at DESC")],
+    )
 
     # Audit logs table
     op.create_table(
@@ -886,7 +1014,11 @@ def upgrade() -> None:
     op.create_index("ix_audit_logs_action", "audit_logs", ["action"])
     op.create_index("ix_audit_logs_target_id", "audit_logs", ["target_id"])
     op.create_index("ix_audit_logs_created_at", "audit_logs", ["created_at"])
-    op.create_index("ix_audit_logs_actor_created", "audit_logs", ["actor_id", sa.text("created_at DESC")])
+    op.create_index(
+        "ix_audit_logs_actor_created",
+        "audit_logs",
+        ["actor_id", sa.text("created_at DESC")],
+    )
 
     # ========================================================================
     # PLAYERS & DEVICE MANAGEMENT
@@ -896,7 +1028,9 @@ def upgrade() -> None:
     op.create_table(
         "players",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("player_key", postgresql.UUID(as_uuid=True), unique=True, nullable=False),
+        sa.Column(
+            "player_key", postgresql.UUID(as_uuid=True), unique=True, nullable=False
+        ),
         sa.Column(
             "owner_id",
             sa.Integer(),
@@ -906,11 +1040,20 @@ def upgrade() -> None:
         sa.Column("name", sa.String(100), nullable=True),
         sa.Column("device_model", sa.String(100), nullable=True),
         sa.Column("firmware_version", sa.String(50), nullable=True),
-        sa.Column("registration_status", sa.String(20), nullable=False, server_default="pending"),
+        sa.Column(
+            "registration_status",
+            sa.String(20),
+            nullable=False,
+            server_default="pending",
+        ),
         sa.Column("registration_code", sa.String(6), unique=True, nullable=True),
-        sa.Column("registration_code_expires_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "registration_code_expires_at", sa.DateTime(timezone=True), nullable=True
+        ),
         sa.Column("registered_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("connection_status", sa.String(20), nullable=False, server_default="offline"),
+        sa.Column(
+            "connection_status", sa.String(20), nullable=False, server_default="offline"
+        ),
         sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "current_post_id",
@@ -934,8 +1077,12 @@ def upgrade() -> None:
     op.create_index("ix_players_id", "players", ["id"])
     op.create_index("ix_players_player_key", "players", ["player_key"], unique=True)
     op.create_index("ix_players_owner_id", "players", ["owner_id"])
-    op.create_index("ix_players_registration_code", "players", ["registration_code"], unique=True)
-    op.create_index("ix_players_cert_serial_number", "players", ["cert_serial_number"], unique=True)
+    op.create_index(
+        "ix_players_registration_code", "players", ["registration_code"], unique=True
+    )
+    op.create_index(
+        "ix_players_cert_serial_number", "players", ["cert_serial_number"], unique=True
+    )
     op.create_index("ix_players_connection_status", "players", ["connection_status"])
     op.create_index("ix_players_created_at", "players", ["created_at"])
 
@@ -958,8 +1105,12 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
-    op.create_index("ix_player_command_logs_player_id", "player_command_logs", ["player_id"])
-    op.create_index("ix_player_command_logs_created_at", "player_command_logs", ["created_at"])
+    op.create_index(
+        "ix_player_command_logs_player_id", "player_command_logs", ["player_id"]
+    )
+    op.create_index(
+        "ix_player_command_logs_created_at", "player_command_logs", ["created_at"]
+    )
 
     # ========================================================================
     # SYSTEM
@@ -980,8 +1131,12 @@ def upgrade() -> None:
         sa.Column("last_checked_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("next_check_at", sa.DateTime(timezone=True), nullable=True),
     )
-    op.create_index("ix_conformance_checks_user_id", "conformance_checks", ["user_id"], unique=True)
-    op.create_index("ix_conformance_checks_next_check_at", "conformance_checks", ["next_check_at"])
+    op.create_index(
+        "ix_conformance_checks_user_id", "conformance_checks", ["user_id"], unique=True
+    )
+    op.create_index(
+        "ix_conformance_checks_next_check_at", "conformance_checks", ["next_check_at"]
+    )
 
     # Relay jobs table
     op.create_table(
@@ -1028,11 +1183,20 @@ def upgrade() -> None:
         sa.Column("target_repo", sa.String(200), nullable=True),
         sa.Column("access_token", sa.Text(), nullable=True),
         sa.Column("token_expires_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+        ),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
-    op.create_index("ix_github_installations_user_id", "github_installations", ["user_id"])
-    op.create_index("ix_github_installations_installation_id", "github_installations", ["installation_id"], unique=True)
+    op.create_index(
+        "ix_github_installations_user_id", "github_installations", ["user_id"]
+    )
+    op.create_index(
+        "ix_github_installations_installation_id",
+        "github_installations",
+        ["installation_id"],
+        unique=True,
+    )
 
     # ========================================================================
     # VIEW TRACKING & STATISTICS
@@ -1089,7 +1253,11 @@ def upgrade() -> None:
     op.create_index("ix_view_events_player_id", "view_events", ["player_id"])
     op.create_index("ix_view_events_channel", "view_events", ["channel"])
     op.create_index("ix_view_events_created_at", "view_events", ["created_at"])
-    op.create_index("ix_view_events_post_created", "view_events", ["post_id", sa.text("created_at DESC")])
+    op.create_index(
+        "ix_view_events_post_created",
+        "view_events",
+        ["post_id", sa.text("created_at DESC")],
+    )
 
     # Post stats daily table
     op.create_table(
@@ -1104,14 +1272,45 @@ def upgrade() -> None:
         sa.Column("date", sa.Date(), nullable=False),
         sa.Column("total_views", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("unique_viewers", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("views_by_country", postgresql.JSON(), nullable=False, server_default="{}"),
-        sa.Column("views_by_device", postgresql.JSON(), nullable=False, server_default="{}"),
-        sa.Column("views_by_type", postgresql.JSON(), nullable=False, server_default="{}"),
-        sa.Column("total_views_authenticated", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("unique_viewers_authenticated", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("views_by_country_authenticated", postgresql.JSON(), nullable=False, server_default="{}"),
-        sa.Column("views_by_device_authenticated", postgresql.JSON(), nullable=False, server_default="{}"),
-        sa.Column("views_by_type_authenticated", postgresql.JSON(), nullable=False, server_default="{}"),
+        sa.Column(
+            "views_by_country", postgresql.JSON(), nullable=False, server_default="{}"
+        ),
+        sa.Column(
+            "views_by_device", postgresql.JSON(), nullable=False, server_default="{}"
+        ),
+        sa.Column(
+            "views_by_type", postgresql.JSON(), nullable=False, server_default="{}"
+        ),
+        sa.Column(
+            "total_views_authenticated",
+            sa.Integer(),
+            nullable=False,
+            server_default="0",
+        ),
+        sa.Column(
+            "unique_viewers_authenticated",
+            sa.Integer(),
+            nullable=False,
+            server_default="0",
+        ),
+        sa.Column(
+            "views_by_country_authenticated",
+            postgresql.JSON(),
+            nullable=False,
+            server_default="{}",
+        ),
+        sa.Column(
+            "views_by_device_authenticated",
+            postgresql.JSON(),
+            nullable=False,
+            server_default="{}",
+        ),
+        sa.Column(
+            "views_by_type_authenticated",
+            postgresql.JSON(),
+            nullable=False,
+            server_default="{}",
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -1121,8 +1320,12 @@ def upgrade() -> None:
     )
     op.create_index("ix_post_stats_daily_post_id", "post_stats_daily", ["post_id"])
     op.create_index("ix_post_stats_daily_date", "post_stats_daily", ["date"])
-    op.create_index("ix_post_stats_daily_post_date", "post_stats_daily", ["post_id", "date"])
-    op.create_unique_constraint("uq_post_stats_daily_post_date", "post_stats_daily", ["post_id", "date"])
+    op.create_index(
+        "ix_post_stats_daily_post_date", "post_stats_daily", ["post_id", "date"]
+    )
+    op.create_unique_constraint(
+        "uq_post_stats_daily_post_date", "post_stats_daily", ["post_id", "date"]
+    )
 
     # Post stats cache table
     op.create_table(
@@ -1144,7 +1347,9 @@ def upgrade() -> None:
         ),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
     )
-    op.create_index("ix_post_stats_cache_post_id", "post_stats_cache", ["post_id"], unique=True)
+    op.create_index(
+        "ix_post_stats_cache_post_id", "post_stats_cache", ["post_id"], unique=True
+    )
 
     # Site events table (7-day retention)
     op.create_table(
@@ -1172,13 +1377,21 @@ def upgrade() -> None:
     )
     op.create_index("ix_site_events_id", "site_events", ["id"])
     op.create_index("ix_site_events_event_type", "site_events", ["event_type"])
-    op.create_index("ix_site_events_visitor_ip_hash", "site_events", ["visitor_ip_hash"])
+    op.create_index(
+        "ix_site_events_visitor_ip_hash", "site_events", ["visitor_ip_hash"]
+    )
     op.create_index("ix_site_events_user_id", "site_events", ["user_id"])
     op.create_index("ix_site_events_device_type", "site_events", ["device_type"])
     op.create_index("ix_site_events_country_code", "site_events", ["country_code"])
     op.create_index("ix_site_events_created_at", "site_events", ["created_at"])
-    op.create_index("ix_site_events_type_created", "site_events", ["event_type", sa.text("created_at DESC")])
-    op.create_index("ix_site_events_created", "site_events", [sa.text("created_at DESC")])
+    op.create_index(
+        "ix_site_events_type_created",
+        "site_events",
+        ["event_type", sa.text("created_at DESC")],
+    )
+    op.create_index(
+        "ix_site_events_created", "site_events", [sa.text("created_at DESC")]
+    )
 
     # Site stats daily table
     op.create_table(
@@ -1191,11 +1404,21 @@ def upgrade() -> None:
         sa.Column("new_posts", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("total_api_calls", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("total_errors", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("views_by_page", postgresql.JSON(), nullable=False, server_default="{}"),
-        sa.Column("views_by_country", postgresql.JSON(), nullable=False, server_default="{}"),
-        sa.Column("views_by_device", postgresql.JSON(), nullable=False, server_default="{}"),
-        sa.Column("errors_by_type", postgresql.JSON(), nullable=False, server_default="{}"),
-        sa.Column("top_referrers", postgresql.JSON(), nullable=False, server_default="{}"),
+        sa.Column(
+            "views_by_page", postgresql.JSON(), nullable=False, server_default="{}"
+        ),
+        sa.Column(
+            "views_by_country", postgresql.JSON(), nullable=False, server_default="{}"
+        ),
+        sa.Column(
+            "views_by_device", postgresql.JSON(), nullable=False, server_default="{}"
+        ),
+        sa.Column(
+            "errors_by_type", postgresql.JSON(), nullable=False, server_default="{}"
+        ),
+        sa.Column(
+            "top_referrers", postgresql.JSON(), nullable=False, server_default="{}"
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -1203,7 +1426,9 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
-    op.create_index("ix_site_stats_daily_date", "site_stats_daily", ["date"], unique=True)
+    op.create_index(
+        "ix_site_stats_daily_date", "site_stats_daily", ["date"], unique=True
+    )
 
     # ========================================================================
     # BLOG POSTS
@@ -1213,7 +1438,9 @@ def upgrade() -> None:
     op.create_table(
         "blog_posts",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
-        sa.Column("blog_post_key", postgresql.UUID(as_uuid=True), unique=True, nullable=False),
+        sa.Column(
+            "blog_post_key", postgresql.UUID(as_uuid=True), unique=True, nullable=False
+        ),
         sa.Column("public_sqid", sa.String(16), unique=True, nullable=True),
         sa.Column(
             "owner_id",
@@ -1230,9 +1457,15 @@ def upgrade() -> None:
             server_default="{}",
         ),
         sa.Column("visible", sa.Boolean(), nullable=False, server_default="true"),
-        sa.Column("hidden_by_user", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("hidden_by_mod", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("public_visibility", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column(
+            "hidden_by_user", sa.Boolean(), nullable=False, server_default="false"
+        ),
+        sa.Column(
+            "hidden_by_mod", sa.Boolean(), nullable=False, server_default="false"
+        ),
+        sa.Column(
+            "public_visibility", sa.Boolean(), nullable=False, server_default="false"
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -1243,18 +1476,36 @@ def upgrade() -> None:
         sa.Column("published_at", sa.DateTime(timezone=True), nullable=True),
     )
     op.create_index("ix_blog_posts_id", "blog_posts", ["id"])
-    op.create_index("ix_blog_posts_blog_post_key", "blog_posts", ["blog_post_key"], unique=True)
-    op.create_index("ix_blog_posts_public_sqid", "blog_posts", ["public_sqid"], unique=True)
+    op.create_index(
+        "ix_blog_posts_blog_post_key", "blog_posts", ["blog_post_key"], unique=True
+    )
+    op.create_index(
+        "ix_blog_posts_public_sqid", "blog_posts", ["public_sqid"], unique=True
+    )
     op.create_index("ix_blog_posts_owner_id", "blog_posts", ["owner_id"])
     op.create_index("ix_blog_posts_visible", "blog_posts", ["visible"])
     op.create_index("ix_blog_posts_hidden_by_mod", "blog_posts", ["hidden_by_mod"])
-    op.create_index("ix_blog_posts_public_visibility", "blog_posts", ["public_visibility"])
+    op.create_index(
+        "ix_blog_posts_public_visibility", "blog_posts", ["public_visibility"]
+    )
     op.create_index("ix_blog_posts_created_at", "blog_posts", ["created_at"])
     op.create_index("ix_blog_posts_updated_at", "blog_posts", ["updated_at"])
     op.create_index("ix_blog_posts_published_at", "blog_posts", ["published_at"])
-    op.create_index("ix_blog_posts_owner_created", "blog_posts", ["owner_id", sa.text("created_at DESC")])
-    op.create_index("ix_blog_posts_public_updated", "blog_posts", ["public_visibility", sa.text("updated_at DESC")])
-    op.create_index("ix_blog_posts_public_created", "blog_posts", ["public_visibility", sa.text("created_at DESC")])
+    op.create_index(
+        "ix_blog_posts_owner_created",
+        "blog_posts",
+        ["owner_id", sa.text("created_at DESC")],
+    )
+    op.create_index(
+        "ix_blog_posts_public_updated",
+        "blog_posts",
+        ["public_visibility", sa.text("updated_at DESC")],
+    )
+    op.create_index(
+        "ix_blog_posts_public_created",
+        "blog_posts",
+        ["public_visibility", sa.text("created_at DESC")],
+    )
 
     # Blog post comments table
     op.create_table(
@@ -1281,8 +1532,12 @@ def upgrade() -> None:
         ),
         sa.Column("depth", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("body", sa.Text(), nullable=False),
-        sa.Column("hidden_by_mod", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("deleted_by_owner", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column(
+            "hidden_by_mod", sa.Boolean(), nullable=False, server_default="false"
+        ),
+        sa.Column(
+            "deleted_by_owner", sa.Boolean(), nullable=False, server_default="false"
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -1292,12 +1547,24 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
     op.create_index("ix_blog_post_comments_id", "blog_post_comments", ["id"])
-    op.create_index("ix_blog_post_comments_blog_post_id", "blog_post_comments", ["blog_post_id"])
-    op.create_index("ix_blog_post_comments_author_id", "blog_post_comments", ["author_id"])
-    op.create_index("ix_blog_post_comments_author_ip", "blog_post_comments", ["author_ip"])
-    op.create_index("ix_blog_post_comments_parent_id", "blog_post_comments", ["parent_id"])
-    op.create_index("ix_blog_post_comments_hidden_by_mod", "blog_post_comments", ["hidden_by_mod"])
-    op.create_index("ix_blog_post_comments_created_at", "blog_post_comments", ["created_at"])
+    op.create_index(
+        "ix_blog_post_comments_blog_post_id", "blog_post_comments", ["blog_post_id"]
+    )
+    op.create_index(
+        "ix_blog_post_comments_author_id", "blog_post_comments", ["author_id"]
+    )
+    op.create_index(
+        "ix_blog_post_comments_author_ip", "blog_post_comments", ["author_ip"]
+    )
+    op.create_index(
+        "ix_blog_post_comments_parent_id", "blog_post_comments", ["parent_id"]
+    )
+    op.create_index(
+        "ix_blog_post_comments_hidden_by_mod", "blog_post_comments", ["hidden_by_mod"]
+    )
+    op.create_index(
+        "ix_blog_post_comments_created_at", "blog_post_comments", ["created_at"]
+    )
     op.create_index(
         "ix_blog_post_comments_blog_post_created",
         "blog_post_comments",
@@ -1329,11 +1596,23 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
-    op.create_index("ix_blog_post_reactions_blog_post_id", "blog_post_reactions", ["blog_post_id"])
-    op.create_index("ix_blog_post_reactions_user_id", "blog_post_reactions", ["user_id"])
-    op.create_index("ix_blog_post_reactions_user_ip", "blog_post_reactions", ["user_ip"])
-    op.create_index("ix_blog_post_reactions_created_at", "blog_post_reactions", ["created_at"])
-    op.create_index("ix_blog_post_reactions_blog_post_emoji", "blog_post_reactions", ["blog_post_id", "emoji"])
+    op.create_index(
+        "ix_blog_post_reactions_blog_post_id", "blog_post_reactions", ["blog_post_id"]
+    )
+    op.create_index(
+        "ix_blog_post_reactions_user_id", "blog_post_reactions", ["user_id"]
+    )
+    op.create_index(
+        "ix_blog_post_reactions_user_ip", "blog_post_reactions", ["user_ip"]
+    )
+    op.create_index(
+        "ix_blog_post_reactions_created_at", "blog_post_reactions", ["created_at"]
+    )
+    op.create_index(
+        "ix_blog_post_reactions_blog_post_emoji",
+        "blog_post_reactions",
+        ["blog_post_id", "emoji"],
+    )
 
     # Blog post view events table
     op.create_table(
@@ -1366,12 +1645,30 @@ def upgrade() -> None:
         ),
     )
     op.create_index("ix_blog_post_view_events_id", "blog_post_view_events", ["id"])
-    op.create_index("ix_blog_post_view_events_blog_post_id", "blog_post_view_events", ["blog_post_id"])
-    op.create_index("ix_blog_post_view_events_viewer_user_id", "blog_post_view_events", ["viewer_user_id"])
-    op.create_index("ix_blog_post_view_events_country_code", "blog_post_view_events", ["country_code"])
-    op.create_index("ix_blog_post_view_events_device_type", "blog_post_view_events", ["device_type"])
-    op.create_index("ix_blog_post_view_events_view_type", "blog_post_view_events", ["view_type"])
-    op.create_index("ix_blog_post_view_events_created_at", "blog_post_view_events", ["created_at"])
+    op.create_index(
+        "ix_blog_post_view_events_blog_post_id",
+        "blog_post_view_events",
+        ["blog_post_id"],
+    )
+    op.create_index(
+        "ix_blog_post_view_events_viewer_user_id",
+        "blog_post_view_events",
+        ["viewer_user_id"],
+    )
+    op.create_index(
+        "ix_blog_post_view_events_country_code",
+        "blog_post_view_events",
+        ["country_code"],
+    )
+    op.create_index(
+        "ix_blog_post_view_events_device_type", "blog_post_view_events", ["device_type"]
+    )
+    op.create_index(
+        "ix_blog_post_view_events_view_type", "blog_post_view_events", ["view_type"]
+    )
+    op.create_index(
+        "ix_blog_post_view_events_created_at", "blog_post_view_events", ["created_at"]
+    )
     op.create_index(
         "ix_blog_post_view_events_post_created",
         "blog_post_view_events",
@@ -1391,9 +1688,15 @@ def upgrade() -> None:
         sa.Column("date", sa.Date(), nullable=False),
         sa.Column("total_views", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("unique_viewers", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("views_by_country", postgresql.JSON(), nullable=False, server_default="{}"),
-        sa.Column("views_by_device", postgresql.JSON(), nullable=False, server_default="{}"),
-        sa.Column("views_by_type", postgresql.JSON(), nullable=False, server_default="{}"),
+        sa.Column(
+            "views_by_country", postgresql.JSON(), nullable=False, server_default="{}"
+        ),
+        sa.Column(
+            "views_by_device", postgresql.JSON(), nullable=False, server_default="{}"
+        ),
+        sa.Column(
+            "views_by_type", postgresql.JSON(), nullable=False, server_default="{}"
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -1401,10 +1704,22 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
-    op.create_index("ix_blog_post_stats_daily_blog_post_id", "blog_post_stats_daily", ["blog_post_id"])
+    op.create_index(
+        "ix_blog_post_stats_daily_blog_post_id",
+        "blog_post_stats_daily",
+        ["blog_post_id"],
+    )
     op.create_index("ix_blog_post_stats_daily_date", "blog_post_stats_daily", ["date"])
-    op.create_index("ix_blog_post_stats_daily_post_date", "blog_post_stats_daily", ["blog_post_id", "date"])
-    op.create_unique_constraint("uq_blog_post_stats_daily_post_date", "blog_post_stats_daily", ["blog_post_id", "date"])
+    op.create_index(
+        "ix_blog_post_stats_daily_post_date",
+        "blog_post_stats_daily",
+        ["blog_post_id", "date"],
+    )
+    op.create_unique_constraint(
+        "uq_blog_post_stats_daily_post_date",
+        "blog_post_stats_daily",
+        ["blog_post_id", "date"],
+    )
 
     # ========================================================================
     # POST MANAGEMENT DASHBOARD (PMD)
@@ -1425,8 +1740,12 @@ def upgrade() -> None:
             postgresql.ARRAY(sa.Integer()),
             nullable=False,
         ),
-        sa.Column("include_comments", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("include_reactions", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column(
+            "include_comments", sa.Boolean(), nullable=False, server_default="false"
+        ),
+        sa.Column(
+            "include_reactions", sa.Boolean(), nullable=False, server_default="false"
+        ),
         sa.Column("send_email", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("status", sa.String(20), nullable=False, server_default="pending"),
         sa.Column("error_message", sa.Text(), nullable=True),
@@ -1444,11 +1763,25 @@ def upgrade() -> None:
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
     )
     op.create_index("ix_batch_download_requests_id", "batch_download_requests", ["id"])
-    op.create_index("ix_batch_download_requests_user_id", "batch_download_requests", ["user_id"])
-    op.create_index("ix_batch_download_requests_status", "batch_download_requests", ["status"])
-    op.create_index("ix_batch_download_requests_created_at", "batch_download_requests", ["created_at"])
-    op.create_index("ix_bdr_user_created", "batch_download_requests", ["user_id", sa.text("created_at DESC")])
-    op.create_index("ix_bdr_status_expires", "batch_download_requests", ["status", "expires_at"])
+    op.create_index(
+        "ix_batch_download_requests_user_id", "batch_download_requests", ["user_id"]
+    )
+    op.create_index(
+        "ix_batch_download_requests_status", "batch_download_requests", ["status"]
+    )
+    op.create_index(
+        "ix_batch_download_requests_created_at",
+        "batch_download_requests",
+        ["created_at"],
+    )
+    op.create_index(
+        "ix_bdr_user_created",
+        "batch_download_requests",
+        ["user_id", sa.text("created_at DESC")],
+    )
+    op.create_index(
+        "ix_bdr_status_expires", "batch_download_requests", ["status", "expires_at"]
+    )
 
 
 def downgrade() -> None:

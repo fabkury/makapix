@@ -1635,14 +1635,18 @@ def get_user_reacted_posts(
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
-    current_user: models.User | None = Depends(get_current_user_optional),
+    current_user: models.User = Depends(get_current_user),
 ) -> schemas.ReactedPostsResponse:
     """
     Get posts the user has reacted to.
 
     Returns up to 8192 most recent reactions. Reactions are ordered by
     reaction time (newest first).
+
+    Requires authentication.
     """
+    from sqlalchemy import and_, or_
+
     from ..sqids_config import decode_user_sqid
 
     user_id = decode_user_sqid(public_sqid)
@@ -1657,7 +1661,7 @@ def get_user_reacted_posts(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
 
-    # Query reactions with posts
+    # Query reactions with posts - base query
     query = (
         db.query(models.Reaction, models.Post)
         .join(models.Post, models.Post.id == models.Reaction.post_id)
@@ -1666,6 +1670,32 @@ def get_user_reacted_posts(
             models.Post.deleted_by_user == False,
         )
     )
+
+    # Apply visibility filters based on viewer's role
+    is_moderator = (
+        "moderator" in current_user.roles or "owner" in current_user.roles
+    )
+
+    if is_moderator:
+        # Moderators see everything (except deleted - already filtered)
+        pass
+    else:
+        # Logged-in user: publicly visible posts + their own posts
+        query = query.filter(
+            or_(
+                and_(
+                    models.Post.visible == True,
+                    models.Post.hidden_by_mod == False,
+                    models.Post.hidden_by_user == False,
+                    models.Post.non_conformant == False,
+                    or_(
+                        models.Post.public_visibility == True,
+                        models.Post.promoted == True,
+                    ),
+                ),
+                models.Post.owner_id == current_user.id,
+            )
+        )
 
     # Apply cursor pagination on reaction created_at
     if cursor:
