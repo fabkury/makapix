@@ -89,6 +89,7 @@ export default function UserProfilePage() {
   const [isModerator, setIsModerator] = useState(false);
   const [isViewerOwner, setIsViewerOwner] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // Handle availability check state
   const [handleStatus, setHandleStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
@@ -118,6 +119,12 @@ export default function UserProfilePage() {
   // Calculate page size on mount (client-side only)
   useEffect(() => {
     pageSizeRef.current = calculatePageSize();
+  }, []);
+
+  // Check authentication status on mount
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    setIsAuthenticated(!!token);
   }, []);
 
   // Fetch enhanced user profile
@@ -184,6 +191,15 @@ export default function UserProfilePage() {
 
     fetchProfile();
   }, [sqid, API_BASE_URL]);
+
+  // Reset reacted posts when sqid changes (navigating to different user)
+  useEffect(() => {
+    setReactedPosts([]);
+    setReactedNextCursor(null);
+    reactedNextCursorRef.current = null;
+    hasMoreReactedRef.current = true;
+    setHasMoreReacted(true);
+  }, [sqid]);
 
   // Set current channel for PlayerBar
   useEffect(() => {
@@ -1044,7 +1060,7 @@ export default function UserProfilePage() {
         )}
 
         {/* Tabs */}
-        <ProfileTabs activeTab={activeTab} onTabChange={handleTabChange} />
+        <ProfileTabs activeTab={activeTab} onTabChange={handleTabChange} isAuthenticated={isAuthenticated} />
 
         {/* Artworks Section */}
         <div className="artworks-section">

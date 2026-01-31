@@ -39,6 +39,7 @@ export default function PostManagementDashboard() {
   // Auth check - redirect if not own profile or not moderator
   const [isOwnProfile, setIsOwnProfile] = useState<boolean | null>(null);
   const [targetSqid, setTargetSqid] = useState<string | null>(null);  // For moderator cross-user access
+  const [targetHandle, setTargetHandle] = useState<string | null>(null);  // Target user's handle for display
   const [error, setError] = useState<string | null>(null);
 
   const API_BASE_URL = useMemo(
@@ -84,6 +85,7 @@ export default function PostManagementDashboard() {
 
             setIsOwnProfile(false);
             setTargetSqid(sqid as string);  // Store for API calls
+            setTargetHandle(profileData.handle || sqid as string);  // Store handle for display
           } else {
             // Not own profile and not moderator
             router.push(`/u/${sqid}`);
@@ -454,7 +456,7 @@ export default function PostManagementDashboard() {
     );
   }
 
-  const pageTitle = targetSqid ? `PMD - ${sqid}` : 'Post Management Dashboard';
+  const pageTitle = targetSqid ? `PMD - ${targetHandle}` : 'Post Management Dashboard';
 
   return (
     <Layout title={pageTitle}>
@@ -463,7 +465,7 @@ export default function PostManagementDashboard() {
           <Link href={`/u/${sqid}`} className="back-link">
             &#8592; Back to Profile
           </Link>
-          <h1>{targetSqid ? `Post Management Dashboard - ${sqid}` : 'Post Management Dashboard'}</h1>
+          <h1>{targetSqid ? `Post Management Dashboard - ${targetHandle}` : 'Post Management Dashboard'}</h1>
           <p className="total-count">{totalCount} total posts</p>
         </div>
 
