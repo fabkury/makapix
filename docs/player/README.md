@@ -16,7 +16,7 @@ A player is any physical device that displays pixel art from the Makapix communi
 
 Players can run on any hardware that supports:
 
-- **MQTT over TLS** (port 8884)
+- **MQTT over TLS** (port 8883)
 - **Image decoding** (PNG, GIF, WebP, or BMP)
 - **Pixel display** (LED matrix, LCD, e-ink, etc.)
 
