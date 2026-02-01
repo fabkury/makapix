@@ -30,7 +30,7 @@ Response:
   "registration_code_expires_at": "2024-01-15T10:30:00Z",
   "mqtt_broker": {
     "host": "makapix.club",
-    "port": 8884
+    "port": 8883
   }
 }
 ```
@@ -65,7 +65,7 @@ Response:
   "key_pem": "-----BEGIN RSA PRIVATE KEY-----\n...",
   "broker": {
     "host": "makapix.club",
-    "port": 8884
+    "port": 8883
   }
 }
 ```
@@ -78,7 +78,7 @@ Connect to the broker using the certificates:
 
 ```
 Host: makapix.club
-Port: 8884
+Port: 8883
 Protocol: MQTT 5.0 over TLS
 Client ID: {player_key}
 Username: {player_key}
