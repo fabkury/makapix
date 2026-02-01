@@ -930,6 +930,45 @@ def get_post_by_storage_key(
     return schemas.Post.model_validate(post)
 
 
+@router.post("/{id}/view", status_code=status.HTTP_204_NO_CONTENT)
+async def register_view(
+    id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_optional),
+) -> None:
+    """Register an intentional view on a post (used by SPO)."""
+    from ..services.rate_limit import check_web_view_rate_limit
+    from ..utils.view_tracking import hash_ip
+
+    # Rate limit: 1 view per 5 seconds per user
+    ip = request.client.host if request.client else "unknown"
+    ip_hash = hash_ip(ip)
+    user_id = current_user.id if current_user else None
+
+    allowed, retry_after = check_web_view_rate_limit(user_id, ip_hash)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many view requests",
+            headers={"Retry-After": str(int(retry_after or 5))},
+        )
+
+    post = db.query(models.Post).filter(models.Post.id == id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    record_view(
+        db=db,
+        post_id=post.id,
+        request=request,
+        user=current_user,
+        view_type=ViewType.INTENTIONAL,
+        view_source=ViewSource.WEB,
+        post_owner_id=post.owner_id,
+    )
+
+
 @router.patch("/{id}", response_model=schemas.Post)
 def update_post(
     id: int,
