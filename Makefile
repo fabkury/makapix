@@ -65,7 +65,7 @@ restart:
 
 rebuild:
 	@cd $(STACK_DIR) && $(COMPOSE) down && $(COMPOSE) up -d --build
-	@docker builder prune -f --keep-storage=7GB
+	@docker builder prune -f --reserved-space=7GB
 
 logs:
 	@cd $(STACK_DIR) && $(COMPOSE) logs -f
@@ -88,7 +88,7 @@ ifeq ($(ENV),prod)
 	@git pull origin main
 	@cd $(STACK_DIR) && $(COMPOSE) down
 	@cd $(STACK_DIR) && $(COMPOSE) up -d --build
-	@docker builder prune -f --keep-storage=7GB
+	@docker builder prune -f --reserved-space=7GB
 	@echo ""
 	@echo "Production deployment complete!"
 	@cd $(STACK_DIR) && $(COMPOSE) ps
@@ -97,7 +97,7 @@ else
 	@git pull origin develop
 	@cd $(STACK_DIR) && $(COMPOSE) down
 	@cd $(STACK_DIR) && $(COMPOSE) up -d --build
-	@docker builder prune -f --keep-storage=7GB
+	@docker builder prune -f --reserved-space=7GB
 	@echo ""
 	@echo "Development deployment complete!"
 	@cd $(STACK_DIR) && $(COMPOSE) ps

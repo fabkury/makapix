@@ -475,6 +475,7 @@ export default function SelectedPostOverlay({
   const outgoingControls = useAnimationControls();
   const incomingControls = useAnimationControls();
   const backdropControls = useAnimationControls();
+  const headerControls = useAnimationControls();
   const metaAreaControls = useAnimationControls();
   const [portalEl, setPortalEl] = useState<HTMLElement | null>(null);
   const [phase, setPhase] = useState<AnimationPhase>('mounting');
@@ -703,6 +704,22 @@ export default function SelectedPostOverlay({
         transition: reduceMotion ? { duration: 0 } : { duration: 0.38, ease: [0.22, 1, 0.36, 1] },
       });
 
+      // Animate header sliding in from top
+      const headerPos = computePostHeaderPosition();
+      headerControls.set({
+        x: headerPos.x,
+        y: headerPos.y - POST_HEADER_HEIGHT,
+        opacity: 0,
+      });
+      void headerControls.start({
+        x: headerPos.x,
+        y: headerPos.y,
+        opacity: 1,
+        transition: reduceMotion
+          ? { duration: 0 }
+          : { duration: 0.3, ease: [0.42, 0, 0.58, 1] },
+      });
+
       // Animate meta area fading in
       const metaPos = computeMetaAreaPosition();
       metaAreaControls.set({
@@ -758,7 +775,7 @@ export default function SelectedPostOverlay({
     });
 
     return () => cancelAnimationFrame(timer);
-  }, [backdropControls, controls, metaAreaControls, portalEl, post, phase, initialOriginRect, reduceMotion, targetRect]);
+  }, [backdropControls, controls, headerControls, metaAreaControls, portalEl, post, phase, initialOriginRect, reduceMotion, targetRect]);
 
   const handleReactionClick = useCallback(async (emoji: string) => {
     if (!post || reactionInFlightRef.current) return;
@@ -943,10 +960,16 @@ export default function SelectedPostOverlay({
     const origin = getCurrentOriginRect() ?? initialOriginRect;
     if (!origin) {
       // Still fade the backdrop out to avoid a hard cut
+      const headerPos = computePostHeaderPosition();
       await Promise.all([
         backdropControls.start({
           opacity: 0,
           transition: reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.4, 0, 1, 1] },
+        }),
+        headerControls.start({
+          y: headerPos.y - POST_HEADER_HEIGHT,
+          opacity: 0,
+          transition: reduceMotion ? { duration: 0 } : { duration: 0.3, ease: [0.42, 0, 0.58, 1] },
         }),
         metaAreaControls.start({
           opacity: 0,
@@ -958,6 +981,7 @@ export default function SelectedPostOverlay({
     }
     setPhase('flying-out');
     clearPressTimer();
+    const headerPos = computePostHeaderPosition();
     const flyBack = controls.start({
       x: origin.left,
       y: origin.top,
@@ -971,13 +995,18 @@ export default function SelectedPostOverlay({
       opacity: 0,
       transition: reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.4, 0, 1, 1] },
     });
+    const headerFadeOut = headerControls.start({
+      y: headerPos.y - POST_HEADER_HEIGHT,
+      opacity: 0,
+      transition: reduceMotion ? { duration: 0 } : { duration: 0.3, ease: [0.42, 0, 0.58, 1] },
+    });
     const metaFadeOut = metaAreaControls.start({
       opacity: 0,
       transition: reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.4, 0, 1, 1] },
     });
-    await Promise.all([flyBack, fadeOut, metaFadeOut]);
+    await Promise.all([flyBack, fadeOut, headerFadeOut, metaFadeOut]);
     onClose();
-  }, [backdropControls, clearPressTimer, controls, metaAreaControls, getCurrentOriginRect, initialOriginRect, onClose, reduceMotion]);
+  }, [backdropControls, clearPressTimer, controls, headerControls, metaAreaControls, getCurrentOriginRect, initialOriginRect, onClose, reduceMotion]);
 
   // Keep ref updated with latest dismissToOriginAndClose
   useEffect(() => {
@@ -1247,7 +1276,7 @@ export default function SelectedPostOverlay({
           pointerEvents: 'auto',
         }}
         initial={{ x: headerPosition.x, y: headerPosition.y - POST_HEADER_HEIGHT, opacity: 0 }}
-        animate={{ x: headerPosition.x, y: headerPosition.y, opacity: 1 }}
+        animate={headerControls}
       >
         <AnimatePresence mode="wait">
           <motion.div
