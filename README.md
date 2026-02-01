@@ -6,16 +6,22 @@ A pixel art social network with physical display support.
 
 Makapix Club is a platform built for pixel artists and makers. Share your pixel art creations, discover artwork from other artists, and display your favorites on physical pixel art players you build yourself.
 
-Unlike traditional art platforms, Makapix is designed from the ground up to support physical display devices. Every artwork uploaded follows strict specifications: perfect square dimensions from 8x8 to 256x256 pixels, optimized file formats, and metadata that enables devices to filter and display art automatically.
+Unlike traditional art platforms, Makapix is designed from the ground up to support physical display devices. Every artwork uploaded follows strict specifications: dimensions from 8x8 to 256x256 pixels, GIF/PNG/WEBP/BMP file formats, and metadata is collected to enable devices to filter and display art automatically.
 
-The community centers around creativity and making. Artists share static and animated pixel art. Makers build display devices using ESP32, Raspberry Pi, or any platform that speaks MQTT. The two worlds connect through an open protocol that lets your handmade frame cycle through community artwork, show pieces from artists you follow, or display your own creations.
+The community centers around creativity and making. Artists share static and animated pixel art. Makers build display devices using ESP32, Raspberry Pi, or any platform that speaks MQTT. The two worlds connect through an open protocol that lets your handmade art spread through the community, receive pieces from artists you follow, or display your own creations.
+
+## Links
+
+- **Live Site**: [makapix.club](https://makapix.club)
+- **Discord**: [discord.gg/xk9umcujXV](https://discord.gg/xk9umcujXV)
+- **Documentation**: [docs/README.md](docs/README.md)
 
 ## Key Features
 
-- **Pixel Art Sharing** - Upload PNG, GIF, WebP, or BMP artwork (8x8 to 256x256 pixels, max 5 MB)
+- **Pixel Art Sharing** - Upload PNG, GIF, WebP, or BMP artwork (8x8 to 256x256 pixels, max 5 MiB)
 - **Physical Player Support** - Connect DIY display devices via MQTT with mTLS authentication
 - **Community Discovery** - Browse recent artwork, follow artists, react with emoji
-- **Flexible Playback** - Filter artwork by dimensions, format, animation, colors, and more
+- **Flexible Playback** - Filter artwork by dimensions, file format, file size, animation, colors, and more
 - **Open Protocol** - Document APIs let anyone build compatible devices and clients
 
 ## For Makers
@@ -41,12 +47,6 @@ Supported platforms include ESP32, Raspberry Pi, and anything that can handle MQ
 | Background Tasks | Celery |
 | Reverse Proxy | Caddy |
 | Storage | Local vault with hash-based sharding |
-
-## Links
-
-- **Live Site**: [makapix.club](https://makapix.club)
-- **Discord**: [discord.gg/xk9umcujXV](https://discord.gg/xk9umcujXV)
-- **Documentation**: [docs/README.md](docs/README.md)
 
 ## Documentation
 
