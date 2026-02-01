@@ -706,14 +706,30 @@ export default function SelectedPostOverlay({
     if (currentUserId && ownerSqid && currentUserId === ownerSqid) return;
 
     // Debounce: only register if displayed for 2 seconds
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       viewedPostsRef.current.add(postId);
       const url = `/api/post/${postId}/view`;
       const hasToken = !!getAccessToken();
-      if (hasToken) {
-        void authenticatedFetch(url, { method: 'POST' });
-      } else {
-        void fetch(url, { method: 'POST', credentials: 'include' });
+      try {
+        const res = hasToken
+          ? await authenticatedFetch(url, { method: 'POST' })
+          : await fetch(url, { method: 'POST', credentials: 'include' });
+        // Optimistically increment view count on success (204)
+        if (res.ok) {
+          setWidgetData((prev) =>
+            prev ? { ...prev, views_count: prev.views_count + 1 } : prev
+          );
+          // Also update the cache so swiping away and back shows the updated count
+          const cached = widgetCacheRef.current.get(postId);
+          if (cached) {
+            widgetCacheRef.current.set(postId, {
+              ...cached,
+              views_count: cached.views_count + 1,
+            });
+          }
+        }
+      } catch {
+        // Ignore fetch errors - view registration is best-effort
       }
     }, 2000);
 
