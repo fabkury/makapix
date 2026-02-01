@@ -103,37 +103,46 @@ class UserProfileStatsService:
         """
         from .. import models
 
-        # Total posts (artwork only, not deleted)
+        # Total posts (artwork only, not deleted/hidden/non-conformant)
         total_posts = (
             self.db.query(func.count(models.Post.id))
             .filter(
                 models.Post.owner_id == user_id,
                 models.Post.kind == "artwork",
                 models.Post.deleted_by_user == False,
+                models.Post.hidden_by_user == False,
+                models.Post.hidden_by_mod == False,
+                models.Post.non_conformant == False,
             )
             .scalar()
             or 0
         )
 
-        # Total reactions received on all posts
+        # Total reactions received on all posts (excluding hidden/non-conformant)
         total_reactions_received = (
             self.db.query(func.count(models.Reaction.id))
             .join(models.Post, models.Post.id == models.Reaction.post_id)
             .filter(
                 models.Post.owner_id == user_id,
                 models.Post.deleted_by_user == False,
+                models.Post.hidden_by_user == False,
+                models.Post.hidden_by_mod == False,
+                models.Post.non_conformant == False,
             )
             .scalar()
             or 0
         )
 
-        # Total views across all posts (from daily stats aggregates)
+        # Total views across all posts (excluding hidden/non-conformant)
         total_views = (
             self.db.query(func.coalesce(func.sum(models.PostStatsDaily.total_views), 0))
             .join(models.Post, models.Post.id == models.PostStatsDaily.post_id)
             .filter(
                 models.Post.owner_id == user_id,
                 models.Post.deleted_by_user == False,
+                models.Post.hidden_by_user == False,
+                models.Post.hidden_by_mod == False,
+                models.Post.non_conformant == False,
             )
             .scalar()
             or 0
