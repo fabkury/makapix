@@ -1,139 +1,84 @@
 # Makapix Club Documentation
 
-Welcome to the Makapix Club documentation hub. This directory contains comprehensive guides for developers, operators, and client implementers.
+Welcome to the Makapix Club documentation. This guide covers everything from building your own pixel art display to integrating with our APIs.
 
-## 📚 Documentation Index
+## Quick Start
 
-### For Developers
+**I want to...**
 
-- **[DEVELOPMENT.md](./DEVELOPMENT.md)** - Local development environment setup, running tests, debugging
-- **[ARCHITECTURE.md](./ARCHITECTURE.md)** - System architecture, tech stack, design decisions
-- **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Production deployment guide for VPS
-- **[USER_BAN_SYSTEM.md](./USER_BAN_SYSTEM.md)** - User ban system documentation: how bans work, data retention policies
+- **Build a pixel art display** - Start with the [Player Device Guide](player/README.md)
+- **Understand the system** - Read the [Architecture Overview](architecture.md)
+- **Develop locally** - Follow the [Development Guide](development.md)
+- **Call the REST API** - See the [HTTP API Reference](http-api/README.md)
+- **Use real-time messaging** - Check the [MQTT API Reference](mqtt-api/README.md)
 
-### For MQTT Client Developers
+## Table of Contents
 
-- **[MQTT_PROTOCOL.md](./MQTT_PROTOCOL.md)** ⭐ **NEW** - **Comprehensive MQTT application-level protocol documentation**
-  - Target audience: Developers creating MQTT clients (ESP32-P4, microcontrollers, web, mobile)
-  - Covers: Connection methods, authentication, topic hierarchy, all protocol operations
-  - Includes: Complete working examples for ESP32-P4, Python, and JavaScript/TypeScript
-  - Specifications: Server-to-player commands, notifications, status updates, error handling
-  
-- **[MQTT_PLAYER_API.md](./MQTT_PLAYER_API.md)** - Detailed player-to-server request/response API
-  - Query posts, submit views, reactions, comments
-  - Complete request/response schemas with examples
-  - Rate limiting, error codes, testing guide
+### Getting Started
 
-### For Physical Player Developers
+| Document | Description |
+|----------|-------------|
+| [Architecture](architecture.md) | System overview, services, and data flows |
+| [Development](development.md) | Local setup, make commands, testing |
 
-- **[PHYSICAL_PLAYER.md](./PHYSICAL_PLAYER.md)** - Hardware specifications and implementation guide for physical display devices
+### Player Device Guide
 
-### Planning & Roadmap
+Build physical display devices that show pixel art from the community.
 
-- **[ROADMAP.md](./ROADMAP.md)** - Future features and development priorities
-- **[SOCIAL_NOTIFICATIONS_IMPLEMENTATION_PLAN.md](./SOCIAL_NOTIFICATIONS_IMPLEMENTATION_PLAN.md)** - Social notifications feature plan
+| Document | Description |
+|----------|-------------|
+| [Overview](player/README.md) | What players are and supported platforms |
+| [Quick Start](player/quickstart.md) | Minimal steps to get a device connected |
+| [Registration](player/registration.md) | Device provisioning and account linking |
+| [MQTT Connection](player/mqtt-connection.md) | TLS setup and broker authentication |
+| [Querying Artwork](player/querying-artwork.md) | Fetching posts with filters and pagination |
+| [Displaying Artwork](player/displaying-artwork.md) | Image formats, dimensions, and animations |
+| [Reporting](player/reporting.md) | Status updates, view events, and reactions |
 
-## 🔌 Quick Links for Client Developers
+### HTTP API Reference
 
-### Building an MQTT Client?
+REST endpoints for web and mobile clients.
 
-Start here in this order:
+| Document | Description |
+|----------|-------------|
+| [Overview](http-api/README.md) | Base URL, authentication, rate limits |
+| [Authentication](http-api/authentication.md) | Login, registration, OAuth, tokens |
+| [Posts](http-api/posts.md) | Artwork upload, listing, and management |
+| [Users](http-api/users.md) | Profiles, follows, and highlights |
+| [Reactions](http-api/reactions.md) | Emoji reactions and comments |
+| [Playlists](http-api/playlists.md) | Curated artwork collections |
+| [Player](http-api/player.md) | Device management and commands |
 
-1. **[MQTT_PROTOCOL.md](./MQTT_PROTOCOL.md)** - Understand the overall protocol architecture and connection methods
-2. **[MQTT_PLAYER_API.md](./MQTT_PLAYER_API.md)** - Detailed API specifications for player operations
-3. **[PHYSICAL_PLAYER.md](./PHYSICAL_PLAYER.md)** - (Optional) Hardware specs if building a physical device
+### MQTT API Reference
 
-### What You'll Learn
+Real-time messaging for devices and notifications.
 
-- **Authentication**: mTLS certificate-based auth for players, WebSocket for web clients
-- **Topics**: Complete topic hierarchy (`makapix/player/{key}/...`)
-- **Operations**: Query posts, track views, submit reactions, get comments
-- **Commands**: Receive server commands (show artwork, navigate)
-- **Notifications**: Subscribe to new posts, category promotions
-- **Best Practices**: Connection management, error handling, rate limiting
+| Document | Description |
+|----------|-------------|
+| [Overview](mqtt-api/README.md) | Broker connection and topic structure |
+| [Player Requests](mqtt-api/player-requests.md) | Query posts, get artwork, submit reactions |
+| [Player Status](mqtt-api/player-status.md) | Connection and playback reporting |
+| [Commands](mqtt-api/commands.md) | Server-to-player control messages |
 
-### Example Code
+### Technical Reference
 
-Both documentation files include complete, runnable examples:
+| Document | Description |
+|----------|-------------|
+| [AMP Protocol](reference/amp-protocol.md) | Artwork Metadata Protocol for filtering |
+| [Error Codes](reference/error-codes.md) | API and MQTT error code reference |
 
-- **ESP32-P4 / MicroPython**: Full implementation with mTLS
-- **Python Desktop Client**: Class-based client with async response handling  
-- **JavaScript/TypeScript**: Web client with notification handling
+## Conventions
 
-## 🏗️ System Architecture
+Throughout this documentation:
 
-```
-┌──────────────────┐         ┌──────────────────┐
-│  Physical Player │◄────────┤  MQTT Broker     │
-│  (ESP32-P4)      │  mTLS   │  (Mosquitto)     │
-└──────────────────┘         └────────┬─────────┘
-                                      │
-┌──────────────────┐                  │
-│  Web Browser     │◄─────────────────┤
-│  (MQTT.js)       │  WebSocket       │
-└──────────────────┘                  │
-                             ┌────────▼─────────┐
-                             │  FastAPI Server  │
-                             │  (Python)        │
-                             └────────┬─────────┘
-                                      │
-                             ┌────────▼─────────┐
-                             │  PostgreSQL DB   │
-                             └──────────────────┘
-```
+- `{player_key}` - A UUID identifying a specific player device
+- `{request_id}` - A client-generated UUID for request/response correlation
+- `{post_id}` - An integer post identifier
+- `{sqid}` - A short alphanumeric public identifier (e.g., `k5fNx`)
 
-## 🔐 Protocol Features
+JSON examples show the exact format expected by the API. Optional fields are marked with comments.
 
-| Feature | Description |
-|---------|-------------|
-| **QoS** | QoS 1 (at-least-once delivery) for all messages |
-| **Ports** | 8883 (mTLS), 1883 (internal), 9001 (WebSocket) |
-| **Auth** | mTLS for players, password for web/internal |
-| **Protocols** | MQTT v5 (v3.1.1 compatible) |
-| **Rate Limits** | 300 req/min per player, 1000 req/min per user |
-| **Operations** | 5 player request types, 3 command types, notifications |
+## Support
 
-## 📖 Getting Started
-
-### For Physical Player Developers
-
-```bash
-# 1. Provision player
-curl -X POST https://api.makapix.club/player/provision \
-  -H "Content-Type: application/json" \
-  -d '{"device_model":"ESP32-P4","firmware_version":"1.0.0"}'
-
-# 2. User registers player via web UI with registration code
-
-# 3. Download certificates
-curl https://api.makapix.club/player/{player_key}/credentials
-
-# 4. Connect with MQTT + mTLS (see examples in docs)
-```
-
-### For Web Developers
-
-```javascript
-import mqtt from 'mqtt';
-
-const client = mqtt.connect('ws://makapix.club:9001', {
-  username: userId,
-  password: authToken,
-});
-
-client.subscribe(`makapix/post/new/user/${userId}/#`);
-```
-
-## 🤝 Contributing
-
-See documentation updates guidelines in [DEVELOPMENT.md](./DEVELOPMENT.md).
-
-## 📞 Support
-
-- Issues: Create a GitHub issue
-- Questions: Review documentation first, then open a discussion
-- Security: See SECURITY.md in repository root
-
----
-
-**Last Updated**: December 2025
+- **Discord**: [discord.gg/xk9umcujXV](https://discord.gg/xk9umcujXV)
+- **Issues**: [github.com/anthropics/claude-code/issues](https://github.com/anthropics/claude-code/issues)

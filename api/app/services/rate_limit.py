@@ -194,6 +194,44 @@ def check_player_view_rate_limit(player_key: str) -> tuple[bool, float | None]:
         return True, None
 
 
+def check_web_view_rate_limit(user_id: int | None, ip_hash: str) -> tuple[bool, float | None]:
+    """
+    Check if web user can submit a view (1 per 5 seconds).
+
+    For authenticated users, rate limit by user_id.
+    For anonymous users, rate limit by IP hash.
+
+    Args:
+        user_id: User ID if authenticated, None otherwise
+        ip_hash: Hashed IP address for anonymous users
+
+    Returns:
+        Tuple of (allowed: bool, retry_after: float | None)
+        - allowed: True if view submission is allowed, False if rate limited
+        - retry_after: Seconds until next submission allowed (only set when blocked)
+    """
+    client = get_redis_client()
+
+    if not client:
+        return True, None
+
+    try:
+        # Use user_id if authenticated, otherwise IP hash
+        identifier = f"user:{user_id}" if user_id else f"ip:{ip_hash}"
+        key = f"ratelimit:web_view:{identifier}"
+
+        if client.exists(key):
+            ttl = client.ttl(key)
+            return False, float(ttl) if ttl > 0 else 0.0
+
+        client.setex(key, 5, "1")
+        return True, None
+
+    except Exception as e:
+        logger.error(f"Web view rate limit error: {e}")
+        return True, None
+
+
 def check_view_duplicate(player_key: str, post_id: int, timestamp: str) -> bool:
     """
     Check if a view event is a duplicate.

@@ -540,6 +540,9 @@ export default function SelectedPostOverlay({
   const [widgetData, setWidgetData] = useState<WidgetData | null>(null);
   const [loadingWidget, setLoadingWidget] = useState(false);
   const widgetCacheRef = useRef<Map<number, WidgetData>>(new Map());
+
+  // Track which posts have been viewed in this SPO session (to avoid duplicate view calls)
+  const viewedPostsRef = useRef<Set<number>>(new Set());
   
   // Store the initial origin rect SYNCHRONOUSLY on first render to avoid timing issues
   // Using a ref to capture it immediately, then a state for re-renders
@@ -689,6 +692,33 @@ export default function SelectedPostOverlay({
       cancelled = true;
     };
   }, [post?.id]);
+
+  // Register intentional view with debounce
+  useEffect(() => {
+    const postId = post?.id;
+    if (!postId) return;
+
+    // Skip if already viewed in this SPO session
+    if (viewedPostsRef.current.has(postId)) return;
+
+    // Skip self-views
+    const ownerSqid = post?.owner?.public_sqid;
+    if (currentUserId && ownerSqid && currentUserId === ownerSqid) return;
+
+    // Debounce: only register if displayed for 2 seconds
+    const timer = setTimeout(() => {
+      viewedPostsRef.current.add(postId);
+      const url = `/api/post/${postId}/view`;
+      const hasToken = !!getAccessToken();
+      if (hasToken) {
+        void authenticatedFetch(url, { method: 'POST' });
+      } else {
+        void fetch(url, { method: 'POST', credentials: 'include' });
+      }
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [post?.id, post?.owner?.public_sqid, currentUserId]);
 
   // Animate in: wait for portal, then animate from grid position to center
   useEffect(() => {
