@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import case, func
@@ -360,13 +361,33 @@ def get_widget_data(
     comments = [schemas.Comment.model_validate(c) for c in valid_comments]
 
     # ===== VIEWS COUNT =====
-    # Sum total_views from PostStatsDaily for this post
-    views_count = (
-        db.query(func.coalesce(func.sum(models.PostStatsDaily.total_views), 0))
-        .filter(models.PostStatsDaily.post_id == id)
+    # Combine raw view events (last 7 days) with aggregated daily stats (older)
+    now = datetime.now(timezone.utc)
+    seven_days_ago = now - timedelta(days=7)
+
+    # Count recent views from ViewEvent table (last 7 days)
+    recent_views_count = (
+        db.query(func.count(models.ViewEvent.id))
+        .filter(
+            models.ViewEvent.post_id == id,
+            models.ViewEvent.created_at >= seven_days_ago,
+        )
         .scalar()
         or 0
     )
+
+    # Sum older aggregated views from PostStatsDaily (before 7 days ago)
+    older_views_count = (
+        db.query(func.coalesce(func.sum(models.PostStatsDaily.total_views), 0))
+        .filter(
+            models.PostStatsDaily.post_id == id,
+            models.PostStatsDaily.date < seven_days_ago.date(),
+        )
+        .scalar()
+        or 0
+    )
+
+    views_count = recent_views_count + older_views_count
 
     return schemas.WidgetData(
         reactions=reactions,
