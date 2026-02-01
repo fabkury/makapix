@@ -194,7 +194,9 @@ def check_player_view_rate_limit(player_key: str) -> tuple[bool, float | None]:
         return True, None
 
 
-def check_web_view_rate_limit(user_id: int | None, ip_hash: str) -> tuple[bool, float | None]:
+def check_web_view_rate_limit(
+    user_id: int | None, ip_hash: str
+) -> tuple[bool, float | None]:
     """
     Check if web user can submit a view (1 per 5 seconds).
 

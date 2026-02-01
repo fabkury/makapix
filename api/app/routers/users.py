@@ -1672,9 +1672,7 @@ def get_user_reacted_posts(
     )
 
     # Apply visibility filters based on viewer's role
-    is_moderator = (
-        "moderator" in current_user.roles or "owner" in current_user.roles
-    )
+    is_moderator = "moderator" in current_user.roles or "owner" in current_user.roles
 
     if is_moderator:
         # Moderators see everything (except deleted - already filtered)
