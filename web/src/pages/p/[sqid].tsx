@@ -904,8 +904,8 @@ export default function PostPage() {
             )}
 
             {/* License badge */}
-            {post.license && (
-              <div className="license-section">
+            <div className="license-section">
+              {post.license ? (
                 <a
                   href={post.license.canonical_url}
                   target="_blank"
@@ -919,8 +919,10 @@ export default function PostPage() {
                     className="license-badge"
                   />
                 </a>
-              </div>
-            )}
+              ) : (
+                <span className="license-text">All rights reserved</span>
+              )}
+            </div>
 
             {/* Stats button - visible to owner and moderators */}
             {(isOwner || isModerator) && (
@@ -1236,6 +1238,12 @@ export default function PostPage() {
 
         .license-badge:hover {
           opacity: 1;
+        }
+
+        .license-text {
+          font-size: 0.85rem;
+          color: var(--text-muted);
+          font-style: italic;
         }
 
         .owner-actions {
