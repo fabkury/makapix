@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from sqlalchemy import func
@@ -255,15 +255,22 @@ class SiteStatsService:
         from .. import models
 
         now = datetime.now(timezone.utc)
-        seven_days_ago = now - timedelta(days=7)
-        thirty_days_ago = now - timedelta(days=30)
         twenty_four_hours_ago = now - timedelta(hours=24)
+
+        # Use start-of-day boundaries to avoid gaps between raw events and daily aggregates.
+        # Without this, a query at 10 AM would miss events from midnight to 10 AM on day -7
+        # because raw events use >= timestamp while daily stats use < date.
+        seven_days_ago_date = (now - timedelta(days=7)).date()
+        seven_days_ago_start = datetime.combine(
+            seven_days_ago_date, time.min, tzinfo=timezone.utc
+        )
+        thirty_days_ago_date = (now - timedelta(days=30)).date()
 
         # ===== GET RAW EVENTS (last 7 days) =====
 
         recent_events = (
             self.db.query(models.SiteEvent)
-            .filter(models.SiteEvent.created_at >= seven_days_ago)
+            .filter(models.SiteEvent.created_at >= seven_days_ago_start)
             .all()
         )
 
@@ -272,8 +279,8 @@ class SiteStatsService:
         daily_stats = (
             self.db.query(models.SiteStatsDaily)
             .filter(
-                models.SiteStatsDaily.date >= thirty_days_ago.date(),
-                models.SiteStatsDaily.date < seven_days_ago.date(),
+                models.SiteStatsDaily.date >= thirty_days_ago_date,
+                models.SiteStatsDaily.date < seven_days_ago_date,
             )
             .all()
         )
