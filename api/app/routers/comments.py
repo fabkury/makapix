@@ -170,6 +170,7 @@ def create_comment(
 
     # Validate parent comment and calculate depth
     depth = 0
+    parent = None  # Store for notification logic
     if payload.parent_id:
         parent = (
             db.query(models.Comment)
@@ -208,6 +209,7 @@ def create_comment(
     db.commit()
 
     # Create notification for post owner (only for authenticated users)
+    post = None
     if isinstance(current_user, models.User):
         post = db.query(models.Post).filter(models.Post.id == id).first()
         if post:
@@ -219,6 +221,24 @@ def create_comment(
                 actor=current_user,
                 comment=comment,
             )
+
+    # Notify parent comment author if this is a reply (both auth and anonymous repliers)
+    if parent is not None and parent.author_id is not None:
+        post = post or db.query(models.Post).filter(models.Post.id == id).first()
+        if post and parent.author_id != post.owner_id:
+            # Get actor (None for anonymous, which shows as "Anonymous")
+            actor = current_user if isinstance(current_user, models.User) else None
+
+            # Skip self-reply notification
+            if actor is None or parent.author_id != actor.id:
+                SocialNotificationService.create_notification(
+                    db=db,
+                    user_id=parent.author_id,
+                    notification_type="comment_reply",
+                    post=post,
+                    actor=actor,
+                    comment=comment,
+                )
 
     # Reload comment with author relationship to ensure display name is available
     comment = (

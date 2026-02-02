@@ -100,6 +100,8 @@ export default function NotificationsPage() {
       return `${actor} reacted ${notification.emoji || ""} to "${title}"`;
     } else if (notification.notification_type === "comment") {
       return `${actor} commented on "${title}"`;
+    } else if (notification.notification_type === "comment_reply") {
+      return `${actor} replied to your comment on "${title}"`;
     } else if (notification.notification_type === "moderator_granted") {
       return `${actor} granted you moderator status`;
     } else if (notification.notification_type === "moderator_revoked") {

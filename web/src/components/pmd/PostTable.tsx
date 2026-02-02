@@ -17,6 +17,7 @@ export interface PMDPost {
   reaction_count: number;
   comment_count: number;
   view_count: number;
+  license_identifier: string | null;
 }
 
 interface PostTableProps {
@@ -35,6 +36,7 @@ type SortKey =
   | 'title'
   | 'description'
   | 'created_at'
+  | 'license_identifier'
   | 'width'
   | 'height'
   | 'frame_count'
@@ -110,6 +112,7 @@ export function PostTable({
     title: 200,
     description: 250,
     date: 110,
+    license: 70,
     frames: 50,
     format: 60,
     size: 80,
@@ -380,6 +383,21 @@ export function PostTable({
                   onClick={(e) => e.stopPropagation()}
                 />
               </th>
+              {/* License */}
+              <th
+                style={{ width: `${columnWidths.license}px` }}
+                onClick={() => handleSort('license_identifier')}
+                className="sortable"
+                title="License"
+              >
+                License
+                <SortIndicator column="license_identifier" />
+                <div
+                  className="resize-handle"
+                  onMouseDown={(e) => handleResizeMouseDown(e, 'license')}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </th>
               {/* Frames */}
               <th
                 style={{ width: `${columnWidths.frames}px` }}
@@ -554,6 +572,10 @@ export function PostTable({
                 </td>
                 {/* Date */}
                 <td style={{ width: `${columnWidths.date}px` }}>{formatDate(post.created_at)}</td>
+                {/* License */}
+                <td style={{ width: `${columnWidths.license}px` }} title={post.license_identifier || ''}>
+                  {post.license_identifier || ''}
+                </td>
                 {/* Frames */}
                 <td style={{ width: `${columnWidths.frames}px` }}>{post.frame_count}</td>
                 {/* Format */}
@@ -592,7 +614,7 @@ export function PostTable({
             ))}
             {loading && (
               <tr className="loading-row">
-                <td colSpan={15}>
+                <td colSpan={16}>
                   <div className="loading-content">
                     <div className="loading-spinner"></div>
                     Loading more posts...
@@ -602,7 +624,7 @@ export function PostTable({
             )}
             {!loading && paginatedPosts.length === 0 && (
               <tr className="empty-row">
-                <td colSpan={15}>No posts found</td>
+                <td colSpan={16}>No posts found</td>
               </tr>
             )}
           </tbody>

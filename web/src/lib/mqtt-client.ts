@@ -35,7 +35,7 @@ export interface PostNotification {
 
 export interface SocialNotification {
   id: string;
-  notification_type: "reaction" | "comment" | "moderator_granted" | "moderator_revoked";
+  notification_type: "reaction" | "comment" | "comment_reply" | "moderator_granted" | "moderator_revoked";
   post_id: number | null;
   actor_handle: string | null;
   actor_avatar_url: string | null;

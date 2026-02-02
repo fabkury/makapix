@@ -245,13 +245,7 @@ function SubmitPageContent() {
         if (response.ok) {
           const data = await response.json();
           setLicenses(data.items || []);
-          // Default to CC BY-ND 4.0
-          const defaultLicense = (data.items || []).find(
-            (l: License) => l.identifier === 'CC-BY-ND-4.0'
-          );
-          if (defaultLicense) {
-            setSelectedLicenseId(defaultLicense.id);
-          }
+          // Default to "No license / All rights reserved" (null)
         }
       } catch (err) {
         console.error('Failed to fetch licenses:', err);
@@ -672,11 +666,8 @@ function SubmitPageContent() {
     setShowScalingOptions(false);
     setPreviewScaling(false);
     setShowLicenseOptions(false);
-    // Reset license to default (CC BY-ND 4.0)
-    const defaultLicense = licenses.find((l) => l.identifier === 'CC-BY-ND-4.0');
-    if (defaultLicense) {
-      setSelectedLicenseId(defaultLicense.id);
-    }
+    // Reset license to default (No license / All rights reserved)
+    setSelectedLicenseId(null);
     setProcessingState({ isProcessing: false, progress: null, error: null });
     clearDraft();
     if (fileInputRef.current) {

@@ -50,6 +50,14 @@ interface BatchResult {
 
 type BatchState = 'ready' | 'running' | 'paused';
 
+interface License {
+  id: number;
+  identifier: string;
+  title: string;
+  canonical_url: string;
+  badge_path: string;
+}
+
 const PAGE_SIZE = 20;
 const MAX_TITLE_LEN = 200;
 const MAX_DESC_LEN = 5000;
@@ -257,6 +265,11 @@ export default function DivoomImportPage() {
   // Batch confirmation dialog
   const [showBatchConfirmation, setShowBatchConfirmation] = useState(false);
 
+  // License state
+  const [licenses, setLicenses] = useState<License[]>([]);
+  const [selectedLicenseId, setSelectedLicenseId] = useState<number | null>(null);
+  const [showLicensePanel, setShowLicensePanel] = useState(false);
+
   const API_BASE_URL =
     typeof window !== 'undefined'
       ? process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin
@@ -270,6 +283,23 @@ export default function DivoomImportPage() {
       setIsAuthenticated(true);
     }
   }, [router]);
+
+  // Fetch available licenses on mount
+  useEffect(() => {
+    const fetchLicenses = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/license`);
+        if (response.ok) {
+          const data = await response.json();
+          setLicenses(data.items || []);
+          // Default to "No license / All rights reserved" (null)
+        }
+      } catch (err) {
+        console.error('Failed to fetch licenses:', err);
+      }
+    };
+    fetchLicenses();
+  }, [API_BASE_URL]);
 
   // Cleanup preview URL
   useEffect(() => {
@@ -742,6 +772,9 @@ export default function DivoomImportPage() {
       formData.append('title', title.trim());
       formData.append('description', description.trim());
       formData.append('hashtags', hashtags.trim());
+      if (selectedLicenseId !== null) {
+        formData.append('license_id', selectedLicenseId.toString());
+      }
 
       const response = await authenticatedFetch(`${API_BASE_URL}/api/post/upload`, {
         method: 'POST',
@@ -775,7 +808,7 @@ export default function DivoomImportPage() {
     } finally {
       setUploading(false);
     }
-  }, [API_BASE_URL, description, hashtags, lastUploadedGalleryId, router, selected, title]);
+  }, [API_BASE_URL, description, hashtags, lastUploadedGalleryId, router, selected, selectedLicenseId, title]);
 
   // Cleanup batch preview URL on unmount
   useEffect(() => {
@@ -898,6 +931,9 @@ export default function DivoomImportPage() {
         formData.append('title', itemTitle);
         formData.append('description', String(item.Content ?? '').slice(0, MAX_DESC_LEN).trim());
         formData.append('hashtags', tagsToHashtagString(item.FileTagArray));
+        if (selectedLicenseId !== null) {
+          formData.append('license_id', selectedLicenseId.toString());
+        }
 
         const response = await authenticatedFetch(`${API_BASE_URL}/api/post/upload`, {
           method: 'POST',
@@ -960,7 +996,7 @@ export default function DivoomImportPage() {
       setBatchState('ready');
     }
     batchAbortRef.current = null;
-  }, [batchState, filteredSorted, selectedIds, uploadedGalleryIds, batchStartTime, decoder, API_BASE_URL]);
+  }, [batchState, filteredSorted, selectedIds, uploadedGalleryIds, batchStartTime, decoder, API_BASE_URL, selectedLicenseId]);
 
   // Pause batch processing
   const handlePauseBatch = useCallback(() => {
@@ -1298,8 +1334,91 @@ export default function DivoomImportPage() {
           </div>
         </section>
 
+        <section className="panel license-panel">
+          <button
+            type="button"
+            className={`license-panel-header ${showLicensePanel ? 'open' : ''}`}
+            onClick={() => setShowLicensePanel(!showLicensePanel)}
+            disabled={!divoomSession || !itemsLoaded || selectedIds.size === 0}
+          >
+            <div className="license-panel-header-content">
+              <span className="panel-title-inline">3. Choose a license</span>
+              {!showLicensePanel && divoomSession && itemsLoaded && selectedIds.size > 0 && (
+                <span className="license-current-selection">
+                  {selectedLicenseId === null
+                    ? 'No License'
+                    : licenses.find((l) => l.id === selectedLicenseId)?.identifier || 'Selected'}
+                </span>
+              )}
+            </div>
+            <span className="license-panel-icon">{showLicensePanel ? '▲' : '▼'}</span>
+          </button>
+
+          {!divoomSession ? (
+            <div className="license-panel-hint muted">Sign in above first.</div>
+          ) : !itemsLoaded ? (
+            <div className="license-panel-hint muted">Please wait for artworks to load.</div>
+          ) : selectedIds.size === 0 ? (
+            <div className="license-panel-hint muted">Select artworks to choose a license.</div>
+          ) : showLicensePanel && (
+            <div className="license-section">
+              <div className="license-radio-group">
+                <label
+                  className={`license-radio-option ${selectedLicenseId === null ? 'selected' : ''}`}
+                  onClick={() => setSelectedLicenseId(null)}
+                >
+                  <input
+                    type="radio"
+                    name="license"
+                    checked={selectedLicenseId === null}
+                    onChange={() => setSelectedLicenseId(null)}
+                  />
+                  <div className="license-option-content">
+                    <div className="license-option-text">
+                      <span className="license-option-identifier">No License</span>
+                      <span className="license-option-title">All rights reserved</span>
+                    </div>
+                  </div>
+                </label>
+
+                {licenses.map((license) => (
+                  <label
+                    key={license.id}
+                    className={`license-radio-option ${selectedLicenseId === license.id ? 'selected' : ''}`}
+                    onClick={() => setSelectedLicenseId(license.id)}
+                  >
+                    <input
+                      type="radio"
+                      name="license"
+                      checked={selectedLicenseId === license.id}
+                      onChange={() => setSelectedLicenseId(license.id)}
+                    />
+                    <div className="license-option-content">
+                      <img src={license.badge_path} alt={license.identifier} className="license-option-badge" />
+                      <div className="license-option-text">
+                        <span className="license-option-identifier">{license.identifier}</span>
+                        <span className="license-option-title">{license.title}</span>
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+
+              {selectedLicenseId !== null && (() => {
+                const selected = licenses.find((l) => l.id === selectedLicenseId);
+                if (!selected) return null;
+                return (
+                  <a href={selected.canonical_url} target="_blank" rel="noopener noreferrer" className="license-learn-more">
+                    Learn more about {selected.identifier}
+                  </a>
+                );
+              })()}
+            </div>
+          )}
+        </section>
+
         <section className="panel">
-          <h2 className="panel-title">3. Preview & submit to Makapix Club</h2>
+          <h2 className="panel-title">4. Preview & submit to Makapix Club</h2>
           {!divoomSession ? (
             <div className="muted">Sign in above to load your uploads.</div>
           ) : !itemsLoaded ? (
@@ -2329,6 +2448,150 @@ export default function DivoomImportPage() {
 
         .stat.error {
           color: #ef4444;
+        }
+
+        /* License panel (collapsible) */
+        .license-panel {
+          padding: 0;
+          overflow: hidden;
+        }
+
+        .license-panel-header {
+          width: 100%;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 16px 18px;
+          background: transparent;
+          border: none;
+          color: var(--text-primary);
+          font-weight: 700;
+          cursor: pointer;
+          transition: background var(--transition-fast);
+        }
+
+        .license-panel-header:hover:not(:disabled) {
+          background: rgba(0, 212, 255, 0.05);
+        }
+
+        .license-panel-header:disabled {
+          cursor: default;
+        }
+
+        .license-panel-header-content {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .panel-title-inline {
+          font-size: 1.05rem;
+        }
+
+        .license-current-selection {
+          font-size: 0.8rem;
+          font-family: monospace;
+          color: var(--accent-cyan);
+          font-weight: 400;
+          padding: 4px 10px;
+          background: rgba(0, 212, 255, 0.1);
+          border-radius: 6px;
+        }
+
+        .license-panel-icon {
+          font-size: 0.8rem;
+          color: var(--text-muted);
+        }
+
+        .license-panel-hint {
+          padding: 0 18px 16px;
+        }
+
+        /* License section */
+        .license-section {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          padding: 0 18px 18px;
+        }
+
+        .license-radio-group {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .license-radio-option {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          cursor: pointer;
+          padding: 12px;
+          border: 1px solid var(--bg-tertiary);
+          border-radius: 8px;
+          transition: all var(--transition-fast);
+        }
+
+        .license-radio-option:hover {
+          border-color: var(--accent-cyan);
+          background: rgba(0, 212, 255, 0.05);
+        }
+
+        .license-radio-option.selected {
+          border-color: var(--accent-cyan);
+          background: rgba(0, 212, 255, 0.1);
+        }
+
+        .license-radio-option input[type="radio"] {
+          width: 18px;
+          height: 18px;
+          accent-color: var(--accent-cyan);
+          flex-shrink: 0;
+          margin-top: 2px;
+        }
+
+        .license-option-content {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          flex: 1;
+          min-width: 0;
+        }
+
+        .license-option-badge {
+          width: 88px;
+          height: 31px;
+          flex-shrink: 0;
+        }
+
+        .license-option-text {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          min-width: 0;
+        }
+
+        .license-option-identifier {
+          font-family: monospace;
+          font-size: 0.85rem;
+          color: var(--accent-cyan);
+        }
+
+        .license-option-title {
+          font-size: 0.8rem;
+          color: var(--text-secondary);
+          line-height: 1.3;
+        }
+
+        .license-learn-more {
+          font-size: 0.85rem;
+          color: var(--accent-cyan);
+          display: inline-block;
+        }
+
+        .license-learn-more:hover {
+          text-decoration: underline;
         }
 
         @media (max-width: 840px) {
