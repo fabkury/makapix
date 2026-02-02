@@ -573,8 +573,8 @@ export function PostTable({
                 {/* Date */}
                 <td style={{ width: `${columnWidths.date}px` }}>{formatDate(post.created_at)}</td>
                 {/* License */}
-                <td style={{ width: `${columnWidths.license}px` }} title={post.license_identifier || ''}>
-                  {post.license_identifier || ''}
+                <td style={{ width: `${columnWidths.license}px` }} title={post.license_identifier || 'All rights reserved'}>
+                  {post.license_identifier || 'ARR'}
                 </td>
                 {/* Frames */}
                 <td style={{ width: `${columnWidths.frames}px` }}>{post.frame_count}</td>

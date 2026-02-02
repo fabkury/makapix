@@ -1018,12 +1018,21 @@ function LicensesTab() {
         is not permitted.
       </p>
 
+      <h2>Default: All Rights Reserved</h2>
+
+      <p>
+        By default, if you do not select a license when uploading, your artwork is
+        published under <strong>All rights reserved</strong>. This means you retain
+        full copyright and others may not copy, distribute, or create derivative
+        works without your explicit permission (beyond the display rights granted above).
+      </p>
+
       <h2>Creative Commons Licenses</h2>
 
       <p>
         Beyond the display rights granted above, you retain control over your work.
-        When uploading, you can select from the full suite of Creative Commons licenses
-        to specify how others may use your artwork.
+        When uploading, you can optionally select from the full suite of Creative Commons
+        licenses to specify how others may use your artwork.
       </p>
 
       <p>
