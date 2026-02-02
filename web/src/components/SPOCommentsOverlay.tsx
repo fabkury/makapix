@@ -15,6 +15,7 @@ interface Comment {
   updated_at: string | null;
   author_handle?: string;
   author_display_name?: string;
+  author_avatar_url?: string | null;
 }
 
 interface SPOCommentsOverlayProps {
@@ -192,15 +193,37 @@ export default function SPOCommentsOverlay({
           <div style={{
             width: 32,
             height: 32,
-            borderRadius: '50%',
+            borderRadius: 0,
             background: '#1a1a24',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
             fontSize: 16,
+            overflow: 'hidden',
           }}>
-            {comment.deleted_by_owner ? '🗑️' : (isGuest ? '👤' : '👨‍💻')}
+            {comment.deleted_by_owner ? (
+              '🗑️'
+            ) : isGuest ? (
+              '👤'
+            ) : comment.author_avatar_url ? (
+              <img
+                src={comment.author_avatar_url}
+                alt=""
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  borderRadius: 0,
+                  imageRendering: 'pixelated',
+                }}
+              />
+            ) : (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6a6a80" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+            )}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>

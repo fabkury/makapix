@@ -397,6 +397,7 @@ class Comment(BaseModel):
 
     _author_handle_cache: str | None = None
     _author_display_name_cache: str | None = None
+    _author_avatar_url_cache: str | None = None
 
     @model_validator(mode="wrap")
     @classmethod
@@ -411,6 +412,7 @@ class Comment(BaseModel):
             instance._author_display_name_cache = (
                 data.author.handle
             )  # Use handle as display name
+            instance._author_avatar_url_cache = data.author.avatar_url
 
         return instance
 
@@ -472,6 +474,18 @@ class Comment(BaseModel):
         if we add that field to users in the future.
         """
         return self.author_handle
+
+    @computed_field
+    @property
+    def author_avatar_url(self) -> str | None:
+        """
+        Avatar URL for the comment author.
+
+        Returns None for guest/anonymous users.
+        """
+        if self.author_id is None:
+            return None
+        return self._author_avatar_url_cache
 
 
 class CommentCreate(BaseModel):
@@ -1704,6 +1718,7 @@ class PMDPostItem(BaseModel):
     reaction_count: int
     comment_count: int
     view_count: int
+    license_identifier: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1733,6 +1748,21 @@ class BatchActionRequest(BaseModel):
 
 class BatchActionResponse(BaseModel):
     """Response for batch post action."""
+
+    success: bool
+    affected_count: int
+    message: str
+
+
+class BatchLicenseChangeRequest(BaseModel):
+    """Request for batch license change."""
+
+    post_ids: list[int] = Field(..., min_length=1, max_length=128)
+    license_id: int | None = None
+
+
+class BatchLicenseChangeResponse(BaseModel):
+    """Response for batch license change."""
 
     success: bool
     affected_count: int

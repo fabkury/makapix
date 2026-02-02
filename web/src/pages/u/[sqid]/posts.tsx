@@ -249,9 +249,6 @@ export default function PostManagementDashboard() {
           }
         }
 
-        // Clear selection
-        setSelectedIds(new Set());
-
         // Show success message
         const actionName =
           action === 'hide' ? 'hidden' : action === 'unhide' ? 'unhidden' : 'deleted';
@@ -392,6 +389,76 @@ export default function PostManagementDashboard() {
     [API_BASE_URL, targetSqid]
   );
 
+  // License change handler
+  const handleChangeLicense = useCallback(
+    async (postIds: number[], licenseId: number | null) => {
+      setActionLoading(true);
+
+      // Chunk into batches of 128
+      const chunks: number[][] = [];
+      for (let i = 0; i < postIds.length; i += 128) {
+        chunks.push(postIds.slice(i, i + 128));
+      }
+
+      let totalAffected = 0;
+      let newLicenseIdentifier: string | null = null;
+
+      try {
+        for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i];
+
+          if (chunks.length > 1) {
+            console.log(`Processing batch ${i + 1} of ${chunks.length}...`);
+          }
+
+          const url = targetSqid
+            ? `${API_BASE_URL}/api/pmd/license?target_sqid=${encodeURIComponent(targetSqid)}`
+            : `${API_BASE_URL}/api/pmd/license`;
+          const response = await authenticatedFetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ post_ids: chunk, license_id: licenseId }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'License change failed');
+          }
+
+          const result = await response.json();
+          totalAffected += result.affected_count;
+
+          // Extract license identifier from message if present
+          if (i === 0 && licenseId !== null) {
+            const match = result.message.match(/Changed license to ([^\s]+)/);
+            if (match) {
+              newLicenseIdentifier = match[1];
+            }
+          }
+        }
+
+        // Update local state with new license
+        setPosts((prev) =>
+          prev.map((p) =>
+            postIds.includes(p.id)
+              ? { ...p, license_identifier: newLicenseIdentifier }
+              : p
+          )
+        );
+
+        // Show success message
+        const licenseName = licenseId === null ? 'removed' : `set to ${newLicenseIdentifier}`;
+        alert(`Successfully ${licenseName} license for ${totalAffected} post(s)`);
+      } catch (err) {
+        console.error('License change error:', err);
+        alert(err instanceof Error ? err.message : 'License change failed');
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [API_BASE_URL, targetSqid]
+  );
+
   // Loading state - wait for auth check to complete
   if (loading || (isOwnProfile === null && targetSqid === null)) {
     return (
@@ -489,6 +556,7 @@ export default function PostManagementDashboard() {
             onUnhide={() => handleBatchAction('unhide', Array.from(selectedIds))}
             onDelete={() => handleBatchAction('delete', Array.from(selectedIds))}
             onRequestDownload={handleRequestDownload}
+            onChangeLicense={handleChangeLicense}
             loading={actionLoading}
           />
         </div>

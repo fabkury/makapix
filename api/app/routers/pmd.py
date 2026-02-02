@@ -15,7 +15,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
 from ..auth import get_current_user
@@ -141,6 +141,7 @@ def list_pmd_posts(
     # Build base query - EXCLUDE playlists
     query = (
         db.query(models.Post)
+        .options(joinedload(models.Post.license))
         .filter(
             models.Post.owner_id == target_user.id,
             models.Post.kind == "artwork",  # Exclude playlists
@@ -221,6 +222,7 @@ def list_pmd_posts(
                 reaction_count=reaction_counts.get(post.id, 0),
                 comment_count=comment_counts.get(post.id, 0),
                 view_count=view_counts.get(post.id, 0),
+                license_identifier=post.license.identifier if post.license else None,
             )
         )
 
@@ -292,6 +294,77 @@ def execute_batch_action(
     db.commit()
 
     return schemas.BatchActionResponse(
+        success=True,
+        affected_count=len(posts),
+        message=message,
+    )
+
+
+@router.post("/license", response_model=schemas.BatchLicenseChangeResponse)
+def batch_change_license(
+    request: schemas.BatchLicenseChangeRequest,
+    target_sqid: str | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.BatchLicenseChangeResponse:
+    """
+    Change the license for multiple posts.
+
+    Limits:
+    - Maximum 128 posts per request (enforced by schema)
+    - User can only modify their own posts (or moderator can modify target's posts)
+
+    Moderators can act on other users' posts by providing target_sqid.
+    """
+    # Resolve target user (current user or target if moderator)
+    target_user = get_target_user(db, target_sqid, current_user)
+
+    # Validate license_id exists if provided
+    if request.license_id is not None:
+        license_exists = (
+            db.query(models.License)
+            .filter(models.License.id == request.license_id)
+            .first()
+        )
+        if not license_exists:
+            raise HTTPException(status_code=400, detail="Invalid license ID")
+
+    # Verify all posts belong to target user and are artwork (not playlists)
+    posts = (
+        db.query(models.Post)
+        .filter(
+            models.Post.id.in_(request.post_ids),
+            models.Post.owner_id == target_user.id,
+            models.Post.kind == "artwork",
+            models.Post.deleted_by_user == False,
+        )
+        .all()
+    )
+
+    if len(posts) != len(request.post_ids):
+        raise HTTPException(
+            status_code=400, detail="Some posts not found or not owned by target user"
+        )
+
+    # Update license for all posts
+    for post in posts:
+        post.license_id = request.license_id
+
+    db.commit()
+
+    # Get license identifier for message
+    if request.license_id is not None:
+        license_obj = (
+            db.query(models.License)
+            .filter(models.License.id == request.license_id)
+            .first()
+        )
+        license_name = license_obj.identifier if license_obj else "unknown"
+        message = f"Changed license to {license_name} for {len(posts)} post(s)"
+    else:
+        message = f"Removed license from {len(posts)} post(s)"
+
+    return schemas.BatchLicenseChangeResponse(
         success=True,
         affected_count=len(posts),
         message=message,
