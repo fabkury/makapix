@@ -265,6 +265,9 @@ class SiteStatsService:
             seven_days_ago_date, time.min, tzinfo=timezone.utc
         )
         thirty_days_ago_date = (now - timedelta(days=30)).date()
+        thirty_days_ago_start = datetime.combine(
+            thirty_days_ago_date, time.min, tzinfo=timezone.utc
+        )
 
         # ===== GET RAW EVENTS (last 7 days) =====
 
@@ -610,7 +613,7 @@ class SiteStatsService:
             self.db.query(models.ViewEvent)
             .filter(
                 models.ViewEvent.device_type == "player",
-                models.ViewEvent.created_at >= thirty_days_ago,
+                models.ViewEvent.created_at >= thirty_days_ago_start,
             )
             .all()
         )
