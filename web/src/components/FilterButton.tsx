@@ -407,7 +407,7 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
       <style jsx>{`
         .filter-container {
           position: fixed;
-          top: calc(var(--header-height) + 16px);
+          top: calc(var(--header-offset) + 16px);
           right: 16px;
           z-index: 200;
           transition: transform 200ms ease-out, opacity 200ms ease-out;
@@ -458,7 +458,7 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
 
         .filter-menu {
           position: fixed;
-          top: var(--header-height);
+          top: var(--header-offset);
           right: 0;
           width: 320px;
           max-width: 80vw;
@@ -624,7 +624,7 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
         /* Mobile responsive */
         @media (max-width: 640px) {
           .filter-container {
-            top: calc(var(--header-height) + 8px);
+            top: calc(var(--header-offset) + 8px);
             right: 8px;
           }
 

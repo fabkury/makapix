@@ -340,7 +340,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
         <link rel="icon" href="/logo.png" />
       </Head>
 
-      <div className="app-container">
+      <div className="app-container" style={{ '--header-offset': showBottomRow ? 'calc(var(--header-height) + var(--header-bottom-row-height))' : 'var(--header-height)' } as React.CSSProperties}>
         <header className={`header ${isHeaderHidden ? 'header-hidden' : ''} ${showBottomRow ? 'header-with-bottom-row' : ''}`}>
           <div className="header-top-row">
             <div className="header-left">
