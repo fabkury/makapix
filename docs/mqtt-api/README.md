@@ -7,7 +7,7 @@ Real-time messaging protocol for player devices and notifications.
 | Setting | Production | Development |
 |---------|------------|-------------|
 | Host | `makapix.club` | `development.makapix.club` |
-| TLS Port | 8884 | 8884 |
+| TLS Port | 8883 | 8884 |
 | WebSocket | wss://makapix.club:8884/mqtt | wss://development.makapix.club:8884/mqtt |
 | Protocol | MQTT 5.0 | MQTT 5.0 |
 
