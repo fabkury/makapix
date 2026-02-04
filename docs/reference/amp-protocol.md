@@ -34,7 +34,7 @@ Multiple criteria are combined with AND logic.
 |-------|------|-------------|
 | `width` | integer | Image width in pixels (8-256) |
 | `height` | integer | Image height in pixels (8-256) |
-| `file_bytes` | integer | File size in bytes |
+| `file_bytes` | integer | File size in bytes (per variant; combines with `file_format` on same variant) |
 | `frame_count` | integer | Number of animation frames (1 for static) |
 | `min_frame_duration_ms` | integer | Shortest frame duration (nullable) |
 | `max_frame_duration_ms` | integer | Longest frame duration (nullable) |
@@ -51,10 +51,11 @@ Multiple criteria are combined with AND logic.
 
 ### Enum Fields
 
-| Field | Type | Values |
-|-------|------|--------|
-| `file_format` | string | `png`, `gif`, `webp`, `bmp` |
-| `kind` | string | `artwork`, `playlist` |
+| Field | Type | Values | Description |
+|-------|------|--------|-------------|
+| `file_format` | string | `png`, `gif`, `webp`, `bmp` | Matches any file variant (native or converted) |
+| `native_file_format` | string | `png`, `gif`, `webp`, `bmp` | Matches native (original upload) format only |
+| `kind` | string | `artwork`, `playlist` | Post type |
 
 ## Operators
 
@@ -90,7 +91,6 @@ Only these fields support `is_null`/`is_not_null`:
 - `min_frame_duration_ms`
 - `max_frame_duration_ms`
 - `unique_colors`
-- `file_format`
 
 ## Operator Compatibility
 
@@ -151,12 +151,37 @@ Static images only:
 
 ### Filter by Format
 
-PNG or WebP:
+PNG or WebP variant available:
 
 ```json
 {
   "criteria": [
     {"field": "file_format", "op": "in", "value": ["png", "webp"]}
+  ]
+}
+```
+
+### Filter by Native Format
+
+Posts originally uploaded as GIF:
+
+```json
+{
+  "criteria": [
+    {"field": "native_file_format", "op": "eq", "value": "gif"}
+  ]
+}
+```
+
+`file_format` matches any variant (native or server-converted). `native_file_format` matches only the original upload format. A WebP-native post with a GIF conversion matches `file_format = "gif"` but not `native_file_format = "gif"`.
+
+They can be combined: find WebP-native posts that have a BMP variant:
+
+```json
+{
+  "criteria": [
+    {"field": "native_file_format", "op": "eq", "value": "webp"},
+    {"field": "file_format", "op": "eq", "value": "bmp"}
   ]
 }
 ```

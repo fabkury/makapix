@@ -252,7 +252,8 @@ The `query_posts` operation supports optional filtering by AMP (Artwork Metadata
 | `alpha_meta` | boolean | no | File metadata claims alpha channel |
 | `transparency_actual` | boolean | no | Actual transparent pixels found (alpha != 255) |
 | `alpha_actual` | boolean | no | Semi-transparent pixels found (alpha not in {0, 255}) |
-| `file_format` | enum | yes | Image format (png, gif, webp, bmp), NULL for playlists |
+| `file_format` | enum | no | Image format (png, gif, webp, bmp) — matches any variant (native or converted) |
+| `native_file_format` | enum | no | Image format (png, gif, webp, bmp) — matches native (original upload) format only |
 | `kind` | enum | no | Post type: "artwork" or "playlist" |
 
 **Operators:**
@@ -270,17 +271,28 @@ The `query_posts` operation supports optional filtering by AMP (Artwork Metadata
 | `is_null` | IS NULL | nullable fields only | not required |
 | `is_not_null` | IS NOT NULL | nullable fields only | not required |
 
-**Valid `file_format` Values:**
+**Valid `file_format` / `native_file_format` Values:**
 - `"png"` - PNG images
 - `"gif"` - GIF images, may be animated
 - `"webp"` - WebP images, may be animated
 - `"bmp"` - BMP images
 
+**`file_format` vs `native_file_format`:**
+
+Each post has one native (original upload) format and zero or more converted variants created by server-side post-processing (SSAFPP). For example, a post uploaded as WebP may also have PNG, GIF, and BMP variants.
+
+- `file_format` matches posts that have **any** variant in the specified format. Use this when you care about what formats are available for download.
+- `native_file_format` matches posts whose **original upload** is in the specified format. Use this when you care about the source format.
+
+Both fields accept the same operators and values. They can be combined: `native_file_format = "webp" AND file_format = "gif"` finds posts uploaded as WebP that also have a GIF variant available.
+
+When `file_format` or `file_bytes` criteria are combined, they apply to the **same file variant**. For example, `file_format = "gif" AND file_bytes < 10240` finds posts where the GIF variant specifically is under 10 KB.
+
 **Valid `kind` Values:**
 - `"artwork"` - Single artwork post
 - `"playlist"` - Playlist containing multiple artworks
 
-**Example: Find static PNG/BMP images 64-128px wide without transparency:**
+**Example: Find posts that have a PNG or BMP variant available, 64-128px wide, static, no transparency:**
 ```python
 request = {
     "request_id": "criteria-example",
@@ -326,6 +338,36 @@ request = {
         {"field": "transparency_actual", "op": "eq", "value": True}
     ],
     "limit": 50
+}
+```
+
+**Example: Find posts natively uploaded as WebP:**
+```python
+request = {
+    "request_id": "native-webp",
+    "request_type": "query_posts",
+    "player_key": "your-player-uuid",
+    "channel": "all",
+    "criteria": [
+        {"field": "native_file_format", "op": "eq", "value": "webp"}
+    ],
+    "limit": 50
+}
+```
+
+**Example: Find posts uploaded as PNG that also have a GIF variant under 10KB:**
+```python
+request = {
+    "request_id": "png-native-small-gif",
+    "request_type": "query_posts",
+    "player_key": "your-player-uuid",
+    "channel": "all",
+    "criteria": [
+        {"field": "native_file_format", "op": "eq", "value": "png"},
+        {"field": "file_format", "op": "eq", "value": "gif"},
+        {"field": "file_bytes", "op": "lt", "value": 10240}
+    ],
+    "limit": 20
 }
 ```
 
@@ -741,6 +783,14 @@ python3 scripts/validate_mqtt_player_api.py \
 The script will run through all API operations and report success/failure for each.
 
 ## Changelog
+
+### Version 1.5 (2026-02-04)
+- Migrated file metadata to normalized `post_files` table — each post now tracks per-format file info (format, size, native flag)
+- `file_format` criteria now matches **any** file variant (native or server-converted). A WebP-native post with a GIF conversion will match `file_format = "gif"`.
+- `file_bytes` criteria now matches against per-variant file sizes. Combined with `file_format`, both apply to the same variant row (e.g., `file_format = "gif" AND file_bytes < 10240` finds posts where the GIF file is under 10 KB).
+- Added `native_file_format` criteria field to filter by original upload format only. Same operators and values as `file_format`.
+- `file_format` is no longer nullable (every artwork post has at least one file variant)
+- 14 queryable fields: width, height, file_bytes, frame_count, min/max_frame_duration_ms, unique_colors, transparency_meta, alpha_meta, transparency_actual, alpha_actual, file_format, native_file_format, kind
 
 ### Version 1.4 (2026-01-24)
 - Added `include_fields` parameter to `query_posts` and `get_post` operations for optional field selection
