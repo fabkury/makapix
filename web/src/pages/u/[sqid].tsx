@@ -19,6 +19,7 @@ import {
   ProfileTabs,
   MarkdownBio,
   BadgesOverlay,
+  FollowersOverlay,
 } from '../../components/profile';
 import {
   UserProfileEnhanced,
@@ -74,6 +75,7 @@ export default function UserProfilePage() {
 
   // Badge overlay state
   const [showBadgesOverlay, setShowBadgesOverlay] = useState(false);
+  const [showFollowersOverlay, setShowFollowersOverlay] = useState(false);
 
   // Edit mode state
   const [isEditing, setIsEditing] = useState(false);
@@ -105,6 +107,7 @@ export default function UserProfilePage() {
 
   const observerTarget = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
+  const reactedLoadingRef = useRef(false);
   const hasMoreRef = useRef(true);
   const hasMoreReactedRef = useRef(true);
   const nextCursorRef = useRef<string | null>(null);
@@ -192,8 +195,14 @@ export default function UserProfilePage() {
     fetchProfile();
   }, [sqid, API_BASE_URL]);
 
-  // Reset reacted posts when sqid changes (navigating to different user)
+  // Reset state when sqid changes (navigating to different user)
   useEffect(() => {
+    setProfile(null);
+    setPosts([]);
+    setNextCursor(null);
+    nextCursorRef.current = null;
+    hasMoreRef.current = true;
+    setHasMore(true);
     setReactedPosts([]);
     setReactedNextCursor(null);
     reactedNextCursorRef.current = null;
@@ -272,9 +281,9 @@ export default function UserProfilePage() {
   // Load reacted posts (favourites)
   const loadReactedPosts = useCallback(async (cursor: string | null = null) => {
     if (!profile) return;
-    if (loadingRef.current || (cursor !== null && !hasMoreReactedRef.current)) return;
+    if (reactedLoadingRef.current || (cursor !== null && !hasMoreReactedRef.current)) return;
 
-    loadingRef.current = true;
+    reactedLoadingRef.current = true;
     setPostsLoading(true);
 
     try {
@@ -301,7 +310,7 @@ export default function UserProfilePage() {
     } catch (err) {
       console.error('Error loading reacted posts:', err);
     } finally {
-      loadingRef.current = false;
+      reactedLoadingRef.current = false;
       setPostsLoading(false);
     }
   }, [profile, API_BASE_URL]);
@@ -635,10 +644,10 @@ export default function UserProfilePage() {
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && !loadingRef.current) {
-          if (activeTab === 'gallery' && hasMoreRef.current) {
+        if (entries[0].isIntersecting) {
+          if (activeTab === 'gallery' && hasMoreRef.current && !loadingRef.current) {
             loadPosts(nextCursorRef.current);
-          } else if (activeTab === 'favourites' && hasMoreReactedRef.current) {
+          } else if (activeTab === 'favourites' && hasMoreReactedRef.current && !reactedLoadingRef.current) {
             loadReactedPosts(reactedNextCursorRef.current);
           }
         }
@@ -993,7 +1002,11 @@ export default function UserProfilePage() {
             </div>
 
             {/* Stats Row */}
-            <ProfileStats stats={profile.stats} reputation={profile.reputation} />
+            <ProfileStats
+              stats={profile.stats}
+              reputation={profile.reputation}
+              onFollowerClick={() => setShowFollowersOverlay(true)}
+            />
 
             {/* Owner Panel (own profile or moderators) */}
             {!isEditing && (profile.is_own_profile || isModerator) && (
@@ -1111,6 +1124,13 @@ export default function UserProfilePage() {
         isOpen={showBadgesOverlay}
         onClose={() => setShowBadgesOverlay(false)}
         userBadges={profile.badges || []}
+      />
+
+      {/* Followers Overlay */}
+      <FollowersOverlay
+        isOpen={showFollowersOverlay}
+        onClose={() => setShowFollowersOverlay(false)}
+        userSqid={profile.public_sqid || ''}
       />
 
       <style jsx>{`

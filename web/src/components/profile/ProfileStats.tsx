@@ -13,12 +13,16 @@ import { UserProfileStats as Stats } from '../../types/profile';
 interface ProfileStatsProps {
   stats: Stats;
   reputation: number;
+  onFollowerClick?: () => void;
 }
 
-export default function ProfileStats({ stats, reputation }: ProfileStatsProps) {
+export default function ProfileStats({ stats, reputation, onFollowerClick }: ProfileStatsProps) {
   return (
     <div className="profile-stats">
-      <div className="stat">
+      <div
+        className={`stat${onFollowerClick ? ' stat-clickable' : ''}`}
+        onClick={onFollowerClick}
+      >
         <span className="stat-icon">👤</span>
         <span className="stat-value">{formatCount(stats.follower_count)}</span>
       </div>
@@ -59,6 +63,12 @@ export default function ProfileStats({ stats, reputation }: ProfileStatsProps) {
         .stat-value {
           color: var(--text-primary);
           font-weight: 500;
+        }
+        .stat-clickable {
+          cursor: pointer;
+        }
+        .stat-clickable:hover {
+          opacity: 0.7;
         }
         .stat-separator {
           width: 1px;

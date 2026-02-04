@@ -71,7 +71,7 @@ Content-Type: application/json
   "registration_code_expires_at": "2024-01-15T10:30:00Z",
   "mqtt_broker": {
     "host": "makapix.club",
-    "port": 8884
+    "port": 8883
   }
 }
 ```
@@ -162,7 +162,7 @@ No authentication required - the player_key serves as authentication for this en
   "key_pem": "-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----\n",
   "broker": {
     "host": "makapix.club",
-    "port": 8884
+    "port": 8883
   }
 }
 ```

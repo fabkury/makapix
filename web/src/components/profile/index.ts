@@ -7,3 +7,4 @@ export { default as HighlightsGallery } from './HighlightsGallery';
 export { default as ProfileTabs } from './ProfileTabs';
 export { default as MarkdownBio } from './MarkdownBio';
 export { default as BadgesOverlay } from './BadgesOverlay';
+export { default as FollowersOverlay } from './FollowersOverlay';
