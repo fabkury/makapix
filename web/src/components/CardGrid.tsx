@@ -34,9 +34,7 @@ interface Post {
   created_at: string;
   owner?: PostOwner;
   frame_count?: number;
-  file_bytes?: number;
-  file_format?: string;
-  formats_available?: string[];
+  files?: Array<{ format: string; file_bytes: number; is_native: boolean }>;
 }
 
 interface CardGridProps {
@@ -176,9 +174,7 @@ export default function CardGrid({
         frame_count: p.frame_count ?? 1,
         width: p.width,
         height: p.height,
-        file_bytes: p.file_bytes ?? 0,
-        file_format: p.file_format,
-        formats_available: p.formats_available ?? [],
+        files: p.files ?? [],
       })),
     [posts]
   );

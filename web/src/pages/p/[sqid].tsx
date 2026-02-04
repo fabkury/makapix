@@ -44,7 +44,7 @@ interface Post {
   promoted_category?: string;
   license_id?: number | null;
   license?: License | null;
-  file_format?: string;
+  files?: Array<{ format: string; file_bytes: number; is_native: boolean }>;
   owner?: {
     id: string;
     handle: string;
@@ -947,7 +947,7 @@ export default function PostPage() {
                 >
                   🖌️ Edit in Piskel
                 </button>
-                {post.file_format?.toLowerCase() === 'webp' && (
+                {post.files?.find(f => f.is_native)?.format?.toLowerCase() === 'webp' && (
                   <button
                     onClick={() => router.push(`/pixelc?edit=${post.public_sqid}`)}
                     className="action-button pixelc-edit"

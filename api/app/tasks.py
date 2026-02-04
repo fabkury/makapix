@@ -467,14 +467,17 @@ def check_post_hash(self, post_id: str) -> dict[str, Any]:
             logger.info("Post %s has no hash, skipping", post_id)
             return {"status": "skipped", "message": "No expected hash"}
 
-        if not post.storage_key or not post.file_format:
-            logger.error("Post %s has no storage_key or file_format", post_id)
+        native_pf = next((f for f in post.files if f.is_native), None)
+        if not post.storage_key or not native_pf:
+            logger.error("Post %s has no storage_key or native file", post_id)
             return {"status": "error", "message": "No storage info"}
+
+        native_format = native_pf.format
 
         # Read file from vault and compute hash
         file_path = vault.get_artwork_file_path(
             post.storage_key,
-            vault.FORMAT_TO_EXT.get(post.file_format, f".{post.file_format}"),
+            vault.FORMAT_TO_EXT.get(native_format, f".{native_format}"),
             storage_shard=post.storage_shard,
         )
         if not file_path.exists():
@@ -545,12 +548,17 @@ def periodic_check_post_hashes(self) -> dict[str, Any]:
         system_user_id = get_system_user_id(db)
         # Query posts with hash set, limit to reasonable batch size
         # Check posts that haven't been checked recently or are already non-conformant
+        from sqlalchemy import exists
+
         posts_to_check = (
             db.query(models.Post)
             .filter(
                 models.Post.hash.isnot(None),
                 models.Post.storage_key.isnot(None),
-                models.Post.file_format.isnot(None),
+                exists().where(
+                    models.PostFile.post_id == models.Post.id,
+                    models.PostFile.is_native == True,
+                ),
             )
             .limit(100)
             .all()
@@ -565,10 +573,16 @@ def periodic_check_post_hashes(self) -> dict[str, Any]:
 
         for post in posts_to_check:
             try:
+                # Get native format from post files
+                native_pf = next((f for f in post.files if f.is_native), None)
+                if not native_pf:
+                    continue
+                native_format = native_pf.format
+
                 # Read file from vault and compute hash
                 file_path = vault.get_artwork_file_path(
                     post.storage_key,
-                    vault.FORMAT_TO_EXT.get(post.file_format, f".{post.file_format}"),
+                    vault.FORMAT_TO_EXT.get(native_format, f".{native_format}"),
                     storage_shard=post.storage_shard,
                 )
                 if not file_path.exists():
@@ -806,6 +820,7 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
 
             now = datetime.now(timezone.utc)
 
+            derived_format = _mime_to_format(artwork.get("mime_type"))
             post = models.Post(
                 owner_id=job.user_id,
                 kind="artwork",
@@ -815,7 +830,6 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
                 art_url=f"https://{owner}.github.io/{repo_name}/{artwork['filename']}",
                 width=width,
                 height=height,
-                file_bytes=int(artwork["file_bytes"]),
                 frame_count=1,
                 min_frame_duration_ms=None,
                 max_frame_duration_ms=None,
@@ -825,15 +839,22 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
                 transparency_actual=False,
                 alpha_actual=False,
                 hash=artwork.get("sha256"),  # Store hash from manifest
-                file_format=_mime_to_format(
-                    artwork.get("mime_type")
-                ),  # Derive format from manifest mime_type
                 metadata_modified_at=now,
                 artwork_modified_at=now,
                 dwell_time_ms=30000,
             )
             db.add(post)
             db.flush()  # Flush to get the post ID
+
+            # Create native PostFile row
+            if derived_format:
+                db.add(models.PostFile(
+                    post_id=post.id,
+                    format=derived_format,
+                    file_bytes=int(artwork["file_bytes"]),
+                    is_native=True,
+                ))
+
             post_ids.append(str(post.id))
 
         # Generate HTML with actual post IDs and API base URL
@@ -2257,9 +2278,7 @@ def cleanup_deleted_posts(self) -> dict[str, Any]:
                 # Delete all artwork format variants + upscaled version
                 if post.storage_key:
                     try:
-                        formats_to_delete = post.formats_available or (
-                            [post.file_format] if post.file_format else []
-                        )
+                        formats_to_delete = [pf.format for pf in post.files] or []
                         vault.delete_all_artwork_formats(
                             post.storage_key,
                             formats_to_delete,
@@ -2405,12 +2424,13 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
             logger.info(f"Post {post_id} is not an artwork (kind={post.kind})")
             return {"status": "skipped", "message": "Not an artwork"}
 
-        if not post.storage_key or not post.file_format:
-            logger.error(f"Post {post_id} missing storage_key or file_format")
+        native_pf = next((f for f in post.files if f.is_native), None)
+        if not post.storage_key or not native_pf:
+            logger.error(f"Post {post_id} missing storage_key or native file")
             return {"status": "error", "message": "Missing storage info"}
 
         # Get source file path
-        native_format = post.file_format.lower()
+        native_format = native_pf.format.lower()
         source_path = vault.get_artwork_file_path(
             post.storage_key,
             vault.FORMAT_TO_EXT.get(native_format, f".{native_format}"),
@@ -2565,9 +2585,20 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
                         img.save(output, format="BMP")
 
                 # Write to file
+                converted_bytes = len(output.getvalue())
                 target_path.write_bytes(output.getvalue())
                 formats_available.append(target_format)
                 conversion_results[target_format] = "created"
+
+                # Create PostFile row for converted format
+                pf = models.PostFile(
+                    post_id=post.id,
+                    format=target_format,
+                    file_bytes=converted_bytes,
+                    is_native=False,
+                )
+                db.merge(pf)
+
                 logger.info(f"Created {target_format} for post {post_id}")
 
             except Exception as e:
@@ -2675,18 +2706,18 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
             logger.error(f"Failed to create upscaled version for post {post_id}: {e}")
             upscaled_result = f"error: {e}"
 
-        # Update formats_available in database
-        post.formats_available = sorted(set(formats_available))
+        # Commit PostFile rows created during conversion
         db.commit()
 
+        final_formats = sorted(set(formats_available))
         logger.info(
-            f"SSAFPP completed for post {post_id}: formats={post.formats_available}"
+            f"SSAFPP completed for post {post_id}: formats={final_formats}"
         )
 
         return {
             "status": "success",
             "post_id": post_id,
-            "formats_available": post.formats_available,
+            "formats_available": final_formats,
             "conversions": conversion_results,
             "upscaled": upscaled_result,
         }
@@ -2883,19 +2914,19 @@ def process_bdr_job(self, bdr_id: str) -> dict[str, Any]:
             # Download and add artworks
             for post in posts:
                 try:
-                    # Determine file extension from file_format
-                    ext = post.file_format or "png"
-                    if not ext.startswith("."):
-                        ext = f".{ext}"
+                    # Determine file extension from native PostFile
+                    native_pf = next((f for f in post.files if f.is_native), None)
+                    native_fmt = native_pf.format if native_pf else "png"
+                    ext = f".{native_fmt}"
 
                     artwork_filename = f"{post.public_sqid}{ext}"
 
                     # Get artwork file from vault using storage_key and storage_shard
-                    if post.storage_key and post.file_format:
+                    if post.storage_key and native_pf:
                         source_path = vault.get_artwork_file_path(
                             post.storage_key,
                             vault.FORMAT_TO_EXT.get(
-                                post.file_format, f".{post.file_format}"
+                                native_fmt, f".{native_fmt}"
                             ),
                             storage_shard=post.storage_shard,
                         )
@@ -2930,7 +2961,7 @@ def process_bdr_job(self, bdr_id: str) -> dict[str, Any]:
                             "width": post.width,
                             "height": post.height,
                             "frame_count": post.frame_count,
-                            "file_format": post.file_format,
+                            "file_format": native_fmt,
                             "hashtags": post.hashtags or [],
                         }
                     )
@@ -3326,9 +3357,7 @@ def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
         for post in user_posts:
             # Delete vault files for this post
             try:
-                formats = post.formats_available or []
-                if post.file_format and post.file_format not in formats:
-                    formats.append(post.file_format)
+                formats = [pf.format for pf in post.files]
                 if formats:
                     delete_all_artwork_formats(
                         post.storage_key, formats, storage_shard=post.storage_shard
@@ -3558,6 +3587,118 @@ def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
         logger.error(f"Error deleting account for user {user_id}: {e}", exc_info=True)
         db.rollback()
         raise  # Re-raise to trigger Celery retry
+
+    finally:
+        db.close()
+
+
+# ============================================================================
+# BACKFILL POST_FILES
+# ============================================================================
+
+
+@celery_app.task(name="app.tasks.backfill_post_files")
+def backfill_post_files(batch_size: int = 100) -> dict[str, Any]:
+    """
+    Backfill post_files table for converted format variants by scanning the vault.
+
+    The Alembic migration already created native rows from the old posts columns.
+    This task adds rows for all converted format variants that exist on disk.
+
+    Rules:
+    - Static (frame_count=1): check for png, gif, webp, bmp
+    - Animated (frame_count>1): check for gif, webp
+    """
+    from . import models, vault
+    from .db import get_session
+
+    db = next(get_session())
+    try:
+        # Query posts that have a native PostFile row
+        from sqlalchemy import exists
+
+        posts = (
+            db.query(models.Post)
+            .filter(
+                models.Post.kind == "artwork",
+                models.Post.storage_key.isnot(None),
+                exists().where(
+                    models.PostFile.post_id == models.Post.id,
+                    models.PostFile.is_native == True,
+                ),
+            )
+            .all()
+        )
+
+        total = len(posts)
+        created = 0
+        skipped = 0
+        errors = 0
+
+        for i, post in enumerate(posts):
+            try:
+                existing_formats = {pf.format for pf in post.files}
+
+                # Determine target formats
+                if post.frame_count > 1:
+                    target_formats = ["gif", "webp"]
+                else:
+                    target_formats = ["png", "gif", "webp", "bmp"]
+
+                for fmt in target_formats:
+                    if fmt in existing_formats:
+                        skipped += 1
+                        continue
+
+                    # Check if file exists in vault
+                    ext = vault.FORMAT_TO_EXT.get(fmt, f".{fmt}")
+                    file_path = vault.get_artwork_file_path(
+                        post.storage_key, ext, storage_shard=post.storage_shard
+                    )
+
+                    if file_path.exists():
+                        file_size = file_path.stat().st_size
+                        pf = models.PostFile(
+                            post_id=post.id,
+                            format=fmt,
+                            file_bytes=file_size,
+                            is_native=False,
+                        )
+                        db.add(pf)
+                        created += 1
+                    else:
+                        skipped += 1
+
+                # Commit in batches
+                if (i + 1) % batch_size == 0:
+                    db.commit()
+                    logger.info(
+                        f"Backfill progress: {i + 1}/{total} posts, "
+                        f"{created} created, {skipped} skipped"
+                    )
+
+            except Exception as e:
+                logger.error(f"Error backfilling post {post.id}: {e}")
+                errors += 1
+
+        db.commit()
+        logger.info(
+            f"Backfill completed: {total} posts, "
+            f"{created} created, {skipped} skipped, {errors} errors"
+        )
+
+        return {
+            "status": "success",
+            "total_posts": total,
+            "created": created,
+            "skipped": skipped,
+            "errors": errors,
+        }
+
+    except Exception as e:
+        logger.error(f"Backfill failed: {e}", exc_info=True)
+        db.rollback()
+        raise
 
     finally:
         db.close()

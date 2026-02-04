@@ -48,7 +48,6 @@ def test_post(test_user: User, db: Session) -> Post:
         art_url="https://example.com/test.png",
         width=64,
         height=64,
-        file_bytes=32 * 1024,
         frame_count=1,
         transparency_meta=False,
         alpha_meta=False,
@@ -60,6 +59,10 @@ def test_post(test_user: User, db: Session) -> Post:
     db.add(post)
     db.flush()  # Get the post ID
     post.public_sqid = encode_id(post.id)
+
+    from app.models import PostFile
+
+    db.add(PostFile(post_id=post.id, format="png", file_bytes=32 * 1024, is_native=True))
     db.commit()
     db.refresh(post)
     return post
@@ -128,7 +131,6 @@ def test_update_post_requires_ownership(test_user: User, db: Session):
         art_url="https://example.com/other.png",
         width=64,
         height=64,
-        file_bytes=32 * 1024,
         frame_count=1,
         transparency_meta=False,
         alpha_meta=False,
@@ -140,6 +142,10 @@ def test_update_post_requires_ownership(test_user: User, db: Session):
     db.add(post)
     db.flush()
     post.public_sqid = encode_id(post.id)
+
+    from app.models import PostFile
+
+    db.add(PostFile(post_id=post.id, format="png", file_bytes=32 * 1024, is_native=True))
     db.commit()
     db.refresh(post)
 
@@ -209,7 +215,6 @@ def test_delete_post_requires_ownership(test_user: User, db: Session):
         art_url="https://example.com/other.png",
         width=64,
         height=64,
-        file_bytes=32 * 1024,
         frame_count=1,
         transparency_meta=False,
         alpha_meta=False,
@@ -221,6 +226,10 @@ def test_delete_post_requires_ownership(test_user: User, db: Session):
     db.add(post)
     db.flush()
     post.public_sqid = encode_id(post.id)
+
+    from app.models import PostFile
+
+    db.add(PostFile(post_id=post.id, format="png", file_bytes=32 * 1024, is_native=True))
     db.commit()
     db.refresh(post)
 

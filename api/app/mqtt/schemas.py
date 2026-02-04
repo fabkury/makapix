@@ -44,6 +44,7 @@ class CriteriaField(str, Enum):
     TRANSPARENCY_ACTUAL = "transparency_actual"
     ALPHA_ACTUAL = "alpha_actual"
     FILE_FORMAT = "file_format"
+    NATIVE_FILE_FORMAT = "native_file_format"
     KIND = "kind"
 
 
@@ -83,6 +84,7 @@ BOOLEAN_FIELDS = {
 
 STRING_ENUM_FIELDS = {
     "file_format",
+    "native_file_format",
     "kind",
 }
 
@@ -90,7 +92,6 @@ NULLABLE_FIELDS = {
     "min_frame_duration_ms",
     "max_frame_duration_ms",
     "unique_colors",
-    "file_format",
 }
 
 # Valid operators per field type
@@ -187,19 +188,19 @@ class FilterCriterion(BaseModel):
             elif field_name in BOOLEAN_FIELDS:
                 if not isinstance(self.value, bool):
                     raise ValueError(f"Value must be boolean for field '{field_name}'")
-            elif field_name == "file_format":
+            elif field_name in ("file_format", "native_file_format"):
                 # Validate file_format enum values
                 valid_formats = {e.value for e in FileFormatValue}
                 if op_name in ("in", "not_in"):
                     invalid = [v for v in self.value if v not in valid_formats]
                     if invalid:
                         raise ValueError(
-                            f"Invalid file_format values: {invalid}. Valid: {sorted(valid_formats)}"
+                            f"Invalid {field_name} values: {invalid}. Valid: {sorted(valid_formats)}"
                         )
                 else:
                     if self.value not in valid_formats:
                         raise ValueError(
-                            f"Invalid file_format: {self.value}. Valid: {sorted(valid_formats)}"
+                            f"Invalid {field_name}: {self.value}. Valid: {sorted(valid_formats)}"
                         )
             elif field_name == "kind":
                 # Validate kind enum values

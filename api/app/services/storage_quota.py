@@ -55,7 +55,8 @@ def get_user_storage_used(db: Session, user_id: int) -> int:
         Storage used in bytes
     """
     result = (
-        db.query(func.coalesce(func.sum(models.Post.file_bytes), 0))
+        db.query(func.coalesce(func.sum(models.PostFile.file_bytes), 0))
+        .join(models.Post, models.PostFile.post_id == models.Post.id)
         .filter(
             models.Post.owner_id == user_id,
             models.Post.deleted_by_user == False,

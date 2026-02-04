@@ -21,7 +21,7 @@ interface Post {
   art_url: string;
   mime_type?: string;
   frame_count?: number;
-  file_format?: string;
+  files?: Array<{ format: string; file_bytes: number; is_native: boolean }>;
 }
 
 export default function PixelcPage() {
@@ -90,17 +90,18 @@ export default function PixelcPage() {
           : post.art_url;
 
         // Check if it's a supported format (PNG, WebP, GIF, or BMP)
+        const nativeFormat = post.files?.find(f => f.is_native)?.format;
         const isPNG = post.mime_type === 'image/png' ||
-          post.file_format === 'png' ||
+          nativeFormat === 'png' ||
           artworkUrl.toLowerCase().endsWith('.png');
         const isWebP = post.mime_type === 'image/webp' ||
-          post.file_format === 'webp' ||
+          nativeFormat === 'webp' ||
           artworkUrl.toLowerCase().endsWith('.webp');
         const isGIF = post.mime_type === 'image/gif' ||
-          post.file_format === 'gif' ||
+          nativeFormat === 'gif' ||
           artworkUrl.toLowerCase().endsWith('.gif');
         const isBMP = post.mime_type === 'image/bmp' ||
-          post.file_format === 'bmp' ||
+          nativeFormat === 'bmp' ||
           artworkUrl.toLowerCase().endsWith('.bmp');
 
         if (!isPNG && !isWebP && !isGIF && !isBMP) {
