@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import Player, User, Post, Reaction, Comment
+from app.models import Player, User, Post, PostFile, Reaction, Comment
 from app.mqtt.player_requests import (
     _authenticate_player,
     _handle_submit_reaction,
@@ -74,7 +74,6 @@ def test_posts(test_user: User, db: Session) -> list[Post]:
             art_url=f"https://example.com/test{i}.png",
             width=64,
             height=64,
-            file_bytes=32000,
             frame_count=1,
             transparency_meta=False,
             alpha_meta=False,
@@ -85,6 +84,8 @@ def test_posts(test_user: User, db: Session) -> list[Post]:
             promoted=(i % 2 == 0),  # Every other post is promoted
         )
         db.add(post)
+        db.flush()
+        db.add(PostFile(post_id=post.id, format="png", file_bytes=32000, is_native=True))
         posts.append(post)
     db.commit()
     for post in posts:
@@ -125,7 +126,6 @@ def other_user_post(other_user: User, db: Session) -> Post:
         art_url="https://example.com/other.png",
         width=64,
         height=64,
-        file_bytes=32000,
         frame_count=1,
         transparency_meta=False,
         alpha_meta=False,
@@ -135,6 +135,8 @@ def other_user_post(other_user: User, db: Session) -> Post:
         visible=True,
     )
     db.add(post)
+    db.flush()
+    db.add(PostFile(post_id=post.id, format="png", file_bytes=32000, is_native=True))
     db.commit()
     db.refresh(post)
     return post

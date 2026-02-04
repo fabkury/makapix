@@ -222,6 +222,16 @@ class ReputationView(BaseModel):
 # ============================================================================
 
 
+class PostFile(BaseModel):
+    """File variant for a post."""
+
+    format: str
+    file_bytes: int
+    is_native: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class Post(BaseModel):
     """Post with art metadata."""
 
@@ -236,7 +246,6 @@ class Post(BaseModel):
     art_url: str  # Can be relative URL for vault-hosted images or full URL for external
     width: int  # Canvas width in pixels
     height: int  # Canvas height in pixels
-    file_bytes: int  # Exact file size in bytes
     frame_count: int = 1  # Number of animation frames
     min_frame_duration_ms: int | None = (
         None  # Minimum non-zero frame duration (ms), NULL for static
@@ -272,8 +281,7 @@ class Post(BaseModel):
     reaction_count: int = 0
     comment_count: int = 0
     user_has_liked: bool = False  # Whether the current user has liked (👍) this post
-    formats_available: list[str] = []  # Available formats after SSAFPP processing
-    file_format: str | None = None  # Original file format: png, gif, webp, bmp
+    files: list[PostFile] = []  # File variants (native + converted formats)
     license_id: int | None = None  # FK to licenses table
     license: License | None = None  # Creative Commons license info
 
@@ -1711,8 +1719,7 @@ class PMDPostItem(BaseModel):
     width: int
     height: int
     frame_count: int
-    file_format: str | None = None
-    file_bytes: int | None = None
+    files: list[PostFile] = []
     art_url: str
     hidden_by_user: bool
     reaction_count: int
@@ -1931,9 +1938,8 @@ class ReactedPostItem(BaseModel):
     reacted_at: datetime
     emoji: str  # The emoji used in the reaction
     created_at: datetime
-    file_bytes: int = 0
     frame_count: int = 1
-    file_format: str | None = None
+    files: list[PostFile] = []
 
 
 class ReactedPostsResponse(BaseModel):

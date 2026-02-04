@@ -206,12 +206,6 @@ def list_posts(
     if height_max is not None:
         query = query.filter(models.Post.height <= height_max)
 
-    # File size filter
-    if file_bytes_min is not None:
-        query = query.filter(models.Post.file_bytes >= file_bytes_min)
-    if file_bytes_max is not None:
-        query = query.filter(models.Post.file_bytes <= file_bytes_max)
-
     # Frame count filter
     if frame_count_min is not None:
         query = query.filter(models.Post.frame_count >= frame_count_min)
@@ -248,11 +242,19 @@ def list_posts(
     if has_semitransparency is not None:
         query = query.filter(models.Post.alpha_actual == has_semitransparency)
 
-    # File format filter (multi-select)
-    if file_format is not None and len(file_format) > 0:
-        # Normalize to lowercase for comparison
-        normalized_formats = [f.lower() for f in file_format]
-        query = query.filter(models.Post.file_format.in_(normalized_formats))
+    # File format + file size filters (applied to PostFile rows via EXISTS)
+    if (file_format and len(file_format) > 0) or file_bytes_min is not None or file_bytes_max is not None:
+        from sqlalchemy import exists
+
+        pf_conditions = [models.PostFile.post_id == models.Post.id]
+        if file_format and len(file_format) > 0:
+            normalized_formats = [f.lower() for f in file_format]
+            pf_conditions.append(models.PostFile.format.in_(normalized_formats))
+        if file_bytes_min is not None:
+            pf_conditions.append(models.PostFile.file_bytes >= file_bytes_min)
+        if file_bytes_max is not None:
+            pf_conditions.append(models.PostFile.file_bytes <= file_bytes_max)
+        query = query.filter(exists().where(*pf_conditions))
 
     # Kind filter (static vs animated based on frame_count)
     if kind is not None and len(kind) > 0:
@@ -330,12 +332,25 @@ def list_posts(
     )
 
     # Map sort field to model attribute and apply ordering
+    # Subquery for native file bytes (used for sorting)
+    from sqlalchemy import select as sa_select
+
+    native_bytes_subq = (
+        sa_select(models.PostFile.file_bytes)
+        .where(
+            models.PostFile.post_id == models.Post.id,
+            models.PostFile.is_native == True,
+        )
+        .correlate(models.Post)
+        .scalar_subquery()
+    )
+
     sort_field_map = {
         "created_at": models.Post.created_at,
         "creation_date": models.Post.created_at,  # Alias
         "width": models.Post.width,
         "height": models.Post.height,
-        "file_bytes": models.Post.file_bytes,
+        "file_bytes": native_bytes_subq,
         "frame_count": models.Post.frame_count,
         "unique_colors": models.Post.unique_colors,
     }
@@ -435,7 +450,6 @@ def create_post(
         art_url=str(payload.art_url),
         width=payload.width,
         height=payload.height,
-        file_bytes=payload.file_bytes,
         frame_count=1,
         min_frame_duration_ms=None,
         max_frame_duration_ms=None,
@@ -673,7 +687,6 @@ async def upload_artwork(
         art_url="",  # Will be updated after saving to vault
         width=width,
         height=height,
-        file_bytes=file_size,
         frame_count=frame_count,
         min_frame_duration_ms=min_frame_duration_ms,
         max_frame_duration_ms=max_frame_duration_ms,
@@ -683,8 +696,6 @@ async def upload_artwork(
         transparency_actual=transparency_actual,
         alpha_actual=alpha_actual,
         hash=file_hash,
-        file_format=file_format,
-        formats_available=[file_format],  # Initialize with native format
         public_visibility=public_visibility,
         hidden_by_user=user_hidden,
         metadata_modified_at=now,
@@ -720,6 +731,15 @@ async def upload_artwork(
             status_code=status.HTTP_409_CONFLICT,
             detail="Artwork already exists",
         )
+
+    # Create native PostFile row
+    native_file = models.PostFile(
+        post_id=post.id,
+        format=file_format,
+        file_bytes=file_size,
+        is_native=True,
+    )
+    db.add(native_file)
 
     # Generate public_sqid from the assigned id
     from ..sqids_config import encode_id
@@ -1154,9 +1174,7 @@ def permanent_delete_post(
         from app import vault
 
         try:
-            formats_to_delete = post.formats_available or (
-                [post.file_format] if post.file_format else []
-            )
+            formats_to_delete = [pf.format for pf in post.files] or []
             vault.delete_all_artwork_formats(
                 post.storage_key, formats_to_delete, storage_shard=post.storage_shard
             )
@@ -1613,11 +1631,11 @@ async def replace_artwork(
     from datetime import datetime, timezone
 
     now = datetime.now(timezone.utc)
-    old_file_format = post.file_format  # Capture before overwriting
+    # Capture old formats before replacing
+    old_formats = [pf.format for pf in post.files]
     post.art_url = new_art_url
     post.width = width
     post.height = height
-    post.file_bytes = file_bytes
     post.frame_count = frame_count
     post.min_frame_duration_ms = min_frame_duration_ms
     post.max_frame_duration_ms = max_frame_duration_ms
@@ -1627,7 +1645,6 @@ async def replace_artwork(
     post.transparency_actual = transparency_actual
     post.alpha_actual = alpha_actual
     post.hash = file_hash
-    post.file_format = file_format
     post.metadata_modified_at = now
     post.artwork_modified_at = now
 
@@ -1640,14 +1657,27 @@ async def replace_artwork(
             detail="Artwork already exists",
         )
 
-    # If format changed, delete the old file (best-effort) after flush but before overwrite
+    # Delete all existing PostFile rows and create new native row
+    for pf in list(post.files):
+        db.delete(pf)
+    db.flush()
+    native_file = models.PostFile(
+        post_id=post.id,
+        format=file_format,
+        file_bytes=file_bytes,
+        is_native=True,
+    )
+    db.add(native_file)
+
+    # Delete old vault files (best-effort) after flush but before overwrite
     try:
-        if old_file_format and old_file_format != file_format:
-            old_ext = FORMAT_TO_EXT.get(old_file_format)
-            if old_ext:
-                delete_artwork_from_vault(
-                    post.storage_key, old_ext, storage_shard=post.storage_shard
-                )
+        for old_fmt in old_formats:
+            if old_fmt != file_format:
+                old_ext = FORMAT_TO_EXT.get(old_fmt)
+                if old_ext:
+                    delete_artwork_from_vault(
+                        post.storage_key, old_ext, storage_shard=post.storage_shard
+                    )
     except Exception as e:
         logger.warning(f"Failed to delete old artwork file for post {post.id}: {e}")
 

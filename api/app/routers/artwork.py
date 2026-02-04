@@ -37,13 +37,11 @@ def get_post_file_path_from_storage_key(
 
     Args:
         storage_key: The UUID storage key
-        file_format: The file format (e.g., "png", "gif") to determine extension
+        file_format: The file format string (e.g., "png", "gif")
 
     Returns:
         Path to the file in the vault
     """
-    from ..vault import FORMAT_TO_EXT
-
     # Determine extension from file_format
     if file_format and file_format in FORMAT_TO_EXT:
         extension = FORMAT_TO_EXT[file_format]
@@ -175,14 +173,14 @@ def download_by_sqid_format(
         )
 
     # Check if requested format is available
-    formats_available = post.formats_available or []
-    if extension not in formats_available:
+    available_formats = {f.format for f in post.files}
+    if extension not in available_formats:
         # Return 404 with info about available formats
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
                 "message": f"Format '{extension}' not available for this artwork",
-                "formats_available": formats_available,
+                "formats_available": sorted(available_formats),
             },
         )
 
@@ -249,8 +247,12 @@ def download_by_sqid(
             status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
         )
 
+    # Get native format from post files
+    native_pf = next((f for f in post.files if f.is_native), None)
+    native_format = native_pf.format if native_pf else None
+
     # Get file path
-    file_path = get_post_file_path_from_storage_key(post.storage_key, post.file_format)
+    file_path = get_post_file_path_from_storage_key(post.storage_key, native_format)
 
     if not file_path.exists():
         raise HTTPException(
@@ -260,10 +262,10 @@ def download_by_sqid(
     # Determine filename for download
     filename = f"{post.title or 'artwork'}{file_path.suffix}"
 
-    # Get MIME type from file_format
+    # Get MIME type from native format
     media_type = (
-        FORMAT_TO_MIME.get(post.file_format, "image/png")
-        if post.file_format
+        FORMAT_TO_MIME.get(native_format, "image/png")
+        if native_format
         else "image/png"
     )
 
@@ -362,8 +364,12 @@ def download_by_storage_key(
             status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
         )
 
+    # Get native format from post files
+    native_pf = next((f for f in post.files if f.is_native), None)
+    native_format = native_pf.format if native_pf else None
+
     # Get file path
-    file_path = get_post_file_path_from_storage_key(post.storage_key, post.file_format)
+    file_path = get_post_file_path_from_storage_key(post.storage_key, native_format)
 
     if not file_path.exists():
         raise HTTPException(
@@ -373,10 +379,10 @@ def download_by_storage_key(
     # Determine filename for download
     filename = f"{post.title or 'artwork'}{file_path.suffix}"
 
-    # Get MIME type from file_format
+    # Get MIME type from native format
     media_type = (
-        FORMAT_TO_MIME.get(post.file_format, "image/png")
-        if post.file_format
+        FORMAT_TO_MIME.get(native_format, "image/png")
+        if native_format
         else "image/png"
     )
 

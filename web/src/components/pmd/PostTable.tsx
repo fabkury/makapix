@@ -10,8 +10,7 @@ export interface PMDPost {
   width: number;
   height: number;
   frame_count: number;
-  file_format: string | null;
-  file_bytes: number | null;
+  files: Array<{ format: string; file_bytes: number; is_native: boolean }>;
   art_url: string;
   hidden_by_user: boolean;
   reaction_count: number;
@@ -161,10 +160,24 @@ export function PostTable({
   }, []);
 
   // Sort posts
+  const getNativeFile = (post: PMDPost) => post.files?.find(f => f.is_native) || post.files?.[0];
+
   const sortedPosts = useMemo(() => {
     const sorted = [...posts].sort((a, b) => {
-      let aVal: any = a[sortKey];
-      let bVal: any = b[sortKey];
+      let aVal: any;
+      let bVal: any;
+
+      // Derived fields from files array
+      if (sortKey === 'file_format') {
+        aVal = getNativeFile(a)?.format || '';
+        bVal = getNativeFile(b)?.format || '';
+      } else if (sortKey === 'file_bytes') {
+        aVal = getNativeFile(a)?.file_bytes || 0;
+        bVal = getNativeFile(b)?.file_bytes || 0;
+      } else {
+        aVal = (a as any)[sortKey];
+        bVal = (b as any)[sortKey];
+      }
 
       if (aVal === null) aVal = '';
       if (bVal === null) bVal = '';
@@ -580,10 +593,10 @@ export function PostTable({
                 <td style={{ width: `${columnWidths.frames}px` }}>{post.frame_count}</td>
                 {/* Format */}
                 <td style={{ width: `${columnWidths.format}px` }}>
-                  {post.file_format?.toUpperCase() || '-'}
+                  {getNativeFile(post)?.format?.toUpperCase() || '-'}
                 </td>
                 {/* Size */}
-                <td style={{ width: `${columnWidths.size}px` }}>{formatFileSize(post.file_bytes)}</td>
+                <td style={{ width: `${columnWidths.size}px` }}>{formatFileSize(getNativeFile(post)?.file_bytes ?? null)}</td>
                 {/* Width */}
                 <td style={{ width: `${columnWidths.width}px` }}>{post.width}</td>
                 {/* Height */}

@@ -285,7 +285,6 @@ class Post(Base):
     height = Column(Integer, nullable=True, index=True)  # Canvas height in pixels
     base = Column(Integer, nullable=True, index=True)  # min(width, height)
     size = Column(Integer, nullable=True, index=True)  # max(width, height)
-    file_bytes = Column(Integer, nullable=True)  # Exact file size in bytes
     frame_count = Column(
         Integer, nullable=False, default=1
     )  # Number of animation frames
@@ -315,11 +314,6 @@ class Post(Base):
     )  # SHA256 hash of the artwork bytes (dedupe + mismatch detection)
     # Note: Uniqueness is enforced via partial index uq_posts_hash_active
     # (only for non-deleted posts)
-    file_format = Column(String(20), nullable=True)  # File format: png, gif, webp, bmp
-    formats_available = Column(
-        ARRAY(String(10)), nullable=False, default=list
-    )  # Available formats after SSAFPP: ['png', 'gif', 'webp', 'bmp']
-
     # Visibility & moderation
     visible = Column(Boolean, nullable=False, default=True, index=True)
     hidden_by_user = Column(Boolean, nullable=False, default=False)
@@ -384,11 +378,39 @@ class Post(Base):
     admin_notes = relationship(
         "AdminNote", back_populates="post", cascade="all, delete-orphan"
     )
+    files = relationship(
+        "PostFile",
+        back_populates="post",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
     __table_args__ = (
         Index("ix_posts_hashtags", "hashtags", postgresql_using="gin"),
         Index("ix_posts_owner_created", owner_id, created_at.desc()),
         Index("ix_posts_non_conformant_created", non_conformant, created_at.desc()),
+    )
+
+
+class PostFile(Base):
+    """File variant for a post (one row per format per post)."""
+
+    __tablename__ = "post_files"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    post_id = Column(
+        Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False
+    )
+    format = Column(String(10), nullable=False)  # "png", "gif", "webp", "bmp"
+    file_bytes = Column(Integer, nullable=False)
+    is_native = Column(Boolean, nullable=False, default=False)
+
+    post = relationship("Post", back_populates="files")
+
+    __table_args__ = (
+        UniqueConstraint("post_id", "format", name="uq_post_files_post_format"),
+        Index("ix_post_files_post_id", post_id),
+        Index("ix_post_files_format_bytes", format, file_bytes),
     )
 
 

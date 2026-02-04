@@ -156,7 +156,7 @@ def _build_artwork_payload(
         storage_key=str(post.storage_key),
         art_url=post.art_url or "",
         storage_shard=post.storage_shard or "",
-        native_format=post.file_format,
+        native_format=next((f.format for f in post.files if f.is_native), None),
         # Optional fields (None if not requested)
         owner_handle=post.owner.handle if "owner_handle" in include else None,
         metadata_modified_at=(
@@ -256,11 +256,10 @@ def _apply_criteria_filters(
     if not criteria:
         return query, None
 
-    # Map field names to Post model columns
+    # Map field names to Post model columns (direct Post fields)
     field_to_column = {
         "width": models.Post.width,
         "height": models.Post.height,
-        "file_bytes": models.Post.file_bytes,
         "frame_count": models.Post.frame_count,
         "min_frame_duration_ms": models.Post.min_frame_duration_ms,
         "max_frame_duration_ms": models.Post.max_frame_duration_ms,
@@ -269,47 +268,85 @@ def _apply_criteria_filters(
         "alpha_meta": models.Post.alpha_meta,
         "transparency_actual": models.Post.transparency_actual,
         "alpha_actual": models.Post.alpha_actual,
-        "file_format": models.Post.file_format,
         "kind": models.Post.kind,
     }
 
+    # Fields that live on PostFile (queried via EXISTS subquery)
+    postfile_field_to_column = {
+        "file_bytes": models.PostFile.file_bytes,
+        "file_format": models.PostFile.format,
+    }
+
     filters = []
+    # Conditions for any PostFile row (file_format, file_bytes)
+    pf_conditions = [models.PostFile.post_id == models.Post.id]
+    has_pf_criteria = False
+    # Separate conditions for native PostFile row (native_file_format)
+    native_pf_conditions = [
+        models.PostFile.post_id == models.Post.id,
+        models.PostFile.is_native == True,  # noqa: E712
+    ]
+    has_native_pf_criteria = False
+
+    def _build_condition(column, op, value, idx):
+        if op == "eq":
+            return column == value
+        elif op == "neq":
+            return column != value
+        elif op == "lt":
+            return column < value
+        elif op == "gt":
+            return column > value
+        elif op == "lte":
+            return column <= value
+        elif op == "gte":
+            return column >= value
+        elif op == "in":
+            return column.in_(value)
+        elif op == "not_in":
+            return ~column.in_(value)
+        elif op == "is_null":
+            return column.is_(None)
+        elif op == "is_not_null":
+            return column.isnot(None)
+        else:
+            raise ValueError(f"Unknown operator in criterion {idx}: {op}")
 
     for i, criterion in enumerate(criteria):
         field_name = criterion.field.value
         op = criterion.op.value
         value = criterion.value
 
-        column = field_to_column.get(field_name)
-        if column is None:
-            return None, f"Unknown field in criterion {i}: {field_name}"
-
         try:
-            if op == "eq":
-                filters.append(column == value)
-            elif op == "neq":
-                filters.append(column != value)
-            elif op == "lt":
-                filters.append(column < value)
-            elif op == "gt":
-                filters.append(column > value)
-            elif op == "lte":
-                filters.append(column <= value)
-            elif op == "gte":
-                filters.append(column >= value)
-            elif op == "in":
-                filters.append(column.in_(value))
-            elif op == "not_in":
-                filters.append(~column.in_(value))
-            elif op == "is_null":
-                filters.append(column.is_(None))
-            elif op == "is_not_null":
-                filters.append(column.isnot(None))
+            if field_name == "native_file_format":
+                # Native format — separate EXISTS with is_native=True
+                native_pf_conditions.append(
+                    _build_condition(models.PostFile.format, op, value, i)
+                )
+                has_native_pf_criteria = True
+            elif field_name in postfile_field_to_column:
+                # PostFile criteria — collected into EXISTS subquery
+                pf_col = postfile_field_to_column[field_name]
+                pf_conditions.append(_build_condition(pf_col, op, value, i))
+                has_pf_criteria = True
+            elif field_name in field_to_column:
+                column = field_to_column[field_name]
+                filters.append(_build_condition(column, op, value, i))
             else:
-                return None, f"Unknown operator in criterion {i}: {op}"
+                return None, f"Unknown field in criterion {i}: {field_name}"
         except Exception as e:
             logger.error(f"Error applying criterion {i}: {e}")
             return None, f"Invalid criterion {i}: {str(e)}"
+
+    if has_pf_criteria:
+        from sqlalchemy import exists
+
+        filters.append(exists().where(*pf_conditions))
+
+    if has_native_pf_criteria:
+        from sqlalchemy import exists
+
+        filters.append(exists().where(*native_pf_conditions))
 
     if filters:
         query = query.filter(and_(*filters))

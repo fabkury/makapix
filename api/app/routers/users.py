@@ -1734,9 +1734,8 @@ def get_user_reacted_posts(
                 reacted_at=reaction.created_at,
                 emoji=reaction.emoji,
                 created_at=post.created_at,
-                file_bytes=post.file_bytes or 0,
                 frame_count=post.frame_count or 1,
-                file_format=post.file_format,
+                files=[schemas.PostFile.model_validate(f) for f in post.files],
             )
         )
 

@@ -25,9 +25,7 @@ export interface SelectedPostOverlayPost {
   frame_count: number;
   width: number;
   height: number;
-  file_bytes: number;
-  file_format?: string;
-  formats_available: string[];
+  files: Array<{ format: string; file_bytes: number; is_native: boolean }>;
 }
 
 export interface SelectedPostOverlayProps {
@@ -890,7 +888,8 @@ export default function SelectedPostOverlay({
       const resp = await fetch(`/api/d/${post.public_sqid}`);
       if (!resp.ok) throw new Error('Download failed');
       const blob = await resp.blob();
-      const ext = post.file_format || 'png';
+      const nativeFile = post.files?.find(f => f.is_native) || post.files?.[0];
+      const ext = nativeFile?.format || 'png';
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -979,7 +978,8 @@ export default function SelectedPostOverlay({
       const resp = await fetch(`/api/d/${post.public_sqid}`);
       if (!resp.ok) throw new Error('Fetch failed');
       const blob = await resp.blob();
-      const ext = post.file_format || 'png';
+      const nativeFile2 = post.files?.find(f => f.is_native) || post.files?.[0];
+      const ext = nativeFile2?.format || 'png';
       const mimeType = ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/png';
       const file = new File([blob], `${post.title || post.public_sqid}.${ext}`, { type: mimeType });
 
@@ -1495,7 +1495,7 @@ export default function SelectedPostOverlay({
               Edit in Piskel
             </button>
             {/* Edit in Pixelc: enabled for all supported formats */}
-            {['png', 'webp', 'gif', 'bmp'].includes(post.file_format?.toLowerCase() || '') ? (
+            {['png', 'webp', 'gif', 'bmp'].includes((post.files?.find(f => f.is_native)?.format || '').toLowerCase()) ? (
               <button
                 style={menuItemStyles}
                 onClick={handleEditInPixelc}
@@ -1566,8 +1566,9 @@ export default function SelectedPostOverlay({
                 <span style={{ marginLeft: '8px' }}>{showFormatSubPanel ? '▼' : '◀'}</span>
               </button>
               {showFormatSubPanel && (() => {
-                const alternativeFormats = post.formats_available
-                  .filter(f => f.toLowerCase() !== (post.file_format || 'png').toLowerCase());
+                const alternativeFormats = (post.files || [])
+                  .filter(f => !f.is_native)
+                  .map(f => f.format);
                 return (
                   <div style={subPanelStyles}>
                     {alternativeFormats.length > 0 ? (
@@ -1820,7 +1821,7 @@ export default function SelectedPostOverlay({
               </span>
               &times;({post.width}&times;{post.height})
               <span style={{ margin: '0 8px', opacity: 0.5 }}>&bull;</span>
-              {formatFileSizeCompact(post.file_bytes)} {post.file_format?.toUpperCase() || 'PNG'}
+              {formatFileSizeCompact(post.files?.find(f => f.is_native)?.file_bytes || 0)} {(post.files?.find(f => f.is_native)?.format || 'png').toUpperCase()}
             </div>
 
             {/* Reactions Row */}

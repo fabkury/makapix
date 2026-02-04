@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import create_access_token
 from app.main import app
-from app.models import Post, User
+from app.models import Post, PostFile, User
 from app.sqids_config import encode_id
 
 
@@ -64,7 +64,6 @@ def test_post(test_user: User, db: Session) -> Post:
         description="A test artwork",
         hashtags=["test", "art"],
         art_url="/api/vault/test.png",
-        file_bytes=32 * 1024,
         width=64,
         height=64,
         frame_count=1,
@@ -82,6 +81,7 @@ def test_post(test_user: User, db: Session) -> Post:
     db.flush()
     # Generate public_sqid
     post.public_sqid = encode_id(post.id)
+    db.add(PostFile(post_id=post.id, format="png", file_bytes=32 * 1024, is_native=True))
     db.commit()
     db.refresh(post)
     return post
@@ -105,7 +105,6 @@ def test_hidden_post(test_user: User, db: Session) -> Post:
         description="A hidden artwork",
         hashtags=[],
         art_url="/api/vault/hidden.png",
-        file_bytes=32 * 1024,
         width=64,
         height=64,
         frame_count=1,
@@ -122,6 +121,7 @@ def test_hidden_post(test_user: User, db: Session) -> Post:
     db.add(post)
     db.flush()
     post.public_sqid = encode_id(post.id)
+    db.add(PostFile(post_id=post.id, format="png", file_bytes=32 * 1024, is_native=True))
     db.commit()
     db.refresh(post)
     return post
