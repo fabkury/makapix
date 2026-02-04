@@ -1645,7 +1645,7 @@ def get_user_reacted_posts(
 
     Requires authentication.
     """
-    from sqlalchemy import and_, or_
+    from sqlalchemy import and_, func, or_
 
     from ..sqids_config import decode_user_sqid
 
@@ -1661,12 +1661,20 @@ def get_user_reacted_posts(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
 
+    # Subquery: latest reaction per post for this user (deduplicate artworks)
+    latest_reaction_ids = (
+        db.query(func.max(models.Reaction.id))
+        .filter(models.Reaction.user_id == user.id)
+        .group_by(models.Reaction.post_id)
+    )
+
     # Query reactions with posts - base query
     query = (
         db.query(models.Reaction, models.Post)
         .join(models.Post, models.Post.id == models.Reaction.post_id)
         .filter(
             models.Reaction.user_id == user.id,
+            models.Reaction.id.in_(latest_reaction_ids),
             models.Post.deleted_by_user == False,
         )
     )
