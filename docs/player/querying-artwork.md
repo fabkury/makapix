@@ -151,6 +151,41 @@ Using the same seed returns the same order, useful for resuming playback.
 
 Filter artwork by metadata fields using the `criteria` array. See [AMP Protocol](../reference/amp-protocol.md) for complete documentation.
 
+### Example: Posts with a GIF variant (any post that has a GIF file)
+
+```json
+{
+  "criteria": [
+    {"field": "file_format", "op": "eq", "value": "gif"}
+  ]
+}
+```
+
+This returns all posts that have a GIF file available, whether GIF is the native upload format or a server-converted variant. A post uploaded as WebP will match if the server generated a GIF conversion.
+
+### Example: Posts natively uploaded as PNG
+
+```json
+{
+  "criteria": [
+    {"field": "native_file_format", "op": "eq", "value": "png"}
+  ]
+}
+```
+
+This returns only posts where the original upload was PNG. Posts with a PNG conversion from a WebP original will **not** match.
+
+### Example: Natively GIF, small GIF file
+
+```json
+{
+  "criteria": [
+    {"field": "native_file_format", "op": "eq", "value": "gif"},
+    {"field": "file_bytes", "op": "lt", "value": 10240}
+  ]
+}
+```
+
 ### Example: 64x64 Animated GIFs
 
 ```json
@@ -182,7 +217,7 @@ Filter artwork by metadata fields using the `criteria` array. See [AMP Protocol]
 |-------|------|-------------|
 | `width` | integer | Image width in pixels |
 | `height` | integer | Image height in pixels |
-| `file_bytes` | integer | File size in bytes |
+| `file_bytes` | integer | File size in bytes (per variant; combines with `file_format` on same variant) |
 | `frame_count` | integer | Number of frames (1 = static) |
 | `min_frame_duration_ms` | integer | Shortest frame duration |
 | `max_frame_duration_ms` | integer | Longest frame duration |
@@ -191,7 +226,8 @@ Filter artwork by metadata fields using the `criteria` array. See [AMP Protocol]
 | `alpha_meta` | boolean | Format supports alpha channel |
 | `transparency_actual` | boolean | Image has transparent pixels |
 | `alpha_actual` | boolean | Image has semi-transparent pixels |
-| `file_format` | string | `"png"`, `"gif"`, `"webp"`, `"bmp"` |
+| `file_format` | string | `"png"`, `"gif"`, `"webp"`, `"bmp"` (any variant) |
+| `native_file_format` | string | `"png"`, `"gif"`, `"webp"`, `"bmp"` (native only) |
 | `kind` | string | `"artwork"` or `"playlist"` |
 
 ### Operators
