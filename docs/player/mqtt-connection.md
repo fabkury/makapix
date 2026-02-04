@@ -7,10 +7,10 @@ Connect your player device to the Makapix MQTT broker.
 | Setting | Value |
 |---------|-------|
 | Host | `makapix.club` (production) or `development.makapix.club` (dev) |
-| Port | `8884` (TLS) |
+| Port | `8883` (production) or `8884` (dev) — mTLS |
 | Protocol | MQTT 5.0 |
-| Transport | TCP with TLS |
-| WebSocket | Port `8884` path `/mqtt` (for browser clients) |
+| Transport | TCP with mutual TLS |
+| WebSocket | `wss://makapix.club/mqtt` (production) or `wss://development.makapix.club/mqtt` (dev) — via reverse proxy |
 
 ## Authentication
 
@@ -49,7 +49,7 @@ client.tls_set(
 client.username_pw_set(username=player_key, password="")
 
 # Connect
-client.connect("makapix.club", 8884)
+client.connect("makapix.club", 8883)
 ```
 
 ## Topic Structure
@@ -99,7 +99,7 @@ def on_connect(client, userdata, flags, rc, properties):
         print(f"Connection failed with code {rc}")
 
 client.on_connect = on_connect
-client.connect("makapix.club", 8884)
+client.connect("makapix.club", 8883)
 client.loop_forever()
 ```
 
@@ -120,7 +120,7 @@ QoS 1 ensures message delivery while avoiding the complexity of QoS 2. The serve
 Set keep-alive to 60 seconds:
 
 ```python
-client.connect("makapix.club", 8884, keepalive=60)
+client.connect("makapix.club", 8883, keepalive=60)
 ```
 
 The broker expects regular PINGREQ packets. If no message is sent within the keep-alive interval, the broker may disconnect the client.
@@ -198,7 +198,7 @@ void setupMQTT() {
     espClient.setCertificate(cert_pem);
     espClient.setPrivateKey(key_pem);
 
-    client.setServer("makapix.club", 8884);
+    client.setServer("makapix.club", 8883);
     client.setCallback(messageCallback);
 }
 
@@ -236,4 +236,4 @@ Common issues:
 1. **TLS handshake fails** - Check certificate format, ensure newlines preserved
 2. **Connection refused** - Verify hostname and port
 3. **Not authorized** - Certificate may be revoked or expired
-4. **Timeout** - Check firewall allows outbound 8884
+4. **Timeout** - Check firewall allows outbound port (8883 production, 8884 dev)
