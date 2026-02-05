@@ -683,6 +683,23 @@ class ReactionTotals(BaseModel):
     mine: list[str]  # emoji list for current user
 
 
+class ReactionUserItem(BaseModel):
+    """A single user's reaction with user details."""
+
+    emoji: str
+    created_at: datetime
+    user_handle: str
+    user_avatar_url: str | None = None
+    user_public_sqid: str | None = None
+
+
+class ReactionUsersResponse(BaseModel):
+    """List of users who reacted to a post."""
+
+    items: list[ReactionUserItem]
+    total: int
+
+
 class WidgetData(BaseModel):
     """Combined widget data (reactions + comments) for efficient loading."""
 
