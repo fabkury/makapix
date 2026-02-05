@@ -12,14 +12,14 @@ interface HourlyCount {
 }
 
 interface SitewideStats {
-  total_page_views_30d: number;
-  unique_visitors_30d: number;
-  new_signups_30d: number;
-  new_posts_30d: number;
-  total_api_calls_30d: number;
-  total_errors_30d: number;
-  total_page_views_30d_authenticated: number;
-  unique_visitors_30d_authenticated: number;
+  total_page_views_14d: number;
+  unique_visitors_14d: number;
+  new_signups_14d: number;
+  new_posts_14d: number;
+  total_api_calls_14d: number;
+  total_errors_14d: number;
+  total_page_views_14d_authenticated: number;
+  unique_visitors_14d_authenticated: number;
   daily_views: DailyCount[];
   daily_signups: DailyCount[];
   daily_posts: DailyCount[];
@@ -36,8 +36,8 @@ interface SitewideStats {
   top_referrers_authenticated: Record<string, number>;
   errors_by_type: Record<string, number>;
   // Player Activity
-  total_player_artwork_views_30d: number;
-  active_players_30d: number;
+  total_player_artwork_views_14d: number;
+  active_players_14d: number;
   daily_player_views: DailyCount[];
   views_by_player: Record<string, number>;
   computed_at: string;
@@ -72,6 +72,7 @@ const DEVICE_LABELS: Record<string, string> = {
   desktop: '💻 Desktop',
   mobile: '📱 Mobile',
   tablet: '📱 Tablet',
+  player: '🎮 Player',
 };
 
 interface OnlinePlayer {
@@ -172,12 +173,12 @@ export default function SiteMetricsPanel() {
   // Compute displayed stats based on toggle
   const displayedStats = useMemo(() => {
     if (!stats) return null;
-    
+
     if (includeUnauthenticated) {
       // Show all statistics (including unauthenticated)
       return {
-        total_page_views_30d: stats.total_page_views_30d,
-        unique_visitors_30d: stats.unique_visitors_30d,
+        total_page_views_14d: stats.total_page_views_14d,
+        unique_visitors_14d: stats.unique_visitors_14d,
         daily_views: stats.daily_views,
         hourly_views: stats.hourly_views,
         views_by_page: stats.views_by_page,
@@ -188,8 +189,8 @@ export default function SiteMetricsPanel() {
     } else {
       // Show authenticated-only statistics
       return {
-        total_page_views_30d: stats.total_page_views_30d_authenticated,
-        unique_visitors_30d: stats.unique_visitors_30d_authenticated,
+        total_page_views_14d: stats.total_page_views_14d_authenticated,
+        unique_visitors_14d: stats.unique_visitors_14d_authenticated,
         daily_views: stats.daily_views_authenticated,
         hourly_views: stats.hourly_views_authenticated,
         views_by_page: stats.views_by_page_authenticated,
@@ -230,6 +231,8 @@ export default function SiteMetricsPanel() {
   const maxDailyViews = Math.max(...displayedStats.daily_views.map(d => d.count), 1);
   const maxHourlyViews = Math.max(...displayedStats.hourly_views.map(h => h.count), 1);
   const maxCountryViews = Math.max(...Object.values(displayedStats.views_by_country), 1);
+  const maxPageViews = Math.max(...Object.values(displayedStats.views_by_page), 1);
+  const maxReferrerViews = Math.max(...Object.values(displayedStats.top_referrers), 1);
 
   return (
     <div className="site-metrics">
@@ -248,41 +251,41 @@ export default function SiteMetricsPanel() {
       {/* Summary Cards */}
       <div className="metrics-summary">
         <div className="metric-card">
-          <div className="metric-value">{displayedStats.total_page_views_30d.toLocaleString()}</div>
-          <div className="metric-label">Page Views (30d)</div>
+          <div className="metric-value">{displayedStats.total_page_views_14d.toLocaleString()}</div>
+          <div className="metric-label">Page Views (14d)</div>
         </div>
         <div className="metric-card">
-          <div className="metric-value">{displayedStats.unique_visitors_30d.toLocaleString()}</div>
-          <div className="metric-label">Unique Visitors (30d)</div>
+          <div className="metric-value">{displayedStats.unique_visitors_14d.toLocaleString()}</div>
+          <div className="metric-label">Unique Visitors (14d)</div>
         </div>
         <div className="metric-card">
-          <div className="metric-value">{stats.new_signups_30d.toLocaleString()}</div>
-          <div className="metric-label">New Signups (30d)</div>
+          <div className="metric-value">{stats.new_signups_14d.toLocaleString()}</div>
+          <div className="metric-label">New Signups (14d)</div>
         </div>
         <div className="metric-card">
-          <div className="metric-value">{stats.new_posts_30d.toLocaleString()}</div>
-          <div className="metric-label">New Posts (30d)</div>
+          <div className="metric-value">{stats.new_posts_14d.toLocaleString()}</div>
+          <div className="metric-label">New Posts (14d)</div>
         </div>
         <div className="metric-card">
-          <div className="metric-value">{stats.total_api_calls_30d.toLocaleString()}</div>
-          <div className="metric-label">API Calls (30d)</div>
+          <div className="metric-value">{stats.total_api_calls_14d.toLocaleString()}</div>
+          <div className="metric-label">API Calls (14d)</div>
         </div>
         <div className="metric-card">
-          <div className="metric-value">{stats.total_errors_30d.toLocaleString()}</div>
-          <div className="metric-label">Errors (30d)</div>
+          <div className="metric-value">{stats.total_errors_14d.toLocaleString()}</div>
+          <div className="metric-label">Errors (14d)</div>
         </div>
       </div>
 
-      {/* 30-Day Trends */}
+      {/* 14-Day Trends */}
       <div className="metrics-section">
-        <h3>📈 Page Views (Last 30 Days)</h3>
+        <h3>📈 Page Views (Last 14 Days)</h3>
         <div className="trend-chart">
           {displayedStats.daily_views.map((day, index) => {
             const height = maxDailyViews > 0 ? (day.count / maxDailyViews) * 100 : 0;
             const date = new Date(day.date);
             const isWeekend = date.getDay() === 0 || date.getDay() === 6;
             const showLabel =
-              index % 5 === 0 ||
+              index % 3 === 0 ||
               index === displayedStats.daily_views.length - 1 ||
               day.count === maxDailyViews;
             return (
@@ -304,7 +307,7 @@ export default function SiteMetricsPanel() {
           })}
         </div>
         <div className="trend-labels">
-          <span>30 days ago</span>
+          <span>14 days ago</span>
           <span>Today</span>
         </div>
       </div>
@@ -363,7 +366,7 @@ export default function SiteMetricsPanel() {
                   <div className="breakdown-bar-container">
                     <div
                       className="breakdown-bar"
-                      style={{ width: `${(count / maxDailyViews) * 100}%` }}
+                      style={{ width: `${(count / maxPageViews) * 100}%` }}
                     />
                   </div>
                   <div className="breakdown-value">{count.toLocaleString()}</div>
@@ -407,8 +410,8 @@ export default function SiteMetricsPanel() {
             {Object.entries(displayedStats.views_by_device)
               .sort(([, a], [, b]) => b - a)
               .map(([device, count]) => {
-                const percentage = displayedStats.total_page_views_30d > 0
-                  ? Math.round((count / displayedStats.total_page_views_30d) * 100)
+                const percentage = displayedStats.total_page_views_14d > 0
+                  ? Math.round((count / displayedStats.total_page_views_14d) * 100)
                   : 0;
                 return (
                   <div key={device} className="device-item">
@@ -436,7 +439,7 @@ export default function SiteMetricsPanel() {
                   <div className="breakdown-bar-container">
                     <div
                       className="breakdown-bar"
-                      style={{ width: `${(count / maxDailyViews) * 100}%` }}
+                      style={{ width: `${(count / maxReferrerViews) * 100}%` }}
                     />
                   </div>
                   <div className="breakdown-value">{count.toLocaleString()}</div>
@@ -459,7 +462,7 @@ export default function SiteMetricsPanel() {
                   <div className="breakdown-bar-container">
                     <div
                       className="breakdown-bar error-bar"
-                      style={{ width: `${(count / stats.total_errors_30d) * 100}%` }}
+                      style={{ width: `${(count / stats.total_errors_14d) * 100}%` }}
                     />
                   </div>
                   <div className="breakdown-value">{count.toLocaleString()}</div>
@@ -475,30 +478,30 @@ export default function SiteMetricsPanel() {
         <p className="section-note">
           Views from physical player devices (P3A and others) - separate from website page views.
         </p>
-        
+
         {/* Player Summary Cards */}
         <div className="player-summary">
           <div className="metric-card player-card">
-            <div className="metric-value">{stats.total_player_artwork_views_30d?.toLocaleString() || 0}</div>
-            <div className="metric-label">Player Artwork Views (30d)</div>
+            <div className="metric-value">{stats.total_player_artwork_views_14d?.toLocaleString() || 0}</div>
+            <div className="metric-label">Player Artwork Views (14d)</div>
           </div>
           <div className="metric-card player-card">
-            <div className="metric-value">{stats.active_players_30d?.toLocaleString() || 0}</div>
-            <div className="metric-label">Active Players (30d)</div>
+            <div className="metric-value">{stats.active_players_14d?.toLocaleString() || 0}</div>
+            <div className="metric-label">Active Players (14d)</div>
           </div>
         </div>
 
         {/* Daily Player Views Trend */}
         {stats.daily_player_views && stats.daily_player_views.length > 0 && (
           <>
-            <h4>📈 Player Views (Last 30 Days)</h4>
+            <h4>📈 Player Views (Last 14 Days)</h4>
             <div className="trend-chart">
               {(() => {
                 const maxPlayerViews = Math.max(...stats.daily_player_views.map(d => d.count), 1);
                 return stats.daily_player_views.map((day, index) => {
                   const height = maxPlayerViews > 0 ? (day.count / maxPlayerViews) * 100 : 0;
                   const showLabel =
-                    index % 5 === 0 ||
+                    index % 3 === 0 ||
                     index === stats.daily_player_views.length - 1 ||
                     day.count === maxPlayerViews;
                   return (
@@ -521,7 +524,7 @@ export default function SiteMetricsPanel() {
               })()}
             </div>
             <div className="trend-labels">
-              <span>30 days ago</span>
+              <span>14 days ago</span>
               <span>Today</span>
             </div>
           </>
@@ -556,8 +559,8 @@ export default function SiteMetricsPanel() {
           </>
         )}
 
-        {stats.total_player_artwork_views_30d === 0 && (
-          <p className="no-data">No player activity in the last 30 days.</p>
+        {stats.total_player_artwork_views_14d === 0 && (
+          <p className="no-data">No player activity in the last 14 days.</p>
         )}
       </div>
 

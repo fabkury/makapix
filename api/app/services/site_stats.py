@@ -2,7 +2,7 @@
 Sitewide statistics aggregation service.
 
 Provides on-demand computation of sitewide statistics with Redis caching.
-Aggregates data from raw site events (7 days) and daily rollups (8-30 days).
+Aggregates data from raw site events (7 days) and daily rollups (8-14 days).
 """
 
 from __future__ import annotations
@@ -100,24 +100,24 @@ class SitewideStats:
     This allows the frontend to toggle between the two without additional API calls.
     """
 
-    # Summary metrics (30 days) - all
-    total_page_views_30d: int
-    unique_visitors_30d: int
-    new_signups_30d: int
-    new_posts_30d: int
-    total_api_calls_30d: int
-    total_errors_30d: int
+    # Summary metrics (14 days) - all
+    total_page_views_14d: int
+    unique_visitors_14d: int
+    new_signups_14d: int
+    new_posts_14d: int
+    total_api_calls_14d: int
+    total_errors_14d: int
 
-    # Summary metrics (30 days) - authenticated only
-    total_page_views_30d_authenticated: int
-    unique_visitors_30d_authenticated: int
+    # Summary metrics (14 days) - authenticated only
+    total_page_views_14d_authenticated: int
+    unique_visitors_14d_authenticated: int
 
-    # Trends (30 days) - all
+    # Trends (14 days) - all
     daily_views: list[DailyCount]
     daily_signups: list[DailyCount]
     daily_posts: list[DailyCount]
 
-    # Trends (30 days) - authenticated only
+    # Trends (14 days) - authenticated only
     daily_views_authenticated: list[DailyCount]
 
     # Granular data (last 24h from events) - all
@@ -142,8 +142,8 @@ class SitewideStats:
     errors_by_type: dict[str, int]
 
     # Player Activity (from artwork views, not page views)
-    total_player_artwork_views_30d: int
-    active_players_30d: int
+    total_player_artwork_views_14d: int
+    active_players_14d: int
     daily_player_views: list[DailyCount]
     views_by_player: dict[str, int]  # player_key -> view count
 
@@ -152,14 +152,14 @@ class SitewideStats:
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
         return {
-            "total_page_views_30d": self.total_page_views_30d,
-            "unique_visitors_30d": self.unique_visitors_30d,
-            "new_signups_30d": self.new_signups_30d,
-            "new_posts_30d": self.new_posts_30d,
-            "total_api_calls_30d": self.total_api_calls_30d,
-            "total_errors_30d": self.total_errors_30d,
-            "total_page_views_30d_authenticated": self.total_page_views_30d_authenticated,
-            "unique_visitors_30d_authenticated": self.unique_visitors_30d_authenticated,
+            "total_page_views_14d": self.total_page_views_14d,
+            "unique_visitors_14d": self.unique_visitors_14d,
+            "new_signups_14d": self.new_signups_14d,
+            "new_posts_14d": self.new_posts_14d,
+            "total_api_calls_14d": self.total_api_calls_14d,
+            "total_errors_14d": self.total_errors_14d,
+            "total_page_views_14d_authenticated": self.total_page_views_14d_authenticated,
+            "unique_visitors_14d_authenticated": self.unique_visitors_14d_authenticated,
             "daily_views": [
                 {"date": d.date, "count": d.count} for d in self.daily_views
             ],
@@ -189,8 +189,8 @@ class SitewideStats:
             "views_by_device_authenticated": self.views_by_device_authenticated,
             "top_referrers_authenticated": self.top_referrers_authenticated,
             "errors_by_type": self.errors_by_type,
-            "total_player_artwork_views_30d": self.total_player_artwork_views_30d,
-            "active_players_30d": self.active_players_30d,
+            "total_player_artwork_views_14d": self.total_player_artwork_views_14d,
+            "active_players_14d": self.active_players_14d,
             "daily_player_views": [
                 {"date": d.date, "count": d.count} for d in self.daily_player_views
             ],
@@ -250,7 +250,7 @@ class SiteStatsService:
 
         Aggregates data from:
         - site_events table (last 7 days of raw events)
-        - site_stats_daily table (older aggregated data, 8-30 days)
+        - site_stats_daily table (older aggregated data, 8-14 days)
         """
         from .. import models
 
@@ -264,9 +264,9 @@ class SiteStatsService:
         seven_days_ago_start = datetime.combine(
             seven_days_ago_date, time.min, tzinfo=timezone.utc
         )
-        thirty_days_ago_date = (now - timedelta(days=30)).date()
-        thirty_days_ago_start = datetime.combine(
-            thirty_days_ago_date, time.min, tzinfo=timezone.utc
+        fourteen_days_ago_date = (now - timedelta(days=14)).date()
+        fourteen_days_ago_start = datetime.combine(
+            fourteen_days_ago_date, time.min, tzinfo=timezone.utc
         )
 
         # ===== GET RAW EVENTS (last 7 days) =====
@@ -277,12 +277,12 @@ class SiteStatsService:
             .all()
         )
 
-        # ===== GET DAILY AGGREGATES (8-30 days ago) =====
+        # ===== GET DAILY AGGREGATES (8-14 days ago) =====
 
         daily_stats = (
             self.db.query(models.SiteStatsDaily)
             .filter(
-                models.SiteStatsDaily.date >= thirty_days_ago_date,
+                models.SiteStatsDaily.date >= fourteen_days_ago_date,
                 models.SiteStatsDaily.date < seven_days_ago_date,
             )
             .all()
@@ -292,7 +292,7 @@ class SiteStatsService:
 
         authenticated_events = [e for e in recent_events if e.user_id is not None]
 
-        # ===== AGGREGATE SUMMARY METRICS (30 days) - ALL =====
+        # ===== AGGREGATE SUMMARY METRICS (14 days) - ALL =====
 
         # From recent events
         page_views_from_events = sum(
@@ -310,26 +310,26 @@ class SiteStatsService:
         )
 
         # From daily aggregates
-        total_page_views_30d = page_views_from_events + sum(
+        total_page_views_14d = page_views_from_events + sum(
             ds.total_page_views for ds in daily_stats
         )
-        unique_visitors_30d = unique_visitors_from_events + sum(
+        unique_visitors_14d = unique_visitors_from_events + sum(
             ds.unique_visitors for ds in daily_stats
         )
-        new_signups_30d = signups_from_events + sum(
+        new_signups_14d = signups_from_events + sum(
             ds.new_signups for ds in daily_stats
         )
-        new_posts_30d = posts_from_events + sum(ds.new_posts for ds in daily_stats)
-        total_api_calls_30d = api_calls_from_events + sum(
+        new_posts_14d = posts_from_events + sum(ds.new_posts for ds in daily_stats)
+        total_api_calls_14d = api_calls_from_events + sum(
             ds.total_api_calls for ds in daily_stats
         )
-        total_errors_30d = errors_from_events + sum(
+        total_errors_14d = errors_from_events + sum(
             ds.total_errors for ds in daily_stats
         )
 
-        # ===== AGGREGATE SUMMARY METRICS (30 days) - AUTHENTICATED ONLY =====
+        # ===== AGGREGATE SUMMARY METRICS (14 days) - AUTHENTICATED ONLY =====
 
-        # From authenticated events
+        # From authenticated events (last 7 days)
         page_views_from_authenticated_events = sum(
             1 for e in authenticated_events if e.event_type == "page_view"
         )
@@ -341,18 +341,23 @@ class SiteStatsService:
             )
         )
 
-        # Note: daily_stats don't separate authenticated, so we only use recent authenticated events
-        total_page_views_30d_authenticated = page_views_from_authenticated_events
-        unique_visitors_30d_authenticated = unique_visitors_from_authenticated_events
+        # From daily aggregates (days 8-14) - use new authenticated columns
+        total_page_views_14d_authenticated = page_views_from_authenticated_events + sum(
+            ds.authenticated_page_views or 0 for ds in daily_stats
+        )
+        unique_visitors_14d_authenticated = (
+            unique_visitors_from_authenticated_events
+            + sum(ds.authenticated_unique_visitors or 0 for ds in daily_stats)
+        )
 
-        # ===== DAILY TRENDS (30 days) =====
+        # ===== DAILY TRENDS (14 days) =====
 
-        # Initialize all 30 days with zeros
+        # Initialize all 14 days with zeros
         daily_views: list[DailyCount] = []
         daily_signups: list[DailyCount] = []
         daily_posts: list[DailyCount] = []
 
-        for i in range(30):
+        for i in range(14):
             day = (now - timedelta(days=i)).date()
             day_str = day.isoformat()
             daily_views.append(DailyCount(date=day_str, count=0))
@@ -388,12 +393,12 @@ class SiteStatsService:
         daily_signups.sort(key=lambda x: x.date)
         daily_posts.sort(key=lambda x: x.date)
 
-        # ===== DAILY TRENDS (30 days) - AUTHENTICATED ONLY =====
+        # ===== DAILY TRENDS (14 days) - AUTHENTICATED ONLY =====
 
-        # Initialize all 30 days with zeros
+        # Initialize all 14 days with zeros
         daily_views_authenticated: list[DailyCount] = []
 
-        for i in range(30):
+        for i in range(14):
             day = (now - timedelta(days=i)).date()
             day_str = day.isoformat()
             daily_views_authenticated.append(DailyCount(date=day_str, count=0))
@@ -409,6 +414,14 @@ class SiteStatsService:
             if day_str in daily_views_authenticated_lookup:
                 if event.event_type == "page_view":
                     daily_views_authenticated_lookup[day_str].count += 1
+
+        # Fill in data from daily aggregates (days 8-14) - use new authenticated columns
+        for ds in daily_stats:
+            day_str = ds.date.isoformat()
+            if day_str in daily_views_authenticated_lookup:
+                daily_views_authenticated_lookup[day_str].count = (
+                    ds.authenticated_page_views or 0
+                )
 
         # Sort by date ascending (oldest first)
         daily_views_authenticated.sort(key=lambda x: x.date)
@@ -558,7 +571,7 @@ class SiteStatsService:
 
         # ===== BREAKDOWNS - AUTHENTICATED ONLY =====
 
-        # Views by page (from authenticated events only)
+        # Views by page (from authenticated events + daily aggregates)
         views_by_page_authenticated: dict[str, int] = {}
         for event in authenticated_events:
             if event.event_type == "page_view" and event.page_path:
@@ -566,18 +579,29 @@ class SiteStatsService:
                 views_by_page_authenticated[normalized_path] = (
                     views_by_page_authenticated.get(normalized_path, 0) + 1
                 )
+        for ds in daily_stats:
+            for page, count in (ds.authenticated_views_by_page or {}).items():
+                normalized_path = normalize_page_path(page)
+                views_by_page_authenticated[normalized_path] = (
+                    views_by_page_authenticated.get(normalized_path, 0) + count
+                )
 
         # Sort and keep top 20
         views_by_page_authenticated = dict(
             sorted(views_by_page_authenticated.items(), key=lambda x: -x[1])[:20]
         )
 
-        # Views by country (from authenticated events only)
+        # Views by country (from authenticated events + daily aggregates)
         views_by_country_authenticated: dict[str, int] = {}
         for event in authenticated_events:
             if event.event_type == "page_view" and event.country_code:
                 views_by_country_authenticated[event.country_code] = (
                     views_by_country_authenticated.get(event.country_code, 0) + 1
+                )
+        for ds in daily_stats:
+            for country, count in (ds.authenticated_views_by_country or {}).items():
+                views_by_country_authenticated[country] = (
+                    views_by_country_authenticated.get(country, 0) + count
                 )
 
         # Sort and keep top 10
@@ -585,20 +609,30 @@ class SiteStatsService:
             sorted(views_by_country_authenticated.items(), key=lambda x: -x[1])[:10]
         )
 
-        # Views by device (from authenticated events only)
+        # Views by device (from authenticated events + daily aggregates)
         views_by_device_authenticated: dict[str, int] = {}
         for event in authenticated_events:
             if event.event_type == "page_view":
                 views_by_device_authenticated[event.device_type] = (
                     views_by_device_authenticated.get(event.device_type, 0) + 1
                 )
+        for ds in daily_stats:
+            for device, count in (ds.authenticated_views_by_device or {}).items():
+                views_by_device_authenticated[device] = (
+                    views_by_device_authenticated.get(device, 0) + count
+                )
 
-        # Top referrers (from authenticated events only)
+        # Top referrers (from authenticated events + daily aggregates)
         top_referrers_authenticated: dict[str, int] = {}
         for event in authenticated_events:
             if event.event_type == "page_view" and event.referrer_domain:
                 top_referrers_authenticated[event.referrer_domain] = (
                     top_referrers_authenticated.get(event.referrer_domain, 0) + 1
+                )
+        for ds in daily_stats:
+            for referrer, count in (ds.authenticated_top_referrers or {}).items():
+                top_referrers_authenticated[referrer] = (
+                    top_referrers_authenticated.get(referrer, 0) + count
                 )
 
         # Sort and keep top 10
@@ -606,41 +640,55 @@ class SiteStatsService:
             sorted(top_referrers_authenticated.items(), key=lambda x: -x[1])[:10]
         )
 
-        # ===== PLAYER ACTIVITY (from view_events table) =====
+        # ===== PLAYER ACTIVITY (from view_events table + daily aggregates) =====
 
-        # Query view_events for player device views in last 30 days
+        # Query view_events for player device views in last 7 days (raw events)
+        # Events older than 7 days are rolled up into daily_stats
         player_view_events = (
             self.db.query(models.ViewEvent)
             .filter(
                 models.ViewEvent.device_type == "player",
-                models.ViewEvent.created_at >= thirty_days_ago_start,
+                models.ViewEvent.created_at >= seven_days_ago_start,
             )
             .all()
         )
 
-        # Total player artwork views (30 days)
-        total_player_artwork_views_30d = len(player_view_events)
+        # Total player artwork views (14 days) - combine recent events + daily aggregates
+        total_player_artwork_views_14d = len(player_view_events) + sum(
+            ds.total_player_views or 0 for ds in daily_stats
+        )
 
-        # Active players (unique player_ids that sent views)
+        # Active players (unique player_ids from recent events + sum from aggregates)
+        # Note: We can't deduplicate across days with aggregates, so this is approximate
         active_player_ids = set(v.player_id for v in player_view_events if v.player_id)
-        active_players_30d = len(active_player_ids)
+        active_players_14d = len(active_player_ids) + sum(
+            ds.active_players or 0 for ds in daily_stats
+        )
 
-        # Daily player views trend (last 30 days)
+        # Daily player views trend (last 14 days)
         daily_player_views: list[DailyCount] = []
         player_views_by_day: dict[str, int] = {}
+
+        # From recent view events (last 7 days)
         for v in player_view_events:
             day_str = v.created_at.date().isoformat()
             player_views_by_day[day_str] = player_views_by_day.get(day_str, 0) + 1
 
-        # Fill in all 30 days
-        for i in range(30):
-            day = (now - timedelta(days=29 - i)).date()
+        # From daily aggregates (days 8-14)
+        for ds in daily_stats:
+            day_str = ds.date.isoformat()
+            player_views_by_day[day_str] = ds.total_player_views or 0
+
+        # Fill in all 14 days
+        for i in range(14):
+            day = (now - timedelta(days=13 - i)).date()
             day_str = day.isoformat()
             daily_player_views.append(
                 DailyCount(date=day_str, count=player_views_by_day.get(day_str, 0))
             )
 
         # Views by player (get player names for display)
+        # From recent view events
         views_by_player_id: dict[str, int] = {}
         for v in player_view_events:
             if v.player_id:
@@ -668,6 +716,13 @@ class SiteStatsService:
                     views_by_player.get(player_name, 0) + count
                 )
 
+        # Add views from daily aggregates (already keyed by player name)
+        for ds in daily_stats:
+            for player_name, count in (ds.views_by_player or {}).items():
+                views_by_player[player_name] = (
+                    views_by_player.get(player_name, 0) + count
+                )
+
         # Sort by view count and keep top 10
         views_by_player = dict(
             sorted(views_by_player.items(), key=lambda x: -x[1])[:10]
@@ -676,14 +731,14 @@ class SiteStatsService:
         # ===== BUILD RESULT =====
 
         return SitewideStats(
-            total_page_views_30d=total_page_views_30d,
-            unique_visitors_30d=unique_visitors_30d,
-            new_signups_30d=new_signups_30d,
-            new_posts_30d=new_posts_30d,
-            total_api_calls_30d=total_api_calls_30d,
-            total_errors_30d=total_errors_30d,
-            total_page_views_30d_authenticated=total_page_views_30d_authenticated,
-            unique_visitors_30d_authenticated=unique_visitors_30d_authenticated,
+            total_page_views_14d=total_page_views_14d,
+            unique_visitors_14d=unique_visitors_14d,
+            new_signups_14d=new_signups_14d,
+            new_posts_14d=new_posts_14d,
+            total_api_calls_14d=total_api_calls_14d,
+            total_errors_14d=total_errors_14d,
+            total_page_views_14d_authenticated=total_page_views_14d_authenticated,
+            unique_visitors_14d_authenticated=unique_visitors_14d_authenticated,
             daily_views=daily_views,
             daily_signups=daily_signups,
             daily_posts=daily_posts,
@@ -699,8 +754,8 @@ class SiteStatsService:
             views_by_device_authenticated=views_by_device_authenticated,
             top_referrers_authenticated=top_referrers_authenticated,
             errors_by_type=errors_by_type,
-            total_player_artwork_views_30d=total_player_artwork_views_30d,
-            active_players_30d=active_players_30d,
+            total_player_artwork_views_14d=total_player_artwork_views_14d,
+            active_players_14d=active_players_14d,
             daily_player_views=daily_player_views,
             views_by_player=views_by_player,
             computed_at=now.isoformat(),
@@ -709,17 +764,17 @@ class SiteStatsService:
     def _dict_to_stats(self, data: dict) -> SitewideStats:
         """Convert dictionary back to SitewideStats object."""
         return SitewideStats(
-            total_page_views_30d=data["total_page_views_30d"],
-            unique_visitors_30d=data["unique_visitors_30d"],
-            new_signups_30d=data["new_signups_30d"],
-            new_posts_30d=data["new_posts_30d"],
-            total_api_calls_30d=data["total_api_calls_30d"],
-            total_errors_30d=data["total_errors_30d"],
-            total_page_views_30d_authenticated=data.get(
-                "total_page_views_30d_authenticated", 0
+            total_page_views_14d=data["total_page_views_14d"],
+            unique_visitors_14d=data["unique_visitors_14d"],
+            new_signups_14d=data["new_signups_14d"],
+            new_posts_14d=data["new_posts_14d"],
+            total_api_calls_14d=data["total_api_calls_14d"],
+            total_errors_14d=data["total_errors_14d"],
+            total_page_views_14d_authenticated=data.get(
+                "total_page_views_14d_authenticated", 0
             ),
-            unique_visitors_30d_authenticated=data.get(
-                "unique_visitors_30d_authenticated", 0
+            unique_visitors_14d_authenticated=data.get(
+                "unique_visitors_14d_authenticated", 0
             ),
             daily_views=[DailyCount(**d) for d in data["daily_views"]],
             daily_signups=[DailyCount(**d) for d in data["daily_signups"]],
@@ -742,10 +797,10 @@ class SiteStatsService:
             views_by_device_authenticated=data.get("views_by_device_authenticated", {}),
             top_referrers_authenticated=data.get("top_referrers_authenticated", {}),
             errors_by_type=data["errors_by_type"],
-            total_player_artwork_views_30d=data.get(
-                "total_player_artwork_views_30d", 0
+            total_player_artwork_views_14d=data.get(
+                "total_player_artwork_views_14d", 0
             ),
-            active_players_30d=data.get("active_players_30d", 0),
+            active_players_14d=data.get("active_players_14d", 0),
             daily_player_views=[
                 DailyCount(**d) for d in data.get("daily_player_views", [])
             ],
