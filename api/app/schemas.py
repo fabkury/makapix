@@ -1516,24 +1516,24 @@ class SitewideStatsResponse(BaseModel):
     Includes both "all" (including unauthenticated) and "authenticated-only" statistics.
     """
 
-    # Summary metrics (30 days) - all
-    total_page_views_30d: int
-    unique_visitors_30d: int
-    new_signups_30d: int
-    new_posts_30d: int
-    total_api_calls_30d: int
-    total_errors_30d: int
+    # Summary metrics (14 days) - all
+    total_page_views_14d: int
+    unique_visitors_14d: int
+    new_signups_14d: int
+    new_posts_14d: int
+    total_api_calls_14d: int
+    total_errors_14d: int
 
-    # Summary metrics (30 days) - authenticated only
-    total_page_views_30d_authenticated: int
-    unique_visitors_30d_authenticated: int
+    # Summary metrics (14 days) - authenticated only
+    total_page_views_14d_authenticated: int
+    unique_visitors_14d_authenticated: int
 
-    # Trends (30 days) - all
+    # Trends (14 days) - all
     daily_views: list[DailyCount]
     daily_signups: list[DailyCount]
     daily_posts: list[DailyCount]
 
-    # Trends (30 days) - authenticated only
+    # Trends (14 days) - authenticated only
     daily_views_authenticated: list[DailyCount]
 
     # Granular data (last 24h from events) - all
@@ -1558,8 +1558,8 @@ class SitewideStatsResponse(BaseModel):
     errors_by_type: dict[str, int]  # {"404": 50, "500": 5, ...}
 
     # Player Activity (artwork views from player devices)
-    total_player_artwork_views_30d: int = 0
-    active_players_30d: int = 0
+    total_player_artwork_views_14d: int = 0
+    active_players_14d: int = 0
     daily_player_views: list[DailyCount] = []
     views_by_player: dict[str, int] = {}  # player_name -> view count
 
