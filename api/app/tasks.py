@@ -1701,6 +1701,13 @@ def rollup_site_events(self) -> dict[str, Any]:
                         "views_by_device": {},
                         "errors_by_type": {},
                         "top_referrers": {},
+                        # Authenticated breakdown
+                        "authenticated_page_views": 0,
+                        "authenticated_unique_ip_hashes": set(),
+                        "authenticated_views_by_page": {},
+                        "authenticated_views_by_country": {},
+                        "authenticated_views_by_device": {},
+                        "authenticated_top_referrers": {},
                     }
 
                 agg = aggregates[event_date]
@@ -1733,6 +1740,42 @@ def rollup_site_events(self) -> dict[str, Any]:
                             agg["top_referrers"].get(event.referrer_domain, 0) + 1
                         )
 
+                    # Track authenticated page views
+                    if event.user_id is not None:
+                        agg["authenticated_page_views"] += 1
+                        agg["authenticated_unique_ip_hashes"].add(event.visitor_ip_hash)
+
+                        if event.page_path:
+                            agg["authenticated_views_by_page"][event.page_path] = (
+                                agg["authenticated_views_by_page"].get(
+                                    event.page_path, 0
+                                )
+                                + 1
+                            )
+
+                        if event.country_code:
+                            agg["authenticated_views_by_country"][event.country_code] = (
+                                agg["authenticated_views_by_country"].get(
+                                    event.country_code, 0
+                                )
+                                + 1
+                            )
+
+                        agg["authenticated_views_by_device"][event.device_type] = (
+                            agg["authenticated_views_by_device"].get(
+                                event.device_type, 0
+                            )
+                            + 1
+                        )
+
+                        if event.referrer_domain:
+                            agg["authenticated_top_referrers"][event.referrer_domain] = (
+                                agg["authenticated_top_referrers"].get(
+                                    event.referrer_domain, 0
+                                )
+                                + 1
+                            )
+
                 elif event.event_type == "signup":
                     agg["new_signups"] += 1
                 elif event.event_type == "upload":
@@ -1756,6 +1799,72 @@ def rollup_site_events(self) -> dict[str, Any]:
 
             if processed_count % 50000 == 0:
                 logger.info(f"Processed {processed_count}/{total_count} site events")
+
+        # ===== AGGREGATE PLAYER VIEW EVENTS =====
+        # Process ViewEvent records to get player view statistics
+        player_aggregates: dict[date, dict] = {}
+
+        player_view_events = (
+            db.query(models.ViewEvent)
+            .filter(
+                models.ViewEvent.device_type == "player",
+                models.ViewEvent.created_at < cutoff_date,
+            )
+            .all()
+        )
+
+        for view_event in player_view_events:
+            event_date = view_event.created_at.date()
+
+            if event_date not in player_aggregates:
+                player_aggregates[event_date] = {
+                    "total_player_views": 0,
+                    "player_ids": set(),
+                    "views_by_player_id": {},
+                }
+
+            pagg = player_aggregates[event_date]
+            pagg["total_player_views"] += 1
+
+            if view_event.player_id:
+                player_id_str = str(view_event.player_id)
+                pagg["player_ids"].add(player_id_str)
+                pagg["views_by_player_id"][player_id_str] = (
+                    pagg["views_by_player_id"].get(player_id_str, 0) + 1
+                )
+
+        # Fetch player names for display in aggregated stats
+        all_player_ids = set()
+        for pagg in player_aggregates.values():
+            all_player_ids.update(pagg["player_ids"])
+
+        player_names = {}
+        if all_player_ids:
+            from uuid import UUID
+
+            player_uuids = [UUID(pid) for pid in all_player_ids]
+            players = (
+                db.query(models.Player)
+                .filter(models.Player.id.in_(player_uuids))
+                .all()
+            )
+            player_names = {
+                str(p.id): p.name or str(p.player_key)[:8] for p in players
+            }
+
+        # Convert player_id-based counts to player_name-based counts
+        for event_date, pagg in player_aggregates.items():
+            views_by_player = {}
+            for player_id_str, count in pagg["views_by_player_id"].items():
+                player_name = player_names.get(player_id_str, player_id_str[:8])
+                views_by_player[player_name] = (
+                    views_by_player.get(player_name, 0) + count
+                )
+            pagg["views_by_player"] = views_by_player
+
+        logger.info(
+            f"Aggregated player views for {len(player_aggregates)} days"
+        )
 
         # Upsert aggregates into site_stats_daily
         rolled_up = 0
@@ -1811,7 +1920,63 @@ def rollup_site_events(self) -> dict[str, Any]:
                         existing_top_referrers.get(referrer, 0) + count
                     )
                 existing.top_referrers = existing_top_referrers
+
+                # Merge authenticated breakdown fields
+                existing.authenticated_page_views += agg["authenticated_page_views"]
+                existing.authenticated_unique_visitors += len(
+                    agg["authenticated_unique_ip_hashes"]
+                )
+
+                existing_auth_views_by_page = existing.authenticated_views_by_page or {}
+                for page, count in agg["authenticated_views_by_page"].items():
+                    existing_auth_views_by_page[page] = (
+                        existing_auth_views_by_page.get(page, 0) + count
+                    )
+                existing.authenticated_views_by_page = existing_auth_views_by_page
+
+                existing_auth_views_by_country = (
+                    existing.authenticated_views_by_country or {}
+                )
+                for country, count in agg["authenticated_views_by_country"].items():
+                    existing_auth_views_by_country[country] = (
+                        existing_auth_views_by_country.get(country, 0) + count
+                    )
+                existing.authenticated_views_by_country = existing_auth_views_by_country
+
+                existing_auth_views_by_device = (
+                    existing.authenticated_views_by_device or {}
+                )
+                for device, count in agg["authenticated_views_by_device"].items():
+                    existing_auth_views_by_device[device] = (
+                        existing_auth_views_by_device.get(device, 0) + count
+                    )
+                existing.authenticated_views_by_device = existing_auth_views_by_device
+
+                existing_auth_top_referrers = (
+                    existing.authenticated_top_referrers or {}
+                )
+                for referrer, count in agg["authenticated_top_referrers"].items():
+                    existing_auth_top_referrers[referrer] = (
+                        existing_auth_top_referrers.get(referrer, 0) + count
+                    )
+                existing.authenticated_top_referrers = existing_auth_top_referrers
+
+                # Merge player view aggregates if available
+                if event_date in player_aggregates:
+                    pagg = player_aggregates[event_date]
+                    existing.total_player_views += pagg["total_player_views"]
+                    existing.active_players += len(pagg["player_ids"])
+
+                    existing_views_by_player = existing.views_by_player or {}
+                    for player_name, count in pagg["views_by_player"].items():
+                        existing_views_by_player[player_name] = (
+                            existing_views_by_player.get(player_name, 0) + count
+                        )
+                    existing.views_by_player = existing_views_by_player
             else:
+                # Get player aggregates for this date if available
+                pagg = player_aggregates.get(event_date, {})
+
                 # Create new record
                 daily_stat = models.SiteStatsDaily(
                     date=event_date,
@@ -1826,6 +1991,19 @@ def rollup_site_events(self) -> dict[str, Any]:
                     views_by_device=agg["views_by_device"],
                     errors_by_type=agg["errors_by_type"],
                     top_referrers=agg["top_referrers"],
+                    # Authenticated breakdown
+                    authenticated_page_views=agg["authenticated_page_views"],
+                    authenticated_unique_visitors=len(
+                        agg["authenticated_unique_ip_hashes"]
+                    ),
+                    authenticated_views_by_page=agg["authenticated_views_by_page"],
+                    authenticated_views_by_country=agg["authenticated_views_by_country"],
+                    authenticated_views_by_device=agg["authenticated_views_by_device"],
+                    authenticated_top_referrers=agg["authenticated_top_referrers"],
+                    # Player view aggregates
+                    total_player_views=pagg.get("total_player_views", 0),
+                    active_players=len(pagg.get("player_ids", set())),
+                    views_by_player=pagg.get("views_by_player", {}),
                 )
                 db.add(daily_stat)
 
@@ -1835,19 +2013,36 @@ def rollup_site_events(self) -> dict[str, Any]:
             if rolled_up % 100 == 0:
                 db.commit()
 
-        # Delete old events
+        # Delete old site events
         deleted_count = (
             db.query(models.SiteEvent)
             .filter(models.SiteEvent.created_at < cutoff_date)
             .delete(synchronize_session=False)
         )
 
+        # Delete old player view events (from ViewEvent table)
+        deleted_player_views = (
+            db.query(models.ViewEvent)
+            .filter(
+                models.ViewEvent.device_type == "player",
+                models.ViewEvent.created_at < cutoff_date,
+            )
+            .delete(synchronize_session=False)
+        )
+
         db.commit()
 
         logger.info(
-            f"Rolled up {rolled_up} daily site aggregates, deleted {deleted_count} old events"
+            f"Rolled up {rolled_up} daily site aggregates, "
+            f"deleted {deleted_count} old site events, "
+            f"deleted {deleted_player_views} old player view events"
         )
-        return {"status": "success", "rolled_up": rolled_up, "deleted": deleted_count}
+        return {
+            "status": "success",
+            "rolled_up": rolled_up,
+            "deleted": deleted_count,
+            "deleted_player_views": deleted_player_views,
+        }
 
     except Exception as e:
         logger.error(f"Error in rollup_site_events task: {e}", exc_info=True)

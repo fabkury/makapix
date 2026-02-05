@@ -1195,6 +1195,29 @@ class SiteStatsDaily(Base):
         JSON, nullable=False, default=dict
     )  # {"google.com": 100, "twitter.com": 50, ...}
 
+    # Player view aggregates (from ViewEvent table)
+    total_player_views = Column(Integer, nullable=False, default=0)
+    active_players = Column(Integer, nullable=False, default=0)
+    views_by_player = Column(
+        JSON, nullable=False, default=dict
+    )  # {"player_name": 500, ...}
+
+    # Authenticated user breakdown
+    authenticated_page_views = Column(Integer, nullable=False, default=0)
+    authenticated_unique_visitors = Column(Integer, nullable=False, default=0)
+    authenticated_views_by_page = Column(
+        JSON, nullable=False, default=dict
+    )  # {"/recent": 200, ...}
+    authenticated_views_by_country = Column(
+        JSON, nullable=False, default=dict
+    )  # {"US": 100, ...}
+    authenticated_views_by_device = Column(
+        JSON, nullable=False, default=dict
+    )  # {"desktop": 150, ...}
+    authenticated_top_referrers = Column(
+        JSON, nullable=False, default=dict
+    )  # {"google.com": 50, ...}
+
     # Timestamps
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
