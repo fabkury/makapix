@@ -96,6 +96,46 @@ def get_reactions(
     )
 
 
+@router.get("/{id}/reaction-users", response_model=schemas.ReactionUsersResponse)
+def get_reaction_users(
+    id: int,
+    db: Session = Depends(get_db),
+) -> schemas.ReactionUsersResponse:
+    """
+    Get list of users who reacted to a post (public endpoint).
+
+    Returns user details and emoji for each authenticated reaction.
+    Anonymous reactions are excluded.
+    """
+    reactions = (
+        db.query(models.Reaction)
+        .options(joinedload(models.Reaction.user))
+        .filter(
+            models.Reaction.post_id == id,
+            models.Reaction.user_id.isnot(None),
+        )
+        .order_by(models.Reaction.created_at.desc())
+        .limit(200)
+        .all()
+    )
+
+    items = []
+    for r in reactions:
+        if r.user is None:
+            continue
+        items.append(
+            schemas.ReactionUserItem(
+                emoji=r.emoji,
+                created_at=r.created_at,
+                user_handle=r.user.handle,
+                user_avatar_url=r.user.avatar_url,
+                user_public_sqid=r.user.public_sqid,
+            )
+        )
+
+    return schemas.ReactionUsersResponse(items=items, total=len(items))
+
+
 @router.put(
     "/{id}/reactions/{emoji}",
     status_code=status.HTTP_204_NO_CONTENT,

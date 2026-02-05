@@ -543,6 +543,7 @@ class Reaction(Base):
 
     # Relationships
     post = relationship("Post", back_populates="reactions")
+    user = relationship("User", foreign_keys=[user_id], lazy="select")
 
     __table_args__ = (
         # Note: Unique constraints handled by partial indexes in migration

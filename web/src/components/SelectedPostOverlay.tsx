@@ -5,6 +5,7 @@ import { useRouter } from 'next/router';
 import { authenticatedFetch, getAccessToken } from '../lib/api';
 import { PLAYER_BAR_HEIGHT } from './PlayerBarDynamic';
 import SPOCommentsOverlay from './SPOCommentsOverlay';
+import SPOReactionUsersOverlay from './SPOReactionUsersOverlay';
 
 type Rect = { left: number; top: number; width: number; height: number };
 
@@ -496,6 +497,7 @@ export default function SelectedPostOverlay({
   const [headerContentKey, setHeaderContentKey] = useState(0);
   const [metaContentKey, setMetaContentKey] = useState(0);
   const [showCommentsOverlay, setShowCommentsOverlay] = useState(false);
+  const [showReactionUsersOverlay, setShowReactionUsersOverlay] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showFormatSubPanel, setShowFormatSubPanel] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
@@ -1216,13 +1218,13 @@ export default function SelectedPostOverlay({
         if (showMoreMenu) {
           setShowMoreMenu(false);
           closeSubPanelImmediate();
-        } else if (!showCommentsOverlay) {
+        } else if (!showCommentsOverlay && !showReactionUsersOverlay) {
           void dismissToOriginAndClose();
         }
       }
 
       // Arrow key navigation (only when interactive and no overlays open)
-      if (phase === 'selected' && !showMoreMenu && !showCommentsOverlay) {
+      if (phase === 'selected' && !showMoreMenu && !showCommentsOverlay && !showReactionUsersOverlay) {
         if (e.key === 'ArrowRight') {
           e.preventDefault();
           if (selectedIndex < posts.length - 1) {
@@ -1246,6 +1248,7 @@ export default function SelectedPostOverlay({
     closeSubPanelImmediate,
     dismissToOriginAndClose,
     showCommentsOverlay,
+    showReactionUsersOverlay,
     showMoreMenu,
     phase,
     selectedIndex,
@@ -1410,7 +1413,13 @@ export default function SelectedPostOverlay({
                 transition={{ duration: reduceMotion ? 0 : 0.2 }}
                 style={{ display: 'flex', alignItems: 'center', gap: '12px' }}
               >
-                <div style={postReactionCountStyles}>
+                <div
+                  style={{ ...postReactionCountStyles, cursor: 'pointer' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowReactionUsersOverlay(true);
+                  }}
+                >
                   <span style={{ fontSize: '16px', marginRight: '-2px' }}>⚡</span>
                   <span>{totalReactions}</span>
                 </div>
@@ -1876,6 +1885,13 @@ export default function SelectedPostOverlay({
         currentUserId={currentUserId}
         isModerator={isModerator}
         initialComments={widgetData?.comments || []}
+      />
+
+      {/* Reaction Users Overlay */}
+      <SPOReactionUsersOverlay
+        postId={post.id}
+        isOpen={showReactionUsersOverlay}
+        onClose={() => setShowReactionUsersOverlay(false)}
       />
     </div>,
     portalEl
