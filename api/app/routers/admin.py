@@ -623,7 +623,7 @@ def get_sitewide_stats(
     Get comprehensive sitewide statistics (moderator only).
 
     Returns event-level granularity for the past 7 days, then daily aggregates
-    until the past 30 days. Includes hourly breakdown for the last 24 hours.
+    until the past 14 days. Includes hourly breakdown for the last 24 hours.
 
     Statistics are cached in Redis for 5 minutes.
     """
@@ -643,14 +643,14 @@ def get_sitewide_stats(
 
     # Convert to response schema
     return schemas.SitewideStatsResponse(
-        total_page_views_30d=stats.total_page_views_30d,
-        unique_visitors_30d=stats.unique_visitors_30d,
-        new_signups_30d=stats.new_signups_30d,
-        new_posts_30d=stats.new_posts_30d,
-        total_api_calls_30d=stats.total_api_calls_30d,
-        total_errors_30d=stats.total_errors_30d,
-        total_page_views_30d_authenticated=stats.total_page_views_30d_authenticated,
-        unique_visitors_30d_authenticated=stats.unique_visitors_30d_authenticated,
+        total_page_views_14d=stats.total_page_views_14d,
+        unique_visitors_14d=stats.unique_visitors_14d,
+        new_signups_14d=stats.new_signups_14d,
+        new_posts_14d=stats.new_posts_14d,
+        total_api_calls_14d=stats.total_api_calls_14d,
+        total_errors_14d=stats.total_errors_14d,
+        total_page_views_14d_authenticated=stats.total_page_views_14d_authenticated,
+        unique_visitors_14d_authenticated=stats.unique_visitors_14d_authenticated,
         daily_views=[
             schemas.DailyCount(date=dv.date, count=dv.count) for dv in stats.daily_views
         ],
@@ -682,8 +682,8 @@ def get_sitewide_stats(
         views_by_device_authenticated=stats.views_by_device_authenticated,
         top_referrers_authenticated=stats.top_referrers_authenticated,
         errors_by_type=stats.errors_by_type,
-        total_player_artwork_views_30d=stats.total_player_artwork_views_30d,
-        active_players_30d=stats.active_players_30d,
+        total_player_artwork_views_14d=stats.total_player_artwork_views_14d,
+        active_players_14d=stats.active_players_14d,
         daily_player_views=[
             schemas.DailyCount(date=dv.date, count=dv.count)
             for dv in stats.daily_player_views
