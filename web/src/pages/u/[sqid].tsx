@@ -106,6 +106,7 @@ export default function UserProfilePage() {
   const [deletionError, setDeletionError] = useState<string | null>(null);
 
   const observerTarget = useRef<HTMLDivElement>(null);
+  const fetchVersionRef = useRef(0);
   const loadingRef = useRef(false);
   const reactedLoadingRef = useRef(false);
   const hasMoreRef = useRef(true);
@@ -197,6 +198,9 @@ export default function UserProfilePage() {
 
   // Reset state when sqid changes (navigating to different user)
   useEffect(() => {
+    fetchVersionRef.current += 1;
+    loadingRef.current = false;
+    reactedLoadingRef.current = false;
     setProfile(null);
     setPosts([]);
     setNextCursor(null);
@@ -237,6 +241,7 @@ export default function UserProfilePage() {
     if (!profile) return;
     if (loadingRef.current || (cursor !== null && !hasMoreRef.current)) return;
 
+    const version = fetchVersionRef.current;
     loadingRef.current = true;
     setPostsLoading(true);
 
@@ -252,6 +257,8 @@ export default function UserProfilePage() {
       const queryString = buildApiQuery(baseParams);
       const url = `${API_BASE_URL}/api/post?${queryString}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       const response = await authenticatedFetch(url);
+
+      if (fetchVersionRef.current !== version) return;
 
       if (!response.ok) {
         throw new Error('Failed to load posts');
@@ -273,8 +280,10 @@ export default function UserProfilePage() {
     } catch (err) {
       console.error('Error loading posts:', err);
     } finally {
-      loadingRef.current = false;
-      setPostsLoading(false);
+      if (fetchVersionRef.current === version) {
+        loadingRef.current = false;
+        setPostsLoading(false);
+      }
     }
   }, [profile, API_BASE_URL, buildApiQuery, filters.sortBy]);
 
@@ -283,12 +292,15 @@ export default function UserProfilePage() {
     if (!profile) return;
     if (reactedLoadingRef.current || (cursor !== null && !hasMoreReactedRef.current)) return;
 
+    const version = fetchVersionRef.current;
     reactedLoadingRef.current = true;
     setPostsLoading(true);
 
     try {
       const url = `${API_BASE_URL}/api/user/u/${profile.public_sqid}/reacted-posts?limit=${pageSizeRef.current}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       const response = await authenticatedFetch(url);
+
+      if (fetchVersionRef.current !== version) return;
 
       if (!response.ok) {
         throw new Error('Failed to load reacted posts');
@@ -310,8 +322,10 @@ export default function UserProfilePage() {
     } catch (err) {
       console.error('Error loading reacted posts:', err);
     } finally {
-      reactedLoadingRef.current = false;
-      setPostsLoading(false);
+      if (fetchVersionRef.current === version) {
+        reactedLoadingRef.current = false;
+        setPostsLoading(false);
+      }
     }
   }, [profile, API_BASE_URL]);
 
