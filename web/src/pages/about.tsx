@@ -583,22 +583,22 @@ function RulesTab() {
             <tr>
               <td>&lt; 100</td>
               <td>Entry</td>
-              <td>50 MB</td>
+              <td>100 MB</td>
             </tr>
             <tr>
               <td>100 – 499</td>
               <td>Established</td>
-              <td>100 MB</td>
+              <td>200 MB</td>
             </tr>
             <tr>
               <td>500 – 999</td>
               <td>Senior</td>
-              <td>250 MB</td>
+              <td>500 MB</td>
             </tr>
             <tr>
               <td>1000+</td>
               <td>Veteran</td>
-              <td>500 MB</td>
+              <td>1000 MB</td>
             </tr>
           </tbody>
         </table>
