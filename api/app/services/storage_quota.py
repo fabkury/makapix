@@ -8,10 +8,10 @@ from sqlalchemy.orm import Session
 from .. import models
 
 # Storage quota tiers (in bytes)
-QUOTA_TIER_NEW = 50 * 1024 * 1024  # 50MB for reputation < 100
-QUOTA_TIER_ESTABLISHED = 100 * 1024 * 1024  # 100MB for reputation 100-499
-QUOTA_TIER_TRUSTED = 250 * 1024 * 1024  # 250MB for reputation 500-999
-QUOTA_TIER_VETERAN = 500 * 1024 * 1024  # 500MB for reputation 1000+
+QUOTA_TIER_NEW = 100 * 1024 * 1024  # 100MB for reputation < 100
+QUOTA_TIER_ESTABLISHED = 200 * 1024 * 1024  # 200MB for reputation 100-499
+QUOTA_TIER_TRUSTED = 500 * 1024 * 1024  # 500MB for reputation 500-999
+QUOTA_TIER_VETERAN = 1000 * 1024 * 1024  # 1000MB for reputation 1000+
 
 
 def get_user_storage_quota(user: models.User) -> int:
@@ -19,10 +19,10 @@ def get_user_storage_quota(user: models.User) -> int:
     Get storage quota in bytes based on user reputation.
 
     Tiers:
-    - Reputation < 100: 50MB
-    - Reputation 100-499: 100MB
-    - Reputation 500-999: 250MB
-    - Reputation 1000+: 500MB
+    - Reputation < 100: 100MB
+    - Reputation 100-499: 200MB
+    - Reputation 500-999: 500MB
+    - Reputation 1000+: 1000MB
 
     Args:
         user: The user to get quota for
