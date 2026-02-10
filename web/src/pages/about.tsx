@@ -135,6 +135,13 @@ function AboutTab() {
         the physical world.
       </p>
 
+      <p>
+        Join the conversation on our{' '}
+        <a href="https://discord.gg/xk9umcujXV" target="_blank" rel="noopener noreferrer">
+          Discord server
+        </a>.
+      </p>
+
       <h2>Who is MPX for?</h2>
       
       <p>
