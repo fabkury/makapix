@@ -1418,10 +1418,13 @@ def rollup_view_events(self) -> dict[str, Any]:
             if rolled_up % 1000 == 0:
                 db.commit()
 
-        # Delete old events
+        # Delete old events (preserve player events for rollup_site_events)
         deleted_count = (
             db.query(models.ViewEvent)
-            .filter(models.ViewEvent.created_at < cutoff_date)
+            .filter(
+                models.ViewEvent.created_at < cutoff_date,
+                models.ViewEvent.device_type != "player",
+            )
             .delete(synchronize_session=False)
         )
 
@@ -2113,7 +2116,10 @@ def cleanup_old_view_events(self) -> dict[str, Any]:
 
         deleted_count = (
             db.query(models.ViewEvent)
-            .filter(models.ViewEvent.created_at < cutoff_date)
+            .filter(
+                models.ViewEvent.created_at < cutoff_date,
+                models.ViewEvent.device_type != "player",
+            )
             .delete(synchronize_session=False)
         )
 
