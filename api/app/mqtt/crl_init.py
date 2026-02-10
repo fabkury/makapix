@@ -86,9 +86,14 @@ def initialize_empty_crl(
         return False
 
 
-def ensure_crl_exists() -> bool:
+def ensure_crl_exists(renewal_threshold_days: int = 7) -> bool:
     """
-    Ensure CRL file exists, creating it if necessary.
+    Ensure CRL file exists and is not expired or near expiry.
+
+    If the CRL file does not exist, creates a new empty one. If it exists but
+    is expired or within ``renewal_threshold_days`` of expiry, renews it.
+    This runs at API startup so that every deploy produces a fresh CRL
+    (the broker restart in the same deploy will pick it up).
 
     Uses environment variables for configuration:
     - MQTT_CA_FILE: Path to CA certificate (default: /certs/ca.crt)
@@ -96,13 +101,40 @@ def ensure_crl_exists() -> bool:
     - MQTT_CRL_FILE: Path to CRL (default: /certs/crl.pem)
 
     Returns:
-        True if CRL exists or was created successfully, False otherwise
+        True if CRL exists and is valid (or was successfully created/renewed),
+        False otherwise.
     """
     ca_cert_path = os.getenv("MQTT_CA_FILE", "/certs/ca.crt")
     ca_key_path = os.getenv("MQTT_CA_KEY_FILE", "/certs/ca.key")
     crl_path = os.getenv("MQTT_CRL_FILE", "/certs/crl.pem")
 
-    return initialize_empty_crl(ca_cert_path, ca_key_path, crl_path)
+    crl_path_obj = Path(crl_path)
+
+    if not crl_path_obj.exists():
+        return initialize_empty_crl(ca_cert_path, ca_key_path, crl_path)
+
+    # CRL file exists — check if it needs renewal
+    expiration = get_crl_expiration(crl_path)
+    if expiration is None:
+        logger.warning("CRL exists but is unreadable, renewing")
+        result = renew_crl(ca_cert_path, ca_key_path, crl_path)
+        return result is not None
+
+    now = datetime.now(timezone.utc)
+    days_until_expiry = (expiration - now).total_seconds() / 86400
+
+    if days_until_expiry <= renewal_threshold_days:
+        logger.info(
+            f"CRL expires in {days_until_expiry:.1f} days "
+            f"(<= {renewal_threshold_days}), renewing at startup"
+        )
+        result = renew_crl(ca_cert_path, ca_key_path, crl_path)
+        return result is not None
+
+    logger.info(
+        f"CRL is valid for {days_until_expiry:.0f} more days, no renewal needed"
+    )
+    return True
 
 
 def get_crl_expiration(crl_path: str | None = None) -> datetime | None:

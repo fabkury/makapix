@@ -1,6 +1,7 @@
 servoom/
 credentials.py
 backups/
+db_backup/
 apps/piskel/
 certs/
 mqtt/certs/
