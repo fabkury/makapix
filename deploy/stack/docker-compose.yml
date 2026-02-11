@@ -113,7 +113,7 @@ services:
     volumes:
       - ../../api:/workspace/api
       - api_pip_cache:/root/.cache/pip
-      - ../../mqtt/certs:/certs:ro
+      - ../../mqtt/certs:/certs
       - ../../mqtt/config:/mqtt-config
       - ${VAULT_HOST_PATH}:${VAULT_LOCATION}
     depends_on:
@@ -151,13 +151,15 @@ services:
       CELERY_BROKER_URL: redis://cache:6379/0
       CELERY_RESULT_BACKEND: redis://cache:6379/0
       MQTT_CA_FILE: /certs/ca.crt
+      MQTT_CA_KEY_FILE: /certs/ca.key
+      MQTT_CRL_FILE: /certs/crl.pem
       VAULT_LOCATION: ${VAULT_LOCATION}
     command: python /workspace/worker/worker.py
     volumes:
       - ../../api:/workspace/api
       - ../../worker:/workspace/worker
       - api_pip_cache:/root/.cache/pip
-      - ../../mqtt/certs:/certs:ro
+      - ../../mqtt/certs:/certs
       - ${VAULT_HOST_PATH}:${VAULT_LOCATION}
     depends_on:
       cache:
