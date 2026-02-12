@@ -211,7 +211,6 @@ const artworkImageStyles: React.CSSProperties = {
   objectPosition: 'center',
   userSelect: 'none',
   WebkitUserSelect: 'none',
-  pointerEvents: 'none',
   imageRendering: 'pixelated',
 };
 
@@ -1776,12 +1775,19 @@ export default function SelectedPostOverlay({
         }}
       >
         <div style={artworkClipStyles}>
-          <img
-            src={post.art_url}
-            alt={post.title}
+          <a
+            href={`/p/${post.public_sqid}`}
             draggable={false}
-            style={artworkImageStyles}
-          />
+            onClick={(e) => e.preventDefault()}
+            style={{ display: 'block', width: '100%', height: '100%' }}
+          >
+            <img
+              src={post.art_url}
+              alt={post.title}
+              draggable={false}
+              style={artworkImageStyles}
+            />
+          </a>
 
           {likeBurstKey > 0 && (
             <motion.div
