@@ -88,7 +88,8 @@ export default function NotificationsPage() {
   // Check if notification is a system notification (no artwork)
   const isSystemNotification = (notification: SocialNotificationFull): boolean => {
     return notification.notification_type === "moderator_granted" ||
-           notification.notification_type === "moderator_revoked";
+           notification.notification_type === "moderator_revoked" ||
+           notification.notification_type === "follow";
   };
 
   // Render notification message
@@ -106,6 +107,8 @@ export default function NotificationsPage() {
       return `${actor} granted you moderator status`;
     } else if (notification.notification_type === "moderator_revoked") {
       return `${actor} revoked your moderator status`;
+    } else if (notification.notification_type === "follow") {
+      return `${actor} started following you`;
     }
     return `${actor} interacted with "${title}"`;
   };
@@ -138,8 +141,8 @@ export default function NotificationsPage() {
             </div>
             <p>No notifications yet</p>
             <span className="empty-hint">
-              When someone reacts to or comments on your artwork, or when you
-              receive system notifications, you&apos;ll see them here.
+              When someone reacts to or comments on your artwork, follows you,
+              or when you receive system notifications, you&apos;ll see them here.
             </span>
           </div>
         ) : (
@@ -213,7 +216,7 @@ export default function NotificationsPage() {
                         alt=""
                         width={64}
                         height={64}
-                        className="notification-artwork"
+                        className="notification-artwork pixel-art"
                         aria-hidden="true"
                       />
                     )}
@@ -355,6 +358,7 @@ export default function NotificationsPage() {
           height: 32px;
           border-radius: 50%;
           object-fit: cover;
+          image-rendering: pixelated;
         }
 
         .system-notification {

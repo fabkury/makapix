@@ -1198,6 +1198,16 @@ def follow_user(
     db.add(follow)
     db.commit()
 
+    # Notify the followed user
+    from ..services.social_notifications import SocialNotificationService
+
+    SocialNotificationService.create_system_notification(
+        db=db,
+        user_id=target_user.id,
+        notification_type="follow",
+        actor=current_user,
+    )
+
     # Invalidate stats cache for target user
     invalidate_user_profile_stats_cache(db, target_user.id)
 
