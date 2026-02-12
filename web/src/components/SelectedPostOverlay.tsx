@@ -1876,9 +1876,12 @@ export default function SelectedPostOverlay({
             </div>
 
             {/* Description Area */}
-            {post.description && (
-              <div style={descriptionAreaStyles}>{post.description}</div>
-            )}
+            <div style={{
+              ...descriptionAreaStyles,
+              ...(!post.description ? { minHeight: Math.ceil(13 * 1.5 / 2), padding: 0 } : {}),
+            }}>
+              {post.description || null}
+            </div>
           </motion.div>
         </AnimatePresence>
       </motion.div>
