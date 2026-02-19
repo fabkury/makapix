@@ -133,5 +133,5 @@ class PlaysetService:
             name=PlaysetService.FOLLOWED_ARTISTS,
             channels=channels,
             exposure_mode="equal",
-            pick_mode="recency",
+            pick_mode="random",
         )
