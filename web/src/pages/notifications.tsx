@@ -89,7 +89,8 @@ export default function NotificationsPage() {
   const isSystemNotification = (notification: SocialNotificationFull): boolean => {
     return notification.notification_type === "moderator_granted" ||
            notification.notification_type === "moderator_revoked" ||
-           notification.notification_type === "follow";
+           notification.notification_type === "follow" ||
+           notification.notification_type === "reputation_change";
   };
 
   // Render notification message
@@ -109,6 +110,8 @@ export default function NotificationsPage() {
       return `${actor} revoked your moderator status`;
     } else if (notification.notification_type === "follow") {
       return `${actor} started following you`;
+    } else if (notification.notification_type === "reputation_change") {
+      return `${actor} adjusted your reputation (${notification.content_title || ""})`;
     }
     return `${actor} interacted with "${title}"`;
   };
