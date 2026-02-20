@@ -127,6 +127,8 @@ class SocialNotificationService:
         user_id: int,
         notification_type: str,
         actor: models.User,
+        *,
+        content_title: str | None = None,
     ) -> models.SocialNotification | None:
         """
         Create a system notification (no artwork reference).
@@ -155,7 +157,7 @@ class SocialNotificationService:
             actor_id=actor.id,
             actor_handle=actor.handle,
             actor_avatar_url=actor.avatar_url,
-            # No emoji, comment, or content fields for system notifications
+            content_title=content_title,
         )
 
         db.add(notification)

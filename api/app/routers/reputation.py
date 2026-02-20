@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..auth import require_moderator
 from ..deps import get_db
+from ..services.social_notifications import SocialNotificationService
 from ..utils.audit import log_moderation_action
 
 router = APIRouter(prefix="/user", tags=["Reputation"])
@@ -50,6 +51,15 @@ def adjust_reputation(
     # Update user total
     user.reputation += payload.delta
     db.commit()
+
+    # Notify user of reputation change
+    SocialNotificationService.create_system_notification(
+        db=db,
+        user_id=user.id,
+        notification_type="reputation_change",
+        actor=moderator,
+        content_title=f"{payload.delta:+d} reputation",
+    )
 
     # Log to audit
     log_moderation_action(
