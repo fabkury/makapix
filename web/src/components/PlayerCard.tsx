@@ -165,7 +165,6 @@ export default function PlayerCard({ player, sqid, onDelete, onRefresh }: Player
             <span className={`status-indicator ${isOnline ? 'online' : 'offline'}`}>
               {isOnline ? '●' : '○'} {player.connection_status}
             </span>
-            <span className="player-key">{player.player_key}</span>
             {player.device_model && (
               <span className="device-model">{player.device_model}</span>
             )}
@@ -173,6 +172,7 @@ export default function PlayerCard({ player, sqid, onDelete, onRefresh }: Player
               <span className="firmware-version">v{player.firmware_version}</span>
             )}
           </div>
+          <div className="player-key">{player.player_key}</div>
         </div>
         <div className="player-actions">
           <button
