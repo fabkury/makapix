@@ -165,6 +165,7 @@ export default function PlayerCard({ player, sqid, onDelete, onRefresh }: Player
             <span className={`status-indicator ${isOnline ? 'online' : 'offline'}`}>
               {isOnline ? '●' : '○'} {player.connection_status}
             </span>
+            <span className="player-key">{player.player_key}</span>
             {player.device_model && (
               <span className="device-model">{player.device_model}</span>
             )}
@@ -357,6 +358,12 @@ export default function PlayerCard({ player, sqid, onDelete, onRefresh }: Player
         }
 
         .status-indicator.offline {
+          color: var(--text-muted);
+        }
+
+        .player-key {
+          font-family: monospace;
+          font-size: 0.8rem;
           color: var(--text-muted);
         }
 
