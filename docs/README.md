@@ -9,6 +9,7 @@ Welcome to the Makapix Club documentation. This guide covers everything from bui
 - **Build a pixel art display** - Start with the [Player Device Guide](player/README.md)
 - **Understand the system** - Read the [Architecture Overview](architecture.md)
 - **Develop locally** - Follow the [Development Guide](development.md)
+- **Deploy to production** - See the [Deployment Guide](deployment.md)
 - **Call the REST API** - See the [HTTP API Reference](http-api/README.md)
 - **Use real-time messaging** - Check the [MQTT API Reference](mqtt-api/README.md)
 
@@ -20,6 +21,7 @@ Welcome to the Makapix Club documentation. This guide covers everything from bui
 |----------|-------------|
 | [Architecture](architecture.md) | System overview, services, and data flows |
 | [Development](development.md) | Local setup, make commands, testing |
+| [Deployment](deployment.md) | Production deployment, backups, monitoring |
 
 ### Player Device Guide
 
@@ -48,6 +50,8 @@ REST endpoints for web and mobile clients.
 | [Reactions](http-api/reactions.md) | Emoji reactions and comments |
 | [Playlists](http-api/playlists.md) | Curated artwork collections |
 | [Player](http-api/player.md) | Device management and commands |
+| [Admin](http-api/admin.md) | Moderation, bans, audit log |
+| [Artist Dashboard](http-api/dashboard.md) | Artist analytics and statistics |
 
 ### MQTT API Reference
 
@@ -66,6 +70,14 @@ Real-time messaging for devices and notifications.
 |----------|-------------|
 | [AMP Protocol](reference/amp-protocol.md) | Artwork Metadata Protocol for filtering |
 | [Error Codes](reference/error-codes.md) | API and MQTT error code reference |
+| [Scheduled Tasks](reference/scheduled-tasks.md) | Background tasks and data retention policies |
+
+### Security
+
+| Document | Description |
+|----------|-------------|
+| [Overview](security/README.md) | Security status and document index |
+| [Operations](security/operations.md) | Secret management, rotation, hardening, maintenance |
 
 ## Conventions
 

@@ -317,4 +317,4 @@ Current architecture is optimized for single-server deployment. Scaling consider
 - Redis-backed rate limiting state
 - Per-endpoint configurable limits
 
-See [Security Quick Reference](security/QUICK_REFERENCE.md) for details.
+See [Security Operations](security/operations.md) for details.
