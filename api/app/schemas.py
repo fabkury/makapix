@@ -154,6 +154,15 @@ class UserPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class UserVerifyResponse(BaseModel):
+    """Minimal public user info returned by the SQID verification endpoint."""
+
+    handle: str
+    reputation: int
+    artwork_count: int
+    avatar_url: str | None = None
+
+
 class UserFull(UserPublic):
     """Full user profile (for authenticated user or admin)."""
 

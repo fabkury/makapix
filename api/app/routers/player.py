@@ -372,6 +372,104 @@ def get_player_credentials(
     )
 
 
+@router.get("/player/verify-user/{sqid}", response_model=schemas.UserVerifyResponse)
+def verify_user(
+    sqid: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> schemas.UserVerifyResponse:
+    """
+    Verify a user SQID and return minimal public info.
+
+    Public endpoint for player devices to validate user SQIDs
+    received in playsets.
+    """
+    from datetime import datetime, timezone
+
+    from sqlalchemy import func
+
+    from ..cache import cache_get, cache_set
+
+    not_found = HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="User not found",
+    )
+
+    # Rate limiting: 30 requests per minute per IP
+    client_ip = get_client_ip(request)
+    rate_limit_key = f"ratelimit:player_verify:{client_ip}"
+    allowed, _ = check_rate_limit(rate_limit_key, limit=30, window_seconds=60)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Please try again later.",
+        )
+
+    # Validate SQID length
+    if len(sqid) > 16:
+        raise not_found
+
+    # Check cache
+    cache_key = f"user_verify:{sqid}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return schemas.UserVerifyResponse(**cached)
+
+    # Decode SQID
+    user_id = decode_user_sqid(sqid)
+    if user_id is None or user_id > 2_147_483_647:
+        raise not_found
+
+    # Look up user
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise not_found
+
+    # Guard against decode collisions
+    if user.public_sqid != sqid:
+        raise not_found
+
+    # Eligibility checks
+    if not user.email_verified:
+        raise not_found
+    if user.deactivated:
+        raise not_found
+    if user.hidden_by_mod:
+        raise not_found
+
+    # Check temporal ban
+    now = datetime.now(timezone.utc)
+    if user.banned_until is not None and user.banned_until > now:
+        raise not_found
+
+    # Count visible artworks
+    artwork_count = (
+        db.query(func.count(models.Post.id))
+        .filter(
+            models.Post.owner_id == user.id,
+            models.Post.kind == "artwork",
+            models.Post.deleted_by_user == False,
+            models.Post.hidden_by_user == False,
+            models.Post.hidden_by_mod == False,
+            models.Post.non_conformant == False,
+        )
+        .scalar()
+        or 0
+    )
+
+    response = schemas.UserVerifyResponse(
+        handle=user.handle,
+        reputation=user.reputation,
+        artwork_count=artwork_count,
+        avatar_url=user.avatar_url,
+    )
+
+    # Cache successful response for 60 seconds
+    cache_set(cache_key, response.model_dump(), ttl=60)
+
+    return response
+
+
 @router.get("/u/{sqid}/player", response_model=dict[str, list[schemas.PlayerPublic]])
 def list_players(
     sqid: str,
