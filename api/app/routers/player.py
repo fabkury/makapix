@@ -9,6 +9,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
@@ -413,7 +414,9 @@ def verify_user(
     cache_key = f"user_verify:{sqid}"
     cached = cache_get(cache_key)
     if cached is not None:
-        return schemas.UserVerifyResponse(**cached)
+        return JSONResponse(
+            content=cached, headers={"Access-Control-Allow-Origin": "*"}
+        )
 
     # Decode SQID
     user_id = decode_user_sqid(sqid)
@@ -467,7 +470,9 @@ def verify_user(
     # Cache successful response for 60 seconds
     cache_set(cache_key, response.model_dump(), ttl=60)
 
-    return response
+    return JSONResponse(
+        content=response.model_dump(), headers={"Access-Control-Allow-Origin": "*"}
+    )
 
 
 @router.get("/u/{sqid}/player", response_model=dict[str, list[schemas.PlayerPublic]])
