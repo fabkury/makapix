@@ -549,7 +549,9 @@ Display a specific artwork.
 {
   "post_id": 123,
   "storage_key": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-  "art_url": "https://makapix.club/api/vault/7c/9e/66/7c9e6679.png"
+  "native_format": "png",
+  "width": 64,
+  "height": 64
 }
 ```
 
@@ -557,7 +559,9 @@ Display a specific artwork.
 |-------|------|-------------|
 | `post_id` | int | Post ID |
 | `storage_key` | string (UUID) | Storage identifier for vault path |
-| `art_url` | string | Full URL to artwork file |
+| `native_format` | string | Original file format (`png`, `gif`, `webp`, `bmp`) |
+| `width` | int | Canvas width in pixels |
+| `height` | int | Canvas height in pixels |
 
 #### play_channel
 
