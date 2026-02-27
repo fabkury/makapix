@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Player } from '../lib/api';
 
 interface SelectPlayerOverlayProps {
@@ -10,6 +12,7 @@ interface SelectPlayerOverlayProps {
 /**
  * SelectPlayerOverlay - A simple overlay for selecting which player to send commands to.
  * Shows when user has multiple online players.
+ * Rendered via portal to appear above SelectedPostOverlay and other portal-based overlays.
  */
 export default function SelectPlayerOverlay({
   isOpen,
@@ -17,10 +20,40 @@ export default function SelectPlayerOverlay({
   onlinePlayers,
   onSelectPlayer,
 }: SelectPlayerOverlayProps) {
-  if (!isOpen) return null;
+  const [portalEl, setPortalEl] = useState<HTMLElement | null>(null);
 
-  return (
-    <div className="overlay-backdrop" onClick={onClose}>
+  // Create portal root
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const el = document.createElement('div');
+    el.setAttribute('data-select-player-overlay', 'true');
+    document.body.appendChild(el);
+    setPortalEl(el);
+
+    return () => {
+      el.remove();
+    };
+  }, []);
+
+  if (!isOpen || !portalEl) return null;
+
+  return createPortal(
+    <div
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0, 0, 0, 0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 50000,
+        padding: '20px',
+      }}
+      onClick={onClose}
+    >
       <div className="overlay-content" onClick={(e) => e.stopPropagation()}>
         <div className="overlay-header">
           <h3>Select Player</h3>
@@ -50,20 +83,6 @@ export default function SelectPlayerOverlay({
       </div>
 
       <style jsx>{`
-        .overlay-backdrop {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0.5);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 50000;
-          padding: 20px;
-        }
-
         .overlay-content {
           background: var(--bg-primary, #1a1a1a);
           border: 2px solid var(--text-primary, #ffffff);
@@ -150,9 +169,7 @@ export default function SelectPlayerOverlay({
           font-size: 0.85rem;
         }
       `}</style>
-    </div>
+    </div>,
+    portalEl
   );
 }
-
-
-
