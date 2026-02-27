@@ -779,10 +779,13 @@ def send_player_command(
                 detail="Post is not visible",
             )
 
+        native_pf = next((f for f in post.files if f.is_native), None)
         command_payload = {
             "post_id": post.id,
             "storage_key": str(post.storage_key),
-            "art_url": post.art_url,
+            "native_format": native_pf.format if native_pf else "png",
+            "width": post.width,
+            "height": post.height,
         }
 
     elif payload.command_type == "play_channel":
@@ -913,10 +916,13 @@ def send_command_to_all_players(
                 detail="Post is not visible",
             )
 
+        native_pf = next((f for f in post.files if f.is_native), None)
         command_payload = {
             "post_id": post.id,
             "storage_key": str(post.storage_key),
-            "art_url": post.art_url,
+            "native_format": native_pf.format if native_pf else "png",
+            "width": post.width,
+            "height": post.height,
         }
 
     elif payload.command_type == "play_channel":

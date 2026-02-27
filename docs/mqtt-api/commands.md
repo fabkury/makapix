@@ -97,7 +97,9 @@ Display a specific artwork immediately.
   "payload": {
     "post_id": 12345,
     "storage_key": "abc123-def456-789",
-    "art_url": "https://makapix.club/api/vault/a1/b2/c3/abc123-def456-789.png"
+    "native_format": "png",
+    "width": 64,
+    "height": 64
   },
   "timestamp": "2024-01-15T10:30:00Z"
 }
@@ -107,19 +109,21 @@ Display a specific artwork immediately.
 |-------|------|-------------|
 | `post_id` | integer | Post identifier |
 | `storage_key` | string | Vault storage key |
-| `art_url` | string | Full URL to artwork |
+| `native_format` | string | Original file format (`png`, `gif`, `webp`, `bmp`) |
+| `width` | integer | Canvas width in pixels |
+| `height` | integer | Canvas height in pixels |
 
 ### Device Action
 
-1. Fetch artwork from `art_url`
-2. Display immediately
+1. Build the vault URL from `storage_key` and `native_format`
+2. Fetch and display the artwork immediately
 3. Report view event with `intent: "artwork"`
 4. Update status with `current_post_id`
 
 ### Notes
 
 - The server validates the post exists and is visible before sending
-- The device should fetch the image from the provided URL
+- The device builds the artwork URL from `storage_key` and `native_format`
 - Report the view as intentional (`intent: "artwork"`)
 
 ## play_channel
@@ -302,7 +306,8 @@ def handle_command(command):
     elif command_type == "show_artwork":
         show_specific_artwork(
             payload["post_id"],
-            payload["art_url"]
+            payload["storage_key"],
+            payload["native_format"],
         )
     elif command_type == "play_channel":
         switch_channel(payload)
@@ -354,9 +359,12 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
             displayCurrentArtwork();
         }
         else if (commandType == "show_artwork") {
-            String artUrl = commandPayload["art_url"];
             int postId = commandPayload["post_id"];
-            fetchAndDisplay(artUrl, postId);
+            String storageKey = commandPayload["storage_key"];
+            String nativeFormat = commandPayload["native_format"];
+            int width = commandPayload["width"];
+            int height = commandPayload["height"];
+            fetchAndDisplay(storageKey, nativeFormat, postId);
         }
         else if (commandType == "play_channel") {
             String channelName = commandPayload["channel_name"];
