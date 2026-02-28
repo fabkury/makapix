@@ -49,6 +49,7 @@ class SocialNotificationService:
         actor: models.User | None = None,
         emoji: str | None = None,
         comment: models.Comment | None = None,
+        extra_preview: str | None = None,
     ) -> models.SocialNotification | None:
         """
         Create a social notification and broadcast via MQTT.
@@ -56,11 +57,13 @@ class SocialNotificationService:
         Args:
             db: Database session
             user_id: ID of user to notify (post owner)
-            notification_type: 'reaction' or 'comment'
+            notification_type: 'reaction', 'comment', 'post_promoted', etc.
             post: The post that received the reaction/comment
             actor: The user who performed the action (None for anonymous)
             emoji: The emoji for reaction notifications
             comment: The comment object for comment notifications
+            extra_preview: Free-text stored in comment_preview when no
+                           comment is provided (e.g. promotion category name)
 
         Returns:
             Created notification, or None if skipped (self-action or rate limited)
@@ -88,6 +91,8 @@ class SocialNotificationService:
                 comment_preview = comment.body[:100]
                 if len(comment.body) > 100:
                     comment_preview += "..."
+        elif extra_preview:
+            comment_preview = extra_preview
 
         # Create notification record
         notification = models.SocialNotification(

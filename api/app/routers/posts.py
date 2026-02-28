@@ -53,6 +53,7 @@ from ..utils.site_tracking import record_site_event
 from ..services.post_stats import annotate_posts_with_counts, get_user_liked_post_ids
 from ..services.storage_quota import check_storage_quota, format_quota_error
 from ..services.rate_limit import check_rate_limit
+from ..services.social_notifications import SocialNotificationService
 from ..vault import (
     ALLOWED_MIME_TYPES,
     MAX_FILE_SIZE_BYTES,
@@ -1289,6 +1290,22 @@ def promote_post(
         target_id=id,
         reason_code=payload.reason_code,
         note=payload.note,
+    )
+
+    # Notify the artwork owner about the promotion
+    _CATEGORY_DISPLAY = {
+        "frontpage": "Recommended",
+        "editor-pick": "Editor's Pick",
+        "weekly-pack": "Weekly Pack",
+        "daily's-best": "Daily's Best",
+    }
+    SocialNotificationService.create_notification(
+        db=db,
+        user_id=post.owner_id,
+        notification_type="post_promoted",
+        post=post,
+        actor=_moderator,
+        extra_preview=_CATEGORY_DISPLAY.get(payload.category, payload.category),
     )
 
     # Publish MQTT notification if promoted to "daily's-best"
