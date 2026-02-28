@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
 import CommentsAndReactions from '../../components/CommentsAndReactions';
 import StatsPanel from '../../components/StatsPanel';
+import PlayerBar from '../../components/PlayerBarDynamic';
 import { authenticatedFetch, authenticatedRequestJson, authenticatedPostJson, clearTokens } from '../../lib/api';
 import { 
   getNavigationContext, 
@@ -15,6 +16,7 @@ import {
   NavigationContextPost 
 } from '../../lib/navigation-context';
 import { useSwipeNavigation } from '../../hooks/useSwipeNavigation';
+import { usePlayerBarOptional } from '../../contexts/PlayerBarContext';
 
 interface License {
   id: number;
@@ -83,9 +85,29 @@ export default function PostPage() {
   const [isMobile, setIsMobile] = useState(false);
   const extendingRef = useRef(false);
   
+  const playerBarContext = usePlayerBarOptional();
+
   const API_BASE_URL = typeof window !== 'undefined' 
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
     : '';
+
+  // Set selected artwork in PlayerBar when post loads
+  useEffect(() => {
+    if (post && playerBarContext) {
+      playerBarContext.setSelectedArtwork({
+        id: post.id,
+        public_sqid: post.public_sqid,
+        title: post.title,
+        art_url: post.art_url,
+      });
+    }
+    return () => {
+      if (playerBarContext) {
+        playerBarContext.setSelectedArtwork(null);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [post?.id]);
 
   useEffect(() => {
     if (!sqid || typeof sqid !== 'string') return;
@@ -1537,6 +1559,7 @@ export default function PostPage() {
           }
         }
       `}</style>
+      <PlayerBar />
     </Layout>
   );
 }
