@@ -112,6 +112,9 @@ export default function NotificationsPage() {
       return `${actor} started following you`;
     } else if (notification.notification_type === "reputation_change") {
       return `${actor} adjusted your reputation (${notification.content_title || ""})`;
+    } else if (notification.notification_type === "post_promoted") {
+      const category = notification.comment_preview || "Recommended";
+      return `${actor} promoted "${title}" to ${category}`;
     }
     return `${actor} interacted with "${title}"`;
   };
@@ -172,6 +175,15 @@ export default function NotificationsPage() {
                           fill="currentColor"
                         >
                           <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z" />
+                        </svg>
+                      ) : notification.notification_type === "post_promoted" ? (
+                        <svg
+                          width="20"
+                          height="20"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                        >
+                          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
                         </svg>
                       ) : notification.notification_type === "reaction" ? (
                         <span className="emoji">{notification.emoji || "..."}</span>
