@@ -6,10 +6,9 @@ import { authenticatedFetch, getAccessToken } from '../lib/api';
 import { PLAYER_BAR_HEIGHT } from './PlayerBarDynamic';
 import SPOCommentsOverlay from './SPOCommentsOverlay';
 import SPOReactionUsersOverlay from './SPOReactionUsersOverlay';
+import { EMOJI_OPTIONS } from './CommentsAndReactions';
 
 type Rect = { left: number; top: number; width: number; height: number };
-
-const EMOJI_OPTIONS = ['👍', '❤️', '🔥', '😊', '⭐'];
 
 export interface SelectedPostOverlayPost {
   id: number;
