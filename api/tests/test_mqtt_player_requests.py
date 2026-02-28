@@ -85,7 +85,9 @@ def test_posts(test_user: User, db: Session) -> list[Post]:
         )
         db.add(post)
         db.flush()
-        db.add(PostFile(post_id=post.id, format="png", file_bytes=32000, is_native=True))
+        db.add(
+            PostFile(post_id=post.id, format="png", file_bytes=32000, is_native=True)
+        )
         posts.append(post)
     db.commit()
     for post in posts:

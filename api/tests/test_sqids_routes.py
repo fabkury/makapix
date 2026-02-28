@@ -81,7 +81,9 @@ def test_post(test_user: User, db: Session) -> Post:
     db.flush()
     # Generate public_sqid
     post.public_sqid = encode_id(post.id)
-    db.add(PostFile(post_id=post.id, format="png", file_bytes=32 * 1024, is_native=True))
+    db.add(
+        PostFile(post_id=post.id, format="png", file_bytes=32 * 1024, is_native=True)
+    )
     db.commit()
     db.refresh(post)
     return post
@@ -121,7 +123,9 @@ def test_hidden_post(test_user: User, db: Session) -> Post:
     db.add(post)
     db.flush()
     post.public_sqid = encode_id(post.id)
-    db.add(PostFile(post_id=post.id, format="png", file_bytes=32 * 1024, is_native=True))
+    db.add(
+        PostFile(post_id=post.id, format="png", file_bytes=32 * 1024, is_native=True)
+    )
     db.commit()
     db.refresh(post)
     return post

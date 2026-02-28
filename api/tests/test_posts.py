@@ -62,7 +62,9 @@ def test_post(test_user: User, db: Session) -> Post:
 
     from app.models import PostFile
 
-    db.add(PostFile(post_id=post.id, format="png", file_bytes=32 * 1024, is_native=True))
+    db.add(
+        PostFile(post_id=post.id, format="png", file_bytes=32 * 1024, is_native=True)
+    )
     db.commit()
     db.refresh(post)
     return post
@@ -145,7 +147,9 @@ def test_update_post_requires_ownership(test_user: User, db: Session):
 
     from app.models import PostFile
 
-    db.add(PostFile(post_id=post.id, format="png", file_bytes=32 * 1024, is_native=True))
+    db.add(
+        PostFile(post_id=post.id, format="png", file_bytes=32 * 1024, is_native=True)
+    )
     db.commit()
     db.refresh(post)
 
@@ -229,7 +233,9 @@ def test_delete_post_requires_ownership(test_user: User, db: Session):
 
     from app.models import PostFile
 
-    db.add(PostFile(post_id=post.id, format="png", file_bytes=32 * 1024, is_native=True))
+    db.add(
+        PostFile(post_id=post.id, format="png", file_bytes=32 * 1024, is_native=True)
+    )
     db.commit()
     db.refresh(post)
 

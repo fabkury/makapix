@@ -39,7 +39,9 @@ def upgrade() -> None:
 
     # 2. Indexes
     op.create_index("ix_post_files_post_id", "post_files", ["post_id"])
-    op.create_index("ix_post_files_format_bytes", "post_files", ["format", "file_bytes"])
+    op.create_index(
+        "ix_post_files_format_bytes", "post_files", ["format", "file_bytes"]
+    )
 
     # 3. Unique constraint: one format per post
     op.create_unique_constraint(
@@ -47,23 +49,19 @@ def upgrade() -> None:
     )
 
     # 4. Partial unique index: at most one native file per post
-    op.execute(
-        """
+    op.execute("""
         CREATE UNIQUE INDEX uq_post_files_one_native_per_post
         ON post_files (post_id)
         WHERE is_native = TRUE
-        """
-    )
+        """)
 
     # 5. Data migration: copy existing native file metadata into post_files
-    op.execute(
-        """
+    op.execute("""
         INSERT INTO post_files (post_id, format, file_bytes, is_native)
         SELECT id, file_format, file_bytes, TRUE
         FROM posts
         WHERE file_format IS NOT NULL AND file_bytes IS NOT NULL
-        """
-    )
+        """)
 
     # 6. Drop old columns from posts
     op.drop_column("posts", "file_format")
@@ -92,19 +90,16 @@ def downgrade() -> None:
     )
 
     # 2. Copy native file data back to posts
-    op.execute(
-        """
+    op.execute("""
         UPDATE posts
         SET file_format = pf.format,
             file_bytes  = pf.file_bytes
         FROM post_files pf
         WHERE pf.post_id = posts.id AND pf.is_native = TRUE
-        """
-    )
+        """)
 
     # 3. Rebuild formats_available from post_files
-    op.execute(
-        """
+    op.execute("""
         UPDATE posts
         SET formats_available = sub.formats
         FROM (
@@ -113,8 +108,7 @@ def downgrade() -> None:
             GROUP BY post_id
         ) sub
         WHERE sub.post_id = posts.id
-        """
-    )
+        """)
 
     # 4. Drop post_files table (indexes + constraints cascade)
     op.drop_table("post_files")

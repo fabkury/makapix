@@ -264,9 +264,7 @@ def download_by_sqid(
 
     # Get MIME type from native format
     media_type = (
-        FORMAT_TO_MIME.get(native_format, "image/png")
-        if native_format
-        else "image/png"
+        FORMAT_TO_MIME.get(native_format, "image/png") if native_format else "image/png"
     )
 
     return FileResponse(
@@ -381,9 +379,7 @@ def download_by_storage_key(
 
     # Get MIME type from native format
     media_type = (
-        FORMAT_TO_MIME.get(native_format, "image/png")
-        if native_format
-        else "image/png"
+        FORMAT_TO_MIME.get(native_format, "image/png") if native_format else "image/png"
     )
 
     return FileResponse(

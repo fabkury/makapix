@@ -24,9 +24,7 @@ def upgrade() -> None:
     # Player view aggregates (from ViewEvent table)
     op.add_column(
         "site_stats_daily",
-        sa.Column(
-            "total_player_views", sa.Integer, nullable=False, server_default="0"
-        ),
+        sa.Column("total_player_views", sa.Integer, nullable=False, server_default="0"),
     )
     op.add_column(
         "site_stats_daily",

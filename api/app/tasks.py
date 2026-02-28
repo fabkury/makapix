@@ -848,12 +848,14 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
 
             # Create native PostFile row
             if derived_format:
-                db.add(models.PostFile(
-                    post_id=post.id,
-                    format=derived_format,
-                    file_bytes=int(artwork["file_bytes"]),
-                    is_native=True,
-                ))
+                db.add(
+                    models.PostFile(
+                        post_id=post.id,
+                        format=derived_format,
+                        file_bytes=int(artwork["file_bytes"]),
+                        is_native=True,
+                    )
+                )
 
             post_ids.append(str(post.id))
 
@@ -1757,7 +1759,9 @@ def rollup_site_events(self) -> dict[str, Any]:
                             )
 
                         if event.country_code:
-                            agg["authenticated_views_by_country"][event.country_code] = (
+                            agg["authenticated_views_by_country"][
+                                event.country_code
+                            ] = (
                                 agg["authenticated_views_by_country"].get(
                                     event.country_code, 0
                                 )
@@ -1772,7 +1776,9 @@ def rollup_site_events(self) -> dict[str, Any]:
                         )
 
                         if event.referrer_domain:
-                            agg["authenticated_top_referrers"][event.referrer_domain] = (
+                            agg["authenticated_top_referrers"][
+                                event.referrer_domain
+                            ] = (
                                 agg["authenticated_top_referrers"].get(
                                     event.referrer_domain, 0
                                 )
@@ -1847,13 +1853,9 @@ def rollup_site_events(self) -> dict[str, Any]:
 
             player_uuids = [UUID(pid) for pid in all_player_ids]
             players = (
-                db.query(models.Player)
-                .filter(models.Player.id.in_(player_uuids))
-                .all()
+                db.query(models.Player).filter(models.Player.id.in_(player_uuids)).all()
             )
-            player_names = {
-                str(p.id): p.name or str(p.player_key)[:8] for p in players
-            }
+            player_names = {str(p.id): p.name or str(p.player_key)[:8] for p in players}
 
         # Convert player_id-based counts to player_name-based counts
         for event_date, pagg in player_aggregates.items():
@@ -1865,9 +1867,7 @@ def rollup_site_events(self) -> dict[str, Any]:
                 )
             pagg["views_by_player"] = views_by_player
 
-        logger.info(
-            f"Aggregated player views for {len(player_aggregates)} days"
-        )
+        logger.info(f"Aggregated player views for {len(player_aggregates)} days")
 
         # Upsert aggregates into site_stats_daily
         rolled_up = 0
@@ -1955,9 +1955,7 @@ def rollup_site_events(self) -> dict[str, Any]:
                     )
                 existing.authenticated_views_by_device = existing_auth_views_by_device
 
-                existing_auth_top_referrers = (
-                    existing.authenticated_top_referrers or {}
-                )
+                existing_auth_top_referrers = existing.authenticated_top_referrers or {}
                 for referrer, count in agg["authenticated_top_referrers"].items():
                     existing_auth_top_referrers[referrer] = (
                         existing_auth_top_referrers.get(referrer, 0) + count
@@ -2000,7 +1998,9 @@ def rollup_site_events(self) -> dict[str, Any]:
                         agg["authenticated_unique_ip_hashes"]
                     ),
                     authenticated_views_by_page=agg["authenticated_views_by_page"],
-                    authenticated_views_by_country=agg["authenticated_views_by_country"],
+                    authenticated_views_by_country=agg[
+                        "authenticated_views_by_country"
+                    ],
                     authenticated_views_by_device=agg["authenticated_views_by_device"],
                     authenticated_top_referrers=agg["authenticated_top_referrers"],
                     # Player view aggregates
@@ -2911,9 +2911,7 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
         db.commit()
 
         final_formats = sorted(set(formats_available))
-        logger.info(
-            f"SSAFPP completed for post {post_id}: formats={final_formats}"
-        )
+        logger.info(f"SSAFPP completed for post {post_id}: formats={final_formats}")
 
         return {
             "status": "success",
@@ -3126,9 +3124,7 @@ def process_bdr_job(self, bdr_id: str) -> dict[str, Any]:
                     if post.storage_key and native_pf:
                         source_path = vault.get_artwork_file_path(
                             post.storage_key,
-                            vault.FORMAT_TO_EXT.get(
-                                native_fmt, f".{native_fmt}"
-                            ),
+                            vault.FORMAT_TO_EXT.get(native_fmt, f".{native_fmt}"),
                             storage_shard=post.storage_shard,
                         )
                         if source_path.exists():
