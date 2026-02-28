@@ -243,7 +243,11 @@ def list_posts(
         query = query.filter(models.Post.alpha_actual == has_semitransparency)
 
     # File format + file size filters (applied to PostFile rows via EXISTS)
-    if (file_format and len(file_format) > 0) or file_bytes_min is not None or file_bytes_max is not None:
+    if (
+        (file_format and len(file_format) > 0)
+        or file_bytes_min is not None
+        or file_bytes_max is not None
+    ):
         from sqlalchemy import exists
 
         pf_conditions = [models.PostFile.post_id == models.Post.id]
@@ -1070,7 +1074,6 @@ def delete_post(
     cache_invalidate("feed:recent:*")
     cache_invalidate("feed:promoted:*")
     cache_invalidate("hashtags:*")
-
 
 
 @router.delete(

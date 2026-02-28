@@ -549,6 +549,7 @@ Display a specific artwork.
 {
   "post_id": 123,
   "storage_key": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "storage_shard": "7c9e66",
   "native_format": "png",
   "width": 64,
   "height": 64
@@ -559,6 +560,7 @@ Display a specific artwork.
 |-------|------|-------------|
 | `post_id` | int | Post ID |
 | `storage_key` | string (UUID) | Storage identifier for vault path |
+| `storage_shard` | string | Vault shard prefix for path resolution (e.g. `"7c/9e/66"`) |
 | `native_format` | string | Original file format (`png`, `gif`, `webp`, `bmp`) |
 | `width` | int | Canvas width in pixels |
 | `height` | int | Canvas height in pixels |

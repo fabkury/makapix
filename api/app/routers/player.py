@@ -783,6 +783,7 @@ def send_player_command(
         command_payload = {
             "post_id": post.id,
             "storage_key": str(post.storage_key),
+            "storage_shard": post.storage_shard or "",
             "native_format": native_pf.format if native_pf else "png",
             "width": post.width,
             "height": post.height,
@@ -920,6 +921,7 @@ def send_command_to_all_players(
         command_payload = {
             "post_id": post.id,
             "storage_key": str(post.storage_key),
+            "storage_shard": post.storage_shard or "",
             "native_format": native_pf.format if native_pf else "png",
             "width": post.width,
             "height": post.height,
