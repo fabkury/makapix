@@ -32,7 +32,7 @@ interface CommentsAndReactionsProps {
   isModerator?: boolean;
 }
 
-const EMOJI_OPTIONS = ['👍', '❤️', '🔥', '😊', '💎'];
+export const EMOJI_OPTIONS = ['👍', '❤️', '🔥', '😊', '💎'];
 
 // API endpoint helpers
 const getReactionsEndpoint = (contentType: 'artwork' | 'blog', contentId: string | number): string => {
