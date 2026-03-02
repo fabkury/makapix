@@ -541,3 +541,23 @@ class GetPlaysetResponse(BaseModel):
     pick_mode: Literal["recency", "random"] | None = None
     error: str | None = None
     error_code: str | None = None
+
+
+class EchoRequest(PlayerRequestBase):
+    """Diagnostic echo request to verify MQTT connectivity."""
+
+    request_type: Literal["echo"] = "echo"
+    echo_data: str = Field(
+        ...,
+        description="Arbitrary string to echo back (max 512 characters)",
+        max_length=512,
+    )
+
+
+class EchoResponse(BaseModel):
+    """Response echoing the player's payload back unchanged."""
+
+    request_id: str
+    success: bool = True
+    echo_data: str
+    received_at: datetime

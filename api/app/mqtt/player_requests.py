@@ -42,8 +42,12 @@ from .schemas import (
     GetPlaysetRequest,
     GetPlaysetResponse,
     PlaysetChannelPayload,
+    EchoRequest,
+    EchoResponse,
 )
+from datetime import datetime, timezone
 from ..services.playset import PlaysetService
+from ..services.rate_limit import check_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -1068,6 +1072,39 @@ def _handle_get_playset(
         )
 
 
+def _handle_echo(player, request: EchoRequest, db: Session) -> None:
+    """Handle echo request for connectivity diagnostics."""
+    allowed, _ = check_rate_limit(
+        f"ratelimit:player:{player.id}:echo", limit=10, window_seconds=60
+    )
+    if not allowed:
+        _send_error_response(
+            player.player_key,
+            request.request_id,
+            "Rate limit exceeded for echo requests",
+            "rate_limit_exceeded",
+        )
+        return
+
+    response = EchoResponse(
+        request_id=request.request_id,
+        echo_data=request.echo_data,
+        received_at=datetime.now(timezone.utc),
+    )
+
+    response_topic = (
+        f"makapix/player/{player.player_key}/response/{request.request_id}"
+    )
+    publish(
+        topic=response_topic,
+        payload=response.model_dump(mode="json"),
+        qos=1,
+        retain=False,
+    )
+
+    logger.info(f"Sent echo response to player {player.player_key}")
+
+
 def _on_request_message(
     client: mqtt_client.Client, userdata: Any, msg: mqtt_client.MQTTMessage
 ) -> None:
@@ -1153,6 +1190,9 @@ def _on_request_message(
             elif request_type == "get_playset":
                 request_obj = GetPlaysetRequest(**payload)
                 _handle_get_playset(player, request_obj, db)
+            elif request_type == "echo":
+                request_obj = EchoRequest(**payload)
+                _handle_echo(player, request_obj, db)
             else:
                 logger.warning(f"Unknown request_type: {request_type}")
                 _send_error_response(
