@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import mimetypes
 import os
 import time
 from contextlib import asynccontextmanager
@@ -241,6 +242,11 @@ app.include_router(legacy.router)
 app.include_router(pmd.router)
 app.include_router(umd.router)
 
+
+# Register MIME types not present in all Docker base images.
+# Without this, StaticFiles serves unknown extensions as text/plain, which browsers
+# reject when X-Content-Type-Options: nosniff is set.
+mimetypes.add_type("image/webp", ".webp")
 
 # Mount vault directory for serving uploaded artwork images
 # Note: Caddy strips /api prefix, so mount at /vault (requests arrive as /vault/...)
