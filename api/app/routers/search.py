@@ -6,7 +6,8 @@ import logging
 import random
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy import func, or_
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
@@ -682,6 +683,12 @@ async def get_top_hashtags(
 def feed_promoted(
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
+    fields: str | None = Query(
+        None,
+        description="Comma-separated Post field names to include "
+        "(e.g. 'id,title,art_url,width,height'). "
+        "When set, each Post object only contains the listed fields.",
+    ),
     db: Session = Depends(get_db),
     current_user: models.User | None = Depends(get_current_user_optional),
 ) -> schemas.Page[schemas.Post]:
@@ -692,6 +699,18 @@ def feed_promoted(
     Uses cursor-based pagination for efficient infinite scroll.
     Cached for 5 minutes to reduce database load.
     """
+    field_set: set[str] | None = None
+    if fields is not None:
+        requested = {f.strip() for f in fields.split(",") if f.strip()}
+        valid = set(schemas.Post.model_fields.keys())
+        invalid = requested - valid
+        if invalid:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unknown Post fields: {', '.join(sorted(invalid))}. "
+                f"Valid fields: {', '.join(sorted(valid))}",
+            )
+        field_set = requested
     # Create cache key based on cursor and limit
     # All users see the same results (moderator-only views are in Moderator Dashboard)
     cache_key = f"feed:promoted:{cursor or 'first'}:{limit}"
@@ -710,6 +729,8 @@ def feed_promoted(
             liked_ids = get_user_liked_post_ids(db, post_ids, current_user.id)
             for item in response.items:
                 item.user_has_liked = item.id in liked_ids
+        if field_set is not None:
+            return _filter_page_fields(response, field_set)
         return response
 
     from sqlalchemy.orm import joinedload
@@ -759,7 +780,20 @@ def feed_promoted(
     # Apply monitored hashtag filtering (user-specific, after caching)
     response.items = filter_posts_by_monitored_hashtags(response.items, current_user)
 
+    if field_set is not None:
+        return _filter_page_fields(response, field_set)
     return response
+
+
+def _filter_page_fields(
+    response: schemas.Page, field_set: set[str]
+) -> JSONResponse:
+    """Strip Post items down to only the requested fields."""
+    data = response.model_dump(mode="json")
+    data["items"] = [
+        {k: v for k, v in item.items() if k in field_set} for item in data["items"]
+    ]
+    return JSONResponse(content=data)
 
 
 @router.get("/feed/following", response_model=schemas.Page[schemas.Post], tags=["Feed"])
