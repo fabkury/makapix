@@ -14,6 +14,8 @@ services:
   # ---------------------------------------------------------------------------
   db:
     container_name: makapix-prod-db
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       - pg_data_prod:/var/lib/postgresql/data
       - ../../db/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
