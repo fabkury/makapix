@@ -50,10 +50,20 @@ function parseArrayParam(val: string | string[] | undefined): string[] | undefin
 export function useFilters() {
   const router = useRouter();
 
+  // Stable dependency key from only filter-relevant query params.
+  // router.query includes route params like sqid that change on navigation;
+  // without this, filters gets a new object reference on every route change,
+  // causing downstream callbacks (buildApiQuery, loadPosts) to be recreated
+  // and triggering spurious data fetches with stale profile state.
+  const { query } = router;
+  const filterDepsKey = JSON.stringify([
+    query.base, query.base_gte, query.size, query.size_gte,
+    query.file_bytes_min, query.file_bytes_max, query.kind,
+    query.sort, query.order,
+  ]);
+
   // Parse filters from URL query params
   const filters: FilterConfig = useMemo(() => {
-    const query = router.query;
-
     // Parse base: check for base_gte (128+) or base array
     let base: number | undefined;
     if (query.base_gte) {
@@ -82,7 +92,8 @@ export function useFilters() {
       sortBy: (query.sort as string) || undefined,
       sortOrder: (query.order as 'asc' | 'desc') || undefined,
     };
-  }, [router.query]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterDepsKey]);
 
   // Check if any filters are active (non-default values)
   const hasActiveFilters = useMemo(() => {
