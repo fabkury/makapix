@@ -138,6 +138,12 @@ shell-db db.shell:
 fmt:
 	@cd $(STACK_DIR) && $(COMPOSE) exec api black .
 
+e2e:
+	@cd web && set -a && [ -f .env.e2e ] && . ./.env.e2e; npx playwright test
+
+e2e-report:
+	cd web && npx playwright show-report
+
 clean:
 	@echo "WARNING: This will remove all development containers and volumes!"
 	@echo "Press Ctrl+C within 10 seconds to cancel..."

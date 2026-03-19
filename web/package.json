@@ -10,7 +10,10 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "postinstall": "node scripts/ensure-wasm-shims.js",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed",
+    "e2e:report": "playwright show-report"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.12",
@@ -54,6 +57,7 @@
     "eslint": "^8.57.0",
     "eslint-config-next": "14.2.3",
     "prettier": "^3.2.5",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "@playwright/test": "^1.52.0"
   }
 }
