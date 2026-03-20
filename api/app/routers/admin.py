@@ -665,6 +665,14 @@ def get_sitewide_stats(
             schemas.DailyCount(date=dv.date, count=dv.count)
             for dv in stats.daily_views_authenticated
         ],
+        daily_unique_visitors=[
+            schemas.DailyCount(date=dv.date, count=dv.count)
+            for dv in stats.daily_unique_visitors
+        ],
+        daily_unique_visitors_authenticated=[
+            schemas.DailyCount(date=dv.date, count=dv.count)
+            for dv in stats.daily_unique_visitors_authenticated
+        ],
         hourly_views=[
             schemas.HourlyCount(hour=hv.hour, count=hv.count)
             for hv in stats.hourly_views
@@ -672,6 +680,14 @@ def get_sitewide_stats(
         hourly_views_authenticated=[
             schemas.HourlyCount(hour=hv.hour, count=hv.count)
             for hv in stats.hourly_views_authenticated
+        ],
+        hourly_unique_visitors=[
+            schemas.HourlyCount(hour=hv.hour, count=hv.count)
+            for hv in stats.hourly_unique_visitors
+        ],
+        hourly_unique_visitors_authenticated=[
+            schemas.HourlyCount(hour=hv.hour, count=hv.count)
+            for hv in stats.hourly_unique_visitors_authenticated
         ],
         views_by_page=stats.views_by_page,
         views_by_country=stats.views_by_country,

@@ -24,8 +24,12 @@ interface SitewideStats {
   daily_signups: DailyCount[];
   daily_posts: DailyCount[];
   daily_views_authenticated: DailyCount[];
+  daily_unique_visitors: DailyCount[];
+  daily_unique_visitors_authenticated: DailyCount[];
   hourly_views: HourlyCount[];
   hourly_views_authenticated: HourlyCount[];
+  hourly_unique_visitors: HourlyCount[];
+  hourly_unique_visitors_authenticated: HourlyCount[];
   views_by_page: Record<string, number>;
   views_by_country: Record<string, number>;
   views_by_device: Record<string, number>;
@@ -180,7 +184,9 @@ export default function SiteMetricsPanel() {
         total_page_views_14d: stats.total_page_views_14d,
         unique_visitors_14d: stats.unique_visitors_14d,
         daily_views: stats.daily_views,
+        daily_unique_visitors: stats.daily_unique_visitors,
         hourly_views: stats.hourly_views,
+        hourly_unique_visitors: stats.hourly_unique_visitors,
         views_by_page: stats.views_by_page,
         views_by_country: stats.views_by_country,
         views_by_device: stats.views_by_device,
@@ -192,7 +198,9 @@ export default function SiteMetricsPanel() {
         total_page_views_14d: stats.total_page_views_14d_authenticated,
         unique_visitors_14d: stats.unique_visitors_14d_authenticated,
         daily_views: stats.daily_views_authenticated,
+        daily_unique_visitors: stats.daily_unique_visitors_authenticated,
         hourly_views: stats.hourly_views_authenticated,
+        hourly_unique_visitors: stats.hourly_unique_visitors_authenticated,
         views_by_page: stats.views_by_page_authenticated,
         views_by_country: stats.views_by_country_authenticated,
         views_by_device: stats.views_by_device_authenticated,
@@ -229,7 +237,9 @@ export default function SiteMetricsPanel() {
 
   // Calculate max values for charts
   const maxDailyViews = Math.max(...displayedStats.daily_views.map(d => d.count), 1);
+  const maxDailyUniqueVisitors = Math.max(...(displayedStats.daily_unique_visitors || []).map(d => d.count), 1);
   const maxHourlyViews = Math.max(...displayedStats.hourly_views.map(h => h.count), 1);
+  const maxHourlyUniqueVisitors = Math.max(...(displayedStats.hourly_unique_visitors || []).map(h => h.count), 1);
   const maxCountryViews = Math.max(...Object.values(displayedStats.views_by_country), 1);
   const maxPageViews = Math.max(...Object.values(displayedStats.views_by_page), 1);
   const maxReferrerViews = Math.max(...Object.values(displayedStats.top_referrers), 1);
@@ -257,6 +267,14 @@ export default function SiteMetricsPanel() {
         <div className="metric-card">
           <div className="metric-value">{displayedStats.unique_visitors_14d.toLocaleString()}</div>
           <div className="metric-label">Unique Visitors (14d)</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-value">
+            {displayedStats.unique_visitors_14d > 0
+              ? (displayedStats.total_page_views_14d / displayedStats.unique_visitors_14d).toFixed(1)
+              : '—'}
+          </div>
+          <div className="metric-label">Views / Visitor</div>
         </div>
         <div className="metric-card">
           <div className="metric-value">{stats.new_signups_14d.toLocaleString()}</div>
@@ -312,6 +330,44 @@ export default function SiteMetricsPanel() {
         </div>
       </div>
 
+      {/* 14-Day Unique Visitors */}
+      {displayedStats.daily_unique_visitors && displayedStats.daily_unique_visitors.length > 0 && (
+        <div className="metrics-section">
+          <h3>👥 Unique Visitors (Last 14 Days)</h3>
+          <div className="trend-chart">
+            {displayedStats.daily_unique_visitors.map((day, index) => {
+              const height = maxDailyUniqueVisitors > 0 ? (day.count / maxDailyUniqueVisitors) * 100 : 0;
+              const date = new Date(day.date);
+              const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+              const showLabel =
+                index % 3 === 0 ||
+                index === displayedStats.daily_unique_visitors.length - 1 ||
+                day.count === maxDailyUniqueVisitors;
+              return (
+                <div key={day.date} className="trend-bar-wrap">
+                  {showLabel && (
+                    <span className="trend-bar-label" aria-hidden="true">
+                      {day.count.toLocaleString()}
+                    </span>
+                  )}
+                  <div
+                    className={`trend-bar visitor-bar ${isWeekend ? 'weekend' : ''}`}
+                    style={{ height: `${Math.max(height, 2)}%` }}
+                    title={`${day.date}: ${day.count} unique visitors`}
+                    aria-label={`${day.date}: ${day.count} unique visitors`}
+                    role="img"
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <div className="trend-labels">
+            <span>14 days ago</span>
+            <span>Today</span>
+          </div>
+        </div>
+      )}
+
       {/* 24-Hour Granular Chart */}
       <div className="metrics-section">
         <h3>⏰ Page Views (Last 24 Hours - Hourly)</h3>
@@ -351,6 +407,47 @@ export default function SiteMetricsPanel() {
           <span>Now</span>
         </div>
       </div>
+
+      {/* 24-Hour Unique Visitors */}
+      {displayedStats.hourly_unique_visitors && displayedStats.hourly_unique_visitors.length > 0 && (
+        <div className="metrics-section">
+          <h3>👥 Unique Visitors (Last 24 Hours - Hourly)</h3>
+          <div className="trend-chart hourly">
+            {displayedStats.hourly_unique_visitors.map((hour, index) => {
+              const height = maxHourlyUniqueVisitors > 0 ? (hour.count / maxHourlyUniqueVisitors) * 100 : 0;
+              const hourDate = new Date(hour.hour);
+              const hourLabel = hourDate.getHours();
+              const showLabel =
+                index % 3 === 0 ||
+                index === displayedStats.hourly_unique_visitors.length - 1 ||
+                hour.count === maxHourlyUniqueVisitors;
+              return (
+                <div key={hour.hour} className="trend-bar-wrap">
+                  <span className="trend-bar-xlabel" aria-hidden="true">
+                    {hourLabel}
+                  </span>
+                  {showLabel && (
+                    <span className="trend-bar-label" aria-hidden="true">
+                      {hour.count.toLocaleString()}
+                    </span>
+                  )}
+                  <div
+                    className="trend-bar visitor-bar"
+                    style={{ height: `${Math.max(height, 2)}%` }}
+                    title={`${hourLabel}:00 - ${hour.count} unique visitors`}
+                    aria-label={`${hourLabel}:00 - ${hour.count} unique visitors`}
+                    role="img"
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <div className="trend-labels">
+            <span>24h ago</span>
+            <span>Now</span>
+          </div>
+        </div>
+      )}
 
       {/* Top Pages */}
       {Object.keys(displayedStats.views_by_page).length > 0 && (
@@ -696,7 +793,7 @@ export default function SiteMetricsPanel() {
 
         @media (min-width: 1024px) {
           .metrics-summary {
-            grid-template-columns: repeat(6, 1fr);
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
           }
         }
 
@@ -788,6 +885,10 @@ export default function SiteMetricsPanel() {
           white-space: nowrap;
           pointer-events: none;
           text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+        }
+
+        .trend-bar.visitor-bar {
+          background: linear-gradient(to top, #6366f1, #a78bfa);
         }
 
         .trend-bar.weekend {
