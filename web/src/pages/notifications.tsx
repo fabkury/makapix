@@ -104,6 +104,8 @@ export default function NotificationsPage() {
       return `${actor} commented on "${title}"`;
     } else if (notification.notification_type === "comment_reply") {
       return `${actor} replied to your comment on "${title}"`;
+    } else if (notification.notification_type === "comment_like") {
+      return `${actor} liked your comment on "${title}"`;
     } else if (notification.notification_type === "moderator_granted") {
       return `${actor} granted you moderator status`;
     } else if (notification.notification_type === "moderator_revoked") {
@@ -187,6 +189,8 @@ export default function NotificationsPage() {
                         </svg>
                       ) : notification.notification_type === "reaction" ? (
                         <span className="emoji">{notification.emoji || "..."}</span>
+                      ) : notification.notification_type === "comment_like" ? (
+                        <span className="emoji">{"❤️"}</span>
                       ) : (
                         <svg
                           width="20"

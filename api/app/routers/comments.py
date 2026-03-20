@@ -21,6 +21,7 @@ from ..services.social_notifications import SocialNotificationService
 from ..services.rate_limit import check_rate_limit
 from ..services.profanity import contains_profanity
 from ..utils.audit import log_moderation_action
+from .comment_likes import annotate_comments_with_likes
 
 router = APIRouter(prefix="/post", tags=["Comments"])
 
@@ -110,6 +111,10 @@ def list_comments(
         elif comment.parent_id in comment_ids:
             valid_comments.append(comment)
         # else: skip orphaned comment
+
+    # Annotate comments with like counts
+    current_user_id = current_user.id if isinstance(current_user, models.User) else None
+    annotate_comments_with_likes(db, valid_comments, current_user_id)
 
     return schemas.Page(
         items=[schemas.Comment.model_validate(c) for c in valid_comments],

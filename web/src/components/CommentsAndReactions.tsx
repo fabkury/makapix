@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { authenticatedFetch, authenticatedPostJson, clearTokens } from '../lib/api';
+import CommentLikeUsersOverlay from './CommentLikeUsersOverlay';
 
 interface ReactionTotals {
   totals: Record<string, number>;
@@ -22,6 +23,8 @@ interface Comment {
   updated_at: string | null;
   author_handle?: string;
   author_display_name?: string;
+  like_count?: number;
+  liked_by_me?: boolean;
 }
 
 interface CommentsAndReactionsProps {
@@ -77,6 +80,7 @@ export default function CommentsAndReactions({
   const [replyBody, setReplyBody] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
   const [foldedComments, setFoldedComments] = useState<Set<string>>(new Set());
+  const [showCommentLikeUsers, setShowCommentLikeUsers] = useState<string | null>(null);
 
   useEffect(() => {
     loadWidgetData();
@@ -269,6 +273,31 @@ export default function CommentsAndReactions({
     setFoldedComments(newFolded);
   };
 
+  const handleToggleCommentLike = async (commentId: string, isLiked: boolean) => {
+    if (!currentUserId) return;
+    try {
+      const response = await authenticatedFetch(
+        `${API_BASE_URL}/api/post/comments/${commentId}/like`,
+        { method: isLiked ? 'DELETE' : 'PUT' }
+      );
+      if (response.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
+      if (response.ok || response.status === 204) {
+        // Optimistic update
+        setComments(prev => prev.map(c =>
+          c.id === commentId
+            ? { ...c, liked_by_me: !isLiked, like_count: (c.like_count || 0) + (isLiked ? -1 : 1) }
+            : c
+        ));
+      }
+    } catch (error) {
+      console.error('Failed to toggle comment like:', error);
+    }
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -337,6 +366,22 @@ export default function CommentsAndReactions({
             </div>
             {!comment.deleted_by_owner && (
               <div className="makapix-comment-actions">
+                {currentUserId && (
+                  <button
+                    className={`makapix-comment-like-btn ${comment.liked_by_me ? 'liked' : ''}`}
+                    onClick={() => handleToggleCommentLike(comment.id, !!comment.liked_by_me)}
+                  >
+                    {comment.liked_by_me ? '\u2764\uFE0F' : '\uD83E\uDD0D'}
+                  </button>
+                )}
+                {(comment.like_count || 0) > 0 && (
+                  <button
+                    className="makapix-comment-like-count"
+                    onClick={() => setShowCommentLikeUsers(comment.id)}
+                  >
+                    {comment.like_count}
+                  </button>
+                )}
                 {comment.depth < 3 && (
                   <button
                     className="makapix-comment-reply-btn"
@@ -453,6 +498,12 @@ export default function CommentsAndReactions({
           </div>
         )}
       </div>
+
+      <CommentLikeUsersOverlay
+        commentId={showCommentLikeUsers || ''}
+        isOpen={!!showCommentLikeUsers}
+        onClose={() => setShowCommentLikeUsers(null)}
+      />
 
       <style jsx global>{`
         .makapix-widget {
@@ -723,7 +774,44 @@ export default function CommentsAndReactions({
           background: rgba(239, 68, 68, 0.1);
           color: #f87171;
         }
-        
+
+        .makapix-comment-like-btn {
+          padding: 4px 8px;
+          background: transparent;
+          border: none;
+          font-size: 1rem;
+          cursor: pointer;
+          border-radius: 6px;
+          transition: all 0.15s ease;
+          line-height: 1;
+        }
+
+        .makapix-comment-like-btn:hover {
+          background: rgba(255, 110, 180, 0.1);
+          transform: scale(1.15);
+        }
+
+        .makapix-comment-like-btn.liked {
+          transform: scale(1.1);
+        }
+
+        .makapix-comment-like-count {
+          padding: 4px 6px;
+          background: transparent;
+          border: none;
+          color: #ff6eb4;
+          font-size: 0.8rem;
+          font-weight: 600;
+          cursor: pointer;
+          border-radius: 6px;
+          transition: all 0.15s ease;
+        }
+
+        .makapix-comment-like-count:hover {
+          background: rgba(255, 110, 180, 0.1);
+          text-decoration: underline;
+        }
+
         .makapix-comment-replies {
           margin-left: 24px;
           margin-top: 12px;
