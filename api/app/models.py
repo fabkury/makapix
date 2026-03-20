@@ -490,6 +490,12 @@ class Comment(Base):
     post = relationship("Post", back_populates="comments")
     author = relationship("User", back_populates="comments", foreign_keys=[author_id])
     parent = relationship("Comment", remote_side=[id], backref="replies")
+    likes = relationship(
+        "CommentLike",
+        back_populates="comment",
+        cascade="all, delete-orphan",
+        lazy="select",
+    )
 
     __table_args__ = (Index("ix_comments_post_created", post_id, created_at.desc()),)
 
@@ -549,6 +555,33 @@ class Reaction(Base):
         # Note: Unique constraints handled by partial indexes in migration
         # to support both user_id and user_ip cases
         Index("ix_reactions_post_emoji", post_id, emoji),
+    )
+
+
+class CommentLike(Base):
+    """Like on a comment (authenticated users only)."""
+
+    __tablename__ = "comment_likes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    comment_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("comments.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    comment = relationship("Comment", back_populates="likes")
+    user = relationship("User", foreign_keys=[user_id], lazy="select")
+
+    __table_args__ = (
+        UniqueConstraint("comment_id", "user_id", name="uq_comment_likes_comment_user"),
     )
 
 

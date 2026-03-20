@@ -409,6 +409,8 @@ class Comment(BaseModel):
     deleted_by_owner: bool
     created_at: datetime
     updated_at: datetime | None = None
+    like_count: int = 0
+    liked_by_me: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -430,6 +432,12 @@ class Comment(BaseModel):
                 data.author.handle
             )  # Use handle as display name
             instance._author_avatar_url_cache = data.author.avatar_url
+
+        # Extract like count and liked_by_me from transient attributes
+        if hasattr(data, "_like_count"):
+            instance.like_count = data._like_count
+        if hasattr(data, "_liked_by_me"):
+            instance.liked_by_me = data._liked_by_me
 
         return instance
 
@@ -516,6 +524,22 @@ class CommentUpdate(BaseModel):
     """Update comment request."""
 
     body: str = Field(..., min_length=1, max_length=2000)
+
+
+class CommentLikeUserItem(BaseModel):
+    """User who liked a comment."""
+
+    created_at: datetime
+    user_handle: str
+    user_avatar_url: str | None = None
+    user_public_sqid: str | None = None
+
+
+class CommentLikeUsersResponse(BaseModel):
+    """Response for listing users who liked a comment."""
+
+    items: list[CommentLikeUserItem]
+    total: int
 
 
 # ============================================================================

@@ -14,6 +14,7 @@ from .. import models, schemas
 from ..auth import AnonymousUser, get_current_user, get_current_user_or_anonymous
 from ..deps import get_db
 from ..services.social_notifications import SocialNotificationService
+from .comment_likes import annotate_comments_with_likes
 
 router = APIRouter(prefix="/post", tags=["Reactions"])
 
@@ -397,6 +398,10 @@ def get_widget_data(
     for comment in comments_raw:
         if comment.parent_id is None or comment.parent_id in comment_ids:
             valid_comments.append(comment)
+
+    # Annotate comments with like counts
+    current_user_id = current_user.id if isinstance(current_user, models.User) else None
+    annotate_comments_with_likes(db, valid_comments, current_user_id)
 
     comments = [schemas.Comment.model_validate(c) for c in valid_comments]
 

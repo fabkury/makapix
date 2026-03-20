@@ -22,6 +22,7 @@ from .routers import (
     badges,
     blog_posts,
     categories,
+    comment_likes,
     comments,
     legacy,
     licenses,
@@ -224,6 +225,7 @@ app.include_router(posts.router)
 app.include_router(blog_posts.router)
 app.include_router(playlists.router)
 app.include_router(comments.router)
+app.include_router(comment_likes.router)
 app.include_router(reactions.router)
 app.include_router(social_notifications.router)
 app.include_router(reports.router)

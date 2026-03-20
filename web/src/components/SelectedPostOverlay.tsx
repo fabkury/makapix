@@ -59,6 +59,8 @@ interface Comment {
   updated_at: string | null;
   author_handle?: string;
   author_display_name?: string;
+  like_count?: number;
+  liked_by_me?: boolean;
 }
 
 interface WidgetData {

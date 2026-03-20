@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { authenticatedFetch, authenticatedPostJson } from '../lib/api';
+import CommentLikeUsersOverlay from './CommentLikeUsersOverlay';
 
 interface Comment {
   id: string;
@@ -16,6 +17,8 @@ interface Comment {
   author_handle?: string;
   author_display_name?: string;
   author_avatar_url?: string | null;
+  like_count?: number;
+  liked_by_me?: boolean;
 }
 
 interface SPOCommentsOverlayProps {
@@ -56,6 +59,7 @@ export default function SPOCommentsOverlay({
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyBody, setReplyBody] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [showCommentLikeUsers, setShowCommentLikeUsers] = useState<string | null>(null);
 
   const API_BASE_URL = typeof window !== 'undefined'
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
@@ -160,6 +164,25 @@ export default function SPOCommentsOverlay({
     return false;
   }, [currentUserId, isModerator]);
 
+  const handleToggleCommentLike = async (commentId: string, isLiked: boolean) => {
+    if (!currentUserId) return;
+    try {
+      const response = await authenticatedFetch(
+        `${API_BASE_URL}/api/post/comments/${commentId}/like`,
+        { method: isLiked ? 'DELETE' : 'PUT' }
+      );
+      if (response.ok || response.status === 204) {
+        setComments(prev => prev.map(c =>
+          c.id === commentId
+            ? { ...c, liked_by_me: !isLiked, like_count: (c.like_count || 0) + (isLiked ? -1 : 1) }
+            : c
+        ));
+      }
+    } catch (error) {
+      console.error('Failed to toggle comment like:', error);
+    }
+  };
+
   const renderComment = (comment: Comment, depth: number = 0): JSX.Element | null => {
     // Find replies
     const replies = comments.filter(c => c.parent_id === comment.id);
@@ -252,6 +275,38 @@ export default function SPOCommentsOverlay({
             </div>
             {!comment.deleted_by_owner && (
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                {currentUserId && (
+                  <button
+                    onClick={() => handleToggleCommentLike(comment.id, !!comment.liked_by_me)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      fontSize: 14,
+                      cursor: 'pointer',
+                      padding: '2px 4px',
+                      lineHeight: 1,
+                      transition: 'transform 0.15s ease',
+                    }}
+                  >
+                    {comment.liked_by_me ? '\u2764\uFE0F' : '\uD83E\uDD0D'}
+                  </button>
+                )}
+                {(comment.like_count || 0) > 0 && (
+                  <button
+                    onClick={() => setShowCommentLikeUsers(comment.id)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#ff6eb4',
+                      fontSize: 12,
+                      cursor: 'pointer',
+                      padding: '4px 0',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {comment.like_count}
+                  </button>
+                )}
                 {canReply && (
                   <button
                     onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}
@@ -500,6 +555,11 @@ export default function SPOCommentsOverlay({
           </div>
         </motion.div>
       </motion.div>
+      <CommentLikeUsersOverlay
+        commentId={showCommentLikeUsers || ''}
+        isOpen={!!showCommentLikeUsers}
+        onClose={() => setShowCommentLikeUsers(null)}
+      />
     </AnimatePresence>
   );
 }
