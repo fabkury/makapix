@@ -93,6 +93,10 @@ deploy/stack/cta-stats.csv
 *.mmdb
 api/app/geoip/*.mmdb
 
+# Playwright
+test-results/
+playwright-report/
+
 # Claude Code configuration (environment-specific, not tracked)
 CLAUDE.md
 AGENTS.md

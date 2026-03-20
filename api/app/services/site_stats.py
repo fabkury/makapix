@@ -8,6 +8,7 @@ Aggregates data from raw site events (7 days) and daily rollups (8-14 days).
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from typing import TYPE_CHECKING
@@ -120,11 +121,19 @@ class SitewideStats:
     # Trends (14 days) - authenticated only
     daily_views_authenticated: list[DailyCount]
 
+    # Daily unique visitors (14 days)
+    daily_unique_visitors: list[DailyCount]
+    daily_unique_visitors_authenticated: list[DailyCount]
+
     # Granular data (last 24h from events) - all
     hourly_views: list[HourlyCount]
 
     # Granular data (last 24h from events) - authenticated only
     hourly_views_authenticated: list[HourlyCount]
+
+    # Hourly unique visitors (24h)
+    hourly_unique_visitors: list[HourlyCount]
+    hourly_unique_visitors_authenticated: list[HourlyCount]
 
     # Breakdowns - all
     views_by_page: dict[str, int]
@@ -173,12 +182,28 @@ class SitewideStats:
                 {"date": d.date, "count": d.count}
                 for d in self.daily_views_authenticated
             ],
+            "daily_unique_visitors": [
+                {"date": d.date, "count": d.count}
+                for d in self.daily_unique_visitors
+            ],
+            "daily_unique_visitors_authenticated": [
+                {"date": d.date, "count": d.count}
+                for d in self.daily_unique_visitors_authenticated
+            ],
             "hourly_views": [
                 {"hour": h.hour, "count": h.count} for h in self.hourly_views
             ],
             "hourly_views_authenticated": [
                 {"hour": h.hour, "count": h.count}
                 for h in self.hourly_views_authenticated
+            ],
+            "hourly_unique_visitors": [
+                {"hour": h.hour, "count": h.count}
+                for h in self.hourly_unique_visitors
+            ],
+            "hourly_unique_visitors_authenticated": [
+                {"hour": h.hour, "count": h.count}
+                for h in self.hourly_unique_visitors_authenticated
             ],
             "views_by_page": self.views_by_page,
             "views_by_country": self.views_by_country,
@@ -426,6 +451,58 @@ class SiteStatsService:
         # Sort by date ascending (oldest first)
         daily_views_authenticated.sort(key=lambda x: x.date)
 
+        # ===== DAILY UNIQUE VISITORS (14 days) - ALL =====
+
+        # From recent events: group visitor_ip_hash by day
+        daily_uv_sets: dict[str, set] = defaultdict(set)
+        for event in recent_events:
+            if event.event_type == "page_view":
+                day_str = event.created_at.date().isoformat()
+                daily_uv_sets[day_str].add(event.visitor_ip_hash)
+
+        # Build daily stats lookup for days 8-14
+        daily_stats_by_date = {ds.date.isoformat(): ds for ds in daily_stats}
+
+        daily_unique_visitors: list[DailyCount] = []
+        for i in range(14):
+            day = (now - timedelta(days=i)).date()
+            day_str = day.isoformat()
+            if day_str in daily_uv_sets:
+                count = len(daily_uv_sets[day_str])
+            elif day_str in daily_stats_by_date:
+                count = daily_stats_by_date[day_str].unique_visitors or 0
+            else:
+                count = 0
+            daily_unique_visitors.append(DailyCount(date=day_str, count=count))
+
+        daily_unique_visitors.sort(key=lambda x: x.date)
+
+        # ===== DAILY UNIQUE VISITORS (14 days) - AUTHENTICATED ONLY =====
+
+        daily_uv_auth_sets: dict[str, set] = defaultdict(set)
+        for event in authenticated_events:
+            if event.event_type == "page_view":
+                day_str = event.created_at.date().isoformat()
+                daily_uv_auth_sets[day_str].add(event.visitor_ip_hash)
+
+        daily_unique_visitors_authenticated: list[DailyCount] = []
+        for i in range(14):
+            day = (now - timedelta(days=i)).date()
+            day_str = day.isoformat()
+            if day_str in daily_uv_auth_sets:
+                count = len(daily_uv_auth_sets[day_str])
+            elif day_str in daily_stats_by_date:
+                count = (
+                    daily_stats_by_date[day_str].authenticated_unique_visitors or 0
+                )
+            else:
+                count = 0
+            daily_unique_visitors_authenticated.append(
+                DailyCount(date=day_str, count=count)
+            )
+
+        daily_unique_visitors_authenticated.sort(key=lambda x: x.date)
+
         # ===== HOURLY BREAKDOWN (last 24h from events) - ALL =====
 
         hourly_views: list[HourlyCount] = []
@@ -493,6 +570,49 @@ class SiteStatsService:
 
         # Sort by hour ascending (oldest first)
         hourly_views_authenticated.sort(key=lambda x: x.hour)
+
+        # ===== HOURLY UNIQUE VISITORS (last 24h) - ALL =====
+
+        hourly_uv_sets: dict[str, set] = defaultdict(set)
+        for event in recent_24h_events:
+            hour_start = event.created_at.replace(minute=0, second=0, microsecond=0)
+            hour_str = hour_start.isoformat()
+            hourly_uv_sets[hour_str].add(event.visitor_ip_hash)
+
+        hourly_unique_visitors: list[HourlyCount] = []
+        for i in range(24):
+            hour_start = (now - timedelta(hours=i)).replace(
+                minute=0, second=0, microsecond=0
+            )
+            hour_str = hour_start.isoformat()
+            hourly_unique_visitors.append(
+                HourlyCount(hour=hour_str, count=len(hourly_uv_sets.get(hour_str, set())))
+            )
+
+        hourly_unique_visitors.sort(key=lambda x: x.hour)
+
+        # ===== HOURLY UNIQUE VISITORS (last 24h) - AUTHENTICATED ONLY =====
+
+        hourly_uv_auth_sets: dict[str, set] = defaultdict(set)
+        for event in recent_24h_authenticated_events:
+            hour_start = event.created_at.replace(minute=0, second=0, microsecond=0)
+            hour_str = hour_start.isoformat()
+            hourly_uv_auth_sets[hour_str].add(event.visitor_ip_hash)
+
+        hourly_unique_visitors_authenticated: list[HourlyCount] = []
+        for i in range(24):
+            hour_start = (now - timedelta(hours=i)).replace(
+                minute=0, second=0, microsecond=0
+            )
+            hour_str = hour_start.isoformat()
+            hourly_unique_visitors_authenticated.append(
+                HourlyCount(
+                    hour=hour_str,
+                    count=len(hourly_uv_auth_sets.get(hour_str, set())),
+                )
+            )
+
+        hourly_unique_visitors_authenticated.sort(key=lambda x: x.hour)
 
         # ===== BREAKDOWNS - ALL =====
 
@@ -743,8 +863,12 @@ class SiteStatsService:
             daily_signups=daily_signups,
             daily_posts=daily_posts,
             daily_views_authenticated=daily_views_authenticated,
+            daily_unique_visitors=daily_unique_visitors,
+            daily_unique_visitors_authenticated=daily_unique_visitors_authenticated,
             hourly_views=hourly_views,
             hourly_views_authenticated=hourly_views_authenticated,
+            hourly_unique_visitors=hourly_unique_visitors,
+            hourly_unique_visitors_authenticated=hourly_unique_visitors_authenticated,
             views_by_page=views_by_page,
             views_by_country=views_by_country,
             views_by_device=views_by_device,
@@ -782,9 +906,23 @@ class SiteStatsService:
             daily_views_authenticated=[
                 DailyCount(**d) for d in data.get("daily_views_authenticated", [])
             ],
+            daily_unique_visitors=[
+                DailyCount(**d) for d in data.get("daily_unique_visitors", [])
+            ],
+            daily_unique_visitors_authenticated=[
+                DailyCount(**d)
+                for d in data.get("daily_unique_visitors_authenticated", [])
+            ],
             hourly_views=[HourlyCount(**h) for h in data["hourly_views"]],
             hourly_views_authenticated=[
                 HourlyCount(**h) for h in data.get("hourly_views_authenticated", [])
+            ],
+            hourly_unique_visitors=[
+                HourlyCount(**h) for h in data.get("hourly_unique_visitors", [])
+            ],
+            hourly_unique_visitors_authenticated=[
+                HourlyCount(**h)
+                for h in data.get("hourly_unique_visitors_authenticated", [])
             ],
             views_by_page=data["views_by_page"],
             views_by_country=data["views_by_country"],

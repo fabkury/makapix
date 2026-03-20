@@ -1562,11 +1562,19 @@ class SitewideStatsResponse(BaseModel):
     # Trends (14 days) - authenticated only
     daily_views_authenticated: list[DailyCount]
 
+    # Daily unique visitors (14 days)
+    daily_unique_visitors: list[DailyCount] = []
+    daily_unique_visitors_authenticated: list[DailyCount] = []
+
     # Granular data (last 24h from events) - all
     hourly_views: list[HourlyCount]
 
     # Granular data (last 24h from events) - authenticated only
     hourly_views_authenticated: list[HourlyCount]
+
+    # Hourly unique visitors (24h)
+    hourly_unique_visitors: list[HourlyCount] = []
+    hourly_unique_visitors_authenticated: list[HourlyCount] = []
 
     # Breakdowns - all
     views_by_page: dict[str, int]  # Top 20 pages: {"/recent": 500, "/posts": 300, ...}
