@@ -183,8 +183,7 @@ class SitewideStats:
                 for d in self.daily_views_authenticated
             ],
             "daily_unique_visitors": [
-                {"date": d.date, "count": d.count}
-                for d in self.daily_unique_visitors
+                {"date": d.date, "count": d.count} for d in self.daily_unique_visitors
             ],
             "daily_unique_visitors_authenticated": [
                 {"date": d.date, "count": d.count}
@@ -198,8 +197,7 @@ class SitewideStats:
                 for h in self.hourly_views_authenticated
             ],
             "hourly_unique_visitors": [
-                {"hour": h.hour, "count": h.count}
-                for h in self.hourly_unique_visitors
+                {"hour": h.hour, "count": h.count} for h in self.hourly_unique_visitors
             ],
             "hourly_unique_visitors_authenticated": [
                 {"hour": h.hour, "count": h.count}
@@ -274,41 +272,51 @@ class SiteStatsService:
         Compute sitewide statistics from the database.
 
         Aggregates data from:
-        - site_events table (last 7 days of raw events)
-        - site_stats_daily table (older aggregated data, 8-14 days)
+        - site_events table (raw events from day after last rollup)
+        - site_stats_daily table (rolled-up daily aggregates)
         """
         from .. import models
 
         now = datetime.now(timezone.utc)
         twenty_four_hours_ago = now - timedelta(hours=24)
 
-        # Use start-of-day boundaries to avoid gaps between raw events and daily aggregates.
-        # Without this, a query at 10 AM would miss events from midnight to 10 AM on day -7
-        # because raw events use >= timestamp while daily stats use < date.
-        seven_days_ago_date = (now - timedelta(days=7)).date()
-        seven_days_ago_start = datetime.combine(
-            seven_days_ago_date, time.min, tzinfo=timezone.utc
-        )
         fourteen_days_ago_date = (now - timedelta(days=14)).date()
-        fourteen_days_ago_start = datetime.combine(
-            fourteen_days_ago_date, time.min, tzinfo=timezone.utc
+
+        # Find where daily aggregates end so we can query raw events from that point.
+        # This avoids a data gap if the rollup task is delayed — raw events that
+        # haven't been rolled up yet will still appear in the charts.
+        latest_rollup_date = (
+            self.db.query(func.max(models.SiteStatsDaily.date))
+            .filter(models.SiteStatsDaily.date >= fourteen_days_ago_date)
+            .scalar()
         )
 
-        # ===== GET RAW EVENTS (last 7 days) =====
+        if latest_rollup_date is not None:
+            # Query raw events starting the day after the last rollup
+            events_start_date = latest_rollup_date + timedelta(days=1)
+        else:
+            # No rollup data in range — use all raw events within 14 days
+            events_start_date = fourteen_days_ago_date
+
+        events_start = datetime.combine(
+            events_start_date, time.min, tzinfo=timezone.utc
+        )
+
+        # ===== GET RAW EVENTS (from day after last rollup to now) =====
 
         recent_events = (
             self.db.query(models.SiteEvent)
-            .filter(models.SiteEvent.created_at >= seven_days_ago_start)
+            .filter(models.SiteEvent.created_at >= events_start)
             .all()
         )
 
-        # ===== GET DAILY AGGREGATES (8-14 days ago) =====
+        # ===== GET DAILY AGGREGATES (rolled-up days within 14-day window) =====
 
         daily_stats = (
             self.db.query(models.SiteStatsDaily)
             .filter(
                 models.SiteStatsDaily.date >= fourteen_days_ago_date,
-                models.SiteStatsDaily.date < seven_days_ago_date,
+                models.SiteStatsDaily.date < events_start_date,
             )
             .all()
         )
@@ -492,9 +500,7 @@ class SiteStatsService:
             if day_str in daily_uv_auth_sets:
                 count = len(daily_uv_auth_sets[day_str])
             elif day_str in daily_stats_by_date:
-                count = (
-                    daily_stats_by_date[day_str].authenticated_unique_visitors or 0
-                )
+                count = daily_stats_by_date[day_str].authenticated_unique_visitors or 0
             else:
                 count = 0
             daily_unique_visitors_authenticated.append(
@@ -586,7 +592,9 @@ class SiteStatsService:
             )
             hour_str = hour_start.isoformat()
             hourly_unique_visitors.append(
-                HourlyCount(hour=hour_str, count=len(hourly_uv_sets.get(hour_str, set())))
+                HourlyCount(
+                    hour=hour_str, count=len(hourly_uv_sets.get(hour_str, set()))
+                )
             )
 
         hourly_unique_visitors.sort(key=lambda x: x.hour)
@@ -762,13 +770,13 @@ class SiteStatsService:
 
         # ===== PLAYER ACTIVITY (from view_events table + daily aggregates) =====
 
-        # Query view_events for player device views in last 7 days (raw events)
-        # Events older than 7 days are rolled up into daily_stats
+        # Query view_events for player device views (from day after last rollup)
+        # Events older than that are already rolled up into daily_stats
         player_view_events = (
             self.db.query(models.ViewEvent)
             .filter(
                 models.ViewEvent.device_type == "player",
-                models.ViewEvent.created_at >= seven_days_ago_start,
+                models.ViewEvent.created_at >= events_start,
             )
             .all()
         )

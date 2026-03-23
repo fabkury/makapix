@@ -359,11 +359,9 @@ celery_app.conf.update(
             "schedule": 86400.0,  # Daily at 1AM UTC (in seconds)
             "options": {"queue": "default"},
         },
-        "cleanup-old-site-events": {
-            "task": "app.tasks.cleanup_old_site_events",
-            "schedule": 86400.0,  # Daily at 2AM UTC (in seconds)
-            "options": {"queue": "default"},
-        },
+        # NOTE: cleanup-old-site-events removed — it raced with rollup-site-events,
+        # deleting raw events before they could be aggregated into site_stats_daily.
+        # The rollup task already handles deletion after aggregation.
         "cleanup-old-view-events": {
             "task": "app.tasks.cleanup_old_view_events",
             "schedule": 86400.0,  # Daily at 3AM UTC (in seconds)
