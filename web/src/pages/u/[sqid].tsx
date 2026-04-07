@@ -5,6 +5,8 @@ import Layout from '../../components/Layout';
 import CardGrid from '../../components/CardGrid';
 import PlayerBar from '../../components/PlayerBarDynamic';
 import { FilterButton } from '../../components/FilterButton';
+import { WPButton } from '../../components/WPButton';
+import { WebPlayer } from '../../components/WebPlayer';
 import { authenticatedFetch, clearTokens } from '../../lib/api';
 import { usePlayerBarOptional } from '../../contexts/PlayerBarContext';
 import { useFilters, FilterConfig } from '../../hooks/useFilters';
@@ -72,6 +74,7 @@ export default function UserProfilePage() {
 
   // Tab state
   const [activeTab, setActiveTab] = useState<'gallery' | 'favourites'>('gallery');
+  const [wpActive, setWpActive] = useState(false);
 
   // Badge overlay state
   const [showBadgesOverlay, setShowBadgesOverlay] = useState(false);
@@ -754,6 +757,17 @@ export default function UserProfilePage() {
         initialFilters={filters}
         isLoading={loading}
       />
+      {isAuthenticated && activeTab === 'gallery' && profile && (
+        <WPButton onClick={() => setWpActive(true)} />
+      )}
+      {profile && (
+        <WebPlayer
+          isActive={wpActive}
+          onClose={() => setWpActive(false)}
+          buildApiQuery={buildApiQuery}
+          baseParams={{ owner_id: profile.user_key }}
+        />
+      )}
       <div className="profile-container">
         {/* Profile Header */}
         <div className="profile-header-wrapper">

@@ -5,6 +5,8 @@ import Layout from '../../components/Layout';
 import CardGrid from '../../components/CardGrid';
 import PlayerBar from '../../components/PlayerBarDynamic';
 import { FilterButton } from '../../components/FilterButton';
+import { WPButton } from '../../components/WPButton';
+import { WebPlayer } from '../../components/WebPlayer';
 import { authenticatedFetch, clearTokens } from '../../lib/api';
 import { usePlayerBarOptional } from '../../contexts/PlayerBarContext';
 import { useFilters, FilterConfig } from '../../hooks/useFilters';
@@ -47,6 +49,7 @@ export default function HashtagPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
+  const [wpActive, setWpActive] = useState(false);
 
   const observerTarget = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
@@ -212,6 +215,13 @@ export default function HashtagPage() {
         onFilterChange={handleFilterChange}
         initialFilters={filters}
         isLoading={loading}
+      />
+      <WPButton onClick={() => setWpActive(true)} />
+      <WebPlayer
+        isActive={wpActive}
+        onClose={() => setWpActive(false)}
+        buildApiQuery={buildApiQuery}
+        baseParams={hashtagName ? { hashtag: hashtagName } : {}}
       />
 
       <div className="feed-container">
