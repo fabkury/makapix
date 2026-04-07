@@ -330,11 +330,12 @@ def list_posts(
         if comments_max is not None:
             query = query.filter(comment_count_subq <= comments_max)
 
-    # Apply cursor pagination
+    # Apply cursor pagination (skip for random sort — stateless ordering)
     sort_desc = order == "desc"
-    query = apply_cursor_filter(
-        query, models.Post, cursor, sort or "created_at", sort_desc=sort_desc
-    )
+    if sort != "random":
+        query = apply_cursor_filter(
+            query, models.Post, cursor, sort or "created_at", sort_desc=sort_desc
+        )
 
     # Map sort field to model attribute and apply ordering
     # Subquery for native file bytes (used for sorting)
@@ -360,8 +361,12 @@ def list_posts(
         "unique_colors": models.Post.unique_colors,
     }
 
-    # Handle reactions sorting as a special case (requires subquery)
-    if sort == "reactions":
+    # Handle special sort cases
+    if sort == "random":
+        from sqlalchemy import func as sa_func
+
+        query = query.order_by(sa_func.random())
+    elif sort == "reactions":
         from sqlalchemy import func
 
         reaction_count_sort_subq = (

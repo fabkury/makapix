@@ -5,6 +5,8 @@ import Layout from '../../components/Layout';
 import CardGrid from '../../components/CardGrid';
 import PlayerBar from '../../components/PlayerBarDynamic';
 import { FilterButton } from '../../components/FilterButton';
+import { WPButton } from '../../components/WPButton';
+import { WebPlayer } from '../../components/WebPlayer';
 import { authenticatedFetch, authenticatedRequestJson, authenticatedPostJson, clearTokens, logout } from '../../lib/api';
 import { usePlayerBarOptional } from '../../contexts/PlayerBarContext';
 import { useFilters, FilterConfig } from '../../hooks/useFilters';
@@ -64,7 +66,8 @@ export default function UserProfilePage() {
   const [postsLoading, setPostsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
-  
+  const [wpActive, setWpActive] = useState(false);
+
   // Edit mode state
   const [isEditing, setIsEditing] = useState(false);
   const [editHandle, setEditHandle] = useState('');
@@ -669,6 +672,15 @@ export default function UserProfilePage() {
         initialFilters={filters}
         isLoading={loading}
       />
+      {user && <WPButton onClick={() => setWpActive(true)} />}
+      {user && (
+        <WebPlayer
+          isActive={wpActive}
+          onClose={() => setWpActive(false)}
+          buildApiQuery={buildApiQuery}
+          baseParams={{ owner_id: user.id ? String(user.id) : (typeof id === 'string' ? id : '') }}
+        />
+      )}
 
       <div className="profile-container">
         <div className="profile-header-wrapper">

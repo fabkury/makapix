@@ -5,6 +5,8 @@ import Layout from '../components/Layout';
 import CardGrid from '../components/CardGrid';
 import PlayerBar from '../components/PlayerBarDynamic';
 import { FilterButton } from '../components/FilterButton';
+import { WPButton } from '../components/WPButton';
+import { WebPlayer } from '../components/WebPlayer';
 import { authenticatedFetch, clearTokens } from '../lib/api';
 import { usePlayerBarOptional } from '../contexts/PlayerBarContext';
 import { useFilters, FilterConfig } from '../hooks/useFilters';
@@ -48,6 +50,7 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [wpActive, setWpActive] = useState(false);
 
   const observerTarget = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
@@ -251,6 +254,13 @@ export default function HomePage() {
         onFilterChange={handleFilterChange}
         initialFilters={filters}
         isLoading={loading}
+      />
+      {isAuthenticated && <WPButton onClick={() => setWpActive(true)} />}
+      <WebPlayer
+        isActive={wpActive}
+        onClose={() => setWpActive(false)}
+        buildApiQuery={buildApiQuery}
+        baseParams={{}}
       />
 
       <div className="feed-container">
