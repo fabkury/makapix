@@ -113,6 +113,8 @@ export function WebPlayer({
   // UI visibility (Mode A vs Mode B)
   const [uiVisible, setUiVisible] = useState(true);
   const uiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Grace period: after manual hide, ignore mouse/touch for 5s
+  const hideGraceUntilRef = useRef(0);
 
   // Dwell timer paused state
   const [paused, setPaused] = useState(false);
@@ -167,6 +169,7 @@ export function WebPlayer({
   }, [clearUiTimer]);
 
   const revealUi = useCallback(() => {
+    if (Date.now() < hideGraceUntilRef.current) return;
     setUiVisible(true);
     startUiTimer();
   }, [startUiTimer]);
@@ -786,6 +789,7 @@ export function WebPlayer({
               onClick={() => {
                 clearUiTimer();
                 setUiVisible(false);
+                hideGraceUntilRef.current = Date.now() + 5000;
               }}
               aria-label="Hide controls"
             >
