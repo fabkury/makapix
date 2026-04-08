@@ -974,11 +974,12 @@ export default function UserProfilePage() {
           )}
 
           {posts.length > 0 && (
-            <CardGrid 
-              posts={posts} 
+            <CardGrid
+              posts={posts}
               API_BASE_URL={API_BASE_URL}
               source={{ type: 'profile', id: user ? String(user.id) : (typeof id === 'string' ? id : undefined) }}
               cursor={nextCursor}
+              occluded={wpActive}
             />
           )}
 
@@ -1643,6 +1644,7 @@ export default function UserProfilePage() {
         }
 
         .end-spacer {
+          height: 200px;
           height: max(25vh, 200px);
           width: 1px;
         }
