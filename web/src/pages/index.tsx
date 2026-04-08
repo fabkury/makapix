@@ -261,6 +261,7 @@ export default function HomePage() {
         onClose={() => setWpActive(false)}
         buildApiQuery={buildApiQuery}
         baseParams={{}}
+        channelName="Recent Artworks"
       />
 
       <div className="feed-container">

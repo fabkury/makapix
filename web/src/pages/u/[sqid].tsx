@@ -766,6 +766,7 @@ export default function UserProfilePage() {
           onClose={() => setWpActive(false)}
           buildApiQuery={buildApiQuery}
           baseParams={{ owner_id: profile.user_key }}
+          channelName={`@${profile.handle}`}
         />
       )}
       <div className="profile-container">
