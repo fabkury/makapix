@@ -6,14 +6,6 @@ import SelectedPostOverlay from './SelectedPostOverlay';
 import { usePlayerBarOptional } from '../contexts/PlayerBarContext';
 import { authenticatedFetch } from '../lib/api';
 
-// Set to true to enable animated edge glow effects around the grid.
-const GLOW_ENABLED = false;
-
-// Global timestamp for synchronized glow animations across all CardGrid instances.
-// All glow animations use this as their reference point so they stay in phase.
-const GLOW_ANIMATION_DURATION_MS = 16000; // 16s animation cycle
-const glowAnimationStartTime = typeof performance !== 'undefined' ? performance.now() : 0;
-
 interface PostOwner {
   id: string;
   handle: string;
@@ -43,6 +35,9 @@ interface CardGridProps {
   source: NavigationSource;
   cursor?: string | null;
   prevCursor?: string | null;
+  /** When true, the grid is visually hidden (e.g. behind WebPlayer overlay).
+   *  Pauses animations, disconnects observers, and clears the selected post. */
+  occluded?: boolean;
 }
 
 export default function CardGrid({
@@ -51,6 +46,7 @@ export default function CardGrid({
   source,
   cursor = null,
   prevCursor,
+  occluded = false,
 }: CardGridProps) {
   const router = useRouter();
   const playerBarContext = usePlayerBarOptional();
@@ -67,15 +63,10 @@ export default function CardGrid({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isModerator, setIsModerator] = useState(false);
 
-  // Calculate synchronized animation delay so all glows stay in phase.
-  // This negative delay "jumps" the animation to the correct position in the cycle.
-  const [glowAnimationDelay, setGlowAnimationDelay] = useState('0s');
+  // Clear selected post when grid becomes occluded (e.g. WebPlayer opens)
   useEffect(() => {
-    if (!GLOW_ENABLED) return;
-    const elapsed = performance.now() - glowAnimationStartTime;
-    const delayMs = -(elapsed % GLOW_ANIMATION_DURATION_MS);
-    setGlowAnimationDelay(`${delayMs}ms`);
-  }, []);
+    if (occluded) setSelectedIndex(null);
+  }, [occluded]);
 
   // Sync selected artwork with PlayerBarContext
   useEffect(() => {
@@ -189,6 +180,10 @@ export default function CardGrid({
   };
 
   useLayoutEffect(() => {
+    // When occluded (e.g. WebPlayer overlay is active), skip all layout work
+    // and disconnect the ResizeObserver to save CPU.
+    if (occluded) return;
+
     const calculateScales = () => {
       const grid = gridRef.current;
       if (!grid) return;
@@ -238,68 +233,6 @@ export default function CardGrid({
       grid.style.setProperty('--grid-columns', String(nextColumnCount));
       grid.style.setProperty('--grid-width', `${gridWidth}px`);
       pack.style.setProperty('--grid-width', `${gridWidth}px`);
-
-      // Edge glow heights must match the actual rendered border columns,
-      // including super posts that span multiple rows/columns.
-      const cards = Array.from(grid.querySelectorAll('a.artwork-card')) as HTMLAnchorElement[];
-      let leftMaxBottom = 0;
-      let rightMaxBottom = 0;
-      const eps = 1;
-      for (const el of cards) {
-        const left = el.offsetLeft;
-        const right = el.offsetLeft + el.offsetWidth;
-        const bottom = el.offsetTop + el.offsetHeight;
-        if (Math.abs(left - 0) <= eps) leftMaxBottom = Math.max(leftMaxBottom, bottom);
-        if (Math.abs(right - gridWidth) <= eps) rightMaxBottom = Math.max(rightMaxBottom, bottom);
-      }
-
-      pack.style.setProperty('--left-glow-height', `${leftMaxBottom}px`);
-      pack.style.setProperty('--right-glow-height', `${rightMaxBottom}px`);
-
-      // Ragged-edge glow for the bottom band when the right side is shorter than the left.
-      // The "bottom band" is defined as the vertical span of the tiles that touch the grid bottom.
-      // If the bottom-most tile is a super post, the band height becomes 256px.
-      let gridMaxBottom = 0;
-      for (const el of cards) {
-        gridMaxBottom = Math.max(gridMaxBottom, el.offsetTop + el.offsetHeight);
-      }
-
-      let bottomBandTop = gridMaxBottom;
-      for (const el of cards) {
-        const bottom = el.offsetTop + el.offsetHeight;
-        if (Math.abs(bottom - gridMaxBottom) <= eps) {
-          bottomBandTop = Math.min(bottomBandTop, el.offsetTop);
-        }
-      }
-      if (!isFinite(bottomBandTop) || bottomBandTop === gridMaxBottom) {
-        bottomBandTop = Math.max(0, gridMaxBottom - TILE_SIZE);
-      }
-      const bottomBandHeight = Math.max(TILE_SIZE, gridMaxBottom - bottomBandTop);
-
-      let bottomBandOccupiedRight = 0;
-      for (const el of cards) {
-        const top = el.offsetTop;
-        const bottom = el.offsetTop + el.offsetHeight;
-        // intersects bottom band?
-        if (bottom > bottomBandTop + eps && top < gridMaxBottom - eps) {
-          bottomBandOccupiedRight = Math.max(bottomBandOccupiedRight, el.offsetLeft + el.offsetWidth);
-        }
-      }
-
-      const hasRaggedRight = bottomBandOccupiedRight < gridWidth - eps;
-      pack.style.setProperty('--ragged-glow-left', `${bottomBandOccupiedRight}px`);
-      pack.style.setProperty('--ragged-glow-top', `${bottomBandTop}px`);
-      pack.style.setProperty('--ragged-glow-height', `${bottomBandHeight}px`);
-      pack.style.setProperty('--ragged-glow-opacity', hasRaggedRight ? '0.9' : '0');
-
-      // Add bottom glow to the last C artwork-cards (C = number of columns)
-      if (GLOW_ENABLED) {
-        cards.forEach((el) => el.classList.remove('bottom-glow'));
-        const start = Math.max(0, cards.length - nextColumnCount);
-        for (let i = start; i < cards.length; i++) {
-          cards[i]?.classList.add('bottom-glow');
-        }
-      }
     };
 
     const updateLayout = () => {
@@ -309,32 +242,29 @@ export default function CardGrid({
 
     updateLayout();
 
-    const resizeObserver = new ResizeObserver(() => {
-      updateLayout();
-    });
+    if (typeof ResizeObserver !== 'undefined') {
+      const resizeObserver = new ResizeObserver(() => {
+        updateLayout();
+      });
 
-    if (scrollContainerRef.current) resizeObserver.observe(scrollContainerRef.current);
+      if (scrollContainerRef.current) resizeObserver.observe(scrollContainerRef.current);
 
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [posts, columnCount, superPostId]);
+      return () => {
+        resizeObserver.disconnect();
+      };
+    } else {
+      const handleResize = () => updateLayout();
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }
+  }, [posts, columnCount, superPostId, occluded]);
 
   return (
-    <div 
-      className="card-grid-scroll-container" 
+    <div
+      className={`card-grid-scroll-container${occluded ? ' cg-occluded' : ''}`}
       ref={scrollContainerRef}
-      style={{ '--glow-sync-delay': glowAnimationDelay } as React.CSSProperties}
     >
       <div className="card-grid-pack" ref={packRef}>
-        {GLOW_ENABLED && (
-          <>
-            <div className="edge-glow edge-glow-left" />
-            <div className="edge-glow edge-glow-right" />
-            <div className="edge-glow edge-glow-ragged" />
-          </>
-        )}
-
         <div className="card-grid" ref={gridRef}>
           {posts.map((post, index) => {
             const postIndex = index;
@@ -374,7 +304,7 @@ export default function CardGrid({
           })}
         </div>
 
-        {selectedIndex !== null && selectedIndex >= 0 && selectedIndex < posts.length && (
+        {!occluded && selectedIndex !== null && selectedIndex >= 0 && selectedIndex < posts.length && (
           <SelectedPostOverlay
             posts={selectedOverlayPosts}
             selectedIndex={selectedIndex}
@@ -404,76 +334,17 @@ export default function CardGrid({
           padding: 0;
         }
 
+        /* When occluded (e.g. WebPlayer overlay is open), hide the grid so
+           the browser can skip painting, compositing, and GIF decoding. */
+        .card-grid-scroll-container.cg-occluded {
+          visibility: hidden;
+        }
+
         .card-grid-pack {
           position: relative;
           width: var(--grid-width, 128px);
           margin-left: auto;
           margin-right: auto;
-        }
-
-        .edge-glow {
-          position: absolute;
-          top: 0;
-          width: 56px;
-          pointer-events: none;
-          filter: blur(10px) hue-rotate(0deg);
-          opacity: 0.9;
-          animation: sinebow-hue 16s linear infinite;
-          animation-delay: var(--glow-sync-delay, 0s);
-        }
-
-        .edge-glow-left {
-          left: -56px;
-          height: var(--left-glow-height, 0px);
-          background: linear-gradient(
-            to left,
-            rgba(0, 212, 255, 0.22) 0%,
-            rgba(0, 212, 255, 0.210546875) 12.5%,
-            rgba(0, 212, 255, 0.185625) 25%,
-            rgba(0, 212, 255, 0.150390625) 37.5%,
-            rgba(0, 212, 255, 0.11) 50%,
-            rgba(0, 212, 255, 0.069609375) 62.5%,
-            rgba(0, 212, 255, 0.034375) 75%,
-            rgba(0, 212, 255, 0.009453125) 87.5%,
-            rgba(0, 212, 255, 0) 100%
-          );
-        }
-
-        .edge-glow-right {
-          right: -56px;
-          height: var(--right-glow-height, 0px);
-          background: linear-gradient(
-            to right,
-            rgba(0, 212, 255, 0.22) 0%,
-            rgba(0, 212, 255, 0.210546875) 12.5%,
-            rgba(0, 212, 255, 0.185625) 25%,
-            rgba(0, 212, 255, 0.150390625) 37.5%,
-            rgba(0, 212, 255, 0.11) 50%,
-            rgba(0, 212, 255, 0.069609375) 62.5%,
-            rgba(0, 212, 255, 0.034375) 75%,
-            rgba(0, 212, 255, 0.009453125) 87.5%,
-            rgba(0, 212, 255, 0) 100%
-          );
-        }
-
-        /* Extra glow for a ragged right edge on the last row */
-        .edge-glow-ragged {
-          left: var(--ragged-glow-left, 0px);
-          top: var(--ragged-glow-top, 0px);
-          height: var(--ragged-glow-height, 0px);
-          opacity: var(--ragged-glow-opacity, 0);
-          background: linear-gradient(
-            to right,
-            rgba(0, 212, 255, 0.22) 0%,
-            rgba(0, 212, 255, 0.210546875) 12.5%,
-            rgba(0, 212, 255, 0.185625) 25%,
-            rgba(0, 212, 255, 0.150390625) 37.5%,
-            rgba(0, 212, 255, 0.11) 50%,
-            rgba(0, 212, 255, 0.069609375) 62.5%,
-            rgba(0, 212, 255, 0.034375) 75%,
-            rgba(0, 212, 255, 0.009453125) 87.5%,
-            rgba(0, 212, 255, 0) 100%
-          );
         }
 
         .card-grid {
@@ -504,6 +375,8 @@ export default function CardGrid({
           -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
           tap-highlight-color: rgba(0, 0, 0, 0);
           background: transparent;
+          content-visibility: auto;
+          contain-intrinsic-size: 128px 128px;
         }
 
         /* Prevent brief mobile "selected"/highlight flash on tap */
@@ -516,6 +389,7 @@ export default function CardGrid({
           height: 256px;
           grid-column: span 2;
           grid-row: span 2;
+          contain-intrinsic-size: 256px 256px;
         }
 
         :global(a.artwork-card.super-post) .artwork-area {
@@ -525,41 +399,6 @@ export default function CardGrid({
 
         :global(a.artwork-card:focus-visible) {
           outline: none;
-        }
-
-        :global(a.artwork-card.bottom-glow)::after {
-          content: '';
-          position: absolute;
-          left: 0;
-          right: 0;
-          top: 100%;
-          height: 64px;
-          pointer-events: none;
-          background: linear-gradient(
-            to bottom,
-            rgba(0, 212, 255, 0.22) 0%,
-            rgba(0, 212, 255, 0.210546875) 12.5%,
-            rgba(0, 212, 255, 0.185625) 25%,
-            rgba(0, 212, 255, 0.150390625) 37.5%,
-            rgba(0, 212, 255, 0.11) 50%,
-            rgba(0, 212, 255, 0.069609375) 62.5%,
-            rgba(0, 212, 255, 0.034375) 75%,
-            rgba(0, 212, 255, 0.009453125) 87.5%,
-            rgba(0, 212, 255, 0) 100%
-          );
-          filter: blur(10px) hue-rotate(0deg);
-          opacity: 0.9;
-          animation: sinebow-hue 16s linear infinite;
-          animation-delay: var(--glow-sync-delay, 0s);
-        }
-
-        @keyframes sinebow-hue {
-          from {
-            filter: blur(10px) hue-rotate(0deg);
-          }
-          to {
-            filter: blur(10px) hue-rotate(360deg);
-          }
         }
 
         .artwork-image {

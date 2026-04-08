@@ -293,6 +293,7 @@ export default function HomePage() {
             API_BASE_URL={API_BASE_URL}
             source={{ type: 'recent' }}
             cursor={nextCursor}
+            occluded={wpActive}
           />
         )}
 
@@ -409,6 +410,7 @@ export default function HomePage() {
         }
 
         .end-spacer {
+          height: 200px;
           height: max(25vh, 200px);
           width: 1px;
         }

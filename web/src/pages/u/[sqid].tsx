@@ -1126,6 +1126,7 @@ export default function UserProfilePage() {
               API_BASE_URL={API_BASE_URL}
               source={{ type: 'profile', id: profile ? String(profile.id) : undefined }}
               cursor={activeTab === 'gallery' ? nextCursor : reactedNextCursor}
+              occluded={wpActive}
             />
           )}
 
@@ -1753,6 +1754,7 @@ export default function UserProfilePage() {
         }
 
         .end-spacer {
+          height: 200px;
           height: max(25vh, 200px);
           width: 1px;
         }

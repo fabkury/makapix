@@ -268,6 +268,7 @@ export default function HashtagPage() {
             API_BASE_URL={API_BASE_URL}
             source={{ type: 'hashtag', id: hashtagName }}
             cursor={nextCursor}
+            occluded={wpActive}
           />
         )}
 
@@ -421,6 +422,7 @@ export default function HashtagPage() {
         }
 
         .end-spacer {
+          height: 200px;
           height: max(25vh, 200px);
           width: 1px;
         }
