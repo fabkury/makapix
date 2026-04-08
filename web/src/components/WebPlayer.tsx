@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/router";
-import { authenticatedFetch } from "../lib/api";
+import { authenticatedFetch, getAccessToken } from "../lib/api";
+import { EMOJI_OPTIONS } from "./CommentsAndReactions";
+import SPOCommentsOverlay from "./SPOCommentsOverlay";
 
 const DWELL_TIME_MS = 30_000;
 const UI_HIDE_MS = 10_000;
@@ -76,6 +78,76 @@ function resolveAvatarUrl(
   return `${apiBase}${avatarUrl}`;
 }
 
+interface ReactionTotals {
+  totals: Record<string, number>;
+  authenticated_totals: Record<string, number>;
+  anonymous_totals: Record<string, number>;
+  mine: string[];
+}
+
+interface WidgetComment {
+  id: string;
+  author_id: string | null;
+  author_ip: string | null;
+  parent_id: string | null;
+  depth: number;
+  body: string;
+  hidden_by_mod: boolean;
+  deleted_by_owner: boolean;
+  created_at: string;
+  updated_at: string | null;
+  author_handle?: string;
+  author_display_name?: string;
+  author_avatar_url?: string | null;
+  like_count?: number;
+  liked_by_me?: boolean;
+}
+
+interface WidgetData {
+  reactions: ReactionTotals;
+  comments: WidgetComment[];
+  views_count: number;
+}
+
+async function fetchWidgetData(postId: number): Promise<WidgetData | null> {
+  const url = `/api/post/${postId}/widget-data`;
+  const hasToken = !!getAccessToken();
+  try {
+    const resp = hasToken
+      ? await authenticatedFetch(
+          url.startsWith("http") ? url : `${window.location.origin}${url}`,
+        )
+      : await fetch(url, { credentials: "include" });
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch {
+    return null;
+  }
+}
+
+async function toggleReaction(
+  postId: number,
+  emoji: string,
+  shouldAdd: boolean,
+): Promise<void> {
+  const encoded = encodeURIComponent(emoji);
+  const url = `/api/post/${postId}/reactions/${encoded}`;
+  const method = shouldAdd ? "PUT" : "DELETE";
+  const hasToken = !!getAccessToken();
+  const fullUrl = url.startsWith("http")
+    ? url
+    : `${window.location.origin}${url}`;
+  const resp = hasToken
+    ? await authenticatedFetch(fullUrl, { method })
+    : await fetch(fullUrl, { method, credentials: "include" });
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => "");
+    throw new Error(
+      `Failed to ${shouldAdd ? "add" : "remove"} reaction: ${resp.status} ${txt}`.trim(),
+    );
+  }
+}
+
 export function WebPlayer({
   isActive,
   onClose,
@@ -124,6 +196,14 @@ export function WebPlayer({
   const [menuOpen, setMenuOpen] = useState(false);
   const [formatSubOpen, setFormatSubOpen] = useState(false);
   const subPanelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Reactions & comments
+  const [widgetData, setWidgetData] = useState<WidgetData | null>(null);
+  const widgetCacheRef = useRef<Map<number, WidgetData>>(new Map());
+  const reactionInFlightRef = useRef(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isModerator, setIsModerator] = useState(false);
 
   const lastArtworkIdRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -234,6 +314,7 @@ export function WebPlayer({
       lastArtworkIdRef.current = artwork.id;
       setDisplayedArtwork(artwork);
       setEmpty(false);
+      setCommentsOpen(false);
       showOnBackBuffer(artwork);
 
       if (addToHistory) {
@@ -405,6 +486,56 @@ export function WebPlayer({
       return next;
     });
   }, []);
+
+  // --- Reactions ---
+
+  const handleReactionClick = useCallback(
+    async (emoji: string) => {
+      if (!displayedArtwork || reactionInFlightRef.current) return;
+      reactionInFlightRef.current = true;
+      try {
+        const isActive = widgetData?.reactions.mine.includes(emoji) || false;
+        const next = !isActive;
+
+        // Optimistic update
+        if (widgetData) {
+          const newMine = next
+            ? [...widgetData.reactions.mine, emoji]
+            : widgetData.reactions.mine.filter((e) => e !== emoji);
+          const newTotals = { ...widgetData.reactions.totals };
+          newTotals[emoji] = Math.max(
+            0,
+            (newTotals[emoji] || 0) + (next ? 1 : -1),
+          );
+          const updated: WidgetData = {
+            ...widgetData,
+            reactions: { ...widgetData.reactions, mine: newMine, totals: newTotals },
+          };
+          setWidgetData(updated);
+          widgetCacheRef.current.set(displayedArtwork.id, updated);
+        }
+
+        await toggleReaction(displayedArtwork.id, emoji, next);
+
+        // Re-fetch to sync
+        const data = await fetchWidgetData(displayedArtwork.id);
+        if (data) {
+          setWidgetData(data);
+          widgetCacheRef.current.set(displayedArtwork.id, data);
+        }
+      } catch (err) {
+        console.error("Failed to toggle reaction:", err);
+        const data = await fetchWidgetData(displayedArtwork.id);
+        if (data) {
+          setWidgetData(data);
+          widgetCacheRef.current.set(displayedArtwork.id, data);
+        }
+      } finally {
+        reactionInFlightRef.current = false;
+      }
+    },
+    [displayedArtwork, widgetData],
+  );
 
   // --- Three-dot menu helpers ---
 
@@ -617,6 +748,9 @@ export function WebPlayer({
     pausedRef.current = false;
     setMenuOpen(false);
     setFormatSubOpen(false);
+    setWidgetData(null);
+    widgetCacheRef.current.clear();
+    setCommentsOpen(false);
 
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -652,12 +786,16 @@ export function WebPlayer({
     };
   }, [isActive, fetchArtworkMetadata, showArtwork, startPrefetch, cancelPrefetch, clearUiTimer, setSlotASrc, setSlotBSrc]);
 
-  // Start the UI auto-hide timer when UI is shown
+  // Start the UI auto-hide timer when UI is shown (pause when menu/comments open)
   useEffect(() => {
     if (!isActive || !uiVisible) return;
+    if (menuOpen || commentsOpen) {
+      clearUiTimer();
+      return;
+    }
     startUiTimer();
     return clearUiTimer;
-  }, [isActive, uiVisible, startUiTimer, clearUiTimer]);
+  }, [isActive, uiVisible, menuOpen, commentsOpen, startUiTimer, clearUiTimer]);
 
   // Dwell timer (respects pause)
   useEffect(() => {
@@ -721,6 +859,47 @@ export function WebPlayer({
     };
   }, [isActive, revealUi]);
 
+  // Fetch widget data (reactions/comments) when artwork changes
+  useEffect(() => {
+    if (!isActive || !displayedArtwork) return;
+    const cached = widgetCacheRef.current.get(displayedArtwork.id);
+    if (cached) {
+      setWidgetData(cached);
+    } else {
+      setWidgetData(null);
+      (async () => {
+        const data = await fetchWidgetData(displayedArtwork.id);
+        if (data && mountedRef.current) {
+          setWidgetData(data);
+          widgetCacheRef.current.set(displayedArtwork.id, data);
+        }
+      })();
+    }
+  }, [isActive, displayedArtwork]);
+
+  // Fetch current user info for comments overlay
+  useEffect(() => {
+    if (!isActive) return;
+    const userId = localStorage.getItem("user_id");
+    setCurrentUserId(userId);
+    const token = getAccessToken();
+    if (token) {
+      authenticatedFetch(
+        `${apiBaseUrl}/api/auth/me`,
+      )
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.roles) {
+            const roles = data.roles as string[];
+            setIsModerator(
+              roles.includes("moderator") || roles.includes("owner"),
+            );
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isActive, apiBaseUrl]);
+
   if (!isActive) return null;
   if (typeof window === "undefined") return null;
 
@@ -735,6 +914,10 @@ export function WebPlayer({
 
   const art = displayedArtwork;
   const nativeFile = art?.files?.find((f) => f.is_native);
+  const totalReactions = widgetData
+    ? Object.values(widgetData.reactions.totals).reduce((a, b) => a + b, 0)
+    : 0;
+  const totalComments = widgetData?.comments?.length ?? 0;
   const ownerHref = art?.owner?.public_sqid
     ? `/u/${art.owner.public_sqid}`
     : null;
@@ -908,6 +1091,51 @@ export function WebPlayer({
             </div>
           )}
 
+          {/* Reaction & comment counts */}
+          {art && (
+            <div className="wp-counts-row">
+              <span className="wp-count-item">
+                <span className="wp-count-icon">&#x26A1;</span>
+                <span>{totalReactions}</span>
+              </span>
+              <span className="wp-count-item">
+                <span className="wp-count-icon">&#x1F4AC;</span>
+                <span>{totalComments}</span>
+              </span>
+            </div>
+          )}
+
+          {/* Emoji reactions */}
+          {art && (
+            <div className="wp-reactions">
+              {EMOJI_OPTIONS.map((emoji) => {
+                const count =
+                  widgetData?.reactions.totals[emoji] || 0;
+                const active =
+                  widgetData?.reactions.mine.includes(emoji) || false;
+                return (
+                  <button
+                    key={emoji}
+                    className={`wp-reaction${active ? " wp-reaction-active" : ""}`}
+                    onClick={() => handleReactionClick(emoji)}
+                  >
+                    <span>{emoji}</span>
+                    {count > 0 && (
+                      <span className="wp-reaction-count">{count}</span>
+                    )}
+                  </button>
+                );
+              })}
+              <button
+                className="wp-btn wp-comment-btn"
+                onClick={() => setCommentsOpen(true)}
+                aria-label="Open comments"
+              >
+                &#x1F4AC;
+              </button>
+            </div>
+          )}
+
           {/* Controls */}
           <div className="wp-controls">
             <button
@@ -1031,6 +1259,18 @@ export function WebPlayer({
             </button>
           </div>
         </div>
+      )}
+
+      {/* Comments overlay */}
+      {art && (
+        <SPOCommentsOverlay
+          postId={art.id}
+          isOpen={commentsOpen}
+          onClose={() => setCommentsOpen(false)}
+          currentUserId={currentUserId}
+          isModerator={isModerator}
+          initialComments={widgetData?.comments || []}
+        />
       )}
 
       <style jsx>{`
@@ -1253,6 +1493,71 @@ export function WebPlayer({
         .wp-btn:hover {
           background: rgba(255, 255, 255, 0.2);
           color: rgba(255, 255, 255, 0.9);
+        }
+
+        /* Reaction & comment counts */
+        .wp-counts-row {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          color: rgba(255, 255, 255, 0.5);
+          font-size: 13px;
+        }
+
+        .wp-count-item {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .wp-count-icon {
+          font-size: 15px;
+        }
+
+        /* Emoji reactions */
+        .wp-reactions {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+
+        .wp-reaction {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          padding: 4px 8px;
+          border-radius: 16px;
+          border: 1.5px solid transparent;
+          background: rgba(255, 255, 255, 0.08);
+          color: rgba(255, 255, 255, 0.7);
+          font-size: 16px;
+          cursor: pointer;
+          transition: border-color 150ms ease, background 150ms ease;
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        .wp-reaction:hover {
+          background: rgba(255, 255, 255, 0.14);
+        }
+
+        .wp-reaction-active {
+          border-color: #00d4ff;
+          background: rgba(0, 212, 255, 0.15);
+        }
+
+        .wp-reaction-count {
+          font-size: 12px;
+          color: rgba(255, 255, 255, 0.6);
+          min-width: 8px;
+          text-align: center;
+        }
+
+        .wp-comment-btn {
+          width: 36px;
+          height: 36px;
+          font-size: 16px;
+          margin-left: 4px;
         }
 
         /* Three-dot menu button */
