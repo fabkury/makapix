@@ -938,9 +938,6 @@ export function WebPlayer({
 
   const art = displayedArtwork;
   const nativeFile = art?.files?.find((f) => f.is_native);
-  const totalReactions = widgetData
-    ? Object.values(widgetData.reactions.totals).reduce((a, b) => a + b, 0)
-    : 0;
   const totalComments = widgetData?.comments?.length ?? 0;
   const ownerHref = art?.owner?.public_sqid
     ? `/u/${art.owner.public_sqid}`
@@ -1117,20 +1114,6 @@ export function WebPlayer({
             </div>
           )}
 
-          {/* Reaction & comment counts */}
-          {art && (
-            <div className="wp-counts-row">
-              <span className="wp-count-item">
-                <span className="wp-count-icon">&#x26A1;</span>
-                <span>{totalReactions}</span>
-              </span>
-              <span className="wp-count-item">
-                <span className="wp-count-icon">&#x1F4AC;</span>
-                <span>{totalComments}</span>
-              </span>
-            </div>
-          )}
-
           {/* Emoji reactions */}
           {art && (
             <div className="wp-reactions">
@@ -1153,11 +1136,14 @@ export function WebPlayer({
                 );
               })}
               <button
-                className="wp-btn wp-comment-btn"
+                className="wp-reaction wp-comment-btn"
                 onClick={() => setCommentsOpen(true)}
                 aria-label="Open comments"
               >
-                &#x1F4AC;
+                <span>&#x1F4AC;</span>
+                {totalComments > 0 && (
+                  <span className="wp-reaction-count">{totalComments}</span>
+                )}
               </button>
             </div>
           )}
@@ -1521,25 +1507,6 @@ export function WebPlayer({
           color: rgba(255, 255, 255, 0.9);
         }
 
-        /* Reaction & comment counts */
-        .wp-counts-row {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-          color: rgba(255, 255, 255, 0.5);
-          font-size: 13px;
-        }
-
-        .wp-count-item {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-
-        .wp-count-icon {
-          font-size: 15px;
-        }
-
         /* Emoji reactions */
         .wp-reactions {
           display: flex;
@@ -1580,9 +1547,6 @@ export function WebPlayer({
         }
 
         .wp-comment-btn {
-          width: 36px;
-          height: 36px;
-          font-size: 16px;
           margin-left: 4px;
         }
 
