@@ -38,6 +38,8 @@ interface WebPlayerProps {
   buildApiQuery: (baseParams: Record<string, string>) => string;
   baseParams: Record<string, string>;
   channelName?: string;
+  /** Override the default /api/post endpoint (e.g. for unauthenticated feeds). */
+  apiEndpoint?: string;
 }
 
 /** Load an image into the browser cache and decode it, ready to paint. */
@@ -82,6 +84,7 @@ export function WebPlayer({
   buildApiQuery,
   baseParams,
   channelName,
+  apiEndpoint,
 }: WebPlayerProps) {
   const router = useRouter();
 
@@ -262,7 +265,8 @@ export function WebPlayer({
         params.set("limit", "1");
         params.delete("order");
         params.delete("cursor");
-        const url = `${apiBaseUrl}/api/post?${params.toString()}`;
+        const endpoint = apiEndpoint || "/api/post";
+        const url = `${apiBaseUrl}${endpoint}?${params.toString()}`;
         const response = await authenticatedFetch(url);
         if (!response.ok) return null;
         const data = await response.json();
@@ -296,7 +300,7 @@ export function WebPlayer({
         return null;
       }
     },
-    [apiBaseUrl],
+    [apiBaseUrl, apiEndpoint],
   );
 
   // --- Prefetch-ahead ---
