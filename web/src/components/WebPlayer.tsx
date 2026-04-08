@@ -30,6 +30,7 @@ interface Artwork {
   width: number;
   height: number;
   frame_count: number;
+  created_at: string;
   files: ArtworkFile[];
   owner: ArtworkOwner | null;
 }
@@ -56,6 +57,16 @@ function prefetchImage(url: string): Promise<void> {
     img.onerror = reject;
     img.src = url;
   });
+}
+
+function formatDateTime(isoString: string): string {
+  const date = new Date(isoString);
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const hours = date.getHours().toString().padStart(2, "0");
+  const minutes = date.getMinutes().toString().padStart(2, "0");
+  return `${year}/${month}/${day} ${hours}:${minutes}`;
 }
 
 function formatFileSize(bytes: number): string {
@@ -371,6 +382,7 @@ export function WebPlayer({
           width: item.width,
           height: item.height,
           frame_count: item.frame_count ?? 1,
+          created_at: item.created_at,
           files: item.files ?? [],
           owner: item.owner
             ? {
@@ -1081,6 +1093,8 @@ export function WebPlayer({
           {/* Technical info */}
           {art && (
             <div className="wp-tech">
+              <span>{formatDateTime(art.created_at)}</span>
+              <span className="wp-tech-dot">&bull;</span>
               <span>
                 <span
                   className={
