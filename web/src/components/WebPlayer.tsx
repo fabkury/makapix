@@ -254,6 +254,20 @@ export function WebPlayer({
     startUiTimer();
   }, [startUiTimer]);
 
+  const toggleUi = useCallback(() => {
+    if (Date.now() < hideGraceUntilRef.current) return;
+    setUiVisible((prev) => {
+      if (prev) {
+        clearUiTimer();
+        hideGraceUntilRef.current = Date.now() + 1000;
+        return false;
+      } else {
+        startUiTimer();
+        return true;
+      }
+    });
+  }, [clearUiTimer, startUiTimer]);
+
   // --- Artwork sizing (full viewport in Mode A, inset in Mode B) ---
 
   const computeSize = useCallback(
@@ -845,17 +859,15 @@ export function WebPlayer({
     return () => window.removeEventListener("resize", handler);
   }, [isActive, updateArtSize]);
 
-  // Mouse/touch interaction → reveal UI (Mode B)
+  // Mouse movement → reveal UI (Mode B); taps toggle via artwork area onClick
   useEffect(() => {
     if (!isActive) return;
     const handler = () => {
       if (mountedRef.current && !closingRef.current) revealUi();
     };
     window.addEventListener("mousemove", handler);
-    window.addEventListener("touchstart", handler);
     return () => {
       window.removeEventListener("mousemove", handler);
-      window.removeEventListener("touchstart", handler);
     };
   }, [isActive, revealUi]);
 
@@ -925,7 +937,7 @@ export function WebPlayer({
 
   return createPortal(
     <div className={overlayClass}>
-      <div className="wp-artwork-area">
+      <div className="wp-artwork-area" onClick={toggleUi}>
         {empty && (
           <div className="wp-empty">No artworks match current filters</div>
         )}
