@@ -950,8 +950,8 @@ export function WebPlayer({
           style={{
             width: artSize.w,
             height: artSize.h,
-            objectFit: "contain",
             zIndex: frontSlot === "a" ? 1 : 0,
+            visibility: frontSlot === "a" ? "visible" : "hidden",
           }}
           draggable={false}
         />
@@ -964,8 +964,8 @@ export function WebPlayer({
           style={{
             width: artSize.w,
             height: artSize.h,
-            objectFit: "contain",
             zIndex: frontSlot === "b" ? 1 : 0,
+            visibility: frontSlot === "b" ? "visible" : "hidden",
           }}
           draggable={false}
         />
