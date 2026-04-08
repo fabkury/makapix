@@ -191,8 +191,9 @@ export default function RecommendedPage() {
         isActive={wpActive}
         onClose={() => setWpActive(false)}
         buildApiQuery={buildApiQuery}
-        baseParams={{ promoted: "true" }}
+        baseParams={{}}
         channelName="Promoted Artworks"
+        apiEndpoint="/api/feed/promoted"
       />
       <div className="feed-container">
         {error && (
