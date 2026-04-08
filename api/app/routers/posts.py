@@ -130,7 +130,7 @@ def list_posts(
     ),  # Exact size values (max dimension) with OR logic
     size_gte: int | None = Query(None, ge=1),  # For 128+ case
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User | None = Depends(get_current_user_optional),
 ) -> schemas.Page[schemas.Post]:
     """
     List posts with filters.
@@ -156,7 +156,9 @@ def list_posts(
         )
         if owner_user:
             owner_user_id = owner_user.id
-            is_viewing_own_posts = owner_user_id == current_user.id
+            is_viewing_own_posts = (
+                current_user is not None and owner_user_id == current_user.id
+            )
         else:
             # User not found, return empty results
             owner_user_id = -1  # Will result in no matches
@@ -391,13 +393,15 @@ def list_posts(
     posts = query.limit(limit + 1).all()
 
     # Add reaction and comment counts, and user liked status
-    annotate_posts_with_counts(db, posts, current_user.id)
+    annotate_posts_with_counts(
+        db, posts, current_user.id if current_user else None
+    )
 
     # Create paginated response
     page_data = create_page_response(posts, limit, cursor)
 
     # Record site event for page view
-    record_site_event(request, "page_view", user=current_user)
+    record_site_event(request, "page_view", user=current_user if current_user else None)
 
     return schemas.Page(
         items=[schemas.Post.model_validate(p) for p in page_data["items"]],
