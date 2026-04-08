@@ -6,9 +6,11 @@ const SHOW_AT_TOP = 64;
 
 interface WPButtonProps {
   onClick: () => void;
+  /** When true, position as if there is no FilterButton above. */
+  noFilter?: boolean;
 }
 
-export function WPButton({ onClick }: WPButtonProps) {
+export function WPButton({ onClick, noFilter = false }: WPButtonProps) {
   const [isHidden, setIsHidden] = useState(false);
 
   // Delta-based scroll tracking (mirrors FilterButton exactly)
@@ -79,7 +81,7 @@ export function WPButton({ onClick }: WPButtonProps) {
       <style jsx>{`
         .wp-button-container {
           position: fixed;
-          top: calc(var(--header-offset) + 16px + 56px + 12px);
+          top: calc(var(--header-offset) + 16px + ${noFilter ? "0px" : "56px + 12px"});
           right: 16px;
           z-index: 199;
           transition: transform 200ms ease-out, opacity 200ms ease-out;
@@ -118,7 +120,7 @@ export function WPButton({ onClick }: WPButtonProps) {
 
         @media (max-width: 640px) {
           .wp-button-container {
-            top: calc(var(--header-offset) + 8px + 48px + 8px);
+            top: calc(var(--header-offset) + 8px + ${noFilter ? "0px" : "48px + 8px"});
             right: 8px;
           }
 

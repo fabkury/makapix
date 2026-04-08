@@ -4,7 +4,7 @@ import { useRouter } from "next/router";
 import { authenticatedFetch } from "../lib/api";
 
 const DWELL_TIME_MS = 30_000;
-const UI_HIDE_MS = 15_000;
+const UI_HIDE_MS = 10_000;
 const MAX_REPEAT_RETRIES = 3;
 const MAX_HISTORY = 64;
 

@@ -4,6 +4,8 @@ import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import CardGrid from '../components/CardGrid';
 import PlayerBar from '../components/PlayerBarDynamic';
+import { WPButton } from '../components/WPButton';
+import { WebPlayer } from '../components/WebPlayer';
 import { authenticatedFetch, clearTokens } from '../lib/api';
 import { usePlayerBarOptional } from '../contexts/PlayerBarContext';
 import { calculatePageSize } from '../utils/gridUtils';
@@ -44,6 +46,11 @@ export default function RecommendedPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
+  const [wpActive, setWpActive] = useState(false);
+
+  const buildApiQuery = useCallback((baseParams: Record<string, string>) => {
+    return new URLSearchParams(baseParams).toString();
+  }, []);
   
   const observerTarget = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
@@ -179,6 +186,14 @@ export default function RecommendedPage() {
 
   return (
     <Layout title="Recommended Pixel Art" description="Curated pixel art selections promoted by moderators">
+      <WPButton onClick={() => setWpActive(true)} noFilter />
+      <WebPlayer
+        isActive={wpActive}
+        onClose={() => setWpActive(false)}
+        buildApiQuery={buildApiQuery}
+        baseParams={{ promoted: "true" }}
+        channelName="Promoted Artworks"
+      />
       <div className="feed-container">
         {error && (
           <div className="error-message">
