@@ -785,9 +785,7 @@ def feed_promoted(
     return response
 
 
-def _filter_page_fields(
-    response: schemas.Page, field_set: set[str]
-) -> JSONResponse:
+def _filter_page_fields(response: schemas.Page, field_set: set[str]) -> JSONResponse:
     """Strip Post items down to only the requested fields."""
     data = response.model_dump(mode="json")
     data["items"] = [

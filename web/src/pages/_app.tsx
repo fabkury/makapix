@@ -1,11 +1,50 @@
 import type { AppProps } from 'next/app';
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import '../styles/globals.css';
 import { getAccessToken, isTokenExpired, refreshAccessToken, wasRecentlyLoggedOut } from '../lib/api';
 import { usePageViewTracking } from '../hooks/usePageViewTracking';
 import { PlayerBarProvider } from '../contexts/PlayerBarContext';
 import { SocialNotificationsProvider } from '../contexts/SocialNotificationsContext';
+
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '2rem', textAlign: 'center', color: '#aaa' }}>
+          <p>Something went wrong.</p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              marginTop: '1rem',
+              padding: '0.5rem 1rem',
+              background: '#333',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+            }}
+          >
+            Reload page
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export default function App({ Component, pageProps }: AppProps) {
   const router = useRouter();
@@ -171,11 +210,13 @@ export default function App({ Component, pageProps }: AppProps) {
   }, [router.events]);
 
   return (
-    <SocialNotificationsProvider userId={userId}>
-      <PlayerBarProvider>
-        <Component {...pageProps} />
-      </PlayerBarProvider>
-    </SocialNotificationsProvider>
+    <ErrorBoundary>
+      <SocialNotificationsProvider userId={userId}>
+        <PlayerBarProvider>
+          <Component {...pageProps} />
+        </PlayerBarProvider>
+      </SocialNotificationsProvider>
+    </ErrorBoundary>
   );
 }
 

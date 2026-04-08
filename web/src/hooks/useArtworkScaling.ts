@@ -107,28 +107,35 @@ export function useArtworkScaling(gridRef: RefObject<HTMLDivElement>) {
     }, 0);
 
     // Recalculate on window resize (which triggers media query changes)
-    const resizeObserver = new ResizeObserver(() => {
-      // Small delay to let CSS media queries apply first
-      setTimeout(() => {
-        calculateScales();
-      }, 0);
-    });
-
-    resizeObserver.observe(grid);
-
-    // Also listen to window resize as fallback
     const handleResize = () => {
       setTimeout(() => {
         calculateScales();
       }, 0);
     };
-    
-    window.addEventListener('resize', handleResize);
 
-    return () => {
-      clearTimeout(timeoutId);
-      resizeObserver.disconnect();
-      window.removeEventListener('resize', handleResize);
-    };
+    if (typeof ResizeObserver !== 'undefined') {
+      const resizeObserver = new ResizeObserver(() => {
+        // Small delay to let CSS media queries apply first
+        setTimeout(() => {
+          calculateScales();
+        }, 0);
+      });
+
+      resizeObserver.observe(grid);
+      window.addEventListener('resize', handleResize);
+
+      return () => {
+        clearTimeout(timeoutId);
+        resizeObserver.disconnect();
+        window.removeEventListener('resize', handleResize);
+      };
+    } else {
+      window.addEventListener('resize', handleResize);
+
+      return () => {
+        clearTimeout(timeoutId);
+        window.removeEventListener('resize', handleResize);
+      };
+    }
   }, [gridRef]);
 }

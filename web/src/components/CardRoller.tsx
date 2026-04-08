@@ -170,15 +170,21 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
 
     calculateScales();
 
-    const resizeObserver = new ResizeObserver(() => {
-      calculateScales();
-    });
+    if (typeof ResizeObserver !== 'undefined') {
+      const resizeObserver = new ResizeObserver(() => {
+        calculateScales();
+      });
 
-    resizeObserver.observe(container);
+      resizeObserver.observe(container);
 
-    return () => {
-      resizeObserver.disconnect();
-    };
+      return () => {
+        resizeObserver.disconnect();
+      };
+    } else {
+      const handleResize = () => calculateScales();
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }
   }, [posts]);
 
   return (
