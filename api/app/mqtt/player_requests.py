@@ -1092,9 +1092,7 @@ def _handle_echo(player, request: EchoRequest, db: Session) -> None:
         received_at=datetime.now(timezone.utc),
     )
 
-    response_topic = (
-        f"makapix/player/{player.player_key}/response/{request.request_id}"
-    )
+    response_topic = f"makapix/player/{player.player_key}/response/{request.request_id}"
     publish(
         topic=response_topic,
         payload=response.model_dump(mode="json"),

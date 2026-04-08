@@ -1,6 +1,9 @@
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  // Transpile npm packages that ship ES2020+ syntax (e.g. ?., ??) so older
+  // browsers like Safari 12 (iPad Mini 2 / iOS 12) can parse the bundles.
+  transpilePackages: ['mqtt'],
   eslint: {
     dirs: ["src"],
   },

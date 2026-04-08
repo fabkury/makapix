@@ -307,6 +307,7 @@ export default function RecommendedPage() {
         }
 
         .end-spacer {
+          height: 200px;
           height: max(25vh, 200px);
           width: 1px;
         }
