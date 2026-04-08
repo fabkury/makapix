@@ -993,7 +993,7 @@ export function WebPlayer({
               onClick={() => {
                 clearUiTimer();
                 setUiVisible(false);
-                hideGraceUntilRef.current = Date.now() + 5000;
+                hideGraceUntilRef.current = Date.now() + 3000;
               }}
               aria-label="Hide controls"
             >
