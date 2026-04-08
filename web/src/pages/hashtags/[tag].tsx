@@ -222,6 +222,7 @@ export default function HashtagPage() {
         onClose={() => setWpActive(false)}
         buildApiQuery={buildApiQuery}
         baseParams={hashtagName ? { hashtag: hashtagName } : {}}
+        channelName={hashtagName ? `#${hashtagName}` : undefined}
       />
 
       <div className="feed-container">

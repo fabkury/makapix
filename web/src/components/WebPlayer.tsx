@@ -1,17 +1,35 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/router";
 import { authenticatedFetch } from "../lib/api";
 
 const DWELL_TIME_MS = 30_000;
+const UI_HIDE_MS = 15_000;
 const MAX_REPEAT_RETRIES = 3;
 const MAX_HISTORY = 64;
-const WP_BAR_HEIGHT = 56;
+
+interface ArtworkOwner {
+  handle: string;
+  avatar_url: string | null;
+  public_sqid: string | null;
+}
+
+interface ArtworkFile {
+  format: string;
+  file_bytes: number;
+  is_native: boolean;
+}
 
 interface Artwork {
   id: number;
+  public_sqid: string;
   art_url: string;
+  title: string;
   width: number;
   height: number;
+  frame_count: number;
+  files: ArtworkFile[];
+  owner: ArtworkOwner | null;
 }
 
 interface WebPlayerProps {
@@ -19,6 +37,7 @@ interface WebPlayerProps {
   onClose: () => void;
   buildApiQuery: (baseParams: Record<string, string>) => string;
   baseParams: Record<string, string>;
+  channelName?: string;
 }
 
 /** Load an image into the browser cache and decode it, ready to paint. */
@@ -37,20 +56,42 @@ function prefetchImage(url: string): Promise<void> {
   });
 }
 
-export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebPlayerProps) {
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const k = 1000;
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const value = bytes / Math.pow(k, i);
+  if (value >= 100) return `${Math.round(value)} ${units[i]}`;
+  if (value >= 10) return `${value.toFixed(1)} ${units[i]}`;
+  return `${value.toFixed(2)} ${units[i]}`;
+}
+
+function resolveAvatarUrl(
+  avatarUrl: string | null | undefined,
+  apiBase: string,
+): string | null {
+  if (!avatarUrl) return null;
+  if (avatarUrl.startsWith("http")) return avatarUrl;
+  return `${apiBase}${avatarUrl}`;
+}
+
+export function WebPlayer({
+  isActive,
+  onClose,
+  buildApiQuery,
+  baseParams,
+  channelName,
+}: WebPlayerProps) {
+  const router = useRouter();
+
   // --- Double-buffer display ---
-  // Two persistent <img> slots (A and B) always in the DOM, stacked via z-index.
-  // Only the BACK slot's src is ever changed; the visible (front) slot is never
-  // touched. When the back slot's onLoad fires, we flip z-indices. This
-  // guarantees zero-frame-gap transitions — the old image stays on screen until
-  // the new one is fully loaded and ready to paint.
   const [slotASrc, _setSlotASrc] = useState("");
   const [slotBSrc, _setSlotBSrc] = useState("");
   const [frontSlot, setFrontSlot] = useState<"a" | "b">("a");
   const frontSlotRef = useRef<"a" | "b">("a");
   const slotSrcRefs = useRef({ a: "", b: "" });
 
-  // Keep refs in sync with state for synchronous access.
   const setSlotASrc = useCallback((url: string) => {
     slotSrcRefs.current.a = url;
     _setSlotASrc(url);
@@ -60,30 +101,43 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
     _setSlotBSrc(url);
   }, []);
 
-  // Artwork metadata for the currently displayed piece (for history, dwell, etc.)
-  const [displayedArtwork, setDisplayedArtwork] = useState<Artwork | null>(null);
+  // Artwork metadata for the currently displayed piece
+  const [displayedArtwork, setDisplayedArtwork] = useState<Artwork | null>(
+    null,
+  );
 
   const [empty, setEmpty] = useState(false);
   const [fadeIn, setFadeIn] = useState(false);
   const [fadeOut, setFadeOut] = useState(false);
-  const [squareSize, setSquareSize] = useState(0);
+
+  // UI visibility (Mode A vs Mode B)
+  const [uiVisible, setUiVisible] = useState(true);
+  const uiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Dwell timer paused state
+  const [paused, setPaused] = useState(false);
+  const pausedRef = useRef(false);
+
+  // Three-dot menu
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [formatSubOpen, setFormatSubOpen] = useState(false);
+  const subPanelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const lastArtworkIdRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closingRef = useRef(false);
   const mountedRef = useRef(false);
 
-  // Prefetch-ahead: load the next artwork in the background so it's ready the
-  // instant the user advances or the dwell timer fires.
+  // Prefetch-ahead
   const prefetchedRef = useRef<Artwork | null>(null);
   const prefetchingRef = useRef(false);
   const prefetchCancelledRef = useRef(false);
 
-  // History for prev/next navigation
+  // History
   const historyRef = useRef<Artwork[]>([]);
   const historyIndexRef = useRef(-1);
 
-  // Stabilize props via refs to prevent effect re-triggers from parent re-renders
+  // Stabilize props via refs
   const buildApiQueryRef = useRef(buildApiQuery);
   buildApiQueryRef.current = buildApiQuery;
   const baseParamsRef = useRef(baseParams);
@@ -96,15 +150,59 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
       ? process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin
       : "";
 
-  // Compute the largest square that fits the viewport minus wp-bar
-  const updateSquareSize = useCallback(() => {
-    const availableHeight = window.innerHeight - WP_BAR_HEIGHT;
-    setSquareSize(Math.min(window.innerWidth, availableHeight));
+  // --- UI auto-hide ---
+
+  const clearUiTimer = useCallback(() => {
+    if (uiTimerRef.current) {
+      clearTimeout(uiTimerRef.current);
+      uiTimerRef.current = null;
+    }
   }, []);
+
+  const startUiTimer = useCallback(() => {
+    clearUiTimer();
+    uiTimerRef.current = setTimeout(() => {
+      if (mountedRef.current) setUiVisible(false);
+    }, UI_HIDE_MS);
+  }, [clearUiTimer]);
+
+  const revealUi = useCallback(() => {
+    setUiVisible(true);
+    startUiTimer();
+  }, [startUiTimer]);
+
+  // --- Artwork sizing (full viewport in Mode A, inset in Mode B) ---
+
+  const computeSize = useCallback(
+    (uiShown: boolean) => {
+      if (!displayedArtwork) return { w: 0, h: 0 };
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const aw = displayedArtwork.width;
+      const ah = displayedArtwork.height;
+      const availW = vw;
+      const availH = uiShown ? vh : vh;
+      // Scale to fit within viewport while preserving aspect ratio.
+      const scale = Math.min(availW / aw, availH / ah);
+      return { w: Math.round(aw * scale), h: Math.round(ah * scale) };
+    },
+    [displayedArtwork],
+  );
+
+  const [artSize, setArtSize] = useState({ w: 0, h: 0 });
+
+  const updateArtSize = useCallback(() => {
+    setArtSize(computeSize(uiVisible));
+  }, [computeSize, uiVisible]);
+
+  // Recalc when artwork, viewport, or UI visibility changes
+  useEffect(() => {
+    if (!isActive || !displayedArtwork) return;
+    updateArtSize();
+  }, [isActive, displayedArtwork, uiVisible, updateArtSize]);
 
   // --- Double-buffer helpers ---
 
-  /** When a slot's <img> fires onLoad, flip it to front if it's the back slot. */
   const handleSlotLoad = useCallback((slot: "a" | "b") => {
     if (slot !== frontSlotRef.current) {
       frontSlotRef.current = slot;
@@ -112,8 +210,6 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
     }
   }, []);
 
-  /** Put an artwork on the back buffer and let onLoad flip it to front.
-   *  If the back slot already has the same URL, flip immediately. */
   const showOnBackBuffer = useCallback(
     (artwork: Artwork) => {
       const back: "a" | "b" = frontSlotRef.current === "a" ? "b" : "a";
@@ -121,18 +217,15 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
       const setBack = back === "a" ? setSlotASrc : setSlotBSrc;
 
       if (backSrc === artwork.art_url) {
-        // Already on back buffer (e.g. cache hit from history) — flip now.
         frontSlotRef.current = back;
         setFrontSlot(back);
       } else {
         setBack(artwork.art_url);
-        // onLoad on the back slot's <img> will trigger handleSlotLoad → flip.
       }
     },
     [setSlotASrc, setSlotBSrc],
   );
 
-  /** Display an artwork: update metadata, push to history, and show on back buffer. */
   const showArtwork = useCallback(
     (artwork: Artwork, addToHistory: boolean) => {
       lastArtworkIdRef.current = artwork.id;
@@ -157,7 +250,6 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
 
   // --- Fetching ---
 
-  /** Fetch a random artwork's metadata from the API (no image prefetch). */
   const fetchArtworkMetadata = useCallback(
     async (retryCount = 0): Promise<Artwork | null> => {
       try {
@@ -172,11 +264,23 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
         if (!response.ok) return null;
         const data = await response.json();
         if (!data.items || data.items.length === 0) return null;
+        const item = data.items[0];
         const artwork: Artwork = {
-          id: data.items[0].id,
-          art_url: data.items[0].art_url,
-          width: data.items[0].width,
-          height: data.items[0].height,
+          id: item.id,
+          public_sqid: item.public_sqid,
+          art_url: item.art_url,
+          title: item.title || "",
+          width: item.width,
+          height: item.height,
+          frame_count: item.frame_count ?? 1,
+          files: item.files ?? [],
+          owner: item.owner
+            ? {
+                handle: item.owner.handle,
+                avatar_url: item.owner.avatar_url ?? null,
+                public_sqid: item.owner.public_sqid ?? null,
+              }
+            : null,
         };
         if (
           artwork.id === lastArtworkIdRef.current &&
@@ -194,7 +298,6 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
 
   // --- Prefetch-ahead ---
 
-  /** Start prefetching the next random artwork in the background. */
   const startPrefetch = useCallback(() => {
     if (prefetchingRef.current) return;
     prefetchingRef.current = true;
@@ -209,9 +312,7 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
       }
       try {
         await prefetchImage(artwork.art_url);
-      } catch {
-        // Image failed — store anyway; the back buffer will attempt to load it.
-      }
+      } catch {}
       if (prefetchCancelledRef.current) {
         prefetchingRef.current = false;
         return;
@@ -229,12 +330,10 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
 
   // --- Navigation ---
 
-  /** Advance to the next random artwork (dwell timer or next-button). */
   const advanceToNext = useCallback(async () => {
     if (!mountedRef.current) return;
 
     if (prefetchedRef.current) {
-      // Prefetched and ready — instant swap.
       const artwork = prefetchedRef.current;
       prefetchedRef.current = null;
       prefetchingRef.current = false;
@@ -243,7 +342,6 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
       return;
     }
 
-    // Nothing prefetched yet — fetch + prefetch now, then display.
     cancelPrefetch();
     const artwork = await fetchArtworkMetadata();
     if (!artwork || !mountedRef.current) {
@@ -252,21 +350,17 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
     }
     try {
       await prefetchImage(artwork.art_url);
-    } catch {
-      // Show it anyway; the back buffer will try to load from src.
-    }
+    } catch {}
     if (!mountedRef.current) return;
     showArtwork(artwork, true);
     startPrefetch();
   }, [showArtwork, fetchArtworkMetadata, startPrefetch, cancelPrefetch]);
 
-  /** Navigate to previous artwork in history. */
   const goBack = useCallback(async () => {
     if (historyIndexRef.current <= 0) return;
     historyIndexRef.current -= 1;
     const artwork = historyRef.current[historyIndexRef.current];
 
-    // Prefetch (usually a cache hit — resolves almost instantly).
     try {
       await prefetchImage(artwork.art_url);
     } catch {}
@@ -280,7 +374,6 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
     startPrefetch();
   }, [showOnBackBuffer, cancelPrefetch, startPrefetch]);
 
-  /** Navigate to next artwork: forward in history, or fetch new random. */
   const goNext = useCallback(async () => {
     if (historyIndexRef.current < historyRef.current.length - 1) {
       historyIndexRef.current += 1;
@@ -302,9 +395,201 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
     }
   }, [showOnBackBuffer, advanceToNext, cancelPrefetch, startPrefetch]);
 
+  const togglePause = useCallback(() => {
+    setPaused((prev) => {
+      const next = !prev;
+      pausedRef.current = next;
+      return next;
+    });
+  }, []);
+
+  // --- Three-dot menu helpers ---
+
+  const closeMenu = useCallback(() => {
+    setMenuOpen(false);
+    setFormatSubOpen(false);
+    if (subPanelTimerRef.current) {
+      clearTimeout(subPanelTimerRef.current);
+      subPanelTimerRef.current = null;
+    }
+  }, []);
+
+  const closeSubDelayed = useCallback((delay = 300) => {
+    if (subPanelTimerRef.current) clearTimeout(subPanelTimerRef.current);
+    subPanelTimerRef.current = setTimeout(() => setFormatSubOpen(false), delay);
+  }, []);
+
+  const openSub = useCallback(() => {
+    if (subPanelTimerRef.current) clearTimeout(subPanelTimerRef.current);
+    setFormatSubOpen(true);
+  }, []);
+
+  const handleEditInPiskel = useCallback(() => {
+    if (!displayedArtwork) return;
+    closeMenu();
+    router.push(`/editor?edit=${displayedArtwork.public_sqid}`);
+  }, [displayedArtwork, closeMenu, router]);
+
+  const handleEditInPixelc = useCallback(() => {
+    if (!displayedArtwork) return;
+    closeMenu();
+    router.push(`/pixelc?edit=${displayedArtwork.public_sqid}`);
+  }, [displayedArtwork, closeMenu, router]);
+
+  const handleDownloadNative = useCallback(async () => {
+    if (!displayedArtwork) return;
+    closeMenu();
+    try {
+      const resp = await fetch(`/api/d/${displayedArtwork.public_sqid}`);
+      if (!resp.ok) throw new Error("Download failed");
+      const blob = await resp.blob();
+      const nf = displayedArtwork.files?.find((f) => f.is_native) || displayedArtwork.files?.[0];
+      const ext = nf?.format || "png";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${displayedArtwork.title || displayedArtwork.public_sqid}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Download failed:", err);
+    }
+  }, [displayedArtwork, closeMenu]);
+
+  const handleDownloadUpscaled = useCallback(async () => {
+    if (!displayedArtwork) return;
+    closeMenu();
+    try {
+      const resp = await fetch(`/api/d/${displayedArtwork.public_sqid}/upscaled`);
+      if (!resp.ok) throw new Error("Download failed");
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${displayedArtwork.title || displayedArtwork.public_sqid}_upscaled.webp`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Download failed:", err);
+    }
+  }, [displayedArtwork, closeMenu]);
+
+  const handleDownloadFormat = useCallback(
+    async (format: string) => {
+      if (!displayedArtwork) return;
+      closeMenu();
+      try {
+        const resp = await fetch(`/api/d/${displayedArtwork.public_sqid}.${format}`);
+        if (!resp.ok) throw new Error("Download failed");
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${displayedArtwork.title || displayedArtwork.public_sqid}.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error("Download failed:", err);
+      }
+    },
+    [displayedArtwork, closeMenu],
+  );
+
+  const handleShareUpscaled = useCallback(async () => {
+    if (!displayedArtwork) return;
+    closeMenu();
+    try {
+      const resp = await fetch(`/api/d/${displayedArtwork.public_sqid}/upscaled`);
+      if (!resp.ok) throw new Error("Fetch failed");
+      const blob = await resp.blob();
+      const file = new File(
+        [blob],
+        `${displayedArtwork.title || displayedArtwork.public_sqid}_upscaled.webp`,
+        { type: "image/webp" },
+      );
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: displayedArtwork.title });
+      } else {
+        const postUrl = `${window.location.origin}/p/${displayedArtwork.public_sqid}`;
+        await navigator.clipboard.writeText(postUrl);
+        alert("Link copied to clipboard");
+      }
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        console.error("Share failed:", err);
+      }
+    }
+  }, [displayedArtwork, closeMenu]);
+
+  const handleShareNative = useCallback(async () => {
+    if (!displayedArtwork) return;
+    closeMenu();
+    try {
+      const resp = await fetch(`/api/d/${displayedArtwork.public_sqid}`);
+      if (!resp.ok) throw new Error("Fetch failed");
+      const blob = await resp.blob();
+      const nf = displayedArtwork.files?.find((f) => f.is_native) || displayedArtwork.files?.[0];
+      const ext = nf?.format || "png";
+      const mimeType = ext === "webp" ? "image/webp" : ext === "gif" ? "image/gif" : "image/png";
+      const file = new File(
+        [blob],
+        `${displayedArtwork.title || displayedArtwork.public_sqid}.${ext}`,
+        { type: mimeType },
+      );
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: displayedArtwork.title });
+      } else {
+        const postUrl = `${window.location.origin}/p/${displayedArtwork.public_sqid}`;
+        await navigator.clipboard.writeText(postUrl);
+        alert("Link copied to clipboard");
+      }
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        console.error("Share failed:", err);
+      }
+    }
+  }, [displayedArtwork, closeMenu]);
+
+  // --- Close & navigation helpers ---
+
+  const handleClose = useCallback(
+    (fromPopstate = false) => {
+      if (closingRef.current) return;
+      closingRef.current = true;
+      if (!fromPopstate) window.history.back();
+      setFadeOut(true);
+      setTimeout(() => {
+        onCloseRef.current();
+      }, 300);
+    },
+    [],
+  );
+
+  /** Close WP and navigate to a route. */
+  const navigateTo = useCallback(
+    (href: string) => {
+      if (closingRef.current) return;
+      closingRef.current = true;
+      // Pop the history entry we pushed, then navigate.
+      window.history.back();
+      setFadeOut(true);
+      setTimeout(() => {
+        onCloseRef.current();
+        router.push(href);
+      }, 300);
+    },
+    [router],
+  );
+
   // --- Effects ---
 
-  // Activation: fade in, fetch first artwork, lock scroll, push history state
+  // Activation
   useEffect(() => {
     if (!isActive) return;
     mountedRef.current = true;
@@ -324,20 +609,20 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
     prefetchedRef.current = null;
     prefetchingRef.current = false;
     prefetchCancelledRef.current = false;
+    setUiVisible(true);
+    setPaused(false);
+    pausedRef.current = false;
+    setMenuOpen(false);
+    setFormatSubOpen(false);
 
-    // Lock body scroll
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-
-    // Push history entry so mobile back button closes WP
     window.history.pushState({ wpActive: true }, "");
 
-    // Start fade in on next frame
     requestAnimationFrame(() => {
       if (mountedRef.current) setFadeIn(true);
     });
 
-    // Fetch and display first artwork, then start prefetching next
     (async () => {
       const artwork = await fetchArtworkMetadata();
       if (!artwork || !mountedRef.current) {
@@ -352,8 +637,6 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
       startPrefetch();
     })();
 
-    updateSquareSize();
-
     return () => {
       mountedRef.current = false;
       document.body.style.overflow = prevOverflow;
@@ -361,13 +644,21 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
         clearTimeout(timerRef.current);
         timerRef.current = null;
       }
+      clearUiTimer();
       cancelPrefetch();
     };
-  }, [isActive, fetchArtworkMetadata, showArtwork, startPrefetch, cancelPrefetch, updateSquareSize, setSlotASrc, setSlotBSrc]);
+  }, [isActive, fetchArtworkMetadata, showArtwork, startPrefetch, cancelPrefetch, clearUiTimer, setSlotASrc, setSlotBSrc]);
 
-  // Dwell timer: auto-advance after DWELL_TIME_MS
+  // Start the UI auto-hide timer when UI is shown
   useEffect(() => {
-    if (!isActive || !displayedArtwork) return;
+    if (!isActive || !uiVisible) return;
+    startUiTimer();
+    return clearUiTimer;
+  }, [isActive, uiVisible, startUiTimer, clearUiTimer]);
+
+  // Dwell timer (respects pause)
+  useEffect(() => {
+    if (!isActive || !displayedArtwork || paused) return;
     timerRef.current = setTimeout(() => {
       advanceToNext();
     }, DWELL_TIME_MS);
@@ -377,53 +668,55 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
         timerRef.current = null;
       }
     };
-  }, [isActive, displayedArtwork, advanceToNext]);
+  }, [isActive, displayedArtwork, paused, advanceToNext]);
 
-  const handleClose = useCallback((fromPopstate = false) => {
-    if (closingRef.current) return;
-    closingRef.current = true;
-
-    // If not triggered by popstate, pop the history entry we pushed
-    if (!fromPopstate) {
-      window.history.back();
-    }
-
-    setFadeOut(true);
-    setTimeout(() => {
-      onCloseRef.current();
-    }, 300);
-  }, []);
-
-  // Escape / arrow key handler
+  // Keyboard
   useEffect(() => {
     if (!isActive) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") handleClose();
       else if (e.key === "ArrowLeft") goBack();
       else if (e.key === "ArrowRight") goNext();
+      else if (e.key === " ") {
+        e.preventDefault();
+        togglePause();
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isActive, handleClose, goBack, goNext]);
+  }, [isActive, handleClose, goBack, goNext, togglePause]);
 
-  // Browser back button / mobile back gesture handler
+  // Popstate (mobile back button)
   useEffect(() => {
     if (!isActive) return;
     const handler = () => {
-      if (!closingRef.current) {
-        handleClose(true);
-      }
+      if (!closingRef.current) handleClose(true);
     };
     window.addEventListener("popstate", handler);
     return () => window.removeEventListener("popstate", handler);
   }, [isActive, handleClose]);
 
-  // Viewport resize handler
+  // Viewport resize
   useEffect(() => {
     if (!isActive) return;
-    window.addEventListener("resize", updateSquareSize);
-    return () => window.removeEventListener("resize", updateSquareSize);
-  }, [isActive, updateSquareSize]);
+    const handler = () => updateArtSize();
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, [isActive, updateArtSize]);
+
+  // Mouse/touch interaction → reveal UI (Mode B)
+  useEffect(() => {
+    if (!isActive) return;
+    const handler = () => {
+      if (mountedRef.current && !closingRef.current) revealUi();
+    };
+    window.addEventListener("mousemove", handler);
+    window.addEventListener("touchstart", handler);
+    return () => {
+      window.removeEventListener("mousemove", handler);
+      window.removeEventListener("touchstart", handler);
+    };
+  }, [isActive, revealUi]);
 
   if (!isActive) return null;
   if (typeof window === "undefined") return null;
@@ -432,9 +725,17 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
     "wp-overlay",
     fadeIn && !fadeOut ? "wp-visible" : "",
     fadeOut ? "wp-fade-out" : "",
+    uiVisible ? "wp-cursor" : "",
   ]
     .filter(Boolean)
     .join(" ");
+
+  const art = displayedArtwork;
+  const nativeFile = art?.files?.find((f) => f.is_native);
+  const ownerHref = art?.owner?.public_sqid
+    ? `/u/${art.owner.public_sqid}`
+    : null;
+  const avatarSrc = resolveAvatarUrl(art?.owner?.avatar_url, apiBaseUrl);
 
   return createPortal(
     <div className={overlayClass}>
@@ -442,9 +743,6 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
         {empty && (
           <div className="wp-empty">No artworks match current filters</div>
         )}
-        {/* Double-buffer: two persistent <img> elements. Only the back slot's
-            src is changed; onLoad flips it to front. The visible (front) slot
-            is never touched, guaranteeing zero-frame-gap transitions. */}
         <img
           key="slot-a"
           src={slotASrc || undefined}
@@ -452,8 +750,8 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
           className="pixel-art wp-buf"
           onLoad={() => handleSlotLoad("a")}
           style={{
-            width: squareSize,
-            height: squareSize,
+            width: artSize.w,
+            height: artSize.h,
             objectFit: "contain",
             zIndex: frontSlot === "a" ? 1 : 0,
           }}
@@ -466,8 +764,8 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
           className="pixel-art wp-buf"
           onLoad={() => handleSlotLoad("b")}
           style={{
-            width: squareSize,
-            height: squareSize,
+            width: artSize.w,
+            height: artSize.h,
             objectFit: "contain",
             zIndex: frontSlot === "b" ? 1 : 0,
           }}
@@ -475,31 +773,261 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
         />
       </div>
 
-      <div className="wp-bar">
-        <button
-          className="wp-bar-btn wp-bar-close"
-          onClick={() => handleClose()}
-          aria-label="Close Web Player"
-        >
-          &#x2715;
-        </button>
-        <div className="wp-bar-nav">
-          <button
-            className="wp-bar-btn"
-            onClick={goBack}
-            aria-label="Previous artwork"
-          >
-            &#x25C0;
-          </button>
-          <button
-            className="wp-bar-btn"
-            onClick={goNext}
-            aria-label="Next artwork"
-          >
-            &#x25B6;
-          </button>
+      {/* --- Mode B: overlay UI --- */}
+      <div className={`wp-ui${uiVisible ? " wp-ui-show" : ""}`}>
+        {/* Top bar: channel + close */}
+        <div className="wp-top">
+          {channelName && (
+            <span className="wp-channel">{channelName}</span>
+          )}
+          <div className="wp-top-btns">
+            <button
+              className="wp-btn"
+              onClick={() => {
+                clearUiTimer();
+                setUiVisible(false);
+              }}
+              aria-label="Hide controls"
+            >
+              &#x25A3;
+            </button>
+            <button
+              className="wp-btn"
+              onClick={() => handleClose()}
+              aria-label="Close Web Player"
+            >
+              &#x2715;
+            </button>
+          </div>
+        </div>
+
+        {/* Bottom bar: artist info, artwork info, controls */}
+        <div className="wp-bottom">
+          {/* Artist row */}
+          {art?.owner && (
+            <div className="wp-artist-row">
+              {ownerHref ? (
+                <a
+                  className="wp-avatar-link"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    navigateTo(ownerHref);
+                  }}
+                  href={ownerHref}
+                >
+                  {avatarSrc ? (
+                    <img
+                      src={avatarSrc}
+                      alt={art.owner!.handle}
+                      className="wp-avatar"
+                    />
+                  ) : (
+                    <div className="wp-avatar wp-avatar-placeholder">
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                      >
+                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                      </svg>
+                    </div>
+                  )}
+                </a>
+              ) : (
+                <div className="wp-avatar wp-avatar-placeholder">
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
+                    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                  </svg>
+                </div>
+              )}
+              <div className="wp-artist-info">
+                {ownerHref ? (
+                  <a
+                    className="wp-artist-name"
+                    href={ownerHref}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigateTo(ownerHref);
+                    }}
+                  >
+                    {art.owner!.handle}
+                  </a>
+                ) : (
+                  <span className="wp-artist-name">
+                    {art.owner!.handle}
+                  </span>
+                )}
+                {art.title && (
+                  <a
+                    className="wp-art-title"
+                    href={`/p/${art.public_sqid}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigateTo(`/p/${art.public_sqid}`);
+                    }}
+                  >
+                    {art.title}
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Technical info */}
+          {art && (
+            <div className="wp-tech">
+              <span>
+                <span
+                  className={
+                    art.frame_count > 256 ? "wp-tech-warn" : undefined
+                  }
+                >
+                  {art.frame_count}
+                </span>
+                &times;({art.width}&times;{art.height})
+              </span>
+              {nativeFile && (
+                <>
+                  <span className="wp-tech-dot">&bull;</span>
+                  <span>
+                    {formatFileSize(nativeFile.file_bytes)}{" "}
+                    {nativeFile.format.toUpperCase()}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Controls */}
+          <div className="wp-controls">
+            <button
+              className="wp-btn"
+              onClick={goBack}
+              aria-label="Previous artwork"
+            >
+              &#x25C0;
+            </button>
+            <button
+              className="wp-btn"
+              onClick={togglePause}
+              aria-label={paused ? "Resume auto-advance" : "Pause auto-advance"}
+            >
+              {paused ? "\u25B6" : "\u2759\u2759"}
+            </button>
+            <button
+              className="wp-btn"
+              onClick={goNext}
+              aria-label="Next artwork"
+            >
+              &#x25B6;
+            </button>
+            <button
+              className="wp-btn wp-more-btn"
+              onClick={() => setMenuOpen(!menuOpen)}
+              aria-label="More options"
+            >
+              &#8942;
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Three-dot menu */}
+      {menuOpen && art && (
+        <div className="wp-menu-overlay" onClick={closeMenu}>
+          <div
+            className="wp-menu"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button className="wp-menu-item wp-menu-disabled">
+              Use as profile photo
+            </button>
+            <button className="wp-menu-item wp-menu-disabled">
+              Add to my favorites
+            </button>
+
+            <div className="wp-menu-sep" />
+
+            <button className="wp-menu-item" onClick={handleEditInPiskel}>
+              Edit in Piskel
+            </button>
+            {["png", "webp", "gif", "bmp"].includes(
+              (art.files?.find((f) => f.is_native)?.format || "").toLowerCase(),
+            ) ? (
+              <button className="wp-menu-item" onClick={handleEditInPixelc}>
+                Edit in Pixelc
+              </button>
+            ) : (
+              <button className="wp-menu-item wp-menu-disabled">
+                Edit in Pixelc
+              </button>
+            )}
+
+            <div className="wp-menu-sep" />
+
+            <button className="wp-menu-item" onClick={handleShareUpscaled}>
+              Share upscaled
+            </button>
+            <button className="wp-menu-item" onClick={handleShareNative}>
+              Share native size
+            </button>
+
+            <div className="wp-menu-sep" />
+
+            <button className="wp-menu-item" onClick={handleDownloadUpscaled}>
+              Download upscaled
+            </button>
+            <div
+              className="wp-menu-sub-wrap"
+              onMouseEnter={openSub}
+              onMouseLeave={() => closeSubDelayed()}
+            >
+              <button
+                className="wp-menu-item wp-menu-item-sub"
+                onClick={() =>
+                  formatSubOpen ? setFormatSubOpen(false) : openSub()
+                }
+              >
+                <span>Download alternative format</span>
+                <span>{formatSubOpen ? "\u25BC" : "\u25C0"}</span>
+              </button>
+              {formatSubOpen && (
+                <div
+                  className="wp-submenu"
+                  onMouseEnter={openSub}
+                  onMouseLeave={() => closeSubDelayed()}
+                >
+                  {art.files
+                    .filter((f) => !f.is_native)
+                    .map((f) => (
+                      <button
+                        key={f.format}
+                        className="wp-menu-item"
+                        onClick={() => handleDownloadFormat(f.format)}
+                      >
+                        {f.format.toUpperCase()}
+                      </button>
+                    ))}
+                  {art.files.filter((f) => !f.is_native).length === 0 && (
+                    <span className="wp-menu-item wp-menu-disabled">
+                      No alternative formats
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+            <button className="wp-menu-item" onClick={handleDownloadNative}>
+              Download native format
+            </button>
+          </div>
+        </div>
+      )}
 
       <style jsx>{`
         .wp-overlay {
@@ -508,10 +1036,11 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
           background: #000;
           z-index: 50000;
           display: flex;
-          flex-direction: column;
           align-items: center;
+          justify-content: center;
           opacity: 0;
           transition: opacity 300ms ease-out;
+          cursor: none;
         }
 
         .wp-overlay.wp-visible {
@@ -522,14 +1051,16 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
           opacity: 0;
         }
 
+        .wp-overlay.wp-cursor {
+          cursor: default;
+        }
+
         .wp-artwork-area {
-          flex: 1;
+          position: absolute;
+          inset: 0;
           display: flex;
           align-items: center;
           justify-content: center;
-          min-height: 0;
-          position: relative;
-          width: 100%;
         }
 
         .wp-artwork-area :global(.wp-buf) {
@@ -542,29 +1073,164 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
           pointer-events: none;
         }
 
-        .wp-bar {
-          height: ${WP_BAR_HEIGHT}px;
-          width: 100%;
+        /* --- Mode B overlay UI --- */
+        .wp-ui {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          z-index: 2;
+          pointer-events: none;
+          opacity: 0;
+          transition: opacity 400ms ease;
+        }
+
+        .wp-ui.wp-ui-show {
+          opacity: 1;
+        }
+
+        .wp-ui > * {
+          pointer-events: auto;
+        }
+
+        /* Top bar */
+        .wp-top {
           display: flex;
           align-items: center;
-          position: relative;
+          justify-content: space-between;
+          padding: 12px 16px;
+          background: linear-gradient(
+            to bottom,
+            rgba(0, 0, 0, 0.7) 0%,
+            rgba(0, 0, 0, 0) 100%
+          );
+        }
+
+        .wp-channel {
+          color: rgba(255, 255, 255, 0.6);
+          font-size: 13px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: calc(100% - 56px);
+        }
+
+        .wp-top-btns {
+          display: flex;
+          gap: 8px;
+          margin-left: auto;
           flex-shrink: 0;
         }
 
-        .wp-bar-close {
-          position: absolute;
-          left: 16px;
+        /* Bottom bar */
+        .wp-bottom {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          padding: 16px;
+          background: linear-gradient(
+            to top,
+            rgba(0, 0, 0, 0.7) 0%,
+            rgba(0, 0, 0, 0) 100%
+          );
         }
 
-        .wp-bar-nav {
+        /* Artist row */
+        .wp-artist-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .wp-avatar-link {
+          flex-shrink: 0;
+          text-decoration: none;
+          cursor: pointer;
+        }
+
+        .wp-avatar {
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          object-fit: cover;
+          display: block;
+        }
+
+        .wp-avatar-placeholder {
+          background: #1a1a24;
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 32px;
-          width: 100%;
+          color: #6a6a80;
         }
 
-        .wp-bar-btn {
+        .wp-artist-info {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          min-width: 0;
+        }
+
+        .wp-artist-name {
+          color: rgba(255, 255, 255, 0.9);
+          font-size: 14px;
+          font-weight: 600;
+          text-decoration: none;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          cursor: pointer;
+        }
+
+        .wp-artist-name:hover {
+          text-decoration: underline;
+        }
+
+        .wp-art-title {
+          color: rgba(255, 255, 255, 0.5);
+          font-size: 12px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          text-decoration: none;
+          cursor: pointer;
+        }
+
+        .wp-art-title:hover {
+          text-decoration: underline;
+        }
+
+        /* Technical info */
+        .wp-tech {
+          color: rgba(255, 255, 255, 0.4);
+          font-size: 12px;
+          display: flex;
+          align-items: center;
+          gap: 0;
+          flex-wrap: wrap;
+        }
+
+        .wp-tech-dot {
+          margin: 0 6px;
+          opacity: 0.5;
+        }
+
+        .wp-tech-warn {
+          color: #ff8080;
+        }
+
+        /* Controls */
+        .wp-controls {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 24px;
+          padding-top: 4px;
+        }
+
+        /* Shared button style */
+        .wp-btn {
           width: 44px;
           height: 44px;
           border-radius: 50%;
@@ -577,17 +1243,101 @@ export function WebPlayer({ isActive, onClose, buildApiQuery, baseParams }: WebP
           justify-content: center;
           cursor: pointer;
           transition: background 150ms ease, color 150ms ease;
+          -webkit-tap-highlight-color: transparent;
         }
 
-        .wp-bar-btn:hover {
+        .wp-btn:hover {
           background: rgba(255, 255, 255, 0.2);
           color: rgba(255, 255, 255, 0.9);
+        }
+
+        /* Three-dot menu button */
+        .wp-more-btn {
+          position: absolute;
+          right: 16px;
+        }
+
+        /* Menu overlay */
+        .wp-menu-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 50001;
+        }
+
+        .wp-menu {
+          position: absolute;
+          bottom: 80px;
+          right: 16px;
+          background: #1a1a24;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 8px;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+          min-width: 200px;
+          padding: 4px 0;
+          max-height: 70vh;
+          overflow-y: auto;
+        }
+
+        .wp-menu-item {
+          display: block;
+          width: 100%;
+          padding: 10px 16px;
+          background: none;
+          border: none;
+          color: #e8e8f0;
+          font-size: 14px;
+          text-align: left;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+
+        .wp-menu-item:hover {
+          background: rgba(255, 255, 255, 0.08);
+        }
+
+        .wp-menu-item.wp-menu-disabled {
+          color: #6a6a80;
+          cursor: not-allowed;
+        }
+
+        .wp-menu-item.wp-menu-disabled:hover {
+          background: none;
+        }
+
+        .wp-menu-item-sub {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .wp-menu-sep {
+          height: 1px;
+          background: rgba(255, 255, 255, 0.1);
+          margin: 4px 0;
+        }
+
+        .wp-menu-sub-wrap {
+          position: relative;
+        }
+
+        .wp-submenu {
+          position: absolute;
+          right: 100%;
+          top: 0;
+          background: #1a1a24;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 8px;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+          min-width: 140px;
+          padding: 4px 0;
         }
 
         .wp-empty {
           color: rgba(255, 255, 255, 0.4);
           font-size: 16px;
           text-align: center;
+          z-index: 1;
         }
       `}</style>
     </div>,

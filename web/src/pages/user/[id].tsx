@@ -679,6 +679,7 @@ export default function UserProfilePage() {
           onClose={() => setWpActive(false)}
           buildApiQuery={buildApiQuery}
           baseParams={{ owner_id: user.id ? String(user.id) : (typeof id === 'string' ? id : '') }}
+          channelName={user.handle ? `@${user.handle}` : undefined}
         />
       )}
 
