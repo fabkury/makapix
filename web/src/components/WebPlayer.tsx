@@ -9,6 +9,9 @@ const DWELL_TIME_MS = 30_000;
 const UI_HIDE_MS = 10_000;
 const MAX_REPEAT_RETRIES = 3;
 const MAX_HISTORY = 64;
+const ROTATION_KEY = "wp_rotation";
+const ROTATION_OPTIONS = [0, 90, 180, 270] as const;
+type RotationAngle = (typeof ROTATION_OPTIONS)[number];
 
 interface ArtworkOwner {
   handle: string;
@@ -208,6 +211,18 @@ export function WebPlayer({
   const [formatSubOpen, setFormatSubOpen] = useState(false);
   const subPanelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Screen rotation
+  const [rotation, setRotation] = useState<RotationAngle>(() => {
+    if (typeof window === "undefined") return 0;
+    const stored = localStorage.getItem(ROTATION_KEY);
+    const val = stored ? Number(stored) : 0;
+    return ROTATION_OPTIONS.includes(val as RotationAngle)
+      ? (val as RotationAngle)
+      : 0;
+  });
+  const rotationRef = useRef(rotation);
+  rotationRef.current = rotation;
+
   // Reactions & comments
   const [widgetData, setWidgetData] = useState<WidgetData | null>(null);
   const widgetCacheRef = useRef<Map<number, WidgetData>>(new Map());
@@ -284,8 +299,9 @@ export function WebPlayer({
   const computeSize = useCallback(
     (uiShown: boolean) => {
       if (!displayedArtwork) return { w: 0, h: 0 };
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
+      const swapped = rotationRef.current === 90 || rotationRef.current === 270;
+      const vw = swapped ? window.innerHeight : window.innerWidth;
+      const vh = swapped ? window.innerWidth : window.innerHeight;
       const aw = displayedArtwork.width;
       const ah = displayedArtwork.height;
       const availW = vw;
@@ -303,11 +319,11 @@ export function WebPlayer({
     setArtSize(computeSize(uiVisible));
   }, [computeSize, uiVisible]);
 
-  // Recalc when artwork, viewport, or UI visibility changes
+  // Recalc when artwork, viewport, UI visibility, or rotation changes
   useEffect(() => {
     if (!isActive || !displayedArtwork) return;
     updateArtSize();
-  }, [isActive, displayedArtwork, uiVisible, updateArtSize]);
+  }, [isActive, displayedArtwork, uiVisible, rotation, updateArtSize]);
 
   // --- Double-buffer helpers ---
 
@@ -583,6 +599,21 @@ export function WebPlayer({
     if (subPanelTimerRef.current) clearTimeout(subPanelTimerRef.current);
     setFormatSubOpen(true);
   }, []);
+
+  const handleRotation = useCallback(
+    (angle: RotationAngle) => {
+      if (angle === rotationRef.current) {
+        closeMenu();
+        return;
+      }
+      closeMenu();
+      if (!window.confirm(`Rotate display to ${angle}°?`)) return;
+      setRotation(angle);
+      rotationRef.current = angle;
+      localStorage.setItem(ROTATION_KEY, String(angle));
+    },
+    [closeMenu],
+  );
 
   const handleEditInPiskel = useCallback(() => {
     if (!displayedArtwork) return;
@@ -871,17 +902,42 @@ export function WebPlayer({
     return () => window.removeEventListener("resize", handler);
   }, [isActive, updateArtSize]);
 
-  // Mouse movement → reveal UI (Mode B); taps toggle via artwork area onClick
+  // Mouse movement → reveal UI; click/tap → toggle UI
   useEffect(() => {
     if (!isActive) return;
-    const handler = () => {
+    let touchedRecently = false;
+    let touchTimer: ReturnType<typeof setTimeout> | null = null;
+    const isInteractive = (e: Event) => {
+      const t = e.target as HTMLElement;
+      return !!t.closest("button, a, input, select, textarea");
+    };
+    const onMouseMove = () => {
       if (mountedRef.current && !closingRef.current) revealUi();
     };
-    window.addEventListener("mousemove", handler);
-    return () => {
-      window.removeEventListener("mousemove", handler);
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!mountedRef.current || closingRef.current) return;
+      if (isInteractive(e)) return;
+      touchedRecently = true;
+      if (touchTimer) clearTimeout(touchTimer);
+      touchTimer = setTimeout(() => { touchedRecently = false; }, 500);
+      toggleUi();
     };
-  }, [isActive, revealUi]);
+    const onClick = (e: MouseEvent) => {
+      if (touchedRecently) return; // already handled by touchend
+      if (!mountedRef.current || closingRef.current) return;
+      if (isInteractive(e)) return;
+      toggleUi();
+    };
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("touchend", onTouchEnd);
+    window.addEventListener("click", onClick);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("touchend", onTouchEnd);
+      window.removeEventListener("click", onClick);
+      if (touchTimer) clearTimeout(touchTimer);
+    };
+  }, [isActive, revealUi, toggleUi]);
 
   // Fetch widget data (reactions/comments) when artwork changes
   useEffect(() => {
@@ -944,9 +1000,24 @@ export function WebPlayer({
     : null;
   const avatarSrc = resolveAvatarUrl(art?.owner?.avatar_url, apiBaseUrl);
 
+  const rotationStyle: React.CSSProperties =
+    rotation === 0
+      ? {}
+      : rotation === 180
+        ? { transform: "rotate(180deg)" }
+        : {
+            // 90 or 270: swap dimensions and center
+            width: "100vh",
+            height: "100vw",
+            top: "50%",
+            left: "50%",
+            inset: "auto",
+            transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+          };
+
   return createPortal(
-    <div className={overlayClass}>
-      <div className="wp-artwork-area" onClick={toggleUi}>
+    <div className={overlayClass} style={rotationStyle}>
+      <div className="wp-artwork-area">
         {empty && (
           <div className="wp-empty">No artworks match current filters</div>
         )}
@@ -1269,6 +1340,23 @@ export function WebPlayer({
             <button className="wp-menu-item" onClick={handleDownloadNative}>
               Download native format
             </button>
+
+            <div className="wp-menu-sep" />
+
+            <div className="wp-rotation-group">
+              <span className="wp-rotation-label">Rotate display</span>
+              <div className="wp-rotation-options">
+                {ROTATION_OPTIONS.map((angle) => (
+                  <button
+                    key={angle}
+                    className={`wp-rotation-btn${rotation === angle ? " wp-rotation-active" : ""}`}
+                    onClick={() => handleRotation(angle)}
+                  >
+                    {angle}°
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1346,7 +1434,7 @@ export function WebPlayer({
           opacity: 1;
         }
 
-        .wp-ui > * {
+        .wp-ui.wp-ui-show > * {
           pointer-events: auto;
         }
 
@@ -1630,6 +1718,44 @@ export function WebPlayer({
           box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
           min-width: 140px;
           padding: 4px 0;
+        }
+
+        /* Rotation menu */
+        .wp-rotation-group {
+          padding: 8px 16px;
+        }
+
+        .wp-rotation-label {
+          display: block;
+          font-size: 12px;
+          color: rgba(255, 255, 255, 0.4);
+          margin-bottom: 6px;
+        }
+
+        .wp-rotation-options {
+          display: flex;
+          gap: 6px;
+        }
+
+        .wp-rotation-btn {
+          flex: 1;
+          padding: 6px 0;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 4px;
+          background: none;
+          color: #e8e8f0;
+          font-size: 13px;
+          cursor: pointer;
+        }
+
+        .wp-rotation-btn:hover {
+          background: rgba(255, 255, 255, 0.08);
+        }
+
+        .wp-rotation-btn.wp-rotation-active {
+          border-color: #00d4ff;
+          color: #00d4ff;
+          background: rgba(0, 212, 255, 0.1);
         }
 
         .wp-empty {
