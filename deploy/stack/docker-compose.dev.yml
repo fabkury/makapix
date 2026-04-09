@@ -85,7 +85,7 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: 256M
+          memory: 384M
 
   # ---------------------------------------------------------------------------
   # Web - Development routing for development.makapix.club

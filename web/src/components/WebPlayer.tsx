@@ -209,6 +209,7 @@ export function WebPlayer({
 
   // Three-dot menu
   const [menuOpen, setMenuOpen] = useState(false);
+  const [activeSubMenu, setActiveSubMenu] = useState<string | null>(null);
   const [formatSubOpen, setFormatSubOpen] = useState(false);
   const subPanelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -591,6 +592,7 @@ export function WebPlayer({
 
   const closeMenu = useCallback(() => {
     setMenuOpen(false);
+    setActiveSubMenu(null);
     setFormatSubOpen(false);
     if (subPanelTimerRef.current) {
       clearTimeout(subPanelTimerRef.current);
@@ -598,13 +600,28 @@ export function WebPlayer({
     }
   }, []);
 
-  const closeSubDelayed = useCallback((delay = 300) => {
-    if (subPanelTimerRef.current) clearTimeout(subPanelTimerRef.current);
-    subPanelTimerRef.current = setTimeout(() => setFormatSubOpen(false), delay);
+  const openSubMenu = useCallback((menu: string) => {
+    if (subPanelTimerRef.current) {
+      clearTimeout(subPanelTimerRef.current);
+      subPanelTimerRef.current = null;
+    }
+    setActiveSubMenu(menu);
+    if (menu !== "download") setFormatSubOpen(false);
   }, []);
 
-  const openSub = useCallback(() => {
+  const closeSubMenuDelayed = useCallback((delay = 300) => {
     if (subPanelTimerRef.current) clearTimeout(subPanelTimerRef.current);
+    subPanelTimerRef.current = setTimeout(() => {
+      setActiveSubMenu(null);
+      setFormatSubOpen(false);
+    }, delay);
+  }, []);
+
+  const openFormatSub = useCallback(() => {
+    if (subPanelTimerRef.current) {
+      clearTimeout(subPanelTimerRef.current);
+      subPanelTimerRef.current = null;
+    }
     setFormatSubOpen(true);
   }, []);
 
@@ -1333,77 +1350,177 @@ export function WebPlayer({
 
             <div className="wp-menu-sep" />
 
-            <button className="wp-menu-item" onClick={handleEditInPiskel}>
-              Edit in Piskel
-            </button>
-            {["png", "webp", "gif", "bmp"].includes(
-              (art.files?.find((f) => f.is_native)?.format || "").toLowerCase(),
-            ) ? (
-              <button className="wp-menu-item" onClick={handleEditInPixelc}>
-                Edit in Pixelc
-              </button>
-            ) : (
-              <button className="wp-menu-item wp-menu-disabled">
-                Edit in Pixelc
-              </button>
-            )}
-
-            <div className="wp-menu-sep" />
-
-            <button className="wp-menu-item" onClick={handleShareUpscaled}>
-              Share upscaled
-            </button>
-            <button className="wp-menu-item" onClick={handleShareNative}>
-              Share native size
-            </button>
-
-            <div className="wp-menu-sep" />
-
-            <button className="wp-menu-item" onClick={handleDownloadUpscaled}>
-              Download upscaled
-            </button>
+            {/* Edit submenu */}
             <div
               className="wp-menu-sub-wrap"
-              onMouseEnter={openSub}
-              onMouseLeave={() => closeSubDelayed()}
+              onMouseEnter={() => openSubMenu("edit")}
+              onMouseLeave={() => closeSubMenuDelayed()}
             >
               <button
                 className="wp-menu-item wp-menu-item-sub"
                 onClick={() =>
-                  formatSubOpen ? setFormatSubOpen(false) : openSub()
+                  activeSubMenu === "edit"
+                    ? setActiveSubMenu(null)
+                    : openSubMenu("edit")
                 }
               >
-                <span>Download alternative format</span>
-                <span>{formatSubOpen ? "\u25BC" : "\u25C0"}</span>
+                <span>Edit</span>
+                <span>{activeSubMenu === "edit" ? "\u25BC" : "\u25C0"}</span>
               </button>
-              {formatSubOpen && (
+              {activeSubMenu === "edit" && (
                 <div
                   className="wp-submenu"
-                  onMouseEnter={openSub}
-                  onMouseLeave={() => closeSubDelayed()}
+                  onMouseEnter={() => openSubMenu("edit")}
+                  onMouseLeave={() => closeSubMenuDelayed()}
                 >
-                  {art.files
-                    .filter((f) => !f.is_native)
-                    .map((f) => (
-                      <button
-                        key={f.format}
-                        className="wp-menu-item"
-                        onClick={() => handleDownloadFormat(f.format)}
-                      >
-                        {f.format.toUpperCase()}
-                      </button>
-                    ))}
-                  {art.files.filter((f) => !f.is_native).length === 0 && (
-                    <span className="wp-menu-item wp-menu-disabled">
-                      No alternative formats
-                    </span>
+                  <button
+                    className="wp-menu-item"
+                    onClick={handleEditInPiskel}
+                  >
+                    In Piskel
+                  </button>
+                  {["png", "webp", "gif", "bmp"].includes(
+                    (
+                      art.files?.find((f) => f.is_native)?.format || ""
+                    ).toLowerCase(),
+                  ) ? (
+                    <button
+                      className="wp-menu-item"
+                      onClick={handleEditInPixelc}
+                    >
+                      In Pixelc
+                    </button>
+                  ) : (
+                    <button className="wp-menu-item wp-menu-disabled">
+                      In Pixelc
+                    </button>
                   )}
                 </div>
               )}
             </div>
-            <button className="wp-menu-item" onClick={handleDownloadNative}>
-              Download native format
-            </button>
+
+            {/* Share submenu */}
+            <div
+              className="wp-menu-sub-wrap"
+              onMouseEnter={() => openSubMenu("share")}
+              onMouseLeave={() => closeSubMenuDelayed()}
+            >
+              <button
+                className="wp-menu-item wp-menu-item-sub"
+                onClick={() =>
+                  activeSubMenu === "share"
+                    ? setActiveSubMenu(null)
+                    : openSubMenu("share")
+                }
+              >
+                <span>Share</span>
+                <span>{activeSubMenu === "share" ? "\u25BC" : "\u25C0"}</span>
+              </button>
+              {activeSubMenu === "share" && (
+                <div
+                  className="wp-submenu"
+                  onMouseEnter={() => openSubMenu("share")}
+                  onMouseLeave={() => closeSubMenuDelayed()}
+                >
+                  <button
+                    className="wp-menu-item"
+                    onClick={handleShareUpscaled}
+                  >
+                    Upscaled
+                  </button>
+                  <button
+                    className="wp-menu-item"
+                    onClick={handleShareNative}
+                  >
+                    Native size
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Download submenu */}
+            <div
+              className="wp-menu-sub-wrap"
+              onMouseEnter={() => openSubMenu("download")}
+              onMouseLeave={() => closeSubMenuDelayed()}
+            >
+              <button
+                className="wp-menu-item wp-menu-item-sub"
+                onClick={() =>
+                  activeSubMenu === "download"
+                    ? setActiveSubMenu(null)
+                    : openSubMenu("download")
+                }
+              >
+                <span>Download</span>
+                <span>
+                  {activeSubMenu === "download" ? "\u25BC" : "\u25C0"}
+                </span>
+              </button>
+              {activeSubMenu === "download" && (
+                <div
+                  className="wp-submenu"
+                  onMouseEnter={() => openSubMenu("download")}
+                  onMouseLeave={() => closeSubMenuDelayed()}
+                >
+                  <button
+                    className="wp-menu-item"
+                    onClick={handleDownloadUpscaled}
+                  >
+                    Upscaled
+                  </button>
+                  {/* Alternative format sub-sub-menu */}
+                  <div
+                    className="wp-menu-sub-wrap"
+                    onMouseEnter={openFormatSub}
+                    onMouseLeave={() => closeSubMenuDelayed()}
+                  >
+                    <button
+                      className="wp-menu-item wp-menu-item-sub"
+                      onClick={() =>
+                        formatSubOpen
+                          ? setFormatSubOpen(false)
+                          : openFormatSub()
+                      }
+                    >
+                      <span>Alternative format</span>
+                      <span>{formatSubOpen ? "\u25BC" : "\u25C0"}</span>
+                    </button>
+                    {formatSubOpen && (
+                      <div
+                        className="wp-submenu"
+                        onMouseEnter={openFormatSub}
+                        onMouseLeave={() => closeSubMenuDelayed()}
+                      >
+                        {art.files
+                          .filter((f) => !f.is_native)
+                          .map((f) => (
+                            <button
+                              key={f.format}
+                              className="wp-menu-item"
+                              onClick={() => handleDownloadFormat(f.format)}
+                            >
+                              {f.format.toUpperCase()}
+                            </button>
+                          ))}
+                        {art.files.filter((f) => !f.is_native).length ===
+                          0 && (
+                          <span className="wp-menu-item wp-menu-disabled">
+                            No alternatives
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    className="wp-menu-item"
+                    onClick={handleDownloadNative}
+                  >
+                    Native format
+                  </button>
+                </div>
+              )}
+            </div>
 
             <div className="wp-menu-sep" />
 

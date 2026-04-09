@@ -500,40 +500,48 @@ export default function SelectedPostOverlay({
   const [showCommentsOverlay, setShowCommentsOverlay] = useState(false);
   const [showReactionUsersOverlay, setShowReactionUsersOverlay] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [activeSubMenu, setActiveSubMenu] = useState<string | null>(null);
   const [showFormatSubPanel, setShowFormatSubPanel] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const moreButtonRef = useRef<HTMLButtonElement>(null);
   const subPanelCloseTimeoutRef = useRef<number | null>(null);
 
-  // Helper to close submenu with optional delay
-  const closeSubPanelDelayed = useCallback((delay: number = 300) => {
+  const openSubMenu = useCallback((menu: string) => {
+    if (subPanelCloseTimeoutRef.current) {
+      window.clearTimeout(subPanelCloseTimeoutRef.current);
+      subPanelCloseTimeoutRef.current = null;
+    }
+    setActiveSubMenu(menu);
+    if (menu !== 'download') setShowFormatSubPanel(false);
+  }, []);
+
+  const closeSubMenuDelayed = useCallback((delay: number = 300) => {
     if (subPanelCloseTimeoutRef.current) {
       window.clearTimeout(subPanelCloseTimeoutRef.current);
     }
     subPanelCloseTimeoutRef.current = window.setTimeout(() => {
+      setActiveSubMenu(null);
       setShowFormatSubPanel(false);
       subPanelCloseTimeoutRef.current = null;
     }, delay);
   }, []);
 
-  // Helper to cancel pending close and optionally show submenu
-  const cancelSubPanelClose = useCallback((show?: boolean) => {
+  const openFormatSub = useCallback(() => {
     if (subPanelCloseTimeoutRef.current) {
       window.clearTimeout(subPanelCloseTimeoutRef.current);
       subPanelCloseTimeoutRef.current = null;
     }
-    if (show !== undefined) {
-      setShowFormatSubPanel(show);
-    }
+    setShowFormatSubPanel(true);
   }, []);
 
-  // Helper to immediately close submenu (for when parent closes)
+  // Helper to immediately close all submenus (for when parent closes)
   const closeSubPanelImmediate = useCallback(() => {
     if (subPanelCloseTimeoutRef.current) {
       window.clearTimeout(subPanelCloseTimeoutRef.current);
       subPanelCloseTimeoutRef.current = null;
     }
+    setActiveSubMenu(null);
     setShowFormatSubPanel(false);
   }, []);
 
@@ -1517,121 +1525,182 @@ export default function SelectedPostOverlay({
               Add to my favorites
             </button>
 
-            {/* Enabled items */}
-            <button
-              style={menuItemStyles}
-              onClick={handleEditInPiskel}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              Edit in Piskel
-            </button>
-            {/* Edit in Pixelc: enabled for all supported formats */}
-            {['png', 'webp', 'gif', 'bmp'].includes((post.files?.find(f => f.is_native)?.format || '').toLowerCase()) ? (
-              <button
-                style={menuItemStyles}
-                onClick={handleEditInPixelc}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-              >
-                Edit in Pixelc
-              </button>
-            ) : (
-              <button style={menuItemDisabledStyles} disabled>
-                Edit in Pixelc
-              </button>
-            )}
-
             <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '4px 0' }} />
 
-            <button
-              style={menuItemStyles}
-              onClick={handleShareUpscaled}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              Share upscaled
-            </button>
-            <button
-              style={menuItemStyles}
-              onClick={handleShareNative}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              Share native size
-            </button>
-
-            <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '4px 0' }} />
-
-            <button
-              style={menuItemStyles}
-              onClick={handleDownloadUpscaled}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              Download upscaled
-            </button>
+            {/* Edit submenu */}
             <div
               style={{ position: 'relative' }}
-              onMouseEnter={() => cancelSubPanelClose(true)}
-              onMouseLeave={() => closeSubPanelDelayed()}
+              onMouseEnter={() => openSubMenu('edit')}
+              onMouseLeave={() => closeSubMenuDelayed()}
             >
               <button
-                style={{
-                  ...menuItemStyles,
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (showFormatSubPanel) {
-                    closeSubPanelImmediate();
-                  } else {
-                    cancelSubPanelClose(true);
-                  }
-                }}
+                style={{ ...menuItemStyles, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                onClick={(e) => { e.stopPropagation(); activeSubMenu === 'edit' ? setActiveSubMenu(null) : openSubMenu('edit'); }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >
-                <span>Download alternative format</span>
-                <span style={{ marginLeft: '8px' }}>{showFormatSubPanel ? '▼' : '◀'}</span>
+                <span>Edit</span>
+                <span style={{ marginLeft: '8px' }}>{activeSubMenu === 'edit' ? '▼' : '◀'}</span>
               </button>
-              {showFormatSubPanel && (() => {
-                const alternativeFormats = (post.files || [])
-                  .filter(f => !f.is_native)
-                  .map(f => f.format);
-                return (
-                  <div style={subPanelStyles}>
-                    {alternativeFormats.length > 0 ? (
-                      alternativeFormats.map(format => (
-                        <button
-                          key={format}
-                          style={menuItemStyles}
-                          onClick={() => handleDownloadFormat(format)}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                        >
-                          {format.toUpperCase()}
-                        </button>
-                      ))
-                    ) : (
-                      <div style={{ ...menuItemStyles, color: '#6a6a80', cursor: 'default' }}>
-                        No alternative formats
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
+              {activeSubMenu === 'edit' && (
+                <div
+                  style={subPanelStyles}
+                  onMouseEnter={() => openSubMenu('edit')}
+                  onMouseLeave={() => closeSubMenuDelayed()}
+                >
+                  <button
+                    style={menuItemStyles}
+                    onClick={handleEditInPiskel}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    In Piskel
+                  </button>
+                  {['png', 'webp', 'gif', 'bmp'].includes((post.files?.find(f => f.is_native)?.format || '').toLowerCase()) ? (
+                    <button
+                      style={menuItemStyles}
+                      onClick={handleEditInPixelc}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      In Pixelc
+                    </button>
+                  ) : (
+                    <button style={menuItemDisabledStyles} disabled>
+                      In Pixelc
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
-            <button
-              style={menuItemStyles}
-              onClick={handleDownloadNative}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+
+            {/* Share submenu */}
+            <div
+              style={{ position: 'relative' }}
+              onMouseEnter={() => openSubMenu('share')}
+              onMouseLeave={() => closeSubMenuDelayed()}
             >
-              Download native format
-            </button>
+              <button
+                style={{ ...menuItemStyles, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                onClick={(e) => { e.stopPropagation(); activeSubMenu === 'share' ? setActiveSubMenu(null) : openSubMenu('share'); }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span>Share</span>
+                <span style={{ marginLeft: '8px' }}>{activeSubMenu === 'share' ? '▼' : '◀'}</span>
+              </button>
+              {activeSubMenu === 'share' && (
+                <div
+                  style={subPanelStyles}
+                  onMouseEnter={() => openSubMenu('share')}
+                  onMouseLeave={() => closeSubMenuDelayed()}
+                >
+                  <button
+                    style={menuItemStyles}
+                    onClick={handleShareUpscaled}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    Upscaled
+                  </button>
+                  <button
+                    style={menuItemStyles}
+                    onClick={handleShareNative}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    Native size
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Download submenu */}
+            <div
+              style={{ position: 'relative' }}
+              onMouseEnter={() => openSubMenu('download')}
+              onMouseLeave={() => closeSubMenuDelayed()}
+            >
+              <button
+                style={{ ...menuItemStyles, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                onClick={(e) => { e.stopPropagation(); activeSubMenu === 'download' ? setActiveSubMenu(null) : openSubMenu('download'); }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span>Download</span>
+                <span style={{ marginLeft: '8px' }}>{activeSubMenu === 'download' ? '▼' : '◀'}</span>
+              </button>
+              {activeSubMenu === 'download' && (
+                <div
+                  style={subPanelStyles}
+                  onMouseEnter={() => openSubMenu('download')}
+                  onMouseLeave={() => closeSubMenuDelayed()}
+                >
+                  <button
+                    style={menuItemStyles}
+                    onClick={handleDownloadUpscaled}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    Upscaled
+                  </button>
+                  {/* Alternative format sub-sub-menu */}
+                  <div
+                    style={{ position: 'relative' }}
+                    onMouseEnter={openFormatSub}
+                    onMouseLeave={() => closeSubMenuDelayed()}
+                  >
+                    <button
+                      style={{ ...menuItemStyles, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                      onClick={(e) => { e.stopPropagation(); showFormatSubPanel ? setShowFormatSubPanel(false) : openFormatSub(); }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <span>Alternative format</span>
+                      <span style={{ marginLeft: '8px' }}>{showFormatSubPanel ? '▼' : '◀'}</span>
+                    </button>
+                    {showFormatSubPanel && (() => {
+                      const alternativeFormats = (post.files || [])
+                        .filter(f => !f.is_native)
+                        .map(f => f.format);
+                      return (
+                        <div
+                          style={subPanelStyles}
+                          onMouseEnter={openFormatSub}
+                          onMouseLeave={() => closeSubMenuDelayed()}
+                        >
+                          {alternativeFormats.length > 0 ? (
+                            alternativeFormats.map(format => (
+                              <button
+                                key={format}
+                                style={menuItemStyles}
+                                onClick={() => handleDownloadFormat(format)}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+                                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                              >
+                                {format.toUpperCase()}
+                              </button>
+                            ))
+                          ) : (
+                            <div style={{ ...menuItemStyles, color: '#6a6a80', cursor: 'default' }}>
+                              No alternatives
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <button
+                    style={menuItemStyles}
+                    onClick={handleDownloadNative}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    Native format
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
