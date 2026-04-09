@@ -444,17 +444,7 @@ const menuItemDisabledStyles: React.CSSProperties = {
 };
 
 const subPanelStyles: React.CSSProperties = {
-  position: 'absolute',
-  // Position to the LEFT of the parent menu since menu is at right edge of screen
-  right: '100%',
-  top: 0,
-  background: '#1a1a24',
-  border: '1px solid rgba(255, 255, 255, 0.15)',
-  borderRadius: '8px',
-  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
-  minWidth: '140px',
-  overflow: 'hidden',
-  marginRight: '4px',
+  paddingLeft: '12px',
 };
 
 type AnimationPhase = 'mounting' | 'flying-in' | 'selected' | 'flying-out' | 'swiping';
@@ -1529,7 +1519,6 @@ export default function SelectedPostOverlay({
 
             {/* Edit submenu */}
             <div
-              style={{ position: 'relative' }}
               onMouseEnter={() => openSubMenu('edit')}
               onMouseLeave={() => closeSubMenuDelayed()}
             >
@@ -1540,14 +1529,10 @@ export default function SelectedPostOverlay({
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >
                 <span>Edit</span>
-                <span style={{ marginLeft: '8px' }}>{activeSubMenu === 'edit' ? '▼' : '◀'}</span>
+                <span style={{ marginLeft: '8px' }}>{activeSubMenu === 'edit' ? '▼' : '▶'}</span>
               </button>
               {activeSubMenu === 'edit' && (
-                <div
-                  style={subPanelStyles}
-                  onMouseEnter={() => openSubMenu('edit')}
-                  onMouseLeave={() => closeSubMenuDelayed()}
-                >
+                <div style={subPanelStyles}>
                   <button
                     style={menuItemStyles}
                     onClick={handleEditInPiskel}
@@ -1576,7 +1561,6 @@ export default function SelectedPostOverlay({
 
             {/* Share submenu */}
             <div
-              style={{ position: 'relative' }}
               onMouseEnter={() => openSubMenu('share')}
               onMouseLeave={() => closeSubMenuDelayed()}
             >
@@ -1587,14 +1571,10 @@ export default function SelectedPostOverlay({
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >
                 <span>Share</span>
-                <span style={{ marginLeft: '8px' }}>{activeSubMenu === 'share' ? '▼' : '◀'}</span>
+                <span style={{ marginLeft: '8px' }}>{activeSubMenu === 'share' ? '▼' : '▶'}</span>
               </button>
               {activeSubMenu === 'share' && (
-                <div
-                  style={subPanelStyles}
-                  onMouseEnter={() => openSubMenu('share')}
-                  onMouseLeave={() => closeSubMenuDelayed()}
-                >
+                <div style={subPanelStyles}>
                   <button
                     style={menuItemStyles}
                     onClick={handleShareUpscaled}
@@ -1617,7 +1597,6 @@ export default function SelectedPostOverlay({
 
             {/* Download submenu */}
             <div
-              style={{ position: 'relative' }}
               onMouseEnter={() => openSubMenu('download')}
               onMouseLeave={() => closeSubMenuDelayed()}
             >
@@ -1628,14 +1607,10 @@ export default function SelectedPostOverlay({
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >
                 <span>Download</span>
-                <span style={{ marginLeft: '8px' }}>{activeSubMenu === 'download' ? '▼' : '◀'}</span>
+                <span style={{ marginLeft: '8px' }}>{activeSubMenu === 'download' ? '▼' : '▶'}</span>
               </button>
               {activeSubMenu === 'download' && (
-                <div
-                  style={subPanelStyles}
-                  onMouseEnter={() => openSubMenu('download')}
-                  onMouseLeave={() => closeSubMenuDelayed()}
-                >
+                <div style={subPanelStyles}>
                   <button
                     style={menuItemStyles}
                     onClick={handleDownloadUpscaled}
@@ -1646,7 +1621,6 @@ export default function SelectedPostOverlay({
                   </button>
                   {/* Alternative format sub-sub-menu */}
                   <div
-                    style={{ position: 'relative' }}
                     onMouseEnter={openFormatSub}
                     onMouseLeave={() => closeSubMenuDelayed()}
                   >
@@ -1657,18 +1631,14 @@ export default function SelectedPostOverlay({
                       onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                     >
                       <span>Alternative format</span>
-                      <span style={{ marginLeft: '8px' }}>{showFormatSubPanel ? '▼' : '◀'}</span>
+                      <span style={{ marginLeft: '8px' }}>{showFormatSubPanel ? '▼' : '▶'}</span>
                     </button>
                     {showFormatSubPanel && (() => {
                       const alternativeFormats = (post.files || [])
                         .filter(f => !f.is_native)
                         .map(f => f.format);
                       return (
-                        <div
-                          style={subPanelStyles}
-                          onMouseEnter={openFormatSub}
-                          onMouseLeave={() => closeSubMenuDelayed()}
-                        >
+                        <div style={subPanelStyles}>
                           {alternativeFormats.length > 0 ? (
                             alternativeFormats.map(format => (
                               <button
