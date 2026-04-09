@@ -4,6 +4,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import Layout from '../components/Layout';
 import { authenticatedFetch, clearTokens } from '../lib/api';
+import { ensureCompatibleArtUrl } from '../utils/imageCompat';
 import {
   saveDraft,
   loadDraft,
@@ -814,7 +815,7 @@ function SubmitPageContent() {
               <h2 className="success-title">Artwork Uploaded!</h2>
               <div className="success-preview">
                 <img
-                  src={`${API_BASE_URL}${uploadedArtwork.art_url}`}
+                  src={ensureCompatibleArtUrl(`${API_BASE_URL}${uploadedArtwork.art_url}`)}
                   alt={uploadedArtwork.title}
                   className="success-image"
                 />

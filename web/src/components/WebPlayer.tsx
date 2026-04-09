@@ -4,6 +4,7 @@ import { useRouter } from "next/router";
 import { authenticatedFetch, getAccessToken } from "../lib/api";
 import { EMOJI_OPTIONS } from "./CommentsAndReactions";
 import SPOCommentsOverlay from "./SPOCommentsOverlay";
+import { ensureCompatibleArtUrl } from "../utils/imageCompat";
 
 const DWELL_TIME_MS = 30_000;
 const UI_HIDE_MS = 10_000;
@@ -400,7 +401,7 @@ export function WebPlayer({
         const artwork: Artwork = {
           id: item.id,
           public_sqid: item.public_sqid,
-          art_url: item.art_url,
+          art_url: ensureCompatibleArtUrl(item.art_url, item.frame_count),
           title: item.title || "",
           width: item.width,
           height: item.height,
@@ -1438,7 +1439,7 @@ export function WebPlayer({
       <style jsx>{`
         .wp-overlay {
           position: fixed;
-          inset: 0;
+          top: 0; right: 0; bottom: 0; left: 0;
           background: #000;
           z-index: 50000;
           display: flex;
@@ -1463,7 +1464,7 @@ export function WebPlayer({
 
         .wp-artwork-area {
           position: absolute;
-          inset: 0;
+          top: 0; right: 0; bottom: 0; left: 0;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1482,7 +1483,7 @@ export function WebPlayer({
         /* --- Mode B overlay UI --- */
         .wp-ui {
           position: absolute;
-          inset: 0;
+          top: 0; right: 0; bottom: 0; left: 0;
           display: flex;
           flex-direction: column;
           justify-content: space-between;
@@ -1524,16 +1525,17 @@ export function WebPlayer({
 
         .wp-top-btns {
           display: flex;
-          gap: 8px;
           margin-left: auto;
           flex-shrink: 0;
+        }
+        .wp-top-btns > :global(* + *) {
+          margin-left: 8px;
         }
 
         /* Bottom bar */
         .wp-bottom {
           display: flex;
           flex-direction: column;
-          gap: 10px;
           padding: 16px;
           background: linear-gradient(
             to top,
@@ -1541,12 +1543,17 @@ export function WebPlayer({
             rgba(0, 0, 0, 0) 100%
           );
         }
+        .wp-bottom > :global(* + *) {
+          margin-top: 10px;
+        }
 
         /* Artist row */
         .wp-artist-row {
           display: flex;
           align-items: center;
-          gap: 10px;
+        }
+        .wp-artist-row > :global(* + *) {
+          margin-left: 10px;
         }
 
         .wp-avatar-link {
@@ -1574,8 +1581,10 @@ export function WebPlayer({
         .wp-artist-info {
           display: flex;
           flex-direction: column;
-          gap: 2px;
           min-width: 0;
+        }
+        .wp-artist-info > :global(* + *) {
+          margin-top: 2px;
         }
 
         .wp-artist-name {
@@ -1613,7 +1622,6 @@ export function WebPlayer({
           font-size: 12px;
           display: flex;
           align-items: center;
-          gap: 0;
           flex-wrap: wrap;
         }
 
@@ -1631,8 +1639,10 @@ export function WebPlayer({
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 24px;
           padding-top: 4px;
+        }
+        .wp-controls > :global(* + *) {
+          margin-left: 24px;
         }
 
         /* Shared button style */
@@ -1661,14 +1671,13 @@ export function WebPlayer({
         .wp-reactions {
           display: flex;
           align-items: center;
-          gap: 6px;
           flex-wrap: wrap;
+          margin: -3px;
         }
-
         .wp-reaction {
           display: flex;
           align-items: center;
-          gap: 4px;
+          margin: 3px;
           padding: 4px 8px;
           border-radius: 16px;
           border: 1.5px solid transparent;
@@ -1678,6 +1687,9 @@ export function WebPlayer({
           cursor: pointer;
           transition: border-color 150ms ease, background 150ms ease;
           -webkit-tap-highlight-color: transparent;
+        }
+        .wp-reaction > :global(* + *) {
+          margin-left: 4px;
         }
 
         .wp-reaction:hover {
@@ -1709,7 +1721,7 @@ export function WebPlayer({
         /* Menu overlay */
         .wp-menu-overlay {
           position: fixed;
-          inset: 0;
+          top: 0; right: 0; bottom: 0; left: 0;
           z-index: 50001;
         }
 
@@ -1757,7 +1769,9 @@ export function WebPlayer({
           display: flex;
           justify-content: space-between;
           align-items: center;
-          gap: 12px;
+        }
+        .wp-menu-item-sub > :global(* + *) {
+          margin-left: 12px;
         }
 
         .wp-menu-sep {
@@ -1796,7 +1810,9 @@ export function WebPlayer({
 
         .wp-rotation-options {
           display: flex;
-          gap: 6px;
+        }
+        .wp-rotation-options > :global(* + *) {
+          margin-left: 6px;
         }
 
         .wp-rotation-btn {
@@ -1833,11 +1849,13 @@ export function WebPlayer({
           padding: 12px 20px;
           display: flex;
           align-items: center;
-          gap: 14px;
           color: #e8e8f0;
           font-size: 14px;
           white-space: nowrap;
           box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+        .wp-rotation-confirm > :global(* + *) {
+          margin-left: 14px;
         }
 
         .wp-rotation-confirm-btn {

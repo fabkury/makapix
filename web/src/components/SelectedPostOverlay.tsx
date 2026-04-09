@@ -7,6 +7,7 @@ import { PLAYER_BAR_HEIGHT } from './PlayerBarDynamic';
 import SPOCommentsOverlay from './SPOCommentsOverlay';
 import SPOReactionUsersOverlay from './SPOReactionUsersOverlay';
 import { EMOJI_OPTIONS } from './CommentsAndReactions';
+import { ensureCompatibleArtUrl } from '../utils/imageCompat';
 
 type Rect = { left: number; top: number; width: number; height: number };
 
@@ -1633,7 +1634,7 @@ export default function SelectedPostOverlay({
         >
           <div style={artworkClipStyles}>
             <img
-              src={outgoingPost.post.art_url}
+              src={ensureCompatibleArtUrl(outgoingPost.post.art_url, outgoingPost.post.frame_count)}
               alt={outgoingPost.post.title}
               draggable={false}
               style={artworkImageStyles}
@@ -1662,7 +1663,7 @@ export default function SelectedPostOverlay({
         >
           <div style={artworkClipStyles}>
             <img
-              src={incomingPost.post.art_url}
+              src={ensureCompatibleArtUrl(incomingPost.post.art_url, incomingPost.post.frame_count)}
               alt={incomingPost.post.title}
               draggable={false}
               style={artworkImageStyles}
@@ -1783,7 +1784,7 @@ export default function SelectedPostOverlay({
             style={{ display: 'block', width: '100%', height: '100%' }}
           >
             <img
-              src={post.art_url}
+              src={ensureCompatibleArtUrl(post.art_url, post.frame_count)}
               alt={post.title}
               draggable={false}
               style={artworkImageStyles}

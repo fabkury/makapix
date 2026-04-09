@@ -6,6 +6,7 @@ import CommentsAndReactions from '../../components/CommentsAndReactions';
 import StatsPanel from '../../components/StatsPanel';
 import PlayerBar from '../../components/PlayerBarDynamic';
 import { authenticatedFetch, authenticatedRequestJson, authenticatedPostJson, clearTokens } from '../../lib/api';
+import { ensureCompatibleArtUrl } from '../../utils/imageCompat';
 import { 
   getNavigationContext, 
   setNavigationContext, 
@@ -36,6 +37,7 @@ interface Post {
   art_url: string;
   width: number;
   height: number;
+  frame_count?: number;
   owner_id: string;
   created_at: string;
   kind?: string;
@@ -858,7 +860,7 @@ export default function PostPage() {
         <div className="post-container">
           {!imageError ? (
             <img
-              src={post.art_url}
+              src={ensureCompatibleArtUrl(post.art_url, post.frame_count)}
               alt={post.title}
               className="artwork-image pixel-art"
               onError={() => {
