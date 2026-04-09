@@ -301,10 +301,13 @@ export default function HashtagPage() {
         .hashtag-header {
           display: flex;
           align-items: center;
-          gap: 8px;
           padding: 24px;
           background: var(--bg-secondary);
           border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .hashtag-header > :global(* + *) {
+          margin-left: 8px;
         }
 
         .hashtag-symbol {
@@ -382,7 +385,10 @@ export default function HashtagPage() {
           padding: 4rem 2rem;
           text-align: center;
           color: var(--text-muted);
-          gap: 16px;
+        }
+
+        .loading-state > :global(* + *) {
+          margin-top: 16px;
         }
 
         .load-more-trigger {

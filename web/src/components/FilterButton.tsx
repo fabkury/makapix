@@ -491,7 +491,9 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
         .filter-header-actions {
           display: flex;
           align-items: center;
-          gap: 8px;
+        }
+        .filter-header-actions > :global(* + *) {
+          margin-left: 8px;
         }
 
         .filter-clear-btn {
@@ -548,7 +550,9 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
           margin-bottom: 12px;
           display: flex;
           align-items: center;
-          gap: 8px;
+        }
+        .filter-section-title > :global(* + *) {
+          margin-left: 8px;
         }
 
         .filter-hint {
@@ -566,7 +570,9 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
         .filter-select-group {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+        }
+        .filter-select-group > :global(* + *) {
+          margin-top: 8px;
         }
 
         .filter-slider-group {
@@ -583,7 +589,10 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
         .filter-badges {
           display: flex;
           flex-wrap: wrap;
-          gap: 8px;
+          margin: -4px;
+        }
+        .filter-badges > :global(*) {
+          margin: 4px;
         }
 
         .filter-badge-btn {

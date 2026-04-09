@@ -135,12 +135,16 @@ export default function BadgePanel({ sqid, currentBadges, onBadgesChange }: Badg
         .badge-panel {
           display: flex;
           flex-direction: column;
-          gap: 16px;
+        }
+        .badge-panel > :global(* + *) {
+          margin-top: 16px;
         }
         .current-badges {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+        }
+        .current-badges > :global(* + *) {
+          margin-top: 8px;
         }
         .current-badges label {
           font-size: 0.9rem;
@@ -149,7 +153,10 @@ export default function BadgePanel({ sqid, currentBadges, onBadgesChange }: Badg
         .badge-list {
           display: flex;
           flex-wrap: wrap;
-          gap: 8px;
+          margin: -4px;
+        }
+        .badge-list > :global(*) {
+          margin: 4px;
         }
         .badge-tag {
           display: inline-flex;
@@ -169,7 +176,9 @@ export default function BadgePanel({ sqid, currentBadges, onBadgesChange }: Badg
         .select-section {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+        }
+        .select-section > :global(* + *) {
+          margin-top: 8px;
         }
         .select-section label {
           font-size: 0.9rem;

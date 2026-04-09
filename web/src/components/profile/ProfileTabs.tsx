@@ -34,9 +34,11 @@ export default function ProfileTabs({ activeTab, onTabChange, isAuthenticated = 
       <style jsx>{`
         .profile-tabs {
           display: flex;
-          gap: 32px;
           border-bottom: 1px solid rgba(255, 255, 255, 0.2);
           margin-bottom: 24px;
+        }
+        .profile-tabs > :global(* + *) {
+          margin-left: 32px;
         }
         .tab {
           position: relative;

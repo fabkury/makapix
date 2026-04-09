@@ -396,10 +396,12 @@ export default function ArtistDashboard() {
         .filter-toggle label {
           display: flex;
           align-items: center;
-          gap: 8px;
           cursor: pointer;
           font-size: 0.9rem;
           color: var(--text-secondary);
+        }
+        .filter-toggle label > :global(* + *) {
+          margin-left: 8px;
         }
 
         .filter-toggle input[type="checkbox"] {
@@ -444,7 +446,9 @@ export default function ArtistDashboard() {
         .breakdown-list {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+        }
+        .breakdown-list > :global(* + *) {
+          margin-top: 8px;
         }
 
         .breakdown-item {
@@ -503,7 +507,9 @@ export default function ArtistDashboard() {
         .col-title {
           display: flex;
           flex-direction: column;
-          gap: 4px;
+        }
+        .col-title > :global(* + *) {
+          margin-top: 4px;
         }
 
         .post-link {
@@ -530,8 +536,10 @@ export default function ArtistDashboard() {
           display: flex;
           justify-content: center;
           align-items: center;
-          gap: 16px;
           margin-top: 24px;
+        }
+        .pagination > :global(* + *) {
+          margin-left: 16px;
         }
 
         .pagination-btn {

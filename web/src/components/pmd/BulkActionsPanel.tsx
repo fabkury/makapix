@@ -327,8 +327,11 @@ export function BulkActionsPanel({
 
         .action-buttons {
           display: flex;
-          gap: 8px;
           flex-wrap: wrap;
+          margin: -4px;
+        }
+        .action-buttons > :global(*) {
+          margin: 4px;
         }
 
         .action-btn {
@@ -342,7 +345,10 @@ export function BulkActionsPanel({
           transition: all 0.15s ease;
           display: inline-flex;
           align-items: center;
-          gap: 6px;
+        }
+
+        .action-btn > :global(* + *) {
+          margin-left: 6px;
         }
 
         .action-btn:hover:not(:disabled) {
@@ -412,13 +418,16 @@ export function BulkActionsPanel({
         .section-toggle {
           display: flex;
           align-items: center;
-          gap: 8px;
           background: none;
           border: none;
           cursor: pointer;
           padding: 0;
           width: 100%;
           text-align: left;
+        }
+
+        .section-toggle > :global(* + *) {
+          margin-left: 8px;
         }
 
         .section-toggle:disabled {
@@ -449,13 +458,17 @@ export function BulkActionsPanel({
           margin-top: 12px;
           display: flex;
           flex-direction: column;
-          gap: 12px;
+        }
+        .license-panel > :global(* + *) {
+          margin-top: 12px;
         }
 
         .license-selector {
           display: flex;
           flex-direction: column;
-          gap: 6px;
+        }
+        .license-selector > :global(* + *) {
+          margin-top: 6px;
         }
 
         .license-selector label {
@@ -498,17 +511,22 @@ export function BulkActionsPanel({
         .download-options {
           display: flex;
           flex-direction: column;
-          gap: 10px;
           margin-bottom: 16px;
+        }
+        .download-options > :global(* + *) {
+          margin-top: 10px;
         }
 
         .checkbox-label {
           display: flex;
           align-items: center;
-          gap: 10px;
           font-size: 0.85rem;
           color: var(--text-secondary);
           cursor: pointer;
+        }
+
+        .checkbox-label > :global(* + *) {
+          margin-left: 10px;
         }
 
         .checkbox-label:hover {

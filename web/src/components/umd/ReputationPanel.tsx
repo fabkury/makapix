@@ -179,7 +179,9 @@ export default function ReputationPanel({ sqid, currentReputation, onReputationC
         .reputation-panel {
           display: flex;
           flex-direction: column;
-          gap: 16px;
+        }
+        .reputation-panel > :global(* + *) {
+          margin-top: 16px;
         }
         .current-rep {
           font-size: 0.9rem;
@@ -190,7 +192,9 @@ export default function ReputationPanel({ sqid, currentReputation, onReputationC
         .slider-section {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+        }
+        .slider-section > :global(* + *) {
+          margin-top: 8px;
         }
         .slider-header {
           display: flex;
@@ -203,8 +207,10 @@ export default function ReputationPanel({ sqid, currentReputation, onReputationC
         }
         .increment-buttons {
           display: flex;
-          gap: 16px;
           margin-right: 8px;
+        }
+        .increment-buttons > :global(* + *) {
+          margin-left: 16px;
         }
         .increment-buttons button {
           background: transparent;
@@ -255,7 +261,9 @@ export default function ReputationPanel({ sqid, currentReputation, onReputationC
         .reason-section {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+        }
+        .reason-section > :global(* + *) {
+          margin-top: 8px;
         }
         .reason-section label {
           font-size: 0.9rem;

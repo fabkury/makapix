@@ -416,13 +416,19 @@ export default function AuthPanel({
         .form {
           display: flex;
           flex-direction: column;
-          gap: 20px;
+        }
+
+        .form > :global(* + *) {
+          margin-top: 20px;
         }
 
         .field {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+        }
+
+        .field > :global(* + *) {
+          margin-top: 8px;
         }
 
         .field label {
@@ -444,7 +450,10 @@ export default function AuthPanel({
         .help-links {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+          margin-top: 8px;
+        }
+
+        .help-links > :global(* + *) {
           margin-top: 8px;
         }
 
@@ -537,7 +546,6 @@ export default function AuthPanel({
         .divider {
           display: flex;
           align-items: center;
-          gap: 16px;
           margin: 24px 0;
           color: var(--text-muted);
           font-size: 0.85rem;
@@ -551,12 +559,19 @@ export default function AuthPanel({
           background: rgba(255, 255, 255, 0.1);
         }
 
+        .divider::before {
+          margin-right: 16px;
+        }
+
+        .divider::after {
+          margin-left: 16px;
+        }
+
         .github-button {
           width: 100%;
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 10px;
           padding: 14px;
           background: #24292e;
           color: white;
@@ -564,6 +579,10 @@ export default function AuthPanel({
           font-weight: 600;
           border-radius: 10px;
           transition: all var(--transition-fast);
+        }
+
+        .github-button > :global(* + *) {
+          margin-left: 10px;
         }
 
         .github-button:hover {

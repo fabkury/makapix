@@ -238,7 +238,6 @@ export default function RegisterPlayerModal({
         .error-message {
           display: flex;
           align-items: center;
-          gap: 10px;
           background: rgba(255, 180, 120, 0.12);
           border: 1px solid rgba(255, 180, 120, 0.25);
           color: var(--text-secondary);
@@ -248,6 +247,10 @@ export default function RegisterPlayerModal({
           margin-bottom: 20px;
         }
 
+        .error-message > :global(* + *) {
+          margin-left: 10px;
+        }
+
         .error-icon {
           font-size: 1rem;
           opacity: 0.8;
@@ -255,9 +258,12 @@ export default function RegisterPlayerModal({
 
         .modal-actions {
           display: flex;
-          gap: 12px;
           justify-content: flex-end;
           margin-top: 24px;
+        }
+
+        .modal-actions > :global(* + *) {
+          margin-left: 12px;
         }
 
         .cancel-btn,

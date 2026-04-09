@@ -215,7 +215,9 @@ export default function RecentCommentsPanel({ sqid }: RecentCommentsPanelProps) 
         .comments-panel {
           display: flex;
           flex-direction: column;
-          gap: 16px;
+        }
+        .comments-panel > :global(* + *) {
+          margin-top: 16px;
         }
         .total-count {
           font-size: 0.9rem;
@@ -230,25 +232,31 @@ export default function RecentCommentsPanel({ sqid }: RecentCommentsPanelProps) 
         .comments-list {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+        }
+        .comments-list > :global(* + *) {
+          margin-top: 8px;
         }
         .comment-item {
           display: flex;
-          gap: 12px;
           padding: 12px;
           background: var(--bg-tertiary);
           border: 1px solid var(--border-color);
           border-radius: 8px;
           transition: opacity 0.15s ease;
         }
+        .comment-item > :global(* + *) {
+          margin-left: 12px;
+        }
         .comment-item.hidden {
           opacity: 0.4;
         }
         .comment-content {
           display: flex;
-          gap: 12px;
           flex: 1;
           min-width: 0;
+        }
+        .comment-content > :global(* + *) {
+          margin-left: 12px;
         }
         .comment-artwork {
           width: 48px;
@@ -278,8 +286,10 @@ export default function RecentCommentsPanel({ sqid }: RecentCommentsPanelProps) 
         .comment-actions {
           display: flex;
           flex-direction: column;
-          gap: 4px;
           flex-shrink: 0;
+        }
+        .comment-actions > :global(* + *) {
+          margin-top: 4px;
         }
         .action-btn {
           display: flex;
@@ -312,7 +322,6 @@ export default function RecentCommentsPanel({ sqid }: RecentCommentsPanelProps) 
         .pagination button {
           display: flex;
           align-items: center;
-          gap: 4px;
           padding: 8px 12px;
           background: transparent;
           border: none;
@@ -321,6 +330,9 @@ export default function RecentCommentsPanel({ sqid }: RecentCommentsPanelProps) 
           font-size: 0.85rem;
           cursor: pointer;
           transition: background 0.15s ease;
+        }
+        .pagination button > :global(* + *) {
+          margin-left: 4px;
         }
         .pagination button:hover:not(:disabled) {
           background: rgba(255, 255, 255, 0.1);

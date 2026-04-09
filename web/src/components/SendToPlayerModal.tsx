@@ -253,12 +253,15 @@ export default function SendToPlayerModal({
         .checkbox-label {
           display: flex;
           align-items: center;
-          gap: 10px;
           padding: 10px;
           border-radius: 6px;
           cursor: pointer;
           transition: background var(--transition-fast);
           margin-bottom: 8px;
+        }
+
+        .checkbox-label > :global(* + *) {
+          margin-left: 10px;
         }
 
         .checkbox-label:hover {
@@ -287,9 +290,12 @@ export default function SendToPlayerModal({
 
         .modal-actions {
           display: flex;
-          gap: 12px;
           justify-content: flex-end;
           margin-top: 24px;
+        }
+
+        .modal-actions > :global(* + *) {
+          margin-left: 12px;
         }
 
         .cancel-btn,

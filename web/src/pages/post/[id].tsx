@@ -94,7 +94,9 @@ export default function LegacyPostRedirect() {
           align-items: center;
           justify-content: center;
           min-height: calc(100vh - var(--header-offset));
-          gap: 16px;
+        }
+        .redirect-container > :global(* + *) {
+          margin-top: 16px;
         }
           .loading-spinner {
             width: 40px;

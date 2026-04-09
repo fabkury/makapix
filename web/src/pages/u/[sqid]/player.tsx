@@ -258,7 +258,9 @@ export default function PlayersPage() {
 
         .header-actions {
           display: flex;
-          gap: 12px;
+        }
+        .header-actions > :global(* + *) {
+          margin-left: 12px;
         }
 
         .register-btn {
@@ -280,11 +282,13 @@ export default function PlayersPage() {
 
         .stats-bar {
           display: flex;
-          gap: 24px;
           background: var(--bg-secondary);
           border-radius: 12px;
           padding: 20px;
           margin-bottom: 24px;
+        }
+        .stats-bar > :global(* + *) {
+          margin-left: 24px;
         }
 
         .stat {
@@ -355,19 +359,27 @@ export default function PlayersPage() {
         .players-list {
           display: flex;
           flex-direction: column;
-          gap: 16px;
+        }
+        .players-list > :global(* + *) {
+          margin-top: 16px;
         }
 
         @media (max-width: 600px) {
           .page-header {
             flex-direction: column;
             align-items: flex-start;
-            gap: 16px;
+          }
+          .page-header > :global(* + *) {
+            margin-left: 0;
+            margin-top: 16px;
           }
 
           .stats-bar {
             flex-direction: column;
-            gap: 16px;
+          }
+          .stats-bar > :global(* + *) {
+            margin-left: 0;
+            margin-top: 16px;
           }
         }
       `}</style>

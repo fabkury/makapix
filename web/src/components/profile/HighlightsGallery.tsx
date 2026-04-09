@@ -51,11 +51,13 @@ export default function HighlightsGallery({ highlights }: HighlightsGalleryProps
         }
         .highlights-scroll {
           display: flex;
-          gap: 12px;
           overflow-x: auto;
           padding-bottom: 8px;
           scrollbar-width: none;
           -ms-overflow-style: none;
+        }
+        .highlights-scroll > :global(* + *) {
+          margin-left: 12px;
         }
         .highlights-scroll::-webkit-scrollbar {
           display: none;

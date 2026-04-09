@@ -183,7 +183,6 @@ export default function SearchPage() {
 
         .tabs-nav {
           display: flex;
-          gap: 0;
           max-width: 1200px;
           margin: 0 auto;
           padding: 0 16px;
@@ -509,20 +508,26 @@ function SearchTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any
         .user-results {
           display: flex;
           flex-wrap: wrap;
-          gap: 12px;
+          margin: -6px auto 24px;
           max-width: 1200px;
-          margin: 0 auto 24px;
+        }
+
+        .user-results > :global(*) {
+          margin: 6px;
         }
 
         .user-card {
           display: flex;
           align-items: center;
-          gap: 12px;
           padding: 12px 16px;
           background: var(--bg-secondary);
           border-radius: 12px;
           text-decoration: none;
           transition: all var(--transition-fast);
+        }
+
+        .user-card > :global(* + *) {
+          margin-left: 12px;
         }
 
         .user-card:hover {
@@ -682,7 +687,7 @@ function HashtagsTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: a
         .controls {
           display: flex;
           flex-wrap: wrap;
-          gap: 16px;
+          margin: -8px;
           padding: 24px;
           background: var(--bg-secondary);
           border-bottom: 1px solid rgba(255, 255, 255, 0.05);
@@ -690,12 +695,19 @@ function HashtagsTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: a
           justify-content: space-between;
         }
 
+        .controls > :global(*) {
+          margin: 8px;
+        }
+
         .search-form {
           flex: 1;
           display: flex;
-          gap: 12px;
           min-width: 250px;
           max-width: 600px;
+        }
+
+        .search-form > :global(* + *) {
+          margin-left: 12px;
         }
 
         .search-box {
@@ -776,7 +788,10 @@ function HashtagsTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: a
 
         .sort-buttons {
           display: flex;
-          gap: 8px;
+        }
+
+        .sort-buttons > :global(* + *) {
+          margin-left: 8px;
         }
 
         .sort-btn {
@@ -1079,10 +1094,13 @@ function UsersTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any 
         .controls {
           display: flex;
           flex-wrap: wrap;
-          gap: 16px;
-          margin-bottom: 24px;
+          margin: -8px -8px 24px;
           align-items: center;
           justify-content: space-between;
+        }
+
+        .controls > :global(*) {
+          margin: 8px;
         }
 
         .search-box {
@@ -1146,7 +1164,10 @@ function UsersTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any 
 
         .sort-buttons {
           display: flex;
-          gap: 8px;
+        }
+
+        .sort-buttons > :global(* + *) {
+          margin-left: 8px;
         }
 
         .sort-btn {
@@ -1295,13 +1316,16 @@ function UsersTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any 
         .user-card {
           display: flex;
           align-items: center;
-          gap: 12px;
           padding: 16px 20px;
           background: var(--bg-secondary);
           border-radius: 12px;
           text-decoration: none;
           transition: all var(--transition-fast);
           border: 1px solid transparent;
+        }
+
+        .user-card > :global(* + *) {
+          margin-left: 12px;
         }
 
         .user-card:hover {
@@ -1340,8 +1364,11 @@ function UsersTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any 
           flex: 1;
           display: flex;
           flex-direction: column;
-          gap: 4px;
           min-width: 0;
+        }
+
+        .user-info > :global(* + *) {
+          margin-top: 4px;
         }
 
         .user-handle {

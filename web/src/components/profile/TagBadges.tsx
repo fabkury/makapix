@@ -43,7 +43,6 @@ export default function TagBadges({ badges, onAreaClick }: TagBadgesProps) {
         .tag-badges-area {
           display: flex;
           align-items: center;
-          gap: 4px;
           min-height: 16px;
           cursor: pointer;
           padding: 4px;
@@ -51,6 +50,9 @@ export default function TagBadges({ badges, onAreaClick }: TagBadgesProps) {
           border: none;
           border-radius: 4px;
           transition: background 0.15s ease;
+        }
+        .tag-badges-area > :global(* + *) {
+          margin-left: 4px;
         }
         .tag-badges-area:hover {
           background: rgba(255, 255, 255, 0.1);

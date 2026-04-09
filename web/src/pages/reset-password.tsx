@@ -185,14 +185,20 @@ const API_BASE_URL = typeof window !== 'undefined'
         .form {
           display: flex;
           flex-direction: column;
-          gap: 20px;
           text-align: left;
+        }
+
+        .form > :global(* + *) {
+          margin-top: 20px;
         }
 
         .field {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+        }
+
+        .field > :global(* + *) {
+          margin-top: 8px;
         }
 
         .field label {

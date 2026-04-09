@@ -227,7 +227,9 @@ export default function OwnerDashboardPage() {
             align-items: center;
             justify-content: center;
             min-height: calc(100vh - var(--header-offset));
-            gap: 16px;
+          }
+          .loading-container > :global(* + *) {
+            margin-top: 16px;
           }
           .loading-container p {
             color: var(--text-muted);
@@ -388,8 +390,10 @@ export default function OwnerDashboardPage() {
 
         .tabs {
           display: flex;
-          gap: 8px;
           margin-bottom: 16px;
+        }
+        .tabs > :global(* + *) {
+          margin-left: 8px;
         }
 
         .tab {
@@ -420,9 +424,12 @@ export default function OwnerDashboardPage() {
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 12px;
           padding: 48px;
           color: var(--text-muted);
+        }
+        .loading-state > :global(* + *),
+        .empty-state > :global(* + *) {
+          margin-left: 12px;
         }
 
         .loading-spinner-small {
@@ -470,8 +477,11 @@ export default function OwnerDashboardPage() {
 
         .roles {
           display: flex;
-          gap: 6px;
           flex-wrap: wrap;
+          margin: -3px;
+        }
+        .roles > :global(*) {
+          margin: 3px;
         }
 
         .role-badge {

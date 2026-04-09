@@ -168,7 +168,9 @@ export function DownloadRequestsPanel({ bdrs }: DownloadRequestsPanelProps) {
         .requests-list {
           display: flex;
           flex-direction: column;
-          gap: 12px;
+        }
+        .requests-list > :global(* + *) {
+          margin-top: 12px;
         }
 
         .request-card {
@@ -228,9 +230,12 @@ export function DownloadRequestsPanel({ bdrs }: DownloadRequestsPanelProps) {
 
         .detail-row {
           display: flex;
-          gap: 8px;
           font-size: 0.8rem;
           margin-bottom: 4px;
+        }
+
+        .detail-row > :global(* + *) {
+          margin-left: 8px;
         }
 
         .detail-label {
@@ -289,7 +294,9 @@ export function DownloadRequestsPanel({ bdrs }: DownloadRequestsPanelProps) {
           color: var(--text-muted);
           display: inline-flex;
           align-items: center;
-          gap: 8px;
+        }
+        .action-note > :global(* + *) {
+          margin-left: 8px;
         }
 
         .action-note.expired {
@@ -326,7 +333,9 @@ export function DownloadRequestsPanel({ bdrs }: DownloadRequestsPanelProps) {
           .request-header {
             flex-direction: column;
             align-items: flex-start;
-            gap: 4px;
+          }
+          .request-header > :global(* + *) {
+            margin-top: 4px;
           }
         }
       `}</style>

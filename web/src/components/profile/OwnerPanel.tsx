@@ -85,8 +85,11 @@ export default function OwnerPanel({
         .owner-panel {
           display: flex;
           flex-wrap: wrap;
-          gap: 8px;
-          margin-top: 16px;
+          margin: -4px;
+          margin-top: 12px;
+        }
+        .owner-panel > :global(*) {
+          margin: 4px;
         }
         .spacer {
           width: 16px;

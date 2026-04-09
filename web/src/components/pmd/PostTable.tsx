@@ -702,16 +702,23 @@ export function PostTable({
           flex-wrap: wrap;
           align-items: center;
           justify-content: space-between;
-          gap: 12px;
+          margin: -6px;
           padding: 12px 16px;
           background: var(--bg-tertiary);
           border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
+        .selection-controls > :global(*) {
+          margin: 6px;
+        }
+
         .badge-group {
           display: flex;
           flex-wrap: wrap;
-          gap: 8px;
+          margin: -4px;
+        }
+        .badge-group > :global(*) {
+          margin: 4px;
         }
 
         .badge {
@@ -737,7 +744,9 @@ export function PostTable({
         .goto-controls {
           display: flex;
           align-items: center;
-          gap: 8px;
+        }
+        .goto-controls > :global(* + *) {
+          margin-left: 8px;
         }
 
         .goto-input {
@@ -948,7 +957,9 @@ export function PostTable({
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 8px;
+        }
+        .loading-content > :global(* + *) {
+          margin-left: 8px;
         }
 
         .loading-spinner {
@@ -971,9 +982,13 @@ export function PostTable({
           flex-wrap: wrap;
           align-items: center;
           justify-content: space-between;
-          gap: 16px;
+          margin: -8px;
           padding: 16px;
           border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .pagination > :global(*) {
+          margin: 8px;
         }
 
         .pagination-info {
@@ -984,7 +999,9 @@ export function PostTable({
         .pagination-controls {
           display: flex;
           align-items: center;
-          gap: 12px;
+        }
+        .pagination-controls > :global(* + *) {
+          margin-left: 12px;
         }
 
         .page-btn {
@@ -1051,8 +1068,10 @@ export function PostTable({
 
         .dialog-buttons {
           display: flex;
-          gap: 12px;
           justify-content: flex-end;
+        }
+        .dialog-buttons > :global(* + *) {
+          margin-left: 12px;
         }
 
         .dialog-btn {
@@ -1096,7 +1115,13 @@ export function PostTable({
 
           .pagination {
             flex-direction: column;
-            gap: 12px;
+            margin: 0;
+          }
+          .pagination > :global(*) {
+            margin: 0;
+          }
+          .pagination > :global(* + *) {
+            margin-top: 12px;
           }
         }
       `}</style>

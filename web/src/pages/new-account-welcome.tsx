@@ -594,14 +594,20 @@ export default function NewAccountWelcomePage() {
         .form-section {
           display: flex;
           flex-direction: column;
-          gap: 24px;
           margin-bottom: 32px;
+        }
+
+        .form-section > :global(* + *) {
+          margin-top: 24px;
         }
 
         .field-group {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+        }
+
+        .field-group > :global(* + *) {
+          margin-top: 8px;
         }
 
         .field-group label {
@@ -644,8 +650,11 @@ export default function NewAccountWelcomePage() {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 4px;
           color: var(--text-muted);
+        }
+
+        .avatar-placeholder > :global(* + *) {
+          margin-top: 4px;
         }
 
         .avatar-placeholder span:first-child {
@@ -659,7 +668,7 @@ export default function NewAccountWelcomePage() {
 
         .upload-overlay {
           position: absolute;
-          inset: 0;
+          top: 0; right: 0; bottom: 0; left: 0;
           background: rgba(0, 0, 0, 0.7);
           display: flex;
           align-items: center;
@@ -692,7 +701,10 @@ export default function NewAccountWelcomePage() {
 
         .handle-input-row {
           display: flex;
-          gap: 8px;
+        }
+
+        .handle-input-row > :global(* + *) {
+          margin-left: 8px;
         }
 
         .handle-input-wrapper {
@@ -814,7 +826,10 @@ export default function NewAccountWelcomePage() {
         .actions {
           display: flex;
           justify-content: space-between;
-          gap: 16px;
+        }
+
+        .actions > :global(* + *) {
+          margin-left: 16px;
         }
 
         .skip-btn {
@@ -867,6 +882,11 @@ export default function NewAccountWelcomePage() {
 
           .actions {
             flex-direction: column-reverse;
+          }
+
+          .actions > :global(* + *) {
+            margin-left: 0;
+            margin-bottom: 16px;
           }
 
           .skip-btn, .save-btn {

@@ -47,14 +47,19 @@ export default function ProfileStats({ stats, reputation, onFollowerClick }: Pro
           display: flex;
           flex-wrap: wrap;
           align-items: center;
-          gap: 16px;
-          margin-top: 16px;
+          margin: -8px;
+          margin-top: 8px;
           font-size: 0.9rem;
+        }
+        .profile-stats > :global(*) {
+          margin: 8px;
         }
         .stat {
           display: flex;
           align-items: center;
-          gap: 6px;
+        }
+        .stat > :global(* + *) {
+          margin-left: 6px;
         }
         .stat-icon {
           font-size: 1rem;
@@ -77,7 +82,11 @@ export default function ProfileStats({ stats, reputation, onFollowerClick }: Pro
         }
         @media (max-width: 600px) {
           .profile-stats {
-            gap: 12px;
+            margin: -6px;
+            margin-top: 10px;
+          }
+          .profile-stats > :global(*) {
+            margin: 6px;
           }
         }
       `}</style>

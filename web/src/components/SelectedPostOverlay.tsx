@@ -964,7 +964,18 @@ export default function SelectedPostOverlay({
       } else {
         // Fallback: copy post URL to clipboard
         const postUrl = `${window.location.origin}/p/${post.public_sqid}`;
-        await navigator.clipboard.writeText(postUrl);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(postUrl);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = postUrl;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
         alert('Link copied to clipboard');
       }
     } catch (err) {
@@ -994,7 +1005,18 @@ export default function SelectedPostOverlay({
       } else {
         // Fallback: copy post URL to clipboard
         const postUrl = `${window.location.origin}/p/${post.public_sqid}`;
-        await navigator.clipboard.writeText(postUrl);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(postUrl);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = postUrl;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
         alert('Link copied to clipboard');
       }
     } catch (err) {

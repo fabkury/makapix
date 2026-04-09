@@ -212,10 +212,11 @@ export default function SPOCommentsOverlay({
           borderLeft: depth > 0 ? '2px solid rgba(180, 78, 255, 0.2)' : 'none',
         }}
       >
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex' }}>
           <div style={{
             width: 32,
             height: 32,
+            marginRight: 8,
             borderRadius: 0,
             background: '#1a1a24',
             display: 'flex',
@@ -249,16 +250,17 @@ export default function SPOCommentsOverlay({
             )}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: 4 }}>
               <span style={{
                 fontSize: 13,
                 fontWeight: 600,
                 color: depth === 0 ? '#00d4ff' : (depth === 1 ? '#ff6eb4' : '#b44eff'),
+                marginRight: 8,
               }}>
                 {authorName}
               </span>
               {isGuest && !comment.deleted_by_owner && (
-                <span style={{ fontSize: 11, color: '#6a6a80', fontStyle: 'italic' }}>guest</span>
+                <span style={{ fontSize: 11, color: '#6a6a80', fontStyle: 'italic', marginRight: 8 }}>guest</span>
               )}
               <span style={{ fontSize: 11, color: '#6a6a80', marginLeft: 'auto' }}>
                 {formatDate(comment.created_at)}
@@ -274,7 +276,7 @@ export default function SPOCommentsOverlay({
               {comment.deleted_by_owner ? '[deleted]' : comment.body}
             </div>
             {!comment.deleted_by_owner && (
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
                 {currentUserId && (
                   <button
                     onClick={() => handleToggleCommentLike(comment.id, !!comment.liked_by_me)}
@@ -286,6 +288,7 @@ export default function SPOCommentsOverlay({
                       padding: '2px 4px',
                       lineHeight: 1,
                       transition: 'transform 0.15s ease',
+                      marginRight: 12,
                     }}
                   >
                     {comment.liked_by_me ? '\u2764\uFE0F' : '\uD83E\uDD0D'}
@@ -302,6 +305,7 @@ export default function SPOCommentsOverlay({
                       cursor: 'pointer',
                       padding: '4px 0',
                       fontWeight: 600,
+                      marginRight: 12,
                     }}
                   >
                     {comment.like_count}
@@ -318,6 +322,7 @@ export default function SPOCommentsOverlay({
                       cursor: 'pointer',
                       padding: '4px 0',
                       fontWeight: 500,
+                      marginRight: 12,
                     }}
                   >
                     {replyingTo === comment.id ? 'Cancel' : 'Reply'}
@@ -368,7 +373,7 @@ export default function SPOCommentsOverlay({
                   }}
                   autoFocus
                 />
-                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <div style={{ display: 'flex', marginTop: 8 }}>
                   <button
                     type="submit"
                     disabled={!replyBody.trim() || submitting}
@@ -382,6 +387,7 @@ export default function SPOCommentsOverlay({
                       fontWeight: 600,
                       cursor: !replyBody.trim() || submitting ? 'not-allowed' : 'pointer',
                       opacity: !replyBody.trim() || submitting ? 0.5 : 1,
+                      marginRight: 8,
                     }}
                   >
                     {submitting ? 'Posting...' : 'Post Reply'}

@@ -144,7 +144,6 @@ export default function CommentLikeUsersOverlay({
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 10,
                     marginBottom: 12,
                   }}
                 >
@@ -160,6 +159,7 @@ export default function CommentLikeUsersOverlay({
                       flexShrink: 0,
                       overflow: 'hidden',
                       cursor: item.user_public_sqid ? 'pointer' : 'default',
+                      marginRight: 10,
                     }}
                     onClick={() => item.user_public_sqid && navigateToUser(item.user_public_sqid)}
                   >

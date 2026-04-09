@@ -522,7 +522,6 @@ export default function Layout({ children, title, description }: LayoutProps) {
 
         .hashtag-scroll {
           display: flex;
-          gap: 24px;
           padding: 0 16px;
           height: 100%;
           align-items: center;
@@ -534,6 +533,9 @@ export default function Layout({ children, title, description }: LayoutProps) {
 
         .hashtag-scroll::-webkit-scrollbar {
           display: none;
+        }
+        .hashtag-scroll > :global(* + *) {
+          margin-left: 24px;
         }
 
         .hashtag-scroll :global(a.hashtag-link) {
@@ -553,7 +555,9 @@ export default function Layout({ children, title, description }: LayoutProps) {
         .header-left {
           display: flex;
           align-items: center;
-          gap: 16px;
+        }
+        .header-left > :global(* + *) {
+          margin-left: 16px;
         }
 
         .logo-link {
@@ -665,7 +669,9 @@ export default function Layout({ children, title, description }: LayoutProps) {
         .nav {
           display: flex;
           align-items: center;
-          gap: 16px;
+        }
+        .nav > :global(* + *) {
+          margin-left: 16px;
         }
 
         .nav :global(a.nav-item) {
@@ -762,11 +768,13 @@ export default function Layout({ children, title, description }: LayoutProps) {
 
           .hashtag-scroll {
             padding: 0 8px;
-            gap: 16px;
+          }
+          .hashtag-scroll > :global(* + *) {
+            margin-left: 16px;
           }
 
-          .nav {
-            gap: 10px;
+          .nav > :global(* + *) {
+            margin-left: 10px;
           }
 
           .nav-item {

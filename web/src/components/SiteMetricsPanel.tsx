@@ -737,10 +737,13 @@ export default function SiteMetricsPanel() {
         .toggle-label {
           display: flex;
           align-items: center;
-          gap: 8px;
           cursor: pointer;
           font-size: 0.9rem;
           color: var(--text-secondary, #ccc);
+        }
+
+        .toggle-label > :global(* + *) {
+          margin-left: 8px;
         }
 
         .toggle-label input[type="checkbox"] {
@@ -832,11 +835,14 @@ export default function SiteMetricsPanel() {
         .trend-chart {
           display: flex;
           align-items: flex-end;
-          gap: 2px;
           height: 80px;
           background: var(--bg-tertiary, #2a2a3e);
           border-radius: 8px;
           padding: 12px 8px;
+        }
+
+        .trend-chart > :global(* + *) {
+          margin-left: 2px;
         }
 
         .trend-chart.hourly {
@@ -911,7 +917,10 @@ export default function SiteMetricsPanel() {
         .breakdown-list {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+        }
+
+        .breakdown-list > :global(* + *) {
+          margin-top: 8px;
         }
 
         .breakdown-item {
@@ -924,9 +933,12 @@ export default function SiteMetricsPanel() {
         .breakdown-label {
           display: flex;
           align-items: center;
-          gap: 8px;
           font-size: 0.85rem;
           color: var(--text-secondary, #ccc);
+        }
+
+        .breakdown-label > :global(* + *) {
+          margin-left: 8px;
         }
 
         .country-flag {
@@ -1122,10 +1134,13 @@ export default function SiteMetricsPanel() {
         .player-header {
           display: flex;
           align-items: center;
-          gap: 8px;
           margin-bottom: 12px;
           padding-bottom: 12px;
           border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .player-header > :global(* + *) {
+          margin-left: 8px;
         }
 
         .player-status-dot {
@@ -1148,7 +1163,10 @@ export default function SiteMetricsPanel() {
         .player-details {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+        }
+
+        .player-details > :global(* + *) {
+          margin-top: 8px;
         }
 
         .player-detail {

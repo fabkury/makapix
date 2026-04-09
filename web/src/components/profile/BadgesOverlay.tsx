@@ -79,7 +79,7 @@ export default function BadgesOverlay({ isOpen, onClose, userBadges }: BadgesOve
       <style jsx>{`
         .badges-overlay {
           position: fixed;
-          inset: 0;
+          top: 0; right: 0; bottom: 0; left: 0;
           background: rgba(0, 0, 0, 0.8);
           display: flex;
           align-items: center;
@@ -125,7 +125,9 @@ export default function BadgesOverlay({ isOpen, onClose, userBadges }: BadgesOve
           overflow-y: auto;
           display: flex;
           flex-direction: column;
-          gap: 16px;
+        }
+        .badges-content > :global(* + *) {
+          margin-top: 16px;
         }
         .loading, .empty {
           text-align: center;
@@ -134,8 +136,10 @@ export default function BadgesOverlay({ isOpen, onClose, userBadges }: BadgesOve
         }
         .badge-item {
           display: flex;
-          gap: 16px;
           align-items: center;
+        }
+        .badge-item > :global(* + *) {
+          margin-left: 16px;
         }
         .badge-icon {
           width: 64px;
@@ -146,7 +150,9 @@ export default function BadgesOverlay({ isOpen, onClose, userBadges }: BadgesOve
         .badge-info {
           display: flex;
           flex-direction: column;
-          gap: 4px;
+        }
+        .badge-info > :global(* + *) {
+          margin-top: 4px;
         }
         .badge-label {
           font-weight: 600;

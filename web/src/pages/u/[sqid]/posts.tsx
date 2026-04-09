@@ -508,7 +508,9 @@ export default function PostManagementDashboard() {
             align-items: center;
             justify-content: center;
             min-height: calc(100vh - 200px);
-            gap: 16px;
+          }
+          .error-container > :global(* + *) {
+            margin-top: 16px;
           }
 
           .error-container p {

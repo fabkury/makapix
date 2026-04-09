@@ -74,7 +74,6 @@ export default function AboutPage() {
 
         .about-container :global(.tabs-list) {
           display: flex;
-          gap: 8px;
           width: 100%;
           height: auto;
           padding: 8px;
@@ -82,6 +81,10 @@ export default function AboutPage() {
           justify-content: center;
           background: rgba(255, 255, 255, 0.05);
           border-radius: 12px;
+        }
+
+        .about-container :global(.tabs-list) > :global(* + *) {
+          margin-left: 8px;
         }
 
         .about-container :global(.tab-trigger) {
@@ -110,8 +113,11 @@ export default function AboutPage() {
           }
 
           .about-container :global(.tabs-list) {
-            gap: 6px;
             padding: 6px;
+          }
+
+          .about-container :global(.tabs-list) > :global(* + *) {
+            margin-left: 6px;
           }
 
           .about-container :global(.tab-trigger) {
@@ -437,17 +443,23 @@ function FeaturesTab() {
         .feature-list {
           display: flex;
           flex-direction: column;
-          gap: 12px;
+        }
+
+        .feature-list > :global(* + *) {
+          margin-top: 12px;
         }
 
         .feature-item {
           display: flex;
           align-items: flex-start;
-          gap: 12px;
           padding: 12px;
           background: rgba(255, 255, 255, 0.02);
           border-radius: 8px;
           transition: background var(--transition-fast);
+        }
+
+        .feature-item > :global(* + *) {
+          margin-left: 12px;
         }
 
         .feature-item:hover {
@@ -464,7 +476,10 @@ function FeaturesTab() {
         .feature-content {
           display: flex;
           flex-direction: column;
-          gap: 2px;
+        }
+
+        .feature-content > :global(* + *) {
+          margin-top: 2px;
         }
 
         .feature-title {
@@ -1134,20 +1149,26 @@ function LicensesTab() {
         .license-list {
           display: flex;
           flex-direction: column;
-          gap: 12px;
           margin-top: 20px;
+        }
+
+        .license-list > :global(* + *) {
+          margin-top: 12px;
         }
 
         .license-item {
           display: flex;
           align-items: center;
-          gap: 16px;
           padding: 16px;
           background: rgba(255, 255, 255, 0.03);
           border: 1px solid var(--bg-tertiary);
           border-radius: 10px;
           text-decoration: none;
           transition: all var(--transition-fast);
+        }
+
+        .license-item > :global(* + *) {
+          margin-left: 16px;
         }
 
         .license-item:hover {
@@ -1164,8 +1185,11 @@ function LicensesTab() {
         .license-info {
           display: flex;
           flex-direction: column;
-          gap: 4px;
           min-width: 0;
+        }
+
+        .license-info > :global(* + *) {
+          margin-top: 4px;
         }
 
         .license-identifier {
@@ -1193,7 +1217,11 @@ function LicensesTab() {
           .license-item {
             flex-direction: column;
             align-items: flex-start;
-            gap: 12px;
+          }
+
+          .license-item > :global(* + *) {
+            margin-left: 0;
+            margin-top: 12px;
           }
 
           .license-badge {

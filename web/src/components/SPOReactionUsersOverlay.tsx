@@ -145,7 +145,6 @@ export default function SPOReactionUsersOverlay({
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 10,
                     marginBottom: 12,
                   }}
                 >
@@ -161,6 +160,7 @@ export default function SPOReactionUsersOverlay({
                       flexShrink: 0,
                       overflow: 'hidden',
                       cursor: item.user_public_sqid ? 'pointer' : 'default',
+                      marginRight: 10,
                     }}
                     onClick={() => item.user_public_sqid && navigateToUser(item.user_public_sqid)}
                   >
@@ -195,6 +195,7 @@ export default function SPOReactionUsersOverlay({
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
                       cursor: item.user_public_sqid ? 'pointer' : 'default',
+                      marginRight: 10,
                     }}
                     onClick={() => item.user_public_sqid && navigateToUser(item.user_public_sqid)}
                   >
