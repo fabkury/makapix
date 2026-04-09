@@ -222,6 +222,13 @@ export function WebPlayer({
   });
   const rotationRef = useRef(rotation);
   rotationRef.current = rotation;
+  const [rotationPending, setRotationPending] = useState<{
+    oldAngle: RotationAngle;
+    remaining: number;
+  } | null>(null);
+  const rotationTimerRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
 
   // Reactions & comments
   const [widgetData, setWidgetData] = useState<WidgetData | null>(null);
@@ -600,6 +607,29 @@ export function WebPlayer({
     setFormatSubOpen(true);
   }, []);
 
+  const clearRotationTimer = useCallback(() => {
+    if (rotationTimerRef.current) {
+      clearInterval(rotationTimerRef.current);
+      rotationTimerRef.current = null;
+    }
+  }, []);
+
+  const revertRotation = useCallback(
+    (oldAngle: RotationAngle) => {
+      clearRotationTimer();
+      setRotationPending(null);
+      setRotation(oldAngle);
+      rotationRef.current = oldAngle;
+    },
+    [clearRotationTimer],
+  );
+
+  const confirmRotation = useCallback(() => {
+    clearRotationTimer();
+    setRotationPending(null);
+    localStorage.setItem(ROTATION_KEY, String(rotationRef.current));
+  }, [clearRotationTimer]);
+
   const handleRotation = useCallback(
     (angle: RotationAngle) => {
       if (angle === rotationRef.current) {
@@ -608,11 +638,29 @@ export function WebPlayer({
       }
       closeMenu();
       if (!window.confirm(`Rotate display to ${angle}°?`)) return;
+      const oldAngle = rotationRef.current;
       setRotation(angle);
       rotationRef.current = angle;
-      localStorage.setItem(ROTATION_KEY, String(angle));
+      // Start 15-second countdown
+      const CONFIRM_SECONDS = 15;
+      setRotationPending({ oldAngle, remaining: CONFIRM_SECONDS });
+      clearRotationTimer();
+      rotationTimerRef.current = setInterval(() => {
+        setRotationPending((prev) => {
+          if (!prev) return null;
+          if (prev.remaining <= 1) {
+            // Time's up — revert
+            clearInterval(rotationTimerRef.current!);
+            rotationTimerRef.current = null;
+            setRotation(prev.oldAngle);
+            rotationRef.current = prev.oldAngle;
+            return null;
+          }
+          return { ...prev, remaining: prev.remaining - 1 };
+        });
+      }, 1000);
     },
-    [closeMenu],
+    [closeMenu, clearRotationTimer],
   );
 
   const handleEditInPiskel = useCallback(() => {
@@ -808,6 +856,8 @@ export function WebPlayer({
     setWidgetData(null);
     widgetCacheRef.current.clear();
     setCommentsOpen(false);
+    clearRotationTimer();
+    setRotationPending(null);
 
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -840,8 +890,9 @@ export function WebPlayer({
       }
       clearUiTimer();
       cancelPrefetch();
+      clearRotationTimer();
     };
-  }, [isActive, fetchArtworkMetadata, showArtwork, startPrefetch, cancelPrefetch, clearUiTimer, setSlotASrc, setSlotBSrc]);
+  }, [isActive, fetchArtworkMetadata, showArtwork, startPrefetch, cancelPrefetch, clearUiTimer, clearRotationTimer, setSlotASrc, setSlotBSrc]);
 
   // Start the UI auto-hide timer when UI is shown (pause when menu/comments open)
   useEffect(() => {
@@ -1011,7 +1062,8 @@ export function WebPlayer({
             height: "100vw",
             top: "50%",
             left: "50%",
-            inset: "auto",
+            right: "auto",
+            bottom: "auto",
             transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
           };
 
@@ -1059,17 +1111,6 @@ export function WebPlayer({
             <span className="wp-channel">{channelName}</span>
           )}
           <div className="wp-top-btns">
-            <button
-              className="wp-btn"
-              onClick={() => {
-                clearUiTimer();
-                setUiVisible(false);
-                hideGraceUntilRef.current = Date.now() + 3000;
-              }}
-              aria-label="Hide controls"
-            >
-              &#x25A3;
-            </button>
             <button
               className="wp-btn"
               onClick={() => handleClose()}
@@ -1371,6 +1412,27 @@ export function WebPlayer({
           isModerator={isModerator}
           initialComments={widgetData?.comments || []}
         />
+      )}
+
+      {/* Rotation confirmation banner */}
+      {rotationPending && (
+        <div className="wp-rotation-confirm">
+          <span>
+            Keep this rotation? Reverting in {rotationPending.remaining}s
+          </span>
+          <button
+            className="wp-rotation-confirm-btn wp-rotation-keep"
+            onClick={confirmRotation}
+          >
+            Yes
+          </button>
+          <button
+            className="wp-rotation-confirm-btn wp-rotation-revert"
+            onClick={() => revertRotation(rotationPending.oldAngle)}
+          >
+            Revert
+          </button>
+        </div>
       )}
 
       <style jsx>{`
@@ -1756,6 +1818,45 @@ export function WebPlayer({
           border-color: #00d4ff;
           color: #00d4ff;
           background: rgba(0, 212, 255, 0.1);
+        }
+
+        /* Rotation confirmation banner */
+        .wp-rotation-confirm {
+          position: fixed;
+          top: 40px;
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 50002;
+          background: rgba(0, 0, 0, 0.85);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 8px;
+          padding: 12px 20px;
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          color: #e8e8f0;
+          font-size: 14px;
+          white-space: nowrap;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+
+        .wp-rotation-confirm-btn {
+          padding: 6px 16px;
+          border: none;
+          border-radius: 4px;
+          font-size: 14px;
+          cursor: pointer;
+        }
+
+        .wp-rotation-keep {
+          background: #00d4ff;
+          color: #000;
+          font-weight: 600;
+        }
+
+        .wp-rotation-revert {
+          background: rgba(255, 255, 255, 0.15);
+          color: #e8e8f0;
         }
 
         .wp-empty {
