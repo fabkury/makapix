@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { setNavigationContext } from '../lib/navigation-context';
 import { authenticatedFetch, clearTokens } from '../lib/api';
+import { ensureCompatibleArtUrl } from '../utils/imageCompat';
 
 interface PostOwner {
   id: string;
@@ -19,6 +20,7 @@ interface Post {
   art_url: string;
   width: number;
   height: number;
+  frame_count?: number;
   owner_id: string;
   created_at: string;
   owner?: PostOwner;
@@ -224,7 +226,7 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
             >
               <div className="artwork-area">
                 <img
-                  src={post.art_url}
+                  src={ensureCompatibleArtUrl(post.art_url, post.frame_count)}
                   alt={post.title}
                   className="artwork-image pixel-art"
                   data-width={post.width}

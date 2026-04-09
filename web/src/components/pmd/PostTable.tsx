@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import Image from 'next/image';
+import { ensureCompatibleArtUrl } from '../../utils/imageCompat';
 
 export interface PMDPost {
   id: number;
@@ -561,7 +562,7 @@ export function PostTable({
                 {/* Thumbnail */}
                 <td style={{ width: `${columnWidths.thumbnail}px` }}>
                   <Image
-                    src={post.art_url}
+                    src={ensureCompatibleArtUrl(post.art_url, post.frame_count)}
                     alt={post.title}
                     width={32}
                     height={32}

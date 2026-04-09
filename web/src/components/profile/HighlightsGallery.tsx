@@ -4,6 +4,7 @@
 
 import Link from 'next/link';
 import { UserHighlightItem } from '../../types/profile';
+import { ensureCompatibleArtUrl } from '../../utils/imageCompat';
 
 interface HighlightsGalleryProps {
   highlights: UserHighlightItem[];
@@ -26,7 +27,7 @@ export default function HighlightsGallery({ highlights }: HighlightsGalleryProps
           >
             <div className="highlight-image-container">
               <img
-                src={highlight.post_art_url}
+                src={ensureCompatibleArtUrl(highlight.post_art_url)}
                 alt={highlight.post_title}
                 className="highlight-image"
                 loading="lazy"

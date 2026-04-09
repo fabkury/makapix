@@ -4,6 +4,7 @@ import { motion, useAnimationControls, useReducedMotion, AnimatePresence } from 
 import { useRouter } from 'next/router';
 import { authenticatedFetch, getAccessToken } from '../lib/api';
 import { PLAYER_BAR_HEIGHT } from './PlayerBarDynamic';
+import { ensureCompatibleArtUrl } from '../utils/imageCompat';
 
 type Rect = { left: number; top: number; width: number; height: number };
 
@@ -15,6 +16,7 @@ export interface SelectedArtworkOverlayPost {
   art_url: string;
   width: number;
   height: number;
+  frame_count?: number;
   owner?: {
     handle: string;
     avatar_url?: string | null;
@@ -1026,7 +1028,7 @@ export default function SelectedArtworkOverlay({
         >
           <div style={artworkClipStyles}>
             <img
-              src={outgoingPost.post.art_url}
+              src={ensureCompatibleArtUrl(outgoingPost.post.art_url, outgoingPost.post.frame_count)}
               alt={outgoingPost.post.title}
               draggable={false}
               style={artworkImageStyles}
@@ -1055,7 +1057,7 @@ export default function SelectedArtworkOverlay({
         >
           <div style={artworkClipStyles}>
             <img
-              src={incomingPost.post.art_url}
+              src={ensureCompatibleArtUrl(incomingPost.post.art_url, incomingPost.post.frame_count)}
               alt={incomingPost.post.title}
               draggable={false}
               style={artworkImageStyles}
@@ -1174,7 +1176,7 @@ export default function SelectedArtworkOverlay({
       >
         <div style={artworkClipStyles}>
           <img
-            src={post.art_url}
+            src={ensureCompatibleArtUrl(post.art_url, post.frame_count)}
             alt={post.title}
             draggable={false}
             style={artworkImageStyles}

@@ -6,6 +6,7 @@ import {
   useSocialNotificationsContext,
   SocialNotificationFull,
 } from "../contexts/SocialNotificationsContext";
+import { ensureCompatibleArtUrl } from "../utils/imageCompat";
 
 /**
  * Notifications Page.
@@ -221,7 +222,7 @@ export default function NotificationsPage() {
                     )}
                     {notification.content_art_url && (
                       <img
-                        src={notification.content_art_url}
+                        src={ensureCompatibleArtUrl(notification.content_art_url)}
                         alt=""
                         width={64}
                         height={64}

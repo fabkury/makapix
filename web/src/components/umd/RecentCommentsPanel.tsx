@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import CollapsiblePanel from './CollapsiblePanel';
 import { authenticatedFetch } from '../../lib/api';
+import { ensureCompatibleArtUrl } from '../../utils/imageCompat';
 
 interface Comment {
   id: string;
@@ -147,7 +148,7 @@ export default function RecentCommentsPanel({ sqid }: RecentCommentsPanelProps) 
                   <div className="comment-content">
                     {comment.post_art_url && (
                       <img
-                        src={comment.post_art_url}
+                        src={ensureCompatibleArtUrl(comment.post_art_url)}
                         alt="Artwork"
                         className="comment-artwork"
                       />

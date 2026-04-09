@@ -5,6 +5,7 @@ import Layout from '../components/Layout';
 import StatsPanel from '../components/StatsPanel';
 import SiteMetricsPanel from '../components/SiteMetricsPanel';
 import { authenticatedFetch, clearTokens } from '../lib/api';
+import { ensureCompatibleArtUrl } from '../utils/imageCompat';
 
 interface PostOwner {
   id: string;
@@ -551,7 +552,7 @@ export default function ModDashboardPage() {
                     <div key={post.id} className="item-card pending-card">
                       {post.art_url && (
                         <div className="pending-thumbnail">
-                          <img src={post.art_url} alt={post.title} className="pixel-art" />
+                          <img src={ensureCompatibleArtUrl(post.art_url)} alt={post.title} className="pixel-art" />
                         </div>
                       )}
                       <div className="item-info">
@@ -626,7 +627,7 @@ export default function ModDashboardPage() {
                     <div key={post.id} className="item-card pending-card">
                       {post.art_url && (
                         <Link href={`/p/${post.public_sqid}`} className="pending-thumbnail">
-                          <img src={post.art_url} alt={post.title} className="pixel-art" style={{ width: '64px', height: '64px', maxWidth: '64px', maxHeight: '64px', objectFit: 'contain' }} />
+                          <img src={ensureCompatibleArtUrl(post.art_url)} alt={post.title} className="pixel-art" style={{ width: '64px', height: '64px', maxWidth: '64px', maxHeight: '64px', objectFit: 'contain' }} />
                         </Link>
                       )}
                       <div className="item-info">

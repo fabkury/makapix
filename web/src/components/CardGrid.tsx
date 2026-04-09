@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { setNavigationContext, NavigationSource } from '../lib/navigation-context';
+import { ensureCompatibleArtUrl } from '../utils/imageCompat';
 import SelectedPostOverlay from './SelectedPostOverlay';
 import { usePlayerBarOptional } from '../contexts/PlayerBarContext';
 import { authenticatedFetch } from '../lib/api';
@@ -290,7 +291,7 @@ export default function CardGrid({
                   }}
                 >
                   <img
-                    src={post.art_url}
+                    src={ensureCompatibleArtUrl(post.art_url, post.frame_count)}
                     alt={post.title}
                     className="artwork-image pixel-art"
                     data-width={post.width}
