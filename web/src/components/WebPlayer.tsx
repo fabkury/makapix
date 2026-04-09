@@ -1365,14 +1365,10 @@ export function WebPlayer({
                 }
               >
                 <span>Edit</span>
-                <span>{activeSubMenu === "edit" ? "\u25BC" : "\u25C0"}</span>
+                <span>{activeSubMenu === "edit" ? "\u25BC" : "\u25B6"}</span>
               </button>
               {activeSubMenu === "edit" && (
-                <div
-                  className="wp-submenu"
-                  onMouseEnter={() => openSubMenu("edit")}
-                  onMouseLeave={() => closeSubMenuDelayed()}
-                >
+                <div className="wp-submenu">
                   <button
                     className="wp-menu-item"
                     onClick={handleEditInPiskel}
@@ -1414,14 +1410,10 @@ export function WebPlayer({
                 }
               >
                 <span>Share</span>
-                <span>{activeSubMenu === "share" ? "\u25BC" : "\u25C0"}</span>
+                <span>{activeSubMenu === "share" ? "\u25BC" : "\u25B6"}</span>
               </button>
               {activeSubMenu === "share" && (
-                <div
-                  className="wp-submenu"
-                  onMouseEnter={() => openSubMenu("share")}
-                  onMouseLeave={() => closeSubMenuDelayed()}
-                >
+                <div className="wp-submenu">
                   <button
                     className="wp-menu-item"
                     onClick={handleShareUpscaled}
@@ -1454,15 +1446,11 @@ export function WebPlayer({
               >
                 <span>Download</span>
                 <span>
-                  {activeSubMenu === "download" ? "\u25BC" : "\u25C0"}
+                  {activeSubMenu === "download" ? "\u25BC" : "\u25B6"}
                 </span>
               </button>
               {activeSubMenu === "download" && (
-                <div
-                  className="wp-submenu"
-                  onMouseEnter={() => openSubMenu("download")}
-                  onMouseLeave={() => closeSubMenuDelayed()}
-                >
+                <div className="wp-submenu">
                   <button
                     className="wp-menu-item"
                     onClick={handleDownloadUpscaled}
@@ -1484,14 +1472,10 @@ export function WebPlayer({
                       }
                     >
                       <span>Alternative format</span>
-                      <span>{formatSubOpen ? "\u25BC" : "\u25C0"}</span>
+                      <span>{formatSubOpen ? "\u25BC" : "\u25B6"}</span>
                     </button>
                     {formatSubOpen && (
-                      <div
-                        className="wp-submenu"
-                        onMouseEnter={openFormatSub}
-                        onMouseLeave={() => closeSubMenuDelayed()}
-                      >
+                      <div className="wp-submenu">
                         {art.files
                           .filter((f) => !f.is_native)
                           .map((f) => (
@@ -1919,20 +1903,8 @@ export function WebPlayer({
           margin: 4px 0;
         }
 
-        .wp-menu-sub-wrap {
-          position: relative;
-        }
-
         .wp-submenu {
-          position: absolute;
-          right: 100%;
-          top: 0;
-          background: #1a1a24;
-          border: 1px solid rgba(255, 255, 255, 0.15);
-          border-radius: 8px;
-          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-          min-width: 140px;
-          padding: 4px 0;
+          padding-left: 12px;
         }
 
         /* Rotation menu */
