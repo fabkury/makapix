@@ -6,11 +6,13 @@ import { EMOJI_OPTIONS } from "./CommentsAndReactions";
 import SPOCommentsOverlay from "./SPOCommentsOverlay";
 import { ensureCompatibleArtUrl } from "../utils/imageCompat";
 
-const DWELL_TIME_MS = 30_000;
+const DEFAULT_DWELL_SEC = 30;
+const MIN_DWELL_SEC = 5;
 const UI_HIDE_MS = 10_000;
 const MAX_REPEAT_RETRIES = 3;
 const MAX_HISTORY = 64;
 const ROTATION_KEY = "wp_rotation";
+const DWELL_KEY = "wp_dwell_sec";
 const ROTATION_OPTIONS = [0, 90, 180, 270] as const;
 type RotationAngle = (typeof ROTATION_OPTIONS)[number];
 
@@ -212,6 +214,18 @@ export function WebPlayer({
   const [activeSubMenu, setActiveSubMenu] = useState<string | null>(null);
   const [formatSubOpen, setFormatSubOpen] = useState(false);
   const subPanelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Dwell time (seconds, 0 = disabled, min nonzero = MIN_DWELL_SEC)
+  const [dwellSec, setDwellSec] = useState<number>(() => {
+    if (typeof window === "undefined") return DEFAULT_DWELL_SEC;
+    const stored = localStorage.getItem(DWELL_KEY);
+    if (stored === null) return DEFAULT_DWELL_SEC;
+    const val = Math.round(Number(stored));
+    if (!Number.isFinite(val) || val < 0 || val > 86400)
+      return DEFAULT_DWELL_SEC;
+    if (val > 0 && val < MIN_DWELL_SEC) return MIN_DWELL_SEC;
+    return val;
+  });
 
   // Screen rotation
   const [rotation, setRotation] = useState<RotationAngle>(() => {
@@ -945,19 +959,19 @@ export function WebPlayer({
     return clearUiTimer;
   }, [isActive, uiVisible, menuOpen, commentsOpen, startUiTimer, clearUiTimer]);
 
-  // Dwell timer (respects pause)
+  // Dwell timer (respects pause; 0 = disabled)
   useEffect(() => {
-    if (!isActive || !displayedArtwork || paused) return;
+    if (!isActive || !displayedArtwork || paused || dwellSec === 0) return;
     timerRef.current = setTimeout(() => {
       advanceToNext();
-    }, DWELL_TIME_MS);
+    }, dwellSec * 1000);
     return () => {
       if (timerRef.current) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
       }
     };
-  }, [isActive, displayedArtwork, paused, advanceToNext]);
+  }, [isActive, displayedArtwork, paused, dwellSec, advanceToNext]);
 
   // Keyboard
   useEffect(() => {
@@ -1522,6 +1536,38 @@ export function WebPlayer({
                 ))}
               </div>
             </div>
+
+            <div className="wp-menu-sep" />
+
+            <div className="wp-dwell-group">
+              <label className="wp-dwell-label" htmlFor="wp-dwell-input">
+                Dwell time (seconds)
+              </label>
+              <input
+                id="wp-dwell-input"
+                className="wp-dwell-input"
+                type="number"
+                min={0}
+                max={86400}
+                value={dwellSec}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === "") {
+                    setDwellSec(0);
+                    localStorage.setItem(DWELL_KEY, "0");
+                    return;
+                  }
+                  let v = Math.round(Number(raw));
+                  if (!Number.isFinite(v) || v < 0 || v > 86400) return;
+                  if (v > 0 && v < MIN_DWELL_SEC) v = MIN_DWELL_SEC;
+                  setDwellSec(v);
+                  localStorage.setItem(DWELL_KEY, String(v));
+                }}
+              />
+              {dwellSec === 0 && (
+                <span className="wp-dwell-hint">disabled</span>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1945,6 +1991,47 @@ export function WebPlayer({
           border-color: #00d4ff;
           color: #00d4ff;
           background: rgba(0, 212, 255, 0.1);
+        }
+
+        /* Dwell time menu */
+        .wp-dwell-group {
+          padding: 8px 16px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .wp-dwell-label {
+          font-size: 12px;
+          color: rgba(255, 255, 255, 0.4);
+          white-space: nowrap;
+        }
+
+        .wp-dwell-input {
+          width: 64px;
+          padding: 4px 6px;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 4px;
+          background: rgba(255, 255, 255, 0.06);
+          color: #e8e8f0;
+          font-size: 13px;
+          text-align: center;
+          -moz-appearance: textfield;
+        }
+        .wp-dwell-input::-webkit-outer-spin-button,
+        .wp-dwell-input::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+        .wp-dwell-input:focus {
+          outline: none;
+          border-color: #00d4ff;
+        }
+
+        .wp-dwell-hint {
+          font-size: 11px;
+          color: rgba(255, 255, 255, 0.3);
+          font-style: italic;
         }
 
         /* Rotation confirmation banner */
