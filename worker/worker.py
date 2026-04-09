@@ -57,4 +57,4 @@ if __name__ == "__main__":
     
     # Start the Celery worker with beat scheduler
     # Beat runs periodic tasks like rollup_view_events, rollup_site_events
-    celery_app.worker_main(["worker", "--beat", "--loglevel=info"])
+    celery_app.worker_main(["worker", "--beat", "--concurrency=2", "--loglevel=info"])
