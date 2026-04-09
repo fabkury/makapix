@@ -209,8 +209,12 @@ export default function VerifyEmailPage() {
         .actions {
           display: flex;
           justify-content: center;
-          gap: 12px;
           flex-wrap: wrap;
+          margin: -6px;
+        }
+
+        .actions > :global(*) {
+          margin: 6px;
         }
       `}</style>
     </Layout>

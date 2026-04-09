@@ -433,6 +433,7 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
           justify-content: center;
           z-index: 20000;
           padding: 20px;
+          -webkit-backdrop-filter: blur(4px);
           backdrop-filter: blur(4px);
         }
 
@@ -490,11 +491,14 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
         .toggle-label {
           display: flex;
           align-items: center;
-          gap: 12px;
           cursor: pointer;
           color: var(--text-secondary, #ccc);
           font-size: 0.9rem;
           user-select: none;
+        }
+
+        .toggle-label > :global(* + *) {
+          margin-left: 12px;
         }
 
         .toggle-label input[type="checkbox"] {
@@ -591,11 +595,14 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
         .trend-chart {
           display: flex;
           align-items: flex-end;
-          gap: 2px;
           height: 80px;
           background: var(--bg-tertiary, #2a2a3e);
           border-radius: 8px;
           padding: 12px 8px;
+        }
+
+        .trend-chart > :global(* + *) {
+          margin-left: 2px;
         }
 
         .trend-bar-wrap {
@@ -649,7 +656,9 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
         .breakdown-list {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+        }
+        .breakdown-list > :global(* + *) {
+          margin-top: 8px;
         }
 
         .breakdown-item {
@@ -662,9 +671,12 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
         .breakdown-label {
           display: flex;
           align-items: center;
-          gap: 8px;
           font-size: 0.85rem;
           color: var(--text-secondary, #ccc);
+        }
+
+        .breakdown-label > :global(* + *) {
+          margin-left: 8px;
         }
 
         .country-flag {
@@ -728,7 +740,9 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
         .type-breakdown {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+        }
+        .type-breakdown > :global(* + *) {
+          margin-top: 8px;
         }
 
         .type-item {
@@ -772,8 +786,11 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
           grid-area: 1 / 1;
           display: flex;
           flex-wrap: wrap;
-          gap: 8px;
+          margin: -4px;
           min-height: 40px;
+        }
+        .reactions-grid > :global(*) {
+          margin: 4px;
         }
 
         .reactions-grid.hidden {
@@ -783,10 +800,13 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
         .reaction-item {
           display: flex;
           align-items: center;
-          gap: 6px;
           background: var(--bg-tertiary, #2a2a3e);
           padding: 8px 12px;
           border-radius: 20px;
+        }
+
+        .reaction-item > :global(* + *) {
+          margin-left: 6px;
         }
 
         .reaction-emoji {
@@ -821,7 +841,10 @@ export default function StatsPanel({ postId, isOpen, onClose }: StatsPanelProps)
           padding-top: 16px;
           border-top: 1px solid rgba(255, 255, 255, 0.05);
           flex-wrap: wrap;
-          gap: 8px;
+          margin: -4px;
+        }
+        .stats-footer > :global(*) {
+          margin: 4px;
         }
 
         .refresh-link {

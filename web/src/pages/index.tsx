@@ -370,7 +370,10 @@ export default function HomePage() {
           padding: 4rem 2rem;
           text-align: center;
           color: var(--text-muted);
-          gap: 16px;
+        }
+
+        .loading-state > :global(* + *) {
+          margin-top: 16px;
         }
 
         .load-more-trigger {

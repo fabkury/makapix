@@ -229,8 +229,11 @@ export default function PlayerBar() {
         .player-bar-content {
           display: flex;
           align-items: center;
-          gap: 16px;
           padding: 0 16px;
+        }
+
+        .player-bar-content > :global(* + *) {
+          margin-left: 16px;
         }
 
         .display-text {

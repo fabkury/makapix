@@ -1192,7 +1192,10 @@ export default function UserProfilePage() {
           display: flex;
           align-items: flex-end;
           justify-content: space-between;
-          gap: 16px;
+        }
+
+        .identity-row > :global(* + *) {
+          margin-left: 16px;
         }
 
         @media (max-width: 768px) {
@@ -1219,7 +1222,7 @@ export default function UserProfilePage() {
 
         .avatar-dropzone {
           position: absolute;
-          inset: 0;
+          top: 0; right: 0; bottom: 0; left: 0;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1293,8 +1296,11 @@ export default function UserProfilePage() {
         .desktop-actions {
           display: flex;
           align-items: center;
-          gap: 8px;
           flex-shrink: 0;
+        }
+
+        .desktop-actions > :global(* + *) {
+          margin-left: 8px;
         }
 
         @media (max-width: 768px) {
@@ -1305,8 +1311,11 @@ export default function UserProfilePage() {
 
         .mobile-actions {
           display: none;
-          gap: 8px;
           margin-bottom: 24px;
+        }
+
+        .mobile-actions > :global(* + *) {
+          margin-left: 8px;
         }
 
         @media (max-width: 768px) {
@@ -1318,8 +1327,11 @@ export default function UserProfilePage() {
         .moderation-row {
           display: flex;
           flex-wrap: wrap;
-          gap: 8px;
-          margin-top: 16px;
+          margin: 16px -4px -4px;
+        }
+
+        .moderation-row > :global(*) {
+          margin: 4px;
         }
 
         .display-name {
@@ -1384,10 +1396,13 @@ export default function UserProfilePage() {
 
         .handle-edit-row {
           display: flex;
-          gap: 8px;
           align-items: center;
           margin-bottom: 8px;
           max-width: 350px;
+        }
+
+        .handle-edit-row > :global(* + *) {
+          margin-left: 8px;
         }
 
         .edit-handle-input {
@@ -1491,8 +1506,11 @@ export default function UserProfilePage() {
 
         .edit-actions {
           display: flex;
-          gap: 12px;
           margin-top: 8px;
+        }
+
+        .edit-actions > :global(* + *) {
+          margin-left: 12px;
         }
 
         .save-btn {
@@ -1612,7 +1630,10 @@ export default function UserProfilePage() {
         .delete-confirmation-box {
           display: flex;
           flex-direction: column;
-          gap: 16px;
+        }
+
+        .delete-confirmation-box > :global(* + *) {
+          margin-top: 16px;
         }
 
         .delete-warning-text {
@@ -1625,9 +1646,12 @@ export default function UserProfilePage() {
         .delete-confirm-label {
           display: flex;
           flex-direction: column;
-          gap: 8px;
           font-size: 0.9rem;
           color: var(--text-secondary);
+        }
+
+        .delete-confirm-label > :global(* + *) {
+          margin-top: 8px;
         }
 
         .delete-confirm-input {
@@ -1655,8 +1679,11 @@ export default function UserProfilePage() {
         .deleting-state {
           display: flex;
           align-items: center;
-          gap: 12px;
           color: var(--text-secondary);
+        }
+
+        .deleting-state > :global(* + *) {
+          margin-left: 12px;
         }
 
         .deletion-overlay {
@@ -1716,7 +1743,10 @@ export default function UserProfilePage() {
           padding: 4rem 2rem;
           text-align: center;
           color: var(--text-muted);
-          gap: 16px;
+        }
+
+        .loading-state > :global(* + *) {
+          margin-top: 16px;
         }
 
         .load-more-trigger {

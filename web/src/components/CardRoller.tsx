@@ -265,26 +265,35 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
           padding: 16px 24px;
           background: var(--bg-secondary);
           border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-          gap: 12px;
+        }
+
+        .card-roller-header > :global(* + *) {
+          margin-left: 12px;
         }
 
         .hashtag-info {
           display: flex;
           align-items: center;
-          gap: 8px;
           min-width: 0;
           flex: 1 1 auto;
           overflow: hidden;
         }
 
+        .hashtag-info > :global(* + *) {
+          margin-left: 8px;
+        }
+
         .hashtag-link {
           display: flex;
           align-items: center;
-          gap: 8px;
           text-decoration: none;
           transition: all var(--transition-fast);
           min-width: 0;
           overflow: hidden;
+        }
+
+        .hashtag-link > :global(* + *) {
+          margin-left: 8px;
         }
 
         .hashtag-link:hover {
@@ -313,17 +322,23 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
 
         .hashtag-stats {
           display: flex;
-          gap: 16px;
           align-items: center;
           flex-shrink: 0;
+        }
+
+        .hashtag-stats > :global(* + *) {
+          margin-left: 16px;
         }
 
         .hashtag-stats .stat-item {
           display: flex;
           align-items: center;
-          gap: 6px;
           font-size: 0.9rem;
           color: var(--text-secondary);
+        }
+
+        .hashtag-stats .stat-item > :global(* + *) {
+          margin-left: 6px;
         }
 
         .hashtag-stats .stat-emoji {
@@ -344,7 +359,6 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
 
         .artwork-cards-horizontal {
           display: flex;
-          gap: 0;
           padding: 0;
           min-height: 128px;
         }
@@ -412,8 +426,8 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
             padding: 12px 16px;
           }
 
-          .hashtag-stats {
-            gap: 10px;
+          .hashtag-stats > :global(* + *) {
+            margin-left: 10px;
           }
 
           .hashtag-stats .stat-emoji {

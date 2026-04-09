@@ -510,7 +510,10 @@ export default function CommentsAndReactions({
           font-family: 'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           display: flex;
           flex-direction: column;
-          gap: 24px;
+        }
+
+        .makapix-widget > * + * {
+          margin-top: 24px;
         }
         
         .makapix-reactions-section,
@@ -528,8 +531,12 @@ export default function CommentsAndReactions({
         
         .makapix-reaction-picker {
           display: flex;
-          gap: 8px;
           flex-wrap: wrap;
+          margin: -4px;
+        }
+
+        .makapix-reaction-picker > * {
+          margin: 4px;
         }
         
         .makapix-reaction-btn {
@@ -661,7 +668,10 @@ export default function CommentsAndReactions({
         
         .makapix-reply-actions {
           display: flex;
-          gap: 8px;
+        }
+
+        .makapix-reply-actions > * + * {
+          margin-left: 8px;
         }
         
         .makapix-comment {
@@ -675,8 +685,11 @@ export default function CommentsAndReactions({
         .makapix-comment-header {
           display: flex;
           align-items: center;
-          gap: 10px;
           margin-bottom: 10px;
+        }
+
+        .makapix-comment-header > * + * {
+          margin-left: 10px;
         }
         
         .makapix-comment-fold-btn {
@@ -754,8 +767,11 @@ export default function CommentsAndReactions({
         
         .makapix-comment-actions {
           display: flex;
-          gap: 8px;
           margin-top: 10px;
+        }
+
+        .makapix-comment-actions > * + * {
+          margin-left: 8px;
         }
         
         .makapix-comment-delete-btn {

@@ -285,7 +285,9 @@ export default function PixelcPage() {
             height: 100vh;
             background: #000;
             color: #fff;
-            gap: 16px;
+          }
+          .editor-loading > :global(* + *) {
+            margin-top: 16px;
           }
           .spinner {
             width: 40px;
@@ -322,7 +324,9 @@ export default function PixelcPage() {
             height: 100vh;
             background: #000;
             color: #fff;
-            gap: 16px;
+          }
+          .editor-loading > :global(* + *) {
+            margin-top: 16px;
           }
           .spinner {
             width: 40px;
@@ -359,7 +363,9 @@ export default function PixelcPage() {
             height: 100vh;
             background: #000;
             color: #fff;
-            gap: 16px;
+          }
+          .editor-error > :global(* + *) {
+            margin-top: 16px;
           }
           .editor-error button {
             padding: 12px 24px;

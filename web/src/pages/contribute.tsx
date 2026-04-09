@@ -180,14 +180,16 @@ export default function ContributePage() {
         .device-tabs {
           display: flex;
           flex-direction: column;
-          gap: 12px;
+        }
+
+        .device-tabs > :global(* + *) {
+          margin-top: 12px;
         }
 
         .device-tab {
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 12px;
           padding: 20px 24px;
           background: var(--bg-secondary);
           border: 2px solid var(--bg-tertiary);
@@ -199,6 +201,10 @@ export default function ContributePage() {
         .device-tab:hover {
           border-color: var(--accent-cyan);
           background: rgba(0, 212, 255, 0.05);
+        }
+
+        .device-tab > :global(* + *) {
+          margin-left: 12px;
         }
 
         .device-tab.active {
@@ -220,9 +226,12 @@ export default function ContributePage() {
         .options-grid {
           display: flex;
           flex-direction: column;
-          gap: 16px;
           animation: fadeIn 0.3s ease;
           padding-bottom: 50vh;
+        }
+
+        .options-grid > :global(* + *) {
+          margin-top: 16px;
         }
 
         @keyframes fadeIn {
@@ -240,13 +249,16 @@ export default function ContributePage() {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 12px;
           padding: 32px 24px;
           background: var(--bg-secondary);
           border: 1px solid var(--bg-tertiary);
           border-radius: 16px;
           text-decoration: none;
           transition: all var(--transition-fast);
+        }
+
+        .contribute-container :global(.option-card) > :global(* + *) {
+          margin-top: 12px;
         }
 
         .contribute-container :global(.option-card:hover) {

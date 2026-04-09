@@ -215,7 +215,9 @@ export default function ViolationsPanel({ sqid }: ViolationsPanelProps) {
         .violations-panel {
           display: flex;
           flex-direction: column;
-          gap: 16px;
+        }
+        .violations-panel > :global(* + *) {
+          margin-top: 16px;
         }
         .total-count {
           font-size: 0.9rem;
@@ -231,17 +233,21 @@ export default function ViolationsPanel({ sqid }: ViolationsPanelProps) {
         .violations-list {
           display: flex;
           flex-direction: column;
-          gap: 8px;
           padding-bottom: 16px;
           border-bottom: 1px solid var(--border-color);
         }
+        .violations-list > :global(* + *) {
+          margin-top: 8px;
+        }
         .violation-item {
           display: flex;
-          gap: 12px;
           padding: 12px;
           background: var(--bg-tertiary);
           border: 1px solid var(--border-color);
           border-radius: 8px;
+        }
+        .violation-item > :global(* + *) {
+          margin-left: 12px;
         }
         .violation-content {
           flex: 1;
@@ -282,7 +288,9 @@ export default function ViolationsPanel({ sqid }: ViolationsPanelProps) {
         .issue-section {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+        }
+        .issue-section > :global(* + *) {
+          margin-top: 8px;
         }
         .issue-section label {
           font-size: 0.9rem;

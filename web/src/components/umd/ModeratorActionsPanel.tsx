@@ -282,7 +282,9 @@ export default function ModeratorActionsPanel({
         .actions-panel {
           display: flex;
           flex-direction: column;
-          gap: 12px;
+        }
+        .actions-panel > :global(* + *) {
+          margin-top: 12px;
         }
         .spacer {
           height: 4px;
@@ -291,7 +293,6 @@ export default function ModeratorActionsPanel({
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 8px;
           width: 100%;
           padding: 12px 16px;
           border: none;
@@ -300,6 +301,9 @@ export default function ModeratorActionsPanel({
           font-weight: 600;
           cursor: pointer;
           transition: background 0.15s ease, opacity 0.15s ease;
+        }
+        .action-btn > :global(* + *) {
+          margin-left: 8px;
         }
         .action-btn:disabled {
           opacity: 0.6;
@@ -342,12 +346,14 @@ export default function ModeratorActionsPanel({
         }
         .email-revealed {
           display: flex;
-          gap: 12px;
           padding: 16px;
           background: rgba(0, 212, 255, 0.1);
           border: 1px solid rgba(0, 212, 255, 0.3);
           border-radius: 8px;
           margin-top: 8px;
+        }
+        .email-revealed > :global(* + *) {
+          margin-left: 12px;
         }
         .email-icon {
           color: var(--accent-cyan);

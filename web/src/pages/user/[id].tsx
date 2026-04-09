@@ -1029,25 +1029,35 @@ export default function UserProfilePage() {
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
-          gap: 32px;
           /* Avoid visible "empty" band at the bottom of the header section */
           padding: 24px;
+        }
+
+        .profile-header > :global(* + *) {
+          margin-left: 32px;
         }
 
         @media (max-width: 600px) {
           .profile-header {
             flex-direction: column;
             align-items: flex-start;
-            gap: 24px;
+          }
+
+          .profile-header > :global(* + *) {
+            margin-left: 0;
+            margin-top: 24px;
           }
         }
 
         .profile-header-left {
           display: flex;
-          gap: 24px;
           align-items: flex-start;
           flex: 1;
           min-width: 0;
+        }
+
+        .profile-header-left > :global(* + *) {
+          margin-left: 24px;
         }
 
         @media (max-width: 600px) {
@@ -1073,7 +1083,7 @@ export default function UserProfilePage() {
 
         .avatar-dropzone {
           position: absolute;
-          inset: 0;
+          top: 0; right: 0; bottom: 0; left: 0;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1123,8 +1133,11 @@ export default function UserProfilePage() {
           display: flex;
           flex-direction: column;
           align-items: flex-end;
-          gap: 16px;
           flex-shrink: 0;
+        }
+
+        .profile-header-right > :global(* + *) {
+          margin-top: 16px;
         }
 
         @media (max-width: 600px) {
@@ -1136,14 +1149,20 @@ export default function UserProfilePage() {
 
         .moderation-buttons {
           display: flex;
-          gap: 8px;
+        }
+
+        .moderation-buttons > :global(* + *) {
+          margin-left: 8px;
         }
 
         .profile-actions {
           display: flex;
-          gap: 16px;
-          margin-top: 20px;
+          margin: 20px -8px -8px;
           flex-wrap: wrap;
+        }
+
+        .profile-actions > :global(*) {
+          margin: 8px;
         }
 
         @media (max-width: 600px) {
@@ -1167,7 +1186,11 @@ export default function UserProfilePage() {
           color: white;
           text-decoration: none;
           font-weight: 600;
-          gap: 6px;
+        }
+
+        .profile-actions :global(.write-blog-btn) > :global(* + *),
+        .profile-actions :global(.players-btn) > :global(* + *) {
+          margin-left: 6px;
         }
 
         .profile-actions :global(.write-blog-btn:hover),
@@ -1249,10 +1272,13 @@ export default function UserProfilePage() {
 
         .handle-edit-row {
           display: flex;
-          gap: 8px;
           align-items: center;
           margin-bottom: 8px;
           max-width: 350px;
+        }
+
+        .handle-edit-row > :global(* + *) {
+          margin-left: 8px;
         }
 
         .edit-handle-input {
@@ -1349,8 +1375,11 @@ export default function UserProfilePage() {
 
         .edit-actions {
           display: flex;
-          gap: 12px;
           margin-top: 16px;
+        }
+
+        .edit-actions > :global(* + *) {
+          margin-left: 12px;
         }
 
         .save-btn {
@@ -1421,8 +1450,11 @@ export default function UserProfilePage() {
         .stats {
           display: flex;
           flex-direction: column;
-          gap: 16px;
           align-items: flex-end;
+        }
+
+        .stats > :global(* + *) {
+          margin-top: 16px;
         }
 
         @media (max-width: 600px) {
@@ -1523,8 +1555,11 @@ export default function UserProfilePage() {
         .blog-posts-list {
           display: flex;
           flex-direction: column;
-          gap: 16px;
           transition: opacity var(--transition-normal);
+        }
+
+        .blog-posts-list > :global(* + *) {
+          margin-top: 16px;
         }
 
         .blog-posts-section.collapsed .blog-posts-list {
@@ -1556,9 +1591,13 @@ export default function UserProfilePage() {
           display: flex;
           align-items: center;
           flex-wrap: wrap;
-          gap: 8px;
+          margin: -4px;
           font-size: 0.85rem;
           color: var(--text-muted);
+        }
+
+        .blog-posts-list :global(.blog-post-item) .blog-post-item-meta > :global(*) {
+          margin: 4px;
         }
 
         .blog-posts-list :global(.blog-post-item) .blog-post-item-date {
@@ -1604,7 +1643,10 @@ export default function UserProfilePage() {
           padding: 4rem 2rem;
           text-align: center;
           color: var(--text-muted);
-          gap: 16px;
+        }
+
+        .loading-state > :global(* + *) {
+          margin-top: 16px;
         }
 
         .load-more-trigger {

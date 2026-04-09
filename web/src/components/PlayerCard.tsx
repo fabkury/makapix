@@ -257,8 +257,11 @@ export default function PlayerCard({ player, sqid, onDelete, onRefresh }: Player
         .name-row {
           display: flex;
           align-items: center;
-          gap: 8px;
           margin-bottom: 8px;
+        }
+
+        .name-row > :global(* + *) {
+          margin-left: 8px;
         }
 
         .edit-name-btn {
@@ -278,8 +281,11 @@ export default function PlayerCard({ player, sqid, onDelete, onRefresh }: Player
         .edit-name-container {
           display: flex;
           align-items: center;
-          gap: 8px;
           margin-bottom: 8px;
+        }
+
+        .edit-name-container > :global(* + *) {
+          margin-left: 8px;
         }
 
         .edit-name-input {
@@ -341,16 +347,22 @@ export default function PlayerCard({ player, sqid, onDelete, onRefresh }: Player
 
         .player-meta {
           display: flex;
-          gap: 12px;
           align-items: center;
           font-size: 0.85rem;
           color: var(--text-secondary);
         }
 
+        .player-meta > :global(* + *) {
+          margin-left: 12px;
+        }
+
         .status-indicator {
           display: inline-flex;
           align-items: center;
-          gap: 4px;
+        }
+
+        .status-indicator > :global(* + *) {
+          margin-left: 4px;
         }
 
         .status-indicator.online {
@@ -374,7 +386,10 @@ export default function PlayerCard({ player, sqid, onDelete, onRefresh }: Player
 
         .player-actions {
           display: flex;
-          gap: 8px;
+        }
+
+        .player-actions > :global(* + *) {
+          margin-left: 8px;
         }
 
         .control-btn {
@@ -481,7 +496,10 @@ export default function PlayerCard({ player, sqid, onDelete, onRefresh }: Player
         @media (max-width: 600px) {
           .player-header {
             flex-direction: column;
-            gap: 12px;
+          }
+
+          .player-header > :global(* + *) {
+            margin-top: 12px;
           }
 
           .player-actions {

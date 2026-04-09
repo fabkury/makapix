@@ -92,7 +92,7 @@ export default function FollowersOverlay({ isOpen, onClose, userSqid }: Follower
       <style jsx>{`
         .followers-overlay {
           position: fixed;
-          inset: 0;
+          top: 0; right: 0; bottom: 0; left: 0;
           background: rgba(0, 0, 0, 0.8);
           display: flex;
           align-items: center;
@@ -138,7 +138,9 @@ export default function FollowersOverlay({ isOpen, onClose, userSqid }: Follower
           overflow-y: auto;
           display: flex;
           flex-direction: column;
-          gap: 4px;
+        }
+        .followers-content > :global(* + *) {
+          margin-top: 4px;
         }
         .loading, .empty {
           text-align: center;
@@ -147,11 +149,13 @@ export default function FollowersOverlay({ isOpen, onClose, userSqid }: Follower
         }
         .follower-item {
           display: flex;
-          gap: 12px;
           align-items: center;
           padding: 8px;
           border-radius: 8px;
           cursor: pointer;
+        }
+        .follower-item > :global(* + *) {
+          margin-left: 12px;
         }
         .follower-item:hover {
           background: rgba(255, 255, 255, 0.05);

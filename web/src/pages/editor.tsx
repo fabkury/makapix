@@ -468,7 +468,10 @@ export default function EditorPage() {
           height: 100vh;
           background: #000;
           color: #fff;
-          gap: 16px;
+        }
+        .editor-loading > :global(* + *),
+        .editor-error > :global(* + *) {
+          margin-top: 16px;
         }
 
         .spinner {
@@ -515,8 +518,10 @@ export default function EditorPage() {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 20px;
           min-width: 300px;
+        }
+        .decoding-panel > :global(* + *) {
+          margin-top: 20px;
         }
 
         .decoding-text {

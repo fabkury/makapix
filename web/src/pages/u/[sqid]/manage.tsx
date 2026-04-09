@@ -324,7 +324,9 @@ export default function UserManagementDashboard() {
         .panels {
           display: flex;
           flex-direction: column;
-          gap: 12px;
+        }
+        .panels > :global(* + *) {
+          margin-top: 12px;
         }
         @media (max-width: 600px) {
           .umd-header {

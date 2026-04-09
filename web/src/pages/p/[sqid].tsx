@@ -1189,10 +1189,13 @@ export default function PostPage() {
           display: flex;
           align-items: center;
           flex-wrap: wrap;
-          gap: 8px;
+          margin: -4px -4px 16px;
           font-size: 0.9rem;
           color: var(--text-muted);
-          margin-bottom: 16px;
+        }
+
+        .post-meta > :global(*) {
+          margin: 4px;
         }
 
         .author-link {
@@ -1225,7 +1228,11 @@ export default function PostPage() {
         .hashtags {
           display: flex;
           flex-wrap: wrap;
-          gap: 8px;
+          margin: -4px;
+        }
+
+        .hashtags > :global(*) {
+          margin: 4px;
         }
 
         .hashtag {
@@ -1272,11 +1279,14 @@ export default function PostPage() {
 
         .owner-actions {
           display: flex;
-          gap: 12px;
           margin-top: 24px;
           padding-top: 24px;
           border-top: 1px solid rgba(255, 255, 255, 0.05);
           justify-content: flex-start;
+        }
+
+        .owner-actions > :global(* + *) {
+          margin-left: 12px;
         }
 
         .action-button {
@@ -1462,8 +1472,11 @@ export default function PostPage() {
 
         .edit-actions {
           display: flex;
-          gap: 12px;
           margin-top: 16px;
+        }
+
+        .edit-actions > :global(* + *) {
+          margin-left: 12px;
         }
 
         .moderator-actions {
@@ -1473,8 +1486,12 @@ export default function PostPage() {
         .mod-actions-grid {
           display: flex;
           flex-wrap: wrap;
-          gap: 10px;
+          margin: -5px;
           justify-content: flex-end;
+        }
+
+        .mod-actions-grid > :global(*) {
+          margin: 5px;
         }
 
         .mod-button {
@@ -1516,8 +1533,11 @@ export default function PostPage() {
         .mod-status-badges {
           display: flex;
           flex-wrap: wrap;
-          gap: 8px;
-          margin-top: 16px;
+          margin: 16px -4px -4px;
+        }
+
+        .mod-status-badges > :global(*) {
+          margin: 4px;
         }
 
         .status-badge {

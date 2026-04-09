@@ -131,7 +131,10 @@ export default function SelectPlayerOverlay({
           padding: 12px;
           display: flex;
           flex-direction: column;
-          gap: 8px;
+        }
+
+        .player-buttons > :global(* + *) {
+          margin-top: 8px;
         }
 
         .player-btn {
@@ -144,8 +147,11 @@ export default function SelectPlayerOverlay({
           display: flex;
           flex-direction: column;
           align-items: flex-start;
-          gap: 4px;
           text-align: left;
+        }
+
+        .player-btn > :global(* + *) {
+          margin-top: 4px;
         }
 
         .player-btn:hover {

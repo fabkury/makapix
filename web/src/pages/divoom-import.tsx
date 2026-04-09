@@ -369,7 +369,9 @@ export default function DivoomImportPage() {
 
     // Cancel any in-flight load first
     cancelLoadingArtworks();
-    const controller = new AbortController();
+    const controller = typeof AbortController !== 'undefined'
+      ? new AbortController()
+      : { signal: { aborted: false } as any, abort() { (this.signal as any).aborted = true; } } as AbortController;
     itemsAbortRef.current = controller;
     // Safeguard: abort if we go too long without the unique artwork count increasing.
     const armStallTimer = () => {
@@ -849,7 +851,9 @@ export default function DivoomImportPage() {
   const processBatch = useCallback(async () => {
     if (batchState === 'running') return;
 
-    const controller = new AbortController();
+    const controller = typeof AbortController !== 'undefined'
+      ? new AbortController()
+      : { signal: { aborted: false } as any, abort() { (this.signal as any).aborted = true; } } as AbortController;
     batchAbortRef.current = controller;
 
     // Build queue: selected items not yet uploaded, in reverse order (last to first)
@@ -1698,8 +1702,10 @@ export default function DivoomImportPage() {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 12px;
           margin-bottom: 18px;
+        }
+        .header-row > :global(* + *) {
+          margin-left: 12px;
         }
         .page-note {
           margin: -6px 0 18px;
@@ -1767,10 +1773,12 @@ export default function DivoomImportPage() {
         .grid-form label {
           display: flex;
           flex-direction: column;
-          gap: 6px;
           color: var(--text-secondary);
           font-size: 0.9rem;
           font-weight: 500;
+        }
+        .grid-form label > :global(* + *) {
+          margin-top: 6px;
         }
 
         .grid-form input {
@@ -1801,7 +1809,9 @@ export default function DivoomImportPage() {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 12px;
+        }
+        .status > :global(* + *) {
+          margin-left: 12px;
         }
         .status.info {
           background: rgba(0, 212, 255, 0.08);
@@ -1819,6 +1829,10 @@ export default function DivoomImportPage() {
           color: var(--text-secondary);
           flex-direction: column;
           align-items: flex-start;
+        }
+        .status.success > :global(* + *) {
+          margin-left: 0;
+          margin-top: 12px;
         }
 
         .muted {
@@ -1859,12 +1873,14 @@ export default function DivoomImportPage() {
         .control-row {
           display: flex;
           align-items: center;
-          gap: 12px;
           margin-bottom: 12px;
           padding: 10px 14px;
           background: rgba(255, 255, 255, 0.02);
           border-radius: 10px;
           border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+        .control-row > :global(* + *) {
+          margin-left: 12px;
         }
 
         .control-label {
@@ -1895,8 +1911,11 @@ export default function DivoomImportPage() {
         /* Filter badges */
         .filter-badges {
           display: flex;
-          gap: 8px;
           flex-wrap: wrap;
+          margin: -4px;
+        }
+        .filter-badges > :global(*) {
+          margin: 4px;
         }
 
         .filter-badge {
@@ -1924,8 +1943,11 @@ export default function DivoomImportPage() {
         /* Selection buttons */
         .selection-buttons {
           display: flex;
-          gap: 8px;
           flex-wrap: wrap;
+          margin: -4px;
+        }
+        .selection-buttons > :global(*) {
+          margin: 4px;
         }
 
         .btn-selection {
@@ -1945,8 +1967,11 @@ export default function DivoomImportPage() {
         /* Sort buttons */
         .sort-buttons {
           display: flex;
-          gap: 8px;
           flex-wrap: wrap;
+          margin: -4px;
+        }
+        .sort-buttons > :global(*) {
+          margin: 4px;
         }
 
         .sort-btn {
@@ -1973,8 +1998,11 @@ export default function DivoomImportPage() {
         .page-info-row {
           display: flex;
           align-items: center;
-          gap: 12px;
           flex-wrap: wrap;
+          margin: -6px;
+        }
+        .page-info-row > :global(*) {
+          margin: 6px;
         }
 
         .page-info-text {
@@ -1996,7 +2024,9 @@ export default function DivoomImportPage() {
         /* Navigation buttons */
         .nav-buttons {
           display: flex;
-          gap: 12px;
+        }
+        .nav-buttons > :global(* + *) {
+          margin-left: 12px;
         }
 
         .btn-nav {
@@ -2116,15 +2146,19 @@ export default function DivoomImportPage() {
           padding: 12px;
           display: flex;
           flex-direction: column;
-          gap: 6px;
+        }
+        .preview-meta > :global(* + *) {
+          margin-top: 6px;
         }
 
         .preview-title {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 8px;
           color: var(--text-primary);
+        }
+        .preview-title > :global(* + *) {
+          margin-left: 8px;
         }
 
         .badge {
@@ -2138,13 +2172,17 @@ export default function DivoomImportPage() {
         .form {
           display: flex;
           flex-direction: column;
-          gap: 14px;
+        }
+        .form > :global(* + *) {
+          margin-top: 14px;
         }
 
         .form-field {
           display: flex;
           flex-direction: column;
-          gap: 6px;
+        }
+        .form-field > :global(* + *) {
+          margin-top: 6px;
         }
 
         .form-field label {
@@ -2272,13 +2310,17 @@ export default function DivoomImportPage() {
         .batch-submit-pane {
           display: flex;
           flex-direction: column;
-          gap: 16px;
+        }
+        .batch-submit-pane > :global(* + *) {
+          margin-top: 16px;
         }
 
         .batch-controls {
           display: flex;
-          gap: 12px;
           align-items: center;
+        }
+        .batch-controls > :global(* + *) {
+          margin-left: 12px;
         }
 
         .pause-btn {
@@ -2304,7 +2346,9 @@ export default function DivoomImportPage() {
         }
         .confirm-buttons {
           display: flex;
-          gap: 12px;
+        }
+        .confirm-buttons > :global(* + *) {
+          margin-left: 12px;
         }
         .cancel-btn {
           padding: 10px 20px;
@@ -2385,10 +2429,12 @@ export default function DivoomImportPage() {
 
         .log-entry {
           display: flex;
-          gap: 8px;
           padding: 6px 0;
           border-bottom: 1px solid rgba(255, 255, 255, 0.04);
           align-items: flex-start;
+        }
+        .log-entry > :global(* + *) {
+          margin-left: 8px;
         }
 
         .log-entry:last-child {
@@ -2433,9 +2479,11 @@ export default function DivoomImportPage() {
 
         .stats-row {
           display: flex;
-          gap: 24px;
-          margin-top: 8px;
           flex-wrap: wrap;
+          margin: -4px -12px -12px -12px;
+        }
+        .stats-row > :global(*) {
+          margin: 12px;
         }
 
         .stat {
@@ -2481,8 +2529,11 @@ export default function DivoomImportPage() {
         .license-panel-header-content {
           display: flex;
           align-items: center;
-          gap: 12px;
           flex-wrap: wrap;
+          margin: -6px;
+        }
+        .license-panel-header-content > :global(*) {
+          margin: 6px;
         }
 
         .panel-title-inline {
@@ -2512,25 +2563,31 @@ export default function DivoomImportPage() {
         .license-section {
           display: flex;
           flex-direction: column;
-          gap: 16px;
           padding: 0 18px 18px;
+        }
+        .license-section > :global(* + *) {
+          margin-top: 16px;
         }
 
         .license-radio-group {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+        }
+        .license-radio-group > :global(* + *) {
+          margin-top: 8px;
         }
 
         .license-radio-option {
           display: flex;
           align-items: flex-start;
-          gap: 12px;
           cursor: pointer;
           padding: 12px;
           border: 1px solid var(--bg-tertiary);
           border-radius: 8px;
           transition: all var(--transition-fast);
+        }
+        .license-radio-option > :global(* + *) {
+          margin-left: 12px;
         }
 
         .license-radio-option:hover {
@@ -2554,9 +2611,11 @@ export default function DivoomImportPage() {
         .license-option-content {
           display: flex;
           align-items: flex-start;
-          gap: 12px;
           flex: 1;
           min-width: 0;
+        }
+        .license-option-content > :global(* + *) {
+          margin-left: 12px;
         }
 
         .license-option-badge {
@@ -2568,8 +2627,10 @@ export default function DivoomImportPage() {
         .license-option-text {
           display: flex;
           flex-direction: column;
-          gap: 2px;
           min-width: 0;
+        }
+        .license-option-text > :global(* + *) {
+          margin-top: 2px;
         }
 
         .license-option-identifier {
@@ -2619,7 +2680,10 @@ export default function DivoomImportPage() {
           .control-row {
             flex-direction: column;
             align-items: flex-start;
-            gap: 8px;
+          }
+          .control-row > :global(* + *) {
+            margin-left: 0;
+            margin-top: 8px;
           }
           .control-label {
             min-width: auto;

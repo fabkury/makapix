@@ -3,7 +3,36 @@ const nextConfig = {
   output: 'standalone',
   // Transpile npm packages that ship ES2020+ syntax (e.g. ?., ??) so older
   // browsers like Safari 12 (iPad Mini 2 / iOS 12) can parse the bundles.
-  transpilePackages: ['mqtt'],
+  transpilePackages: [
+    'mqtt',
+    'lucide-react',
+    // @radix-ui top-level components
+    '@radix-ui/react-accordion',
+    '@radix-ui/react-alert-dialog',
+    '@radix-ui/react-checkbox',
+    '@radix-ui/react-label',
+    '@radix-ui/react-radio-group',
+    '@radix-ui/react-scroll-area',
+    '@radix-ui/react-select',
+    '@radix-ui/react-slider',
+    '@radix-ui/react-switch',
+    '@radix-ui/react-tabs',
+    // @radix-ui internal packages that ship ES2020+ syntax
+    '@radix-ui/primitive',
+    '@radix-ui/react-dialog',
+    '@radix-ui/react-dismissable-layer',
+    '@radix-ui/react-focus-scope',
+    '@radix-ui/react-popper',
+    '@radix-ui/react-portal',
+    '@radix-ui/react-presence',
+    '@radix-ui/react-slot',
+    '@radix-ui/react-use-escape-keydown',
+    '@radix-ui/react-use-layout-effect',
+    'framer-motion',
+    'react-markdown',
+    'class-variance-authority',
+    'tailwind-merge',
+  ],
   eslint: {
     dirs: ["src"],
   },

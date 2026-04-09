@@ -757,7 +757,18 @@ export function WebPlayer({
         await navigator.share({ files: [file], title: displayedArtwork.title });
       } else {
         const postUrl = `${window.location.origin}/p/${displayedArtwork.public_sqid}`;
-        await navigator.clipboard.writeText(postUrl);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(postUrl);
+        } else {
+          const ta = document.createElement("textarea");
+          ta.value = postUrl;
+          ta.style.position = "fixed";
+          ta.style.opacity = "0";
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
+        }
         alert("Link copied to clipboard");
       }
     } catch (err) {
@@ -786,7 +797,18 @@ export function WebPlayer({
         await navigator.share({ files: [file], title: displayedArtwork.title });
       } else {
         const postUrl = `${window.location.origin}/p/${displayedArtwork.public_sqid}`;
-        await navigator.clipboard.writeText(postUrl);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(postUrl);
+        } else {
+          const ta = document.createElement("textarea");
+          ta.value = postUrl;
+          ta.style.position = "fixed";
+          ta.style.opacity = "0";
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
+        }
         alert("Link copied to clipboard");
       }
     } catch (err) {

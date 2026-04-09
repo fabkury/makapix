@@ -811,11 +811,16 @@ export default function ModDashboardPage() {
 
         .tabs {
           display: flex;
-          gap: 8px;
           border-bottom: 1px solid rgba(255, 255, 255, 0.1);
           margin-bottom: 24px;
           padding-bottom: 12px;
           flex-wrap: wrap;
+          margin-top: -4px;
+          margin-left: -4px;
+        }
+        .tabs > :global(*) {
+          margin-top: 4px;
+          margin-left: 4px;
         }
 
         .tab {
@@ -884,7 +889,9 @@ export default function ModDashboardPage() {
         .profile-link {
           display: inline-flex;
           align-items: center;
-          gap: 8px;
+        }
+        .profile-link > :global(* + *) {
+          margin-left: 8px;
         }
 
         .profile-avatar {
@@ -910,13 +917,15 @@ export default function ModDashboardPage() {
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
-          gap: 16px;
           background: var(--bg-secondary);
           border-radius: 12px;
           padding: 16px;
           margin-bottom: 12px;
           width: 100%;
           box-sizing: border-box;
+        }
+        .item-card > :global(* + *) {
+          margin-left: 16px;
         }
 
         .pending-card {
@@ -987,10 +996,12 @@ export default function ModDashboardPage() {
         .post-author {
           display: flex;
           align-items: center;
-          gap: 6px;
           margin-bottom: 6px;
           min-width: 0;
           overflow: hidden;
+        }
+        .post-author > :global(* + *) {
+          margin-left: 6px;
         }
 
         .author-avatar-small {
@@ -1025,14 +1036,24 @@ export default function ModDashboardPage() {
 
         .item-actions {
           display: flex;
-          gap: 8px;
           flex-wrap: wrap;
+          margin: -4px;
+        }
+        .item-actions > :global(*) {
+          margin: 4px;
         }
 
         .item-actions-vertical {
           flex-direction: column;
           flex-wrap: nowrap;
           align-items: stretch;
+          margin: 0;
+        }
+        .item-actions-vertical > :global(*) {
+          margin: 0;
+        }
+        .item-actions-vertical > :global(* + *) {
+          margin-top: 8px;
         }
 
         .action-btn {
@@ -1107,8 +1128,10 @@ export default function ModDashboardPage() {
 
         .notes-search {
           display: flex;
-          gap: 12px;
           margin-bottom: 20px;
+        }
+        .notes-search > :global(* + *) {
+          margin-left: 12px;
         }
 
         .notes-search input {

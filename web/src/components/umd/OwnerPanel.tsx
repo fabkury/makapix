@@ -114,7 +114,9 @@ export default function OwnerPanel({
         .owner-panel {
           display: flex;
           flex-direction: column;
-          gap: 16px;
+        }
+        .owner-panel > :global(* + *) {
+          margin-top: 16px;
         }
         .description {
           font-size: 0.9rem;
@@ -126,7 +128,6 @@ export default function OwnerPanel({
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 8px;
           width: 100%;
           padding: 12px 16px;
           border: none;
@@ -135,6 +136,9 @@ export default function OwnerPanel({
           font-weight: 600;
           cursor: pointer;
           transition: background 0.15s ease, opacity 0.15s ease;
+        }
+        .action-btn > :global(* + *) {
+          margin-left: 8px;
         }
         .action-btn:disabled {
           opacity: 0.6;
@@ -165,13 +169,15 @@ export default function OwnerPanel({
         .current-status {
           display: flex;
           align-items: center;
-          gap: 8px;
           padding: 12px;
           background: rgba(0, 212, 255, 0.1);
           border: 1px solid rgba(0, 212, 255, 0.3);
           border-radius: 8px;
           color: var(--accent-cyan);
           font-size: 0.9rem;
+        }
+        .current-status > :global(* + *) {
+          margin-left: 8px;
         }
       `}</style>
     </CollapsiblePanel>

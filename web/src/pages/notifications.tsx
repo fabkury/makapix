@@ -345,12 +345,14 @@ export default function NotificationsPage() {
         .notification-item :global(.notification-link) {
           display: flex;
           align-items: center;
-          gap: 8px;
           height: 64px;
           padding: 0 8px 0 12px;
           text-decoration: none;
           color: inherit;
           transition: background var(--transition-fast);
+        }
+        .notification-item :global(.notification-link) > :global(* + *) {
+          margin-left: 8px;
         }
 
         .notification-item :global(.notification-link:hover:not(.system-notification)) {
