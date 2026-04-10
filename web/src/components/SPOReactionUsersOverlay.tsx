@@ -202,6 +202,25 @@ export default function SPOReactionUsersOverlay({
                     {item.user_handle}
                   </span>
 
+                  {/* Date */}
+                  <span style={{
+                    fontSize: 11,
+                    color: '#6a6a80',
+                    flexShrink: 0,
+                    marginRight: 10,
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {new Date(item.created_at).toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}{' '}
+                    {new Date(item.created_at).toLocaleTimeString(undefined, {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+
                   {/* Emoji */}
                   <span style={{ fontSize: 18, flexShrink: 0 }}>
                     {item.emoji}
