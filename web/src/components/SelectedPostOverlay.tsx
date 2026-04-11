@@ -1444,7 +1444,13 @@ export default function SelectedPostOverlay({
                   <span style={{ fontSize: '16px', marginRight: '-2px' }}>⚡</span>
                   <span>{totalReactions}</span>
                 </div>
-                <div style={postCommentCountStyles}>
+                <div
+                  style={{ ...postCommentCountStyles, cursor: 'pointer' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowCommentsOverlay(true);
+                  }}
+                >
                   <span style={{ fontSize: '16px', marginRight: '-2px' }}>💬</span>
                   <span>{totalComments}</span>
                 </div>
