@@ -11,6 +11,11 @@ const MIN_DWELL_SEC = 5;
 const UI_HIDE_MS = 10_000;
 const MAX_REPEAT_RETRIES = 3;
 const MAX_HISTORY = 64;
+// LRU cap on reactions/comments cache. Sized to match MAX_HISTORY: any
+// artwork beyond the back/forward window is unreachable anyway, so caching
+// widget data for it is dead weight. Without the cap a 24/7 kiosk cycling
+// unique artworks would grow this Map unbounded.
+const MAX_WIDGET_CACHE = MAX_HISTORY;
 const ROTATION_KEY = "wp_rotation";
 const DWELL_KEY = "wp_dwell_sec";
 const ROTATION_OPTIONS = [0, 90, 180, 270] as const;
@@ -126,6 +131,123 @@ interface WidgetData {
   views_count: number;
 }
 
+// LRU helpers over a plain Map (insertion order is iteration order in JS).
+// `widgetCacheTouch` promotes on hit, `widgetCachePut` inserts and evicts
+// oldest entries until the cache fits within MAX_WIDGET_CACHE.
+function widgetCacheTouch(
+  cache: Map<number, WidgetData>,
+  id: number,
+): WidgetData | undefined {
+  const entry = cache.get(id);
+  if (entry === undefined) return undefined;
+  cache.delete(id);
+  cache.set(id, entry);
+  return entry;
+}
+
+function widgetCachePut(
+  cache: Map<number, WidgetData>,
+  id: number,
+  data: WidgetData,
+): void {
+  if (cache.has(id)) cache.delete(id);
+  cache.set(id, data);
+  while (cache.size > MAX_WIDGET_CACHE) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
+}
+
+const ROTATION_CONFIRM_SECONDS = 15;
+
+interface RotationCountdownProps {
+  seconds: number;
+  onExpire: () => void;
+  onKeep: () => void;
+  onRevert: () => void;
+}
+
+// Extracted so the 1-Hz tick only re-renders this small banner instead of
+// the entire WebPlayer tree.
+function RotationCountdown({
+  seconds,
+  onExpire,
+  onKeep,
+  onRevert,
+}: RotationCountdownProps) {
+  const [remaining, setRemaining] = useState(seconds);
+  const onExpireRef = useRef(onExpire);
+  onExpireRef.current = onExpire;
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setRemaining((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (remaining === 0) onExpireRef.current();
+  }, [remaining]);
+
+  return (
+    <div className="wp-rotation-confirm">
+      <span>Keep this rotation? Reverting in {remaining}s</span>
+      <button
+        className="wp-rotation-confirm-btn wp-rotation-keep"
+        onClick={onKeep}
+      >
+        Yes
+      </button>
+      <button
+        className="wp-rotation-confirm-btn wp-rotation-revert"
+        onClick={onRevert}
+      >
+        Revert
+      </button>
+      <style jsx>{`
+        .wp-rotation-confirm {
+          position: fixed;
+          top: 40px;
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 50002;
+          background: rgba(0, 0, 0, 0.85);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 8px;
+          padding: 12px 20px;
+          display: flex;
+          align-items: center;
+          color: #e8e8f0;
+          font-size: 14px;
+          white-space: nowrap;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+        .wp-rotation-confirm > :global(* + *) {
+          margin-left: 14px;
+        }
+        .wp-rotation-confirm-btn {
+          padding: 6px 16px;
+          border: none;
+          border-radius: 4px;
+          font-size: 14px;
+          cursor: pointer;
+        }
+        .wp-rotation-keep {
+          background: #00d4ff;
+          color: #000;
+          font-weight: 600;
+        }
+        .wp-rotation-revert {
+          background: rgba(255, 255, 255, 0.15);
+          color: #e8e8f0;
+        }
+      `}</style>
+    </div>
+  );
+}
+
 async function fetchWidgetData(postId: number): Promise<WidgetData | null> {
   const url = `/api/post/${postId}/widget-data`;
   const hasToken = !!getAccessToken();
@@ -140,6 +262,27 @@ async function fetchWidgetData(postId: number): Promise<WidgetData | null> {
   } catch {
     return null;
   }
+}
+
+type ViewChannel = "all" | "promoted" | "by_user" | "hashtag";
+
+function deriveViewChannel(
+  baseParams: Record<string, string>,
+  artwork: Artwork | null,
+): { channel: ViewChannel; channel_context: string | null } {
+  if (baseParams.promoted === "true") {
+    return { channel: "promoted", channel_context: null };
+  }
+  if (baseParams.owner_id) {
+    return {
+      channel: "by_user",
+      channel_context: artwork?.owner?.public_sqid ?? null,
+    };
+  }
+  if (baseParams.hashtag) {
+    return { channel: "hashtag", channel_context: baseParams.hashtag };
+  }
+  return { channel: "all", channel_context: null };
 }
 
 async function toggleReaction(
@@ -238,13 +381,14 @@ export function WebPlayer({
   });
   const rotationRef = useRef(rotation);
   rotationRef.current = rotation;
+  // `attempt` is a monotonically-increasing id used as a React `key` on
+  // RotationCountdown so starting a second rotation before the first resolves
+  // remounts the child (fresh interval, fresh countdown).
   const [rotationPending, setRotationPending] = useState<{
     oldAngle: RotationAngle;
-    remaining: number;
+    attempt: number;
   } | null>(null);
-  const rotationTimerRef = useRef<ReturnType<typeof setInterval> | null>(
-    null,
-  );
+  const rotationAttemptRef = useRef(0);
 
   // Reactions & comments
   const [widgetData, setWidgetData] = useState<WidgetData | null>(null);
@@ -577,7 +721,7 @@ export function WebPlayer({
             reactions: { ...widgetData.reactions, mine: newMine, totals: newTotals },
           };
           setWidgetData(updated);
-          widgetCacheRef.current.set(displayedArtwork.id, updated);
+          widgetCachePut(widgetCacheRef.current, displayedArtwork.id, updated);
         }
 
         await toggleReaction(displayedArtwork.id, emoji, next);
@@ -586,14 +730,14 @@ export function WebPlayer({
         const data = await fetchWidgetData(displayedArtwork.id);
         if (data) {
           setWidgetData(data);
-          widgetCacheRef.current.set(displayedArtwork.id, data);
+          widgetCachePut(widgetCacheRef.current, displayedArtwork.id, data);
         }
       } catch (err) {
         console.error("Failed to toggle reaction:", err);
         const data = await fetchWidgetData(displayedArtwork.id);
         if (data) {
           setWidgetData(data);
-          widgetCacheRef.current.set(displayedArtwork.id, data);
+          widgetCachePut(widgetCacheRef.current, displayedArtwork.id, data);
         }
       } finally {
         reactionInFlightRef.current = false;
@@ -639,28 +783,16 @@ export function WebPlayer({
     setFormatSubOpen(true);
   }, []);
 
-  const clearRotationTimer = useCallback(() => {
-    if (rotationTimerRef.current) {
-      clearInterval(rotationTimerRef.current);
-      rotationTimerRef.current = null;
-    }
+  const revertRotation = useCallback((oldAngle: RotationAngle) => {
+    setRotationPending(null);
+    setRotation(oldAngle);
+    rotationRef.current = oldAngle;
   }, []);
 
-  const revertRotation = useCallback(
-    (oldAngle: RotationAngle) => {
-      clearRotationTimer();
-      setRotationPending(null);
-      setRotation(oldAngle);
-      rotationRef.current = oldAngle;
-    },
-    [clearRotationTimer],
-  );
-
   const confirmRotation = useCallback(() => {
-    clearRotationTimer();
     setRotationPending(null);
     localStorage.setItem(ROTATION_KEY, String(rotationRef.current));
-  }, [clearRotationTimer]);
+  }, []);
 
   const handleRotation = useCallback(
     (angle: RotationAngle) => {
@@ -673,26 +805,10 @@ export function WebPlayer({
       const oldAngle = rotationRef.current;
       setRotation(angle);
       rotationRef.current = angle;
-      // Start 15-second countdown
-      const CONFIRM_SECONDS = 15;
-      setRotationPending({ oldAngle, remaining: CONFIRM_SECONDS });
-      clearRotationTimer();
-      rotationTimerRef.current = setInterval(() => {
-        setRotationPending((prev) => {
-          if (!prev) return null;
-          if (prev.remaining <= 1) {
-            // Time's up — revert
-            clearInterval(rotationTimerRef.current!);
-            rotationTimerRef.current = null;
-            setRotation(prev.oldAngle);
-            rotationRef.current = prev.oldAngle;
-            return null;
-          }
-          return { ...prev, remaining: prev.remaining - 1 };
-        });
-      }, 1000);
+      rotationAttemptRef.current += 1;
+      setRotationPending({ oldAngle, attempt: rotationAttemptRef.current });
     },
-    [closeMenu, clearRotationTimer],
+    [closeMenu],
   );
 
   const handleEditInPiskel = useCallback(() => {
@@ -910,7 +1026,6 @@ export function WebPlayer({
     setWidgetData(null);
     widgetCacheRef.current.clear();
     setCommentsOpen(false);
-    clearRotationTimer();
     setRotationPending(null);
 
     const prevOverflow = document.body.style.overflow;
@@ -944,9 +1059,9 @@ export function WebPlayer({
       }
       clearUiTimer();
       cancelPrefetch();
-      clearRotationTimer();
+      setRotationPending(null);
     };
-  }, [isActive, fetchArtworkMetadata, showArtwork, startPrefetch, cancelPrefetch, clearUiTimer, clearRotationTimer, setSlotASrc, setSlotBSrc]);
+  }, [isActive, fetchArtworkMetadata, showArtwork, startPrefetch, cancelPrefetch, clearUiTimer, setSlotASrc, setSlotBSrc]);
 
   // Start the UI auto-hide timer when UI is shown (pause when menu/comments open)
   useEffect(() => {
@@ -972,6 +1087,60 @@ export function WebPlayer({
       }
     };
   }, [isActive, displayedArtwork, paused, dwellSec, advanceToNext]);
+
+  // View tracking: fire at T=2s after a post appears, then every 30s thereafter.
+  // Runs regardless of pause state (a paused post is still on screen).
+  useEffect(() => {
+    if (!isActive || !displayedArtwork) return;
+
+    const postId = displayedArtwork.id;
+    const ownerSqid = displayedArtwork.owner?.public_sqid ?? null;
+
+    // Skip self-views (backend enforces this as well)
+    if (currentUserId && ownerSqid && currentUserId === ownerSqid) return;
+
+    const { channel, channel_context } = deriveViewChannel(
+      baseParamsRef.current,
+      displayedArtwork,
+    );
+
+    const submitView = async () => {
+      const url = `/api/post/${postId}/view`;
+      const fullUrl = url.startsWith("http")
+        ? url
+        : `${window.location.origin}${url}`;
+      const hasToken = !!getAccessToken();
+      const init: RequestInit = {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          channel,
+          channel_context,
+          play_order: 2,
+        }),
+      };
+      try {
+        if (hasToken) {
+          await authenticatedFetch(fullUrl, init);
+        } else {
+          await fetch(fullUrl, { ...init, credentials: "include" });
+        }
+      } catch {
+        // Best-effort — view registration must never disrupt playback
+      }
+    };
+
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    const initialTimer = setTimeout(() => {
+      submitView();
+      intervalId = setInterval(submitView, 30_000);
+    }, 2000);
+
+    return () => {
+      clearTimeout(initialTimer);
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isActive, displayedArtwork, currentUserId]);
 
   // Keyboard
   useEffect(() => {
@@ -1047,7 +1216,7 @@ export function WebPlayer({
   // Fetch widget data (reactions/comments) when artwork changes
   useEffect(() => {
     if (!isActive || !displayedArtwork) return;
-    const cached = widgetCacheRef.current.get(displayedArtwork.id);
+    const cached = widgetCacheTouch(widgetCacheRef.current, displayedArtwork.id);
     if (cached) {
       setWidgetData(cached);
     } else {
@@ -1056,7 +1225,7 @@ export function WebPlayer({
         const data = await fetchWidgetData(displayedArtwork.id);
         if (data && mountedRef.current) {
           setWidgetData(data);
-          widgetCacheRef.current.set(displayedArtwork.id, data);
+          widgetCachePut(widgetCacheRef.current, displayedArtwork.id, data);
         }
       })();
     }
@@ -1584,25 +1753,16 @@ export function WebPlayer({
         />
       )}
 
-      {/* Rotation confirmation banner */}
+      {/* Rotation confirmation banner — owns its own 1-Hz interval so
+          the countdown does not re-render the rest of the WebPlayer tree. */}
       {rotationPending && (
-        <div className="wp-rotation-confirm">
-          <span>
-            Keep this rotation? Reverting in {rotationPending.remaining}s
-          </span>
-          <button
-            className="wp-rotation-confirm-btn wp-rotation-keep"
-            onClick={confirmRotation}
-          >
-            Yes
-          </button>
-          <button
-            className="wp-rotation-confirm-btn wp-rotation-revert"
-            onClick={() => revertRotation(rotationPending.oldAngle)}
-          >
-            Revert
-          </button>
-        </div>
+        <RotationCountdown
+          key={rotationPending.attempt}
+          seconds={ROTATION_CONFIRM_SECONDS}
+          onExpire={() => revertRotation(rotationPending.oldAngle)}
+          onKeep={confirmRotation}
+          onRevert={() => revertRotation(rotationPending.oldAngle)}
+        />
       )}
 
       <style jsx>{`
@@ -2032,47 +2192,6 @@ export function WebPlayer({
           font-size: 11px;
           color: rgba(255, 255, 255, 0.3);
           font-style: italic;
-        }
-
-        /* Rotation confirmation banner */
-        .wp-rotation-confirm {
-          position: fixed;
-          top: 40px;
-          left: 50%;
-          transform: translateX(-50%);
-          z-index: 50002;
-          background: rgba(0, 0, 0, 0.85);
-          border: 1px solid rgba(255, 255, 255, 0.2);
-          border-radius: 8px;
-          padding: 12px 20px;
-          display: flex;
-          align-items: center;
-          color: #e8e8f0;
-          font-size: 14px;
-          white-space: nowrap;
-          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-        }
-        .wp-rotation-confirm > :global(* + *) {
-          margin-left: 14px;
-        }
-
-        .wp-rotation-confirm-btn {
-          padding: 6px 16px;
-          border: none;
-          border-radius: 4px;
-          font-size: 14px;
-          cursor: pointer;
-        }
-
-        .wp-rotation-keep {
-          background: #00d4ff;
-          color: #000;
-          font-weight: 600;
-        }
-
-        .wp-rotation-revert {
-          background: rgba(255, 255, 255, 0.15);
-          color: #e8e8f0;
         }
 
         .wp-empty {

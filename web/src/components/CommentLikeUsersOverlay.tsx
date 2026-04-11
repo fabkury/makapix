@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/router';
 
 interface CommentLikeUserItem {
@@ -55,12 +54,9 @@ export default function CommentLikeUsersOverlay({
   if (!isOpen) return null;
 
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.2 }}
+    <>
+      <div
+        className="clu-backdrop"
         style={{
           position: 'fixed',
           top: 0,
@@ -77,11 +73,8 @@ export default function CommentLikeUsersOverlay({
         }}
         onClick={onClose}
       >
-        <motion.div
-          initial={{ scale: 0.95, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.95, opacity: 0 }}
-          transition={{ duration: 0.2 }}
+        <div
+          className="clu-modal"
           style={{
             width: '100%',
             maxWidth: 500,
@@ -203,8 +196,24 @@ export default function CommentLikeUsersOverlay({
               ))
             )}
           </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+        </div>
+      </div>
+      <style jsx>{`
+        .clu-backdrop {
+          animation: cluBackdropIn 200ms ease-out;
+        }
+        .clu-modal {
+          animation: cluModalIn 200ms ease-out;
+        }
+        @keyframes cluBackdropIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes cluModalIn {
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
+        }
+      `}</style>
+    </>
   );
 }
