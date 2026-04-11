@@ -393,9 +393,7 @@ def list_posts(
     posts = query.limit(limit + 1).all()
 
     # Add reaction and comment counts, and user liked status
-    annotate_posts_with_counts(
-        db, posts, current_user.id if current_user else None
-    )
+    annotate_posts_with_counts(db, posts, current_user.id if current_user else None)
 
     # Create paginated response
     page_data = create_page_response(posts, limit, cursor)
@@ -968,14 +966,21 @@ def get_post_by_storage_key(
 async def register_view(
     id: int,
     request: Request,
+    payload: schemas.ViewRegisterPayload | None = None,
     db: Session = Depends(get_db),
     current_user: models.User | None = Depends(get_current_user_optional),
 ) -> None:
-    """Register an intentional view on a post (used by SPO)."""
+    """
+    Register a view on a post.
+
+    Body-less requests come from the Selected Post Overlay and are recorded
+    as INTENTIONAL views. Requests with a body come from the Web Player and
+    are recorded as LISTING views with channel/play_order metadata.
+    """
     from ..services.rate_limit import check_web_view_rate_limit
     from ..utils.view_tracking import hash_ip
 
-    # Rate limit: 1 view per 5 seconds per user
+    # Rate limit: 1 view per 3 seconds per user
     ip = request.client.host if request.client else "unknown"
     ip_hash = hash_ip(ip)
     user_id = current_user.id if current_user else None
@@ -985,22 +990,36 @@ async def register_view(
         raise HTTPException(
             status_code=429,
             detail="Too many view requests",
-            headers={"Retry-After": str(int(retry_after or 5))},
+            headers={"Retry-After": str(int(retry_after or 3))},
         )
 
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
 
-    record_view(
-        db=db,
-        post_id=post.id,
-        request=request,
-        user=current_user,
-        view_type=ViewType.INTENTIONAL,
-        view_source=ViewSource.WEB,
-        post_owner_id=post.owner_id,
-    )
+    if payload is None:
+        record_view(
+            db=db,
+            post_id=post.id,
+            request=request,
+            user=current_user,
+            view_type=ViewType.INTENTIONAL,
+            view_source=ViewSource.WEB,
+            post_owner_id=post.owner_id,
+        )
+    else:
+        record_view(
+            db=db,
+            post_id=post.id,
+            request=request,
+            user=current_user,
+            view_type=ViewType.LISTING,
+            view_source=ViewSource.WEB,
+            post_owner_id=post.owner_id,
+            channel=payload.channel,
+            channel_context=payload.channel_context,
+            play_order=payload.play_order,
+        )
 
 
 @router.patch("/{id}", response_model=schemas.Post)

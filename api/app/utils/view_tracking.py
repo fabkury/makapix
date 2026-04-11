@@ -216,6 +216,9 @@ def record_view(
     view_type: ViewType = ViewType.INTENTIONAL,
     view_source: ViewSource = ViewSource.WEB,
     post_owner_id: UUID | None = None,
+    channel: str | None = None,
+    channel_context: str | None = None,
+    play_order: int | None = None,
 ) -> None:
     """
     Queue an artwork view event for async writing via Celery.
@@ -234,6 +237,9 @@ def record_view(
         view_type: Type of view (intentional, listing, search, widget)
         view_source: Source of view (web, api, widget, player)
         post_owner_id: UUID of the post owner (if provided, used to exclude author views)
+        channel: Optional channel label (all, promoted, by_user, hashtag)
+        channel_context: Optional channel context (user sqid or hashtag)
+        play_order: Optional play order (0=server, 1=created, 2=random)
     """
     try:
         from ..models import Post
@@ -282,6 +288,9 @@ def record_view(
             "user_agent_hash": hash_user_agent(user_agent),
             "referrer_domain": extract_referrer_domain(referrer),
             "created_at": datetime.now(timezone.utc).isoformat(),
+            "channel": channel,
+            "channel_context": channel_context,
+            "play_order": play_order,
         }
 
         # Dispatch to Celery for async write (non-blocking)
