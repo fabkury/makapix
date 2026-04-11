@@ -17,6 +17,8 @@ from uuid import UUID
 from sqlalchemy import func, distinct, cast, Date
 from sqlalchemy.orm import Session
 
+from ..utils.view_tracking import visitor_key
+
 if TYPE_CHECKING:
     pass
 
@@ -183,15 +185,17 @@ class PostStatsService:
 
         # Aggregate total views and unique viewers (all)
         total_views = len(recent_views)
-        unique_ip_hashes = set(v.viewer_ip_hash for v in recent_views)
-        unique_viewers = len(unique_ip_hashes)
+        unique_viewer_keys = set(
+            visitor_key(v.viewer_user_id, v.viewer_ip_hash) for v in recent_views
+        )
+        unique_viewers = len(unique_viewer_keys)
 
         # Aggregate authenticated-only views and unique viewers
         total_views_authenticated = len(authenticated_views)
-        unique_ip_hashes_authenticated = set(
-            v.viewer_ip_hash for v in authenticated_views
+        authenticated_unique_viewer_keys = set(
+            visitor_key(v.viewer_user_id, v.viewer_ip_hash) for v in authenticated_views
         )
-        unique_viewers_authenticated = len(unique_ip_hashes_authenticated)
+        unique_viewers_authenticated = len(authenticated_unique_viewer_keys)
 
         # Add older aggregated data (all)
         for ds in daily_stats:
@@ -305,7 +309,7 @@ class PostStatsService:
             if day_str in daily_lookup:
                 daily_lookup[day_str].views = len(views)
                 daily_lookup[day_str].unique_viewers = len(
-                    set(v.viewer_ip_hash for v in views)
+                    set(visitor_key(v.viewer_user_id, v.viewer_ip_hash) for v in views)
                 )
 
         # Fill in data from daily aggregates (older than 7 days)
@@ -344,7 +348,7 @@ class PostStatsService:
             if day_str in daily_lookup_authenticated:
                 daily_lookup_authenticated[day_str].views = len(views)
                 daily_lookup_authenticated[day_str].unique_viewers = len(
-                    set(v.viewer_ip_hash for v in views)
+                    set(visitor_key(v.viewer_user_id, v.viewer_ip_hash) for v in views)
                 )
 
         # Fill in data from daily aggregates (older than 7 days) - authenticated

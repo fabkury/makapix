@@ -102,6 +102,19 @@ def hash_ip(ip: str) -> str:
     return hashlib.sha256(ip.encode("utf-8")).hexdigest()
 
 
+def visitor_key(user_id, ip_hash: str) -> tuple[str, str]:
+    """
+    Identity key for deduplicating visitors/viewers across a time window.
+
+    Authenticated users collapse across IPs (same person on phone + laptop = 1).
+    Anonymous visitors fall back to hashed IP, so a shared NAT still counts as 1,
+    but a logged-in user sharing that NAT is counted separately from the anon pool.
+    """
+    if user_id is not None:
+        return ("u", str(user_id))
+    return ("ip", ip_hash)
+
+
 def hash_user_agent(user_agent: str | None) -> str | None:
     """
     Create a SHA256 hash of a User-Agent string for device fingerprinting.

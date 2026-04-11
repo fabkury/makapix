@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from ..utils.view_tracking import visitor_key
+
 if TYPE_CHECKING:
     pass
 
@@ -339,7 +341,11 @@ class SiteStatsService:
         errors_from_events = sum(1 for e in recent_events if e.event_type == "error")
 
         unique_visitors_from_events = len(
-            set(e.visitor_ip_hash for e in recent_events if e.event_type == "page_view")
+            set(
+                visitor_key(e.user_id, e.visitor_ip_hash)
+                for e in recent_events
+                if e.event_type == "page_view"
+            )
         )
 
         # From daily aggregates
@@ -368,7 +374,7 @@ class SiteStatsService:
         )
         unique_visitors_from_authenticated_events = len(
             set(
-                e.visitor_ip_hash
+                visitor_key(e.user_id, e.visitor_ip_hash)
                 for e in authenticated_events
                 if e.event_type == "page_view"
             )
@@ -461,12 +467,14 @@ class SiteStatsService:
 
         # ===== DAILY UNIQUE VISITORS (14 days) - ALL =====
 
-        # From recent events: group visitor_ip_hash by day
+        # From recent events: group visitor identity by day
         daily_uv_sets: dict[str, set] = defaultdict(set)
         for event in recent_events:
             if event.event_type == "page_view":
                 day_str = event.created_at.date().isoformat()
-                daily_uv_sets[day_str].add(event.visitor_ip_hash)
+                daily_uv_sets[day_str].add(
+                    visitor_key(event.user_id, event.visitor_ip_hash)
+                )
 
         # Build daily stats lookup for days 8-14
         daily_stats_by_date = {ds.date.isoformat(): ds for ds in daily_stats}
@@ -491,7 +499,9 @@ class SiteStatsService:
         for event in authenticated_events:
             if event.event_type == "page_view":
                 day_str = event.created_at.date().isoformat()
-                daily_uv_auth_sets[day_str].add(event.visitor_ip_hash)
+                daily_uv_auth_sets[day_str].add(
+                    visitor_key(event.user_id, event.visitor_ip_hash)
+                )
 
         daily_unique_visitors_authenticated: list[DailyCount] = []
         for i in range(14):
@@ -583,7 +593,9 @@ class SiteStatsService:
         for event in recent_24h_events:
             hour_start = event.created_at.replace(minute=0, second=0, microsecond=0)
             hour_str = hour_start.isoformat()
-            hourly_uv_sets[hour_str].add(event.visitor_ip_hash)
+            hourly_uv_sets[hour_str].add(
+                visitor_key(event.user_id, event.visitor_ip_hash)
+            )
 
         hourly_unique_visitors: list[HourlyCount] = []
         for i in range(24):
@@ -605,7 +617,9 @@ class SiteStatsService:
         for event in recent_24h_authenticated_events:
             hour_start = event.created_at.replace(minute=0, second=0, microsecond=0)
             hour_str = hour_start.isoformat()
-            hourly_uv_auth_sets[hour_str].add(event.visitor_ip_hash)
+            hourly_uv_auth_sets[hour_str].add(
+                visitor_key(event.user_id, event.visitor_ip_hash)
+            )
 
         hourly_unique_visitors_authenticated: list[HourlyCount] = []
         for i in range(24):
