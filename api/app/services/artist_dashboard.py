@@ -15,6 +15,8 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from ..utils.view_tracking import visitor_key
+
 if TYPE_CHECKING:
     pass
 
@@ -213,15 +215,17 @@ class ArtistDashboardService:
         # unique_viewers is an approximation as we can't deduplicate across days
         # from aggregated data.
         total_views = len(recent_views)
-        unique_ip_hashes = set(v.viewer_ip_hash for v in recent_views)
-        unique_viewers = len(unique_ip_hashes)
+        unique_viewer_keys = set(
+            visitor_key(v.viewer_user_id, v.viewer_ip_hash) for v in recent_views
+        )
+        unique_viewers = len(unique_viewer_keys)
 
         # Aggregate authenticated-only views and unique viewers from recent views
         total_views_authenticated = len(authenticated_views)
-        unique_ip_hashes_authenticated = set(
-            v.viewer_ip_hash for v in authenticated_views
+        authenticated_unique_viewer_keys = set(
+            visitor_key(v.viewer_user_id, v.viewer_ip_hash) for v in authenticated_views
         )
-        unique_viewers_authenticated = len(unique_ip_hashes_authenticated)
+        unique_viewers_authenticated = len(authenticated_unique_viewer_keys)
 
         # Add older aggregated data (all)
         # Note: unique_viewers from daily_stats is summed as an approximation

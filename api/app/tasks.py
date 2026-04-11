@@ -1219,6 +1219,7 @@ def rollup_view_events(self) -> dict[str, Any]:
     from sqlalchemy import func, cast, Date
     from . import models
     from .db import SessionLocal
+    from .utils.view_tracking import visitor_key
 
     BATCH_SIZE = 10000  # Process events in batches of 10,000
 
@@ -1267,12 +1268,12 @@ def rollup_view_events(self) -> dict[str, Any]:
                 if key not in aggregates:
                     aggregates[key] = {
                         "total_views": 0,
-                        "unique_ip_hashes": set(),
+                        "unique_viewer_keys": set(),
                         "views_by_country": {},
                         "views_by_device": {},
                         "views_by_type": {},
                         "total_views_authenticated": 0,
-                        "unique_ip_hashes_authenticated": set(),
+                        "authenticated_unique_viewer_keys": set(),
                         "views_by_country_authenticated": {},
                         "views_by_device_authenticated": {},
                         "views_by_type_authenticated": {},
@@ -1280,7 +1281,9 @@ def rollup_view_events(self) -> dict[str, Any]:
 
                 agg = aggregates[key]
                 agg["total_views"] += 1
-                agg["unique_ip_hashes"].add(event.viewer_ip_hash)
+                agg["unique_viewer_keys"].add(
+                    visitor_key(event.viewer_user_id, event.viewer_ip_hash)
+                )
 
                 if event.country_code:
                     agg["views_by_country"][event.country_code] = (
@@ -1298,7 +1301,9 @@ def rollup_view_events(self) -> dict[str, Any]:
                 # Track authenticated views separately
                 if event.viewer_user_id is not None:
                     agg["total_views_authenticated"] += 1
-                    agg["unique_ip_hashes_authenticated"].add(event.viewer_ip_hash)
+                    agg["authenticated_unique_viewer_keys"].add(
+                        visitor_key(event.viewer_user_id, event.viewer_ip_hash)
+                    )
 
                     if event.country_code:
                         agg["views_by_country_authenticated"][event.country_code] = (
@@ -1342,7 +1347,7 @@ def rollup_view_events(self) -> dict[str, Any]:
             if existing:
                 # Merge with existing data
                 existing.total_views += agg["total_views"]
-                existing.unique_viewers += len(agg["unique_ip_hashes"])
+                existing.unique_viewers += len(agg["unique_viewer_keys"])
 
                 # Merge country data
                 existing_countries = existing.views_by_country or {}
@@ -1367,7 +1372,7 @@ def rollup_view_events(self) -> dict[str, Any]:
                 # Merge authenticated data
                 existing.total_views_authenticated += agg["total_views_authenticated"]
                 existing.unique_viewers_authenticated += len(
-                    agg["unique_ip_hashes_authenticated"]
+                    agg["authenticated_unique_viewer_keys"]
                 )
 
                 existing_countries_auth = existing.views_by_country_authenticated or {}
@@ -1396,13 +1401,13 @@ def rollup_view_events(self) -> dict[str, Any]:
                     post_id=post_id,
                     date=date,
                     total_views=agg["total_views"],
-                    unique_viewers=len(agg["unique_ip_hashes"]),
+                    unique_viewers=len(agg["unique_viewer_keys"]),
                     views_by_country=agg["views_by_country"],
                     views_by_device=agg["views_by_device"],
                     views_by_type=agg["views_by_type"],
                     total_views_authenticated=agg["total_views_authenticated"],
                     unique_viewers_authenticated=len(
-                        agg["unique_ip_hashes_authenticated"]
+                        agg["authenticated_unique_viewer_keys"]
                     ),
                     views_by_country_authenticated=agg[
                         "views_by_country_authenticated"
@@ -1646,6 +1651,7 @@ def rollup_site_events(self) -> dict[str, Any]:
     from sqlalchemy import func
     from . import models
     from .db import SessionLocal
+    from .utils.view_tracking import visitor_key
 
     BATCH_SIZE = 10000  # Process events in batches of 10,000
 
@@ -1694,7 +1700,7 @@ def rollup_site_events(self) -> dict[str, Any]:
                 if event_date not in aggregates:
                     aggregates[event_date] = {
                         "total_page_views": 0,
-                        "unique_ip_hashes": set(),
+                        "unique_visitor_keys": set(),
                         "new_signups": 0,
                         "new_posts": 0,
                         "total_api_calls": 0,
@@ -1706,7 +1712,7 @@ def rollup_site_events(self) -> dict[str, Any]:
                         "top_referrers": {},
                         # Authenticated breakdown
                         "authenticated_page_views": 0,
-                        "authenticated_unique_ip_hashes": set(),
+                        "authenticated_unique_visitor_keys": set(),
                         "authenticated_views_by_page": {},
                         "authenticated_views_by_country": {},
                         "authenticated_views_by_device": {},
@@ -1718,7 +1724,9 @@ def rollup_site_events(self) -> dict[str, Any]:
                 # Count by event type
                 if event.event_type == "page_view":
                     agg["total_page_views"] += 1
-                    agg["unique_ip_hashes"].add(event.visitor_ip_hash)
+                    agg["unique_visitor_keys"].add(
+                        visitor_key(event.user_id, event.visitor_ip_hash)
+                    )
 
                     # Track page path
                     if event.page_path:
@@ -1746,7 +1754,9 @@ def rollup_site_events(self) -> dict[str, Any]:
                     # Track authenticated page views
                     if event.user_id is not None:
                         agg["authenticated_page_views"] += 1
-                        agg["authenticated_unique_ip_hashes"].add(event.visitor_ip_hash)
+                        agg["authenticated_unique_visitor_keys"].add(
+                            visitor_key(event.user_id, event.visitor_ip_hash)
+                        )
 
                         if event.page_path:
                             agg["authenticated_views_by_page"][event.page_path] = (
@@ -1880,7 +1890,7 @@ def rollup_site_events(self) -> dict[str, Any]:
             if existing:
                 # Merge with existing data
                 existing.total_page_views += agg["total_page_views"]
-                existing.unique_visitors += len(agg["unique_ip_hashes"])
+                existing.unique_visitors += len(agg["unique_visitor_keys"])
                 existing.new_signups += agg["new_signups"]
                 existing.new_posts += agg["new_posts"]
                 existing.total_api_calls += agg["total_api_calls"]
@@ -1925,7 +1935,7 @@ def rollup_site_events(self) -> dict[str, Any]:
                 # Merge authenticated breakdown fields
                 existing.authenticated_page_views += agg["authenticated_page_views"]
                 existing.authenticated_unique_visitors += len(
-                    agg["authenticated_unique_ip_hashes"]
+                    agg["authenticated_unique_visitor_keys"]
                 )
 
                 existing_auth_views_by_page = existing.authenticated_views_by_page or {}
@@ -1980,7 +1990,7 @@ def rollup_site_events(self) -> dict[str, Any]:
                 daily_stat = models.SiteStatsDaily(
                     date=event_date,
                     total_page_views=agg["total_page_views"],
-                    unique_visitors=len(agg["unique_ip_hashes"]),
+                    unique_visitors=len(agg["unique_visitor_keys"]),
                     new_signups=agg["new_signups"],
                     new_posts=agg["new_posts"],
                     total_api_calls=agg["total_api_calls"],
@@ -1993,7 +2003,7 @@ def rollup_site_events(self) -> dict[str, Any]:
                     # Authenticated breakdown
                     authenticated_page_views=agg["authenticated_page_views"],
                     authenticated_unique_visitors=len(
-                        agg["authenticated_unique_ip_hashes"]
+                        agg["authenticated_unique_visitor_keys"]
                     ),
                     authenticated_views_by_page=agg["authenticated_views_by_page"],
                     authenticated_views_by_country=agg[
