@@ -327,6 +327,23 @@ class PostRead(Post):
     pass
 
 
+class ViewRegisterPayload(BaseModel):
+    """
+    Optional body for POST /post/{id}/view.
+
+    When absent (body-less request), the view is recorded as
+    view_type=INTENTIONAL, view_source=WEB with no channel metadata
+    (used by the Selected Post Overlay).
+
+    When present, the view is recorded as view_type=LISTING (auto-play)
+    with the supplied channel metadata (used by the Web Player).
+    """
+
+    channel: Literal["all", "promoted", "by_user", "hashtag"] | None = None
+    channel_context: str | None = Field(None, max_length=100)
+    play_order: Literal[0, 1, 2] | None = None
+
+
 class ArtworkUploadResponse(BaseModel):
     """Response for artwork upload endpoint."""
 

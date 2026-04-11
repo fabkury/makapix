@@ -198,7 +198,7 @@ def check_web_view_rate_limit(
     user_id: int | None, ip_hash: str
 ) -> tuple[bool, float | None]:
     """
-    Check if web user can submit a view (1 per 5 seconds).
+    Check if web user can submit a view (1 per 3 seconds).
 
     For authenticated users, rate limit by user_id.
     For anonymous users, rate limit by IP hash.
@@ -226,7 +226,7 @@ def check_web_view_rate_limit(
             ttl = client.ttl(key)
             return False, float(ttl) if ttl > 0 else 0.0
 
-        client.setex(key, 5, "1")
+        client.setex(key, 3, "1")
         return True, None
 
     except Exception as e:

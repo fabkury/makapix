@@ -6,7 +6,7 @@ import CardGrid from '../components/CardGrid';
 import PlayerBar from '../components/PlayerBarDynamic';
 import { FilterButton } from '../components/FilterButton';
 import { WPButton } from '../components/WPButton';
-import { WebPlayer } from '../components/WebPlayer';
+import { WebPlayer } from '../components/WebPlayerDynamic';
 import { authenticatedFetch, clearTokens } from '../lib/api';
 import { usePlayerBarOptional } from '../contexts/PlayerBarContext';
 import { useFilters, FilterConfig } from '../hooks/useFilters';
