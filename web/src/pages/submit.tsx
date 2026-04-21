@@ -1323,7 +1323,7 @@ function SubmitPageContent() {
         .upload-text { font-size: 1.1rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
         .upload-subtext { color: var(--text-secondary); margin-bottom: 12px; }
         .upload-formats { font-size: 0.8rem; color: var(--text-muted); }
-        .preview-container { display: flex; flex-direction: column; align-items: center; }
+        .preview-container { display: flex; flex-direction: column; align-items: center; width: 100%; }
         .preview-container > :global(* + *) { margin-top: 16px; }
         .preview-frame { width: min(384px, 100%); aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; background: var(--bg-secondary); border: 1px solid var(--bg-tertiary); border-radius: 8px; overflow: hidden; }
         .preview-image { width: 100%; height: 100%; object-fit: contain; image-rendering: -webkit-optimize-contrast; image-rendering: -moz-crisp-edges; image-rendering: crisp-edges; image-rendering: pixelated; }
