@@ -85,9 +85,9 @@ export async function decodeGif(
       rgba: new Uint8ClampedArray(composited.data),
       width: canvasWidth,
       height: canvasHeight,
-      // GIF delays are in centiseconds, convert to milliseconds
-      // Minimum of 20ms (browsers default 0 to 100ms, we use 20ms for smoother animation)
-      duration: Math.max(rawFrame.delay * 10, 20),
+      // gifuct-js returns delay already converted to ms. Clamp to 20ms
+      // because browsers silently round 0ms delays up (usually to 100ms).
+      duration: Math.max(rawFrame.delay, 20),
     });
 
     // Handle disposal method for next frame
@@ -110,6 +110,7 @@ export async function decodeGif(
     loopCount: 0, // GIF typically loops infinitely
     originalFormat: 'gif',
     isAnimated: frames.length > 1,
+    isLossless: true,
   };
 }
 
@@ -153,6 +154,7 @@ export async function decodePng(
     loopCount: 0,
     originalFormat: 'png',
     isAnimated: false,
+    isLossless: true,
   };
 }
 
@@ -196,10 +198,49 @@ export async function decodeBmp(
       loopCount: 0,
       originalFormat: 'bmp',
       isAnimated: false,
+      isLossless: true,
     };
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+/**
+ * Detect whether a WebP file is fully lossless.
+ *
+ * Walks top-level RIFF chunks (and one level into ANMF frame containers)
+ * looking for any VP8 (lossy) bitstream. Any VP8 chunk means the file
+ * contains lossy data; only VP8L chunks means fully lossless.
+ */
+function isLosslessWebp(buffer: ArrayBuffer): boolean {
+  if (buffer.byteLength < 12) return false;
+  const view = new DataView(buffer);
+  const fourcc = (off: number) =>
+    String.fromCharCode(
+      view.getUint8(off),
+      view.getUint8(off + 1),
+      view.getUint8(off + 2),
+      view.getUint8(off + 3),
+    );
+  let offset = 12; // skip "RIFF" <size> "WEBP"
+  while (offset + 8 <= view.byteLength) {
+    const tag = fourcc(offset);
+    const size = view.getUint32(offset + 4, true);
+    if (tag === 'VP8 ') return false;
+    if (tag === 'ANMF' && size >= 16) {
+      // ANMF body: 16-byte frame header + sub-chunks (ALPH?, VP8/VP8L).
+      let sub = offset + 8 + 16;
+      const subEnd = offset + 8 + size;
+      while (sub + 8 <= subEnd && sub + 8 <= view.byteLength) {
+        const subTag = fourcc(sub);
+        const subSize = view.getUint32(sub + 4, true);
+        if (subTag === 'VP8 ') return false;
+        sub += 8 + subSize + (subSize & 1);
+      }
+    }
+    offset += 8 + size + (size & 1);
+  }
+  return true;
 }
 
 /**
@@ -209,17 +250,19 @@ export async function decodeWebp(
   buffer: ArrayBuffer,
   onProgress?: ProgressCallback
 ): Promise<DecodedImage> {
+  const isLossless = isLosslessWebp(buffer);
+
   // Try ImageDecoder API first (Chrome/Firefox/Edge)
   if (typeof window !== 'undefined' && 'ImageDecoder' in window) {
     try {
-      return await decodeWebpWithImageDecoder(buffer, onProgress);
+      return await decodeWebpWithImageDecoder(buffer, isLossless, onProgress);
     } catch (err) {
       console.warn('ImageDecoder failed, falling back to WASM:', err);
     }
   }
 
   // Fall back to webpxmux WASM
-  return decodeWebpWithWasm(buffer, onProgress);
+  return decodeWebpWithWasm(buffer, isLossless, onProgress);
 }
 
 /**
@@ -227,6 +270,7 @@ export async function decodeWebp(
  */
 async function decodeWebpWithImageDecoder(
   buffer: ArrayBuffer,
+  isLossless: boolean,
   onProgress?: ProgressCallback
 ): Promise<DecodedImage> {
   const ImageDecoderClass = (window as any).ImageDecoder;
@@ -306,6 +350,7 @@ async function decodeWebpWithImageDecoder(
     loopCount: 0,
     originalFormat: 'webp',
     isAnimated: frameCount > 1,
+    isLossless,
   };
 }
 
@@ -314,6 +359,7 @@ async function decodeWebpWithImageDecoder(
  */
 async function decodeWebpWithWasm(
   buffer: ArrayBuffer,
+  isLossless: boolean,
   onProgress?: ProgressCallback
 ): Promise<DecodedImage> {
   const webpxmuxModule = await import('webpxmux');
@@ -381,6 +427,7 @@ async function decodeWebpWithWasm(
     loopCount: info.loopCount || 0,
     originalFormat: 'webp',
     isAnimated: info.frames.length > 1,
+    isLossless,
   };
 }
 

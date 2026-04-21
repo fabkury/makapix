@@ -6,6 +6,11 @@ const nextConfig = {
   transpilePackages: [
     'mqtt',
     'lucide-react',
+    // wasm-webp ships its Emscripten glue as raw ESM, with Node-only `createRequire`
+    // and `import.meta.url` branches that Next.js/Terser can't consume unparsed.
+    // Transpiling the package lets SWC lower the syntax; paired with the Node-stub
+    // fallbacks below, the dead Node branches are stripped at bundle time.
+    'wasm-webp',
     // @radix-ui top-level components
     '@radix-ui/react-accordion',
     '@radix-ui/react-alert-dialog',
@@ -79,7 +84,18 @@ const nextConfig = {
       test: /\.wasm$/,
       type: "asset/resource",
     });
-    
+
+    // wasm-webp's Emscripten glue uses `new URL('./', import.meta.url)` in a
+    // Node-only branch. Webpack 5's asset detector follows that to the
+    // directory's index.js and emits it as an asset/resource in
+    // static/media/, which Terser then fails to minify (raw ESM inside an
+    // asset). Disable asset-URL parsing for this package — we serve its
+    // WASM ourselves from /wasm/webp-wasm.wasm via Emscripten's locateFile.
+    config.module.rules.push({
+      test: /[\\/]node_modules[\\/]wasm-webp[\\/]/,
+      parser: { url: false },
+    });
+
     // Client-side builds: stub out Node.js modules that some WASM libraries try to import
     if (!isServer) {
       config.resolve.fallback = {
@@ -87,9 +103,14 @@ const nextConfig = {
         fs: false,
         path: false,
         crypto: false,
+        // Needed by wasm-webp's Emscripten glue (Node fallback uses createRequire
+        // from 'module' and fileURLToPath from 'url'). These branches are dead
+        // in the browser, but the imports still need to resolve.
+        module: false,
+        url: false,
       };
     }
-    
+
     return config;
   },
 };

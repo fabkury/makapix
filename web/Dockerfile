@@ -44,9 +44,13 @@ COPY web/scripts ./scripts
 COPY web/src ./src
 COPY web/public ./public
 
-# webpxmux ships its WASM binary in node_modules. We must serve it from Next.js public assets
-# so the browser can fetch it at runtime (used by the WebP animation WASM fallback).
-RUN mkdir -p public/wasm && cp node_modules/webpxmux/dist/webpxmux.wasm public/wasm/webpxmux.wasm
+# WASM binaries shipped in node_modules need to be served from Next.js public
+# assets so the browser can fetch them at runtime. webpxmux is the WebP decoder
+# fallback (for browsers without ImageDecoder); wasm-webp is the animated WebP
+# encoder (libwebp WebPAnimEncoder, used for GIF->WebP and lossless animated WebP).
+RUN mkdir -p public/wasm && \
+    cp node_modules/webpxmux/dist/webpxmux.wasm public/wasm/webpxmux.wasm && \
+    cp node_modules/wasm-webp/dist/esm/webp-wasm.wasm public/wasm/webp-wasm.wasm
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
