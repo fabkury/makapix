@@ -318,7 +318,6 @@ function SubmitPageContent() {
             setCustomHeight(nearestValid.height.toString());
             setScalingMode('dimensions');
             setShowScalingOptions(true);
-            setMaintainAspectRatio(false); // Allow changing to target dimensions
           } else {
             // Initialize custom dimensions to original size
             setCustomWidth(info.width.toString());
@@ -480,7 +479,6 @@ function SubmitPageContent() {
         setCustomHeight(nearestValid.height.toString());
         setScalingMode('dimensions');
         setShowScalingOptions(true);
-        setMaintainAspectRatio(false);
       } else {
         setCustomWidth(info.width.toString());
         setCustomHeight(info.height.toString());
