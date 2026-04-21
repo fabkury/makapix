@@ -85,9 +85,9 @@ export async function decodeGif(
       rgba: new Uint8ClampedArray(composited.data),
       width: canvasWidth,
       height: canvasHeight,
-      // GIF delays are in centiseconds, convert to milliseconds
-      // Minimum of 20ms (browsers default 0 to 100ms, we use 20ms for smoother animation)
-      duration: Math.max(rawFrame.delay * 10, 20),
+      // gifuct-js returns delay already converted to ms. Clamp to 20ms
+      // because browsers silently round 0ms delays up (usually to 100ms).
+      duration: Math.max(rawFrame.delay, 20),
     });
 
     // Handle disposal method for next frame
