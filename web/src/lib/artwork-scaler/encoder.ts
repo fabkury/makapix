@@ -1,78 +1,62 @@
 /**
  * WebP Encoder
- * Handles encoding RGBA frames to lossless WebP (static and animated)
+ * Handles encoding RGBA frames to WebP (static and animated), losslessly or
+ * lossily depending on the source format's own lossiness.
  */
 
 import type { Frame, ProgressCallback } from './types';
 import { ScalerError } from './types';
+import type { WebPOptions } from '@saschazar/wasm-webp';
 
 /**
- * Convert RGBA bytes to the format expected by webpxmux.
+ * Build the static-encoder config for @saschazar/wasm-webp.
  *
- * webpxmux has a buggy RGBA-to-ARGB conversion in its C code (webpenc.c):
- *   *pixel = (((*pixel & 0xff) << 24) | (*pixel >> 8));
- *
- * This rotates bytes incorrectly. To compensate, we pre-transform our data
- * so that after webpxmux's transformation, the result is correct ARGB.
- *
- * Canvas RGBA bytes: [R, G, B, A] stored as 0xAABBGGRR (little-endian)
- * Required input for webpxmux: 0xRRGGBBAA (bytes [A, B, G, R] in little-endian)
- * After webpxmux transform: 0xAARRGGBB (correct ARGB for libwebp)
+ * Lossless uses `exact: 1` so RGB values beneath fully-transparent pixels
+ * survive the round-trip — important because Pixelc/Piskel layers sometimes
+ * leave colored data under alpha-0 regions.
  */
-function rgbaToWebpxmuxFormat(rgba: Uint8ClampedArray): Uint32Array {
-  const pixelCount = rgba.length / 4;
-  const result = new Uint32Array(pixelCount);
-  for (let i = 0; i < pixelCount; i++) {
-    const offset = i * 4;
-    // Reverse byte order: RGBA [R,G,B,A] -> [A,B,G,R] for webpxmux
-    // This produces 0xRRGGBBAA which webpxmux will transform to 0xAARRGGBB
-    result[i] =
-      (rgba[offset] << 24) | // R to high byte
-      (rgba[offset + 1] << 16) | // G to byte 2
-      (rgba[offset + 2] << 8) | // B to byte 1
-      rgba[offset + 3]; // A to low byte
-  }
-  return result;
+function buildStaticWebpOptions(lossless: boolean): WebPOptions {
+  return {
+    quality: 100,
+    target_size: 0,
+    target_PSNR: 0,
+    method: 6, // max compression effort
+    sns_strength: 0,
+    filter_strength: 0,
+    filter_sharpness: 0,
+    filter_type: 0,
+    partitions: 0,
+    segments: 1,
+    pass: 1,
+    show_compressed: 0,
+    preprocessing: 0,
+    autofilter: 0,
+    partition_limit: 0,
+    alpha_compression: 1,
+    alpha_filtering: 1,
+    alpha_quality: 100,
+    // Lossy mode is only reached when the input was itself lossy WebP. Keep
+    // quality high to avoid stacking generational loss on top of the source.
+    lossless: lossless ? 1 : 0,
+    // exact=1 preserves RGB values under fully-transparent pixels — matters for
+    // pixel art with hidden colored layers under alpha-0 regions.
+    exact: lossless ? 1 : 0,
+    image_hint: 0,
+    emulate_jpeg_size: 0,
+    thread_level: 0,
+    low_memory: 0,
+    near_lossless: 100,
+    use_delta_palette: 0,
+    use_sharp_yuv: 0,
+  };
 }
 
 /**
- * Default lossless encoding options for @saschazar/wasm-webp
- */
-const LOSSLESS_OPTIONS = {
-  quality: 100,
-  target_size: 0,
-  target_PSNR: 0,
-  method: 6, // Maximum compression effort
-  sns_strength: 0,
-  filter_strength: 0,
-  filter_sharpness: 0,
-  filter_type: 0,
-  partitions: 0,
-  segments: 1,
-  pass: 1,
-  show_compressed: 0,
-  preprocessing: 0,
-  autofilter: 0,
-  partition_limit: 0,
-  alpha_compression: 1,
-  alpha_filtering: 1,
-  alpha_quality: 100,
-  lossless: 1, // CRITICAL: Lossless encoding
-  exact: 1, // CRITICAL: Preserve RGB values in transparent areas
-  image_hint: 0,
-  emulate_jpeg_size: 0,
-  thread_level: 0,
-  low_memory: 0,
-  near_lossless: 100,
-  use_delta_palette: 0,
-  use_sharp_yuv: 0,
-};
-
-/**
- * Encode a single frame to lossless WebP using @saschazar/wasm-webp
+ * Encode a single frame to WebP using @saschazar/wasm-webp.
  */
 export async function encodeStaticWebP(
   frame: Frame,
+  lossless: boolean,
   onProgress?: ProgressCallback
 ): Promise<Uint8Array> {
   if (onProgress) {
@@ -92,13 +76,12 @@ export async function encodeStaticWebP(
       },
     });
 
-    // Encode RGBA to lossless WebP
     const result = webpModule.encode(
       frame.rgba,
       frame.width,
       frame.height,
       4, // 4 channels (RGBA)
-      LOSSLESS_OPTIONS
+      buildStaticWebpOptions(lossless)
     );
 
     if (!result || result.length === 0) {
@@ -125,12 +108,37 @@ export async function encodeStaticWebP(
   }
 }
 
+// Cache the wasm-webp Emscripten Module instance — it's expensive to
+// instantiate and safe to share across calls.
+let animatedWebpModulePromise: Promise<any> | null = null;
+
+async function getAnimatedWebpModule(): Promise<any> {
+  if (!animatedWebpModulePromise) {
+    // We import the glue directly (not the high-level wrapper) so we can pass
+    // `locateFile` and serve the WASM from /wasm/ like the rest of the stack.
+    // @ts-expect-error: subpath import, no TS declarations
+    const glueModule = await import('wasm-webp/dist/esm/webp-wasm.js');
+    const factory = glueModule.default;
+    animatedWebpModulePromise = factory({
+      locateFile: (path: string) => {
+        if (path.endsWith('.wasm')) {
+          return '/wasm/webp-wasm.wasm';
+        }
+        return path;
+      },
+    });
+  }
+  return animatedWebpModulePromise;
+}
+
 /**
- * Encode multiple frames to animated lossless WebP using webpxmux
+ * Encode multiple frames to animated WebP using wasm-webp
+ * (libwebp's WebPAnimEncoder under the hood).
  */
 export async function encodeAnimatedWebP(
   frames: Frame[],
   loopCount: number = 0,
+  lossless: boolean,
   onProgress?: ProgressCallback
 ): Promise<Uint8Array> {
   if (frames.length === 0) {
@@ -138,69 +146,67 @@ export async function encodeAnimatedWebP(
   }
 
   if (frames.length === 1) {
-    // Single frame - use static encoder
-    return encodeStaticWebP(frames[0], onProgress);
+    return encodeStaticWebP(frames[0], lossless, onProgress);
   }
 
   if (onProgress) {
     onProgress({ stage: 'encoding', current: 0, total: frames.length, percent: 0 });
   }
 
-  const webpxmuxModule = await import('webpxmux');
-  const createWebPXMux = webpxmuxModule.default;
+  // loopCount is currently accepted for API symmetry with the old encoder
+  // but wasm-webp 0.1.0 does not expose a loop-count knob — libwebp's default
+  // (infinite loop, matching GIF and most source WebPs) is applied.
+  void loopCount;
 
-  // Use absolute path - works in both main thread and worker contexts
-  const wasmUrl = typeof window !== 'undefined'
-    ? new URL('/wasm/webpxmux.wasm', window.location.href).toString()
-    : '/wasm/webpxmux.wasm';
-  const mux = createWebPXMux(wasmUrl);
+  const m = await getAnimatedWebpModule();
 
-  await mux.waitRuntime();
+  const frameVector = new m.VectorWebPAnimationFrame();
+  try {
+    const config = {
+      lossless: lossless ? 1 : 0,
+      // Quality is ignored by libwebp when lossless = 1. For lossy we keep
+      // quality high to minimize additional generational loss.
+      quality: 100,
+    };
 
-  // Convert frames to webpxmux format
-  const width = frames[0].width;
-  const height = frames[0].height;
-
-  const webpFrames = frames.map((frame, i) => {
-    if (onProgress) {
-      onProgress({
-        stage: 'encoding',
-        current: i + 1,
-        total: frames.length,
-        percent: Math.round(((i + 1) / frames.length) * 100),
+    for (let i = 0; i < frames.length; i++) {
+      const f = frames[i];
+      // wasm-webp expects plain Uint8Array; Frame.rgba is Uint8ClampedArray.
+      // Same memory; just reinterpret without copying.
+      const data = new Uint8Array(f.rgba.buffer, f.rgba.byteOffset, f.rgba.byteLength);
+      frameVector.push_back({
+        duration: f.duration,
+        data,
+        config,
+        has_config: true,
       });
+
+      if (onProgress) {
+        onProgress({
+          stage: 'encoding',
+          current: i + 1,
+          total: frames.length,
+          percent: Math.round(((i + 1) / frames.length) * 100),
+        });
+      }
     }
 
-    // Convert RGBA bytes to webpxmux format with byte-order transformation
-    // to compensate for webpxmux's buggy RGBA-to-ARGB conversion
-    const rgba32 = rgbaToWebpxmuxFormat(frame.rgba);
-
-    return {
-      duration: frame.duration,
-      isKeyframe: i === 0, // First frame is keyframe
-      rgba: rgba32,
-    };
-  });
-
-  const framesData = {
-    frameCount: webpFrames.length,
-    width,
-    height,
-    loopCount,
-    bgColor: 0x00000000, // Transparent background
-    frames: webpFrames,
-  };
-
-  try {
-    const result = await mux.encodeFrames(framesData);
+    const hasAlpha = framesHaveAlpha(frames);
+    const result = m.encodeAnimation(frames[0].width, frames[0].height, hasAlpha, frameVector);
 
     if (!result || result.length === 0) {
       throw new ScalerError('ENCODE_FAILED', 'Animated WebP encoding returned empty result');
     }
 
-    return result;
+    // Copy out of WASM memory before frameVector is deleted below.
+    return result instanceof Uint8Array ? new Uint8Array(result) : new Uint8Array(result);
   } catch (err) {
+    if (err instanceof ScalerError) throw err;
     throw new ScalerError('ENCODE_FAILED', `Animated WebP encoding failed: ${err}`);
+  } finally {
+    if (typeof frameVector.delete === 'function') {
+      frameVector.delete();
+    }
   }
 }
 
@@ -210,12 +216,13 @@ export async function encodeAnimatedWebP(
 export async function encodeWebP(
   frames: Frame[],
   loopCount: number = 0,
+  lossless: boolean,
   onProgress?: ProgressCallback
 ): Promise<Uint8Array> {
   if (frames.length === 1) {
-    return encodeStaticWebP(frames[0], onProgress);
+    return encodeStaticWebP(frames[0], lossless, onProgress);
   } else {
-    return encodeAnimatedWebP(frames, loopCount, onProgress);
+    return encodeAnimatedWebP(frames, loopCount, lossless, onProgress);
   }
 }
 

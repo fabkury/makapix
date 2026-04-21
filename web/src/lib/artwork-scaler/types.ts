@@ -27,6 +27,13 @@ export interface DecodedImage {
   originalFormat: InputFormat;
   /** Whether the image is animated (multiple frames) */
   isAnimated: boolean;
+  /**
+   * Whether the source bitstream is fully lossless.
+   * GIF/PNG/BMP are always lossless. For WebP this is false if any frame
+   * uses a VP8 (lossy) chunk, true if all frames use VP8L. Drives whether
+   * the re-encoded output is written as lossless or lossy.
+   */
+  isLossless: boolean;
 }
 
 export interface ScalerOptions {

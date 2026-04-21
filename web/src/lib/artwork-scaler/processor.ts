@@ -112,8 +112,14 @@ export async function processImage(
   let outputFormat: 'webp' | InputFormat;
 
   if (shouldConvertToWebP) {
-    // Encode to lossless WebP
-    const webpData = await encodeWebP(processedFrames, decoded.loopCount, onProgress);
+    // Output lossy only when the source itself was lossy WebP; otherwise
+    // lossless (GIF, PNG, BMP, and lossless WebP all map to lossless output).
+    const webpData = await encodeWebP(
+      processedFrames,
+      decoded.loopCount,
+      decoded.isLossless,
+      onProgress,
+    );
     // Create Blob with a copy of the data to ensure proper ArrayBuffer type
     outputBlob = new Blob([new Uint8Array(webpData)], { type: 'image/webp' });
     outputFormat = 'webp';
