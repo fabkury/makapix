@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
@@ -48,6 +48,17 @@ interface License {
 }
 
 type ResamplingAlgorithm = 'nearest-neighbor' | 'lanczos3';
+
+interface CachedScaledPreview {
+  blob: Blob;
+  url: string;
+  width: number;
+  height: number;
+  algorithm: ResamplingAlgorithm;
+  sourceFile: File;
+  isAnimated: boolean;
+  frameCount: number;
+}
 
 const MAX_FILE_SIZE_BYTES = (() => {
   const raw = process.env.NEXT_PUBLIC_MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES || '5242880';
@@ -202,6 +213,7 @@ function SubmitPageContent() {
   const [customHeight, setCustomHeight] = useState<string>('');
   const [maintainAspectRatio, setMaintainAspectRatio] = useState(true);
   const [previewScaling, setPreviewScaling] = useState(false);
+  const [scaledPreview, setScaledPreview] = useState<CachedScaledPreview | null>(null);
 
   // Upload state
   const [uploading, setUploading] = useState(false);
@@ -287,6 +299,10 @@ function SubmitPageContent() {
     setUploadError(null);
     setUploadedArtwork(null);
     setPreviewScaling(false);
+    setScaledPreview(prev => {
+      if (prev) URL.revokeObjectURL(prev.url);
+      return null;
+    });
 
     // Create preview URL
     const objectUrl = URL.createObjectURL(file);
@@ -364,6 +380,10 @@ function SubmitPageContent() {
       setSelectedFile(file);
       const objectUrl = URL.createObjectURL(file);
       setPreviewUrl(objectUrl);
+      setScaledPreview(prev => {
+        if (prev) URL.revokeObjectURL(prev.url);
+        return null;
+      });
     }
   }, []);
 
@@ -584,6 +604,24 @@ function SubmitPageContent() {
     outputDimensions.height !== imageInfo.height
   );
 
+  const isPreviewStale = useMemo(() => {
+    if (!scaledPreview || !outputDimensions || !selectedFile) return false;
+    return (
+      scaledPreview.sourceFile !== selectedFile ||
+      scaledPreview.width !== outputDimensions.width ||
+      scaledPreview.height !== outputDimensions.height ||
+      scaledPreview.algorithm !== scaleAlgorithm
+    );
+  }, [scaledPreview, selectedFile, outputDimensions, scaleAlgorithm]);
+
+  useEffect(() => {
+    const url = scaledPreview?.url;
+    if (!url) return;
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [scaledPreview?.url]);
+
   // Handle scale slider change
   const handleScaleSliderChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseFloat(e.target.value);
@@ -649,6 +687,10 @@ function SubmitPageContent() {
       URL.revokeObjectURL(previewUrl);
     }
     setPreviewUrl(null);
+    setScaledPreview(prev => {
+      if (prev) URL.revokeObjectURL(prev.url);
+      return null;
+    });
     setImageInfo(null);
     setImageDataUrl(null);
     setValidationErrors([]);
@@ -679,6 +721,64 @@ function SubmitPageContent() {
     setShowClearDialog(false);
   }, [clearSelection]);
 
+  const handleGeneratePreview = async () => {
+    if (!selectedFile || !outputDimensions) return;
+    if (!isValidSize(outputDimensions.width, outputDimensions.height)) return;
+
+    if (!needsScaling) {
+      // No scaling: show the original at max size in the pixelated square.
+      if (scaledPreview) {
+        URL.revokeObjectURL(scaledPreview.url);
+        setScaledPreview(null);
+      }
+      setPreviewScaling(true);
+      return;
+    }
+
+    if (!scalerModule?.processImage) return;
+
+    setUploadError(null);
+    setProcessingState({ isProcessing: true, progress: null, error: null });
+
+    try {
+      const result = await scalerModule.processImage(
+        selectedFile,
+        {
+          width: outputDimensions.width,
+          height: outputDimensions.height,
+          resamplingAlgorithm: scaleAlgorithm,
+          maintainAspectRatio: false,
+        },
+        (progress: { stage: string; current: number; total: number; percent: number }) => {
+          setProcessingState(prev => ({ ...prev, progress }));
+        }
+      );
+
+      if (!result) throw new Error('Image processing failed');
+
+      const url = URL.createObjectURL(result.blob);
+      setScaledPreview(prev => {
+        if (prev) URL.revokeObjectURL(prev.url);
+        return {
+          blob: result.blob,
+          url,
+          width: outputDimensions.width,
+          height: outputDimensions.height,
+          algorithm: scaleAlgorithm,
+          sourceFile: selectedFile,
+          isAnimated: result.isAnimated,
+          frameCount: result.frameCount,
+        };
+      });
+      setPreviewScaling(true);
+    } catch (error) {
+      console.error('Preview generation error:', error);
+      setUploadError(error instanceof Error ? error.message : 'Preview generation failed');
+    } finally {
+      setProcessingState(prev => ({ ...prev, isProcessing: false, progress: null }));
+    }
+  };
+
   const handleSubmit = async () => {
     if (!selectedFile || !title.trim()) return;
 
@@ -697,24 +797,35 @@ function SubmitPageContent() {
 
       // Process image if scaling is needed
       if (needsScaling && outputDimensions && scalerModule?.processImage) {
-        const result = await scalerModule.processImage(
-          selectedFile,
-          {
-            width: outputDimensions.width,
-            height: outputDimensions.height,
-            resamplingAlgorithm: scaleAlgorithm,
-            maintainAspectRatio: false,
-          },
-          (progress: { stage: string; current: number; total: number; percent: number }) => {
-            setProcessingState(prev => ({ ...prev, progress }));
+        const cacheHit =
+          scaledPreview &&
+          scaledPreview.sourceFile === selectedFile &&
+          scaledPreview.width === outputDimensions.width &&
+          scaledPreview.height === outputDimensions.height &&
+          scaledPreview.algorithm === scaleAlgorithm;
+
+        if (cacheHit) {
+          fileToUpload = scaledPreview.blob;
+        } else {
+          const result = await scalerModule.processImage(
+            selectedFile,
+            {
+              width: outputDimensions.width,
+              height: outputDimensions.height,
+              resamplingAlgorithm: scaleAlgorithm,
+              maintainAspectRatio: false,
+            },
+            (progress: { stage: string; current: number; total: number; percent: number }) => {
+              setProcessingState(prev => ({ ...prev, progress }));
+            }
+          );
+
+          if (!result) {
+            throw new Error('Image processing failed');
           }
-        );
 
-        if (!result) {
-          throw new Error('Image processing failed');
+          fileToUpload = result.blob;
         }
-
-        fileToUpload = result.blob;
       }
 
       // Create FormData
@@ -779,12 +890,8 @@ function SubmitPageContent() {
   const isValid = selectedFile && outputIsValid && title.trim().length > 0;
   const isProcessing = processingState.isProcessing || uploading;
 
-  // Compute scaled preview dimensions
-  const scaledPreviewStyle = previewScaling && imageInfo && outputDimensions ? {
-    width: `${outputDimensions.width}px`,
-    height: `${outputDimensions.height}px`,
-    imageRendering: scaleAlgorithm === 'nearest-neighbor' ? 'pixelated' as const : 'auto' as const,
-  } : undefined;
+  const displayedPreviewUrl =
+    previewScaling && scaledPreview ? scaledPreview.url : previewUrl;
 
   if (!isAuthenticated) {
     return (
@@ -855,8 +962,15 @@ function SubmitPageContent() {
 
                 {previewUrl ? (
                   <div className="preview-container">
-                    <img src={previewUrl} alt="Preview" className="preview-image" style={scaledPreviewStyle} />
-                    {previewScaling && <div className="scaled-preview-badge">Scaled preview active</div>}
+                    <div className="preview-frame">
+                      <img src={displayedPreviewUrl ?? previewUrl} alt="Preview" className="preview-image" />
+                    </div>
+                    {previewScaling && scaledPreview && !isPreviewStale && (
+                      <div className="scaled-preview-badge">Scaled preview active</div>
+                    )}
+                    {previewScaling && scaledPreview && isPreviewStale && (
+                      <div className="scaled-preview-stale">Parameters changed — preview is out of date</div>
+                    )}
                     <button onClick={(e) => { e.stopPropagation(); clearSelection(); }} className="remove-btn">✕ Remove</button>
                   </div>
                 ) : (
@@ -963,6 +1077,9 @@ function SubmitPageContent() {
                             ) : (
                               <div className="scale-preview muted">No scaling applied</div>
                             )}
+                            {outputDimensions && !outputIsValid && (
+                              <div className="scale-preview-error">Output size {outputDimensions.width} × {outputDimensions.height} px is not a valid Makapix size. Please adjust scaling.</div>
+                            )}
                           </div>
                         ) : (
                           <div className="scaling-dimensions">
@@ -1001,6 +1118,9 @@ function SubmitPageContent() {
                                 return <div className="scale-preview">Output: {outW} × {outH} px (W: {scaleW}%, H: {scaleH}%)</div>;
                               }
                             })()}
+                            {outputDimensions && !outputIsValid && (
+                              <div className="scale-preview-error">Output size {outputDimensions.width} × {outputDimensions.height} px is not a valid Makapix size. Please adjust scaling.</div>
+                            )}
                           </div>
                         )}
 
@@ -1014,12 +1134,61 @@ function SubmitPageContent() {
                           </div>
                         </div>
 
-                        <div className="preview-scaling-section">
-                          <button onClick={() => setPreviewScaling(!previewScaling)} disabled={!selectedFile} className={`btn preview-scaling-btn ${previewScaling ? 'active' : ''}`}>
-                            {previewScaling ? 'Reset Preview' : 'Preview Scaling'}
-                          </button>
-                          <p className="help-text center">{previewScaling ? 'Click to view original size' : 'Click to preview scaled image'}</p>
-                        </div>
+                        {needsScaling && (
+                          <div className="preview-scaling-section">
+                            {(() => {
+                              const genDisabled = !selectedFile || isProcessing || !outputIsValid;
+                              const toggleDisabled = isProcessing;
+
+                              if (!scaledPreview) {
+                                return (
+                                  <>
+                                    <button onClick={handleGeneratePreview} disabled={genDisabled} className="btn preview-scaling-btn">
+                                      Preview Scaling
+                                    </button>
+                                    <p className="help-text center">Click to generate a real scaled preview</p>
+                                  </>
+                                );
+                              }
+
+                              if (isPreviewStale) {
+                                return (
+                                  <>
+                                    <button onClick={handleGeneratePreview} disabled={genDisabled} className="btn preview-scaling-btn active">
+                                      Regenerate Preview
+                                    </button>
+                                    {previewScaling && (
+                                      <button onClick={() => setPreviewScaling(false)} disabled={toggleDisabled} className="btn preview-scaling-btn">
+                                        Show Original
+                                      </button>
+                                    )}
+                                    <p className="help-text center">Scaling parameters changed — click to regenerate</p>
+                                  </>
+                                );
+                              }
+
+                              if (previewScaling) {
+                                return (
+                                  <>
+                                    <button onClick={() => setPreviewScaling(false)} disabled={toggleDisabled} className="btn preview-scaling-btn active">
+                                      Show Original
+                                    </button>
+                                    <p className="help-text center">Click to view original size</p>
+                                  </>
+                                );
+                              }
+
+                              return (
+                                <>
+                                  <button onClick={() => setPreviewScaling(true)} disabled={toggleDisabled} className="btn preview-scaling-btn">
+                                    Show Scaled Preview
+                                  </button>
+                                  <p className="help-text center">Click to view the scaled preview</p>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
@@ -1114,14 +1283,6 @@ function SubmitPageContent() {
                 <div className="error-box"><span className="error-icon">❌</span><p>{uploadError || processingState.error?.message}</p></div>
               )}
 
-              {/* Show error if output dimensions are invalid */}
-              {outputDimensions && !outputIsValid && (
-                <div className="error-box">
-                  <span className="error-icon">❌</span>
-                  <p>Output size {outputDimensions.width}x{outputDimensions.height} is not a valid Makapix size. Please adjust scaling.</p>
-                </div>
-              )}
-
               <div className="action-buttons">
                 <button onClick={handleSubmit} disabled={!isValid || isProcessing} className="btn btn-primary">{isProcessing ? 'Processing...' : '🚀 Submit'}</button>
                 <button onClick={() => setShowClearDialog(true)} className="btn btn-secondary" disabled={isProcessing}>Clear All</button>
@@ -1164,8 +1325,10 @@ function SubmitPageContent() {
         .upload-formats { font-size: 0.8rem; color: var(--text-muted); }
         .preview-container { display: flex; flex-direction: column; align-items: center; }
         .preview-container > :global(* + *) { margin-top: 16px; }
-        .preview-image { max-width: 100%; max-height: 400px; object-fit: contain; border: 1px solid var(--bg-tertiary); border-radius: 8px; }
+        .preview-frame { width: min(384px, 100%); aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; background: var(--bg-secondary); border: 1px solid var(--bg-tertiary); border-radius: 8px; overflow: hidden; }
+        .preview-image { width: 100%; height: 100%; object-fit: contain; image-rendering: -webkit-optimize-contrast; image-rendering: -moz-crisp-edges; image-rendering: crisp-edges; image-rendering: pixelated; }
         .scaled-preview-badge { font-size: 0.75rem; color: var(--accent-pink); font-family: monospace; background: rgba(255, 110, 180, 0.1); padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(255, 110, 180, 0.3); }
+        .scaled-preview-stale { font-size: 0.75rem; color: #ffc864; font-family: monospace; background: rgba(255, 200, 100, 0.1); padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(255, 200, 100, 0.3); }
         .remove-btn { padding: 8px 16px; background: transparent; border: 1px solid var(--bg-tertiary); color: var(--text-secondary); border-radius: 6px; cursor: pointer; transition: all var(--transition-fast); }
         .remove-btn:hover { border-color: var(--accent-pink); color: var(--accent-pink); }
         .size-rules-link-container { text-align: center; }
@@ -1227,6 +1390,7 @@ function SubmitPageContent() {
         .slider-labels { display: flex; justify-content: space-between; margin-top: 4px; font-size: 0.7rem; color: var(--text-muted); }
         .scale-preview { padding: 12px; background: rgba(0, 212, 255, 0.1); border: 1px solid rgba(0, 212, 255, 0.3); border-radius: 6px; font-family: monospace; font-size: 0.85rem; color: var(--accent-cyan); }
         .scale-preview.muted { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); color: var(--text-secondary); }
+        .scale-preview-error { padding: 12px; background: rgba(255, 100, 100, 0.1); border: 1px solid rgba(255, 100, 100, 0.3); border-radius: 6px; font-family: monospace; font-size: 0.85rem; color: #ff6b6b; }
         .help-text { font-size: 0.8rem; color: var(--text-muted); }
         .help-text.center { text-align: center; }
         .no-image-notice { padding: 24px 16px; }
