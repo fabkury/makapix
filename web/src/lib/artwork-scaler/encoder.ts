@@ -195,8 +195,12 @@ export async function encodeAnimatedWebP(
       }
     }
 
-    const hasAlpha = framesHaveAlpha(frames);
-    const result = m.encodeAnimation(frames[0].width, frames[0].height, hasAlpha, frameVector);
+    // wasm-webp's C++ binding uses hasAlpha to set stride = hasAlpha ? 4*w : 3*w
+    // and dispatches to WebPPictureImportRGBA / WebPPictureImportRGB accordingly.
+    // Our frame data is always 4-byte-per-pixel RGBA (from canvas), so hasAlpha
+    // must be true even when every pixel's alpha is 255; passing false would
+    // make libwebp read 3 bytes per pixel and scramble the image.
+    const result = m.encodeAnimation(frames[0].width, frames[0].height, true, frameVector);
 
     if (!result || result.length === 0) {
       throw new ScalerError('ENCODE_FAILED', 'Animated WebP encoding returned empty result');
