@@ -114,8 +114,12 @@ let animatedWebpModulePromise: Promise<any> | null = null;
 
 async function getAnimatedWebpModule(): Promise<any> {
   if (!animatedWebpModulePromise) {
-    // We import the glue directly (not the high-level wrapper) so we can pass
-    // `locateFile` and serve the WASM from /wasm/ like the rest of the stack.
+    // Import the glue directly instead of the high-level wrapper so we can
+    // pass `locateFile` — the wrapper calls Module() with no arguments, and
+    // next.config disables webpack's asset-URL detection for this package, so
+    // Emscripten's own `new URL('webp-wasm.wasm', import.meta.url)` fallback
+    // won't resolve. We serve the WASM from /wasm/webp-wasm.wasm instead
+    // (Dockerfile copies it from node_modules at build time).
     // @ts-expect-error: subpath import, no TS declarations
     const glueModule = await import('wasm-webp/dist/esm/webp-wasm.js');
     const factory = glueModule.default;
@@ -153,9 +157,9 @@ export async function encodeAnimatedWebP(
     onProgress({ stage: 'encoding', current: 0, total: frames.length, percent: 0 });
   }
 
-  // loopCount is currently accepted for API symmetry with the old encoder
-  // but wasm-webp 0.1.0 does not expose a loop-count knob — libwebp's default
-  // (infinite loop, matching GIF and most source WebPs) is applied.
+  // loopCount is accepted for API symmetry with the old encoder but wasm-webp
+  // 0.1.0 doesn't expose a loop-count knob — libwebp's default (infinite loop,
+  // matching GIF and most source WebPs) is applied.
   void loopCount;
 
   const m = await getAnimatedWebpModule();
@@ -198,7 +202,6 @@ export async function encodeAnimatedWebP(
       throw new ScalerError('ENCODE_FAILED', 'Animated WebP encoding returned empty result');
     }
 
-    // Copy out of WASM memory before frameVector is deleted below.
     return result instanceof Uint8Array ? new Uint8Array(result) : new Uint8Array(result);
   } catch (err) {
     if (err instanceof ScalerError) throw err;
