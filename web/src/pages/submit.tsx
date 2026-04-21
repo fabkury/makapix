@@ -1077,6 +1077,9 @@ function SubmitPageContent() {
                             ) : (
                               <div className="scale-preview muted">No scaling applied</div>
                             )}
+                            {outputDimensions && !outputIsValid && (
+                              <div className="scale-preview-error">Output size {outputDimensions.width} × {outputDimensions.height} px is not a valid Makapix size. Please adjust scaling.</div>
+                            )}
                           </div>
                         ) : (
                           <div className="scaling-dimensions">
@@ -1115,6 +1118,9 @@ function SubmitPageContent() {
                                 return <div className="scale-preview">Output: {outW} × {outH} px (W: {scaleW}%, H: {scaleH}%)</div>;
                               }
                             })()}
+                            {outputDimensions && !outputIsValid && (
+                              <div className="scale-preview-error">Output size {outputDimensions.width} × {outputDimensions.height} px is not a valid Makapix size. Please adjust scaling.</div>
+                            )}
                           </div>
                         )}
 
@@ -1277,14 +1283,6 @@ function SubmitPageContent() {
                 <div className="error-box"><span className="error-icon">❌</span><p>{uploadError || processingState.error?.message}</p></div>
               )}
 
-              {/* Show error if output dimensions are invalid */}
-              {outputDimensions && !outputIsValid && (
-                <div className="error-box">
-                  <span className="error-icon">❌</span>
-                  <p>Output size {outputDimensions.width}x{outputDimensions.height} is not a valid Makapix size. Please adjust scaling.</p>
-                </div>
-              )}
-
               <div className="action-buttons">
                 <button onClick={handleSubmit} disabled={!isValid || isProcessing} className="btn btn-primary">{isProcessing ? 'Processing...' : '🚀 Submit'}</button>
                 <button onClick={() => setShowClearDialog(true)} className="btn btn-secondary" disabled={isProcessing}>Clear All</button>
@@ -1392,6 +1390,7 @@ function SubmitPageContent() {
         .slider-labels { display: flex; justify-content: space-between; margin-top: 4px; font-size: 0.7rem; color: var(--text-muted); }
         .scale-preview { padding: 12px; background: rgba(0, 212, 255, 0.1); border: 1px solid rgba(0, 212, 255, 0.3); border-radius: 6px; font-family: monospace; font-size: 0.85rem; color: var(--accent-cyan); }
         .scale-preview.muted { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); color: var(--text-secondary); }
+        .scale-preview-error { padding: 12px; background: rgba(255, 100, 100, 0.1); border: 1px solid rgba(255, 100, 100, 0.3); border-radius: 6px; font-family: monospace; font-size: 0.85rem; color: #ff6b6b; }
         .help-text { font-size: 0.8rem; color: var(--text-muted); }
         .help-text.center { text-align: center; }
         .no-image-notice { padding: 24px 16px; }
