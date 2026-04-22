@@ -232,7 +232,10 @@ def _on_view_message(
 
             # Build channel_context from channel-specific fields
             channel_context = None
-            if view_event.channel == "by_user" and view_event.channel_user_sqid:
+            if (
+                view_event.channel in ("by_user", "reactions")
+                and view_event.channel_user_sqid
+            ):
                 channel_context = view_event.channel_user_sqid
             elif view_event.channel == "hashtag" and view_event.channel_hashtag:
                 channel_context = view_event.channel_hashtag

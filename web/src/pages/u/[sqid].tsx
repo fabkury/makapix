@@ -217,14 +217,25 @@ export default function UserProfilePage() {
     setHasMoreReacted(true);
   }, [sqid]);
 
-  // Set current channel for PlayerBar
+  // Set current channel for PlayerBar. On the Favourites tab, broadcast the
+  // reactions channel so the player fetches the target user's reacted-to
+  // posts instead of their own posts.
   useEffect(() => {
     if (playerBarContext && profile && sqid && typeof sqid === 'string') {
-      playerBarContext.setCurrentChannel({
-        displayName: profile.handle,
-        userSqid: sqid,
-        userHandle: profile.handle,
-      });
+      if (activeTab === 'favourites') {
+        playerBarContext.setCurrentChannel({
+          displayName: profile.handle,
+          channelName: 'reactions',
+          userSqid: sqid,
+          userHandle: profile.handle,
+        });
+      } else {
+        playerBarContext.setCurrentChannel({
+          displayName: profile.handle,
+          userSqid: sqid,
+          userHandle: profile.handle,
+        });
+      }
     }
     return () => {
       if (playerBarContext) {
@@ -232,7 +243,7 @@ export default function UserProfilePage() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, sqid]);
+  }, [profile, sqid, activeTab]);
 
   // Handle filter changes
   const handleFilterChange = useCallback((newFilters: FilterConfig) => {

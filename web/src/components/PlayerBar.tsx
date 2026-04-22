@@ -92,10 +92,15 @@ export default function PlayerBar() {
         });
         triggerPulse();
       } else if (currentChannel) {
-        // Send play_channel command
+        // Send play_channel command. Prefer an explicit channelName from the
+        // context (e.g. 'reactions' on the Favourites tab) and fall back to
+        // the legacy userSqid → 'by_user' inference for callers that don't
+        // set channelName themselves.
         const channelCommand: PlayerCommandRequest = {
           command_type: 'play_channel',
-          channel_name: currentChannel.userSqid ? 'by_user' : currentChannel.channelName,
+          channel_name:
+            currentChannel.channelName ||
+            (currentChannel.userSqid ? 'by_user' : undefined),
           hashtag: currentChannel.hashtag,
           user_sqid: currentChannel.userSqid,
           user_handle: currentChannel.userHandle,
