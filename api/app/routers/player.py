@@ -475,6 +475,247 @@ def verify_user(
     )
 
 
+def _artwork_preview(post: models.Post) -> dict[str, Any]:
+    """Build the preview fields for a channel-verify response from a Post."""
+    from .. import vault
+
+    native = next((f for f in post.files if f.is_native), None)
+    ext = native.format if native else "png"
+
+    url: str | None = None
+    if post.storage_key:
+        url = vault.get_artwork_url(
+            post.storage_key, ext, storage_shard=post.storage_shard
+        )
+
+    return {
+        "latest_artwork_url": url,
+        "latest_artwork_sqid": post.public_sqid,
+        "latest_artwork_width": post.width,
+        "latest_artwork_height": post.height,
+    }
+
+
+def _apply_public_visibility_filters(query):
+    """Apply the player-public post visibility predicate used by validation endpoints."""
+    return query.filter(
+        models.Post.kind.in_(["artwork", "playlist"]),
+        models.Post.public_sqid.isnot(None),
+        models.Post.public_sqid != "",
+        models.Post.visible,
+        ~models.Post.hidden_by_user,
+        ~models.Post.hidden_by_mod,
+        ~models.Post.non_conformant,
+        ~models.Post.deleted_by_user,
+        models.Post.public_visibility.is_(True),
+    )
+
+
+@router.get(
+    "/player/verify-hashtag/{tag}", response_model=schemas.HashtagVerifyResponse
+)
+def verify_hashtag(
+    tag: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> schemas.HashtagVerifyResponse:
+    """
+    Verify a hashtag channel and return count + latest artwork preview.
+
+    Public endpoint for player devices to validate hashtag channels
+    received in playsets. Count is capped at 100 (see artwork_count_capped).
+    """
+    from sqlalchemy import func
+
+    from ..cache import cache_get, cache_set
+
+    not_found = HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Hashtag not found",
+    )
+
+    # Rate limiting: 30 requests per minute per IP (shared bucket)
+    client_ip = get_client_ip(request)
+    rate_limit_key = f"ratelimit:player_verify:{client_ip}"
+    allowed, _ = check_rate_limit(rate_limit_key, limit=30, window_seconds=60)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Please try again later.",
+        )
+
+    # Normalize tag (match how hashtags are stored)
+    tag_normalized = tag.strip().lower()
+    if not tag_normalized or len(tag_normalized) > 64:
+        raise not_found
+
+    # Check cache
+    cache_key = f"chan_verify:hashtag:{tag_normalized}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return JSONResponse(
+            content=cached, headers={"Access-Control-Allow-Origin": "*"}
+        )
+
+    # Base query: public-visible posts with this hashtag
+    base_query = _apply_public_visibility_filters(
+        db.query(models.Post).filter(
+            models.Post.hashtags.contains([tag_normalized])
+        )
+    )
+
+    # Capped count: count up to 101 rows
+    count_subq = base_query.with_entities(models.Post.id).limit(101).subquery()
+    count = db.query(func.count()).select_from(count_subq).scalar() or 0
+    if count == 0:
+        raise not_found
+
+    capped = count > 100
+    count = min(count, 100)
+
+    # Latest artwork by created_at
+    latest = base_query.order_by(models.Post.created_at.desc()).first()
+
+    preview = _artwork_preview(latest) if latest else {}
+    response = schemas.HashtagVerifyResponse(
+        tag=tag_normalized,
+        artwork_count=count,
+        artwork_count_capped=capped,
+        **preview,
+    )
+
+    # Cache successful response for 60 seconds
+    cache_set(cache_key, response.model_dump(), ttl=60)
+
+    return JSONResponse(
+        content=response.model_dump(), headers={"Access-Control-Allow-Origin": "*"}
+    )
+
+
+@router.get(
+    "/player/verify-reactions/{sqid}",
+    response_model=schemas.ReactionsVerifyResponse,
+)
+def verify_reactions(
+    sqid: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> schemas.ReactionsVerifyResponse:
+    """
+    Verify a reactions channel and return count + latest-reacted artwork preview.
+
+    Public endpoint for player devices to validate reaction channels
+    received in playsets. Count is capped at 100 (see artwork_count_capped).
+    Only public-visible posts (as seen by an anonymous viewer) are counted.
+    """
+    from datetime import datetime, timezone
+
+    from sqlalchemy import func
+
+    from ..cache import cache_get, cache_set
+
+    not_found = HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="User not found",
+    )
+
+    # Rate limiting: 30 requests per minute per IP (shared bucket)
+    client_ip = get_client_ip(request)
+    rate_limit_key = f"ratelimit:player_verify:{client_ip}"
+    allowed, _ = check_rate_limit(rate_limit_key, limit=30, window_seconds=60)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Please try again later.",
+        )
+
+    # Validate SQID length
+    if len(sqid) > 16:
+        raise not_found
+
+    # Check cache
+    cache_key = f"chan_verify:reactions:{sqid}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return JSONResponse(
+            content=cached, headers={"Access-Control-Allow-Origin": "*"}
+        )
+
+    # Decode SQID
+    user_id = decode_user_sqid(sqid)
+    if user_id is None or user_id > 2_147_483_647:
+        raise not_found
+
+    # Look up user
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise not_found
+
+    # Guard against decode collisions
+    if user.public_sqid != sqid:
+        raise not_found
+
+    # Eligibility checks (match verify-user)
+    if not user.email_verified:
+        raise not_found
+    if user.deactivated:
+        raise not_found
+    if user.hidden_by_mod:
+        raise not_found
+
+    now = datetime.now(timezone.utc)
+    if user.banned_until is not None and user.banned_until > now:
+        raise not_found
+
+    # Subquery: latest reaction id per post for this user
+    # (matches _handle_query_posts and get_user_reacted_posts)
+    latest_reaction_ids = (
+        db.query(func.max(models.Reaction.id))
+        .filter(
+            models.Reaction.user_id == user.id,
+            models.Reaction.user_id.isnot(None),
+        )
+        .group_by(models.Reaction.post_id)
+    )
+
+    base = _apply_public_visibility_filters(
+        db.query(models.Post)
+        .join(models.Reaction, models.Reaction.post_id == models.Post.id)
+        .filter(
+            models.Reaction.user_id == user.id,
+            models.Reaction.id.in_(latest_reaction_ids),
+        )
+    )
+
+    # Capped count
+    count_subq = base.with_entities(models.Post.id).limit(101).subquery()
+    count = db.query(func.count()).select_from(count_subq).scalar() or 0
+    capped = count > 100
+    count = min(count, 100)
+
+    preview: dict[str, Any] = {}
+    if count > 0:
+        latest = base.order_by(
+            models.Reaction.created_at.desc(), models.Reaction.id.desc()
+        ).first()
+        if latest is not None:
+            preview = _artwork_preview(latest)
+
+    response = schemas.ReactionsVerifyResponse(
+        handle=user.handle,
+        artwork_count=count,
+        artwork_count_capped=capped,
+        **preview,
+    )
+
+    # Cache successful response for 300 seconds
+    cache_set(cache_key, response.model_dump(), ttl=300)
+
+    return JSONResponse(
+        content=response.model_dump(), headers={"Access-Control-Allow-Origin": "*"}
+    )
+
+
 @router.get("/u/{sqid}/player", response_model=dict[str, list[schemas.PlayerPublic]])
 def list_players(
     sqid: str,

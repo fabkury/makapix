@@ -163,6 +163,30 @@ class UserVerifyResponse(BaseModel):
     avatar_url: str | None = None
 
 
+class HashtagVerifyResponse(BaseModel):
+    """Public info returned by the hashtag channel verification endpoint."""
+
+    tag: str
+    artwork_count: int
+    artwork_count_capped: bool
+    latest_artwork_url: str | None = None
+    latest_artwork_sqid: str | None = None
+    latest_artwork_width: int | None = None
+    latest_artwork_height: int | None = None
+
+
+class ReactionsVerifyResponse(BaseModel):
+    """Public info returned by the reactions channel verification endpoint."""
+
+    handle: str
+    artwork_count: int
+    artwork_count_capped: bool
+    latest_artwork_url: str | None = None
+    latest_artwork_sqid: str | None = None
+    latest_artwork_width: int | None = None
+    latest_artwork_height: int | None = None
+
+
 class UserFull(UserPublic):
     """Full user profile (for authenticated user or admin)."""
 
