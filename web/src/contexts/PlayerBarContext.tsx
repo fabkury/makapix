@@ -10,10 +10,10 @@ export interface SelectedArtwork {
 
 export interface ChannelInfo {
   displayName: string;
-  channelName?: string;  // 'promoted' or 'all'
+  channelName?: string;  // 'promoted', 'all', 'by_user', or 'reactions'
   hashtag?: string;      // hashtag without #
-  userSqid?: string;     // user's sqid
-  userHandle?: string;   // user's handle (for by_user channel)
+  userSqid?: string;     // user's sqid (for by_user / reactions channels)
+  userHandle?: string;   // user's handle (for by_user / reactions channels)
 }
 
 interface PlayerBarContextValue {

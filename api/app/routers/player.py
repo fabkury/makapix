@@ -798,7 +798,7 @@ def send_player_command(
             )
 
         # Build channel payload - check user_sqid first since it may come with
-        # channel_name="by_user" and we need to include user_sqid/user_handle
+        # channel_name="by_user"/"reactions" and we need to include user_sqid/user_handle
         if payload.user_sqid:
             # Validate that the user exists
             target_user = get_user_by_sqid(payload.user_sqid, db)
@@ -807,8 +807,17 @@ def send_player_command(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="User not found",
                 )
+            resolved_channel = payload.channel_name or "by_user"
+            if resolved_channel not in ("by_user", "reactions"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "user_sqid is only valid with channel_name "
+                        "'by_user' or 'reactions'"
+                    ),
+                )
             command_payload = {
-                "channel_name": "by_user",
+                "channel_name": resolved_channel,
                 "user_sqid": payload.user_sqid,
                 "user_handle": payload.user_handle or target_user.handle,
             }
@@ -936,7 +945,7 @@ def send_command_to_all_players(
             )
 
         # Build channel payload - check user_sqid first since it may come with
-        # channel_name="by_user" and we need to include user_sqid/user_handle
+        # channel_name="by_user"/"reactions" and we need to include user_sqid/user_handle
         if payload.user_sqid:
             # Validate that the user exists
             target_user = get_user_by_sqid(payload.user_sqid, db)
@@ -945,8 +954,17 @@ def send_command_to_all_players(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="User not found",
                 )
+            resolved_channel = payload.channel_name or "by_user"
+            if resolved_channel not in ("by_user", "reactions"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "user_sqid is only valid with channel_name "
+                        "'by_user' or 'reactions'"
+                    ),
+                )
             command_payload = {
-                "channel_name": "by_user",
+                "channel_name": resolved_channel,
                 "user_sqid": payload.user_sqid,
                 "user_handle": payload.user_handle or target_user.handle,
             }

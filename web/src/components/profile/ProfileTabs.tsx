@@ -1,6 +1,6 @@
 /**
  * ProfileTabs component - tab switching for gallery/favourites.
- * The favourites (Lightning) tab is only visible to authenticated users.
+ * Both tabs are visible to every viewer (Favourites are public).
  */
 
 interface ProfileTabsProps {
@@ -9,7 +9,7 @@ interface ProfileTabsProps {
   isAuthenticated?: boolean;
 }
 
-export default function ProfileTabs({ activeTab, onTabChange, isAuthenticated = false }: ProfileTabsProps) {
+export default function ProfileTabs({ activeTab, onTabChange, isAuthenticated: _isAuthenticated = false }: ProfileTabsProps) {
   return (
     <div className="profile-tabs">
       <button
@@ -20,16 +20,14 @@ export default function ProfileTabs({ activeTab, onTabChange, isAuthenticated = 
         🖼️
         {activeTab === 'gallery' && <div className="tab-indicator" />}
       </button>
-      {isAuthenticated && (
-        <button
-          className={`tab ${activeTab === 'favourites' ? 'active' : ''}`}
-          onClick={() => onTabChange('favourites')}
-          style={activeTab === 'favourites' ? { filter: 'drop-shadow(0 4px 12px rgba(255, 255, 255, 0.6))' } : undefined}
-        >
-          ⚡
-          {activeTab === 'favourites' && <div className="tab-indicator" />}
-        </button>
-      )}
+      <button
+        className={`tab ${activeTab === 'favourites' ? 'active' : ''}`}
+        onClick={() => onTabChange('favourites')}
+        style={activeTab === 'favourites' ? { filter: 'drop-shadow(0 4px 12px rgba(255, 255, 255, 0.6))' } : undefined}
+      >
+        ⚡
+        {activeTab === 'favourites' && <div className="tab-indicator" />}
+      </button>
 
       <style jsx>{`
         .profile-tabs {

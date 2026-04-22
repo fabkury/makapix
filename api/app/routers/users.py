@@ -1645,7 +1645,7 @@ def get_user_reacted_posts(
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User | None = Depends(get_current_user_optional),
 ) -> schemas.ReactedPostsResponse:
     """
     Get posts the user has reacted to.
@@ -1653,7 +1653,7 @@ def get_user_reacted_posts(
     Returns up to 8192 most recent reactions. Reactions are ordered by
     reaction time (newest first).
 
-    Requires authentication.
+    Public endpoint; post visibility filters still apply.
     """
     from sqlalchemy import and_, func, or_
 
@@ -1671,10 +1671,16 @@ def get_user_reacted_posts(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
 
-    # Subquery: latest reaction per post for this user (deduplicate artworks)
+    # Subquery: latest reaction per post for this user (deduplicate artworks).
+    # Exclude anonymous reactions (user_id.isnot(None)) for consistency with
+    # the MQTT reactions channel; redundant with user_id == user.id but
+    # documents intent.
     latest_reaction_ids = (
         db.query(func.max(models.Reaction.id))
-        .filter(models.Reaction.user_id == user.id)
+        .filter(
+            models.Reaction.user_id == user.id,
+            models.Reaction.user_id.isnot(None),
+        )
         .group_by(models.Reaction.post_id)
     )
 
@@ -1690,28 +1696,32 @@ def get_user_reacted_posts(
     )
 
     # Apply visibility filters based on viewer's role
-    is_moderator = "moderator" in current_user.roles or "owner" in current_user.roles
+    is_moderator = current_user is not None and (
+        "moderator" in current_user.roles or "owner" in current_user.roles
+    )
 
     if is_moderator:
         # Moderators see everything (except deleted - already filtered)
         pass
     else:
-        # Logged-in user: publicly visible posts + their own posts
-        query = query.filter(
+        visibility_filters = and_(
+            models.Post.visible == True,
+            models.Post.hidden_by_mod == False,
+            models.Post.hidden_by_user == False,
+            models.Post.non_conformant == False,
             or_(
-                and_(
-                    models.Post.visible == True,
-                    models.Post.hidden_by_mod == False,
-                    models.Post.hidden_by_user == False,
-                    models.Post.non_conformant == False,
-                    or_(
-                        models.Post.public_visibility == True,
-                        models.Post.promoted == True,
-                    ),
-                ),
-                models.Post.owner_id == current_user.id,
-            )
+                models.Post.public_visibility == True,
+                models.Post.promoted == True,
+            ),
         )
+        if current_user is not None:
+            # Logged-in user: publicly visible posts + their own posts
+            query = query.filter(
+                or_(visibility_filters, models.Post.owner_id == current_user.id)
+            )
+        else:
+            # Anonymous viewer: public posts only
+            query = query.filter(visibility_filters)
 
     # Apply cursor pagination on reaction created_at
     if cursor:

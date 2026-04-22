@@ -911,10 +911,10 @@ class PlayerCommandRequest(BaseModel):
     ]
     post_id: int | None = None  # Required for show_artwork
     # Channel identification (for play_channel)
-    channel_name: str | None = None  # 'promoted', 'all', or 'by_user'
+    channel_name: str | None = None  # 'promoted', 'all', 'by_user', or 'reactions'
     hashtag: str | None = None  # hashtag without #
-    user_sqid: str | None = None  # user's sqid for profile channels
-    user_handle: str | None = None  # user's handle (for by_user channel)
+    user_sqid: str | None = None  # user's sqid for profile / reactions channels
+    user_handle: str | None = None  # user's handle (for by_user / reactions channels)
     # Playset identification (for play_playset)
     playset_name: str | None = None  # e.g., 'followed_artists'
 

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..db import get_session
 from .. import models
+from ..pagination import decode_cursor, encode_cursor
 from ..utils.monitored_hashtags import (
     apply_monitored_hashtag_filter,
     post_has_unapproved_monitored_hashtags,
@@ -358,6 +359,55 @@ def _apply_criteria_filters(
     return query, None
 
 
+def _resolve_target_user(
+    player_key: UUID,
+    request_id: str,
+    user_handle: str | None,
+    user_sqid: str | None,
+    channel_label: str,
+    db: Session,
+) -> models.User | None:
+    """
+    Resolve a target user from user_handle or user_sqid.
+
+    Sends an error response on the player's MQTT channel and returns None
+    when the identifier is missing or the user is not found.
+    """
+    target_user: models.User | None = None
+    if user_handle:
+        target_user = (
+            db.query(models.User)
+            .filter(models.User.handle == user_handle)
+            .first()
+        )
+    elif user_sqid:
+        target_user = (
+            db.query(models.User)
+            .filter(models.User.public_sqid == user_sqid)
+            .first()
+        )
+    else:
+        _send_error_response(
+            player_key,
+            request_id,
+            f"user_handle or user_sqid is required when channel='{channel_label}'",
+            "missing_user_identifier",
+        )
+        return None
+
+    if not target_user:
+        identifier = user_handle or user_sqid
+        _send_error_response(
+            player_key,
+            request_id,
+            f"User '{identifier}' not found",
+            "user_not_found",
+        )
+        return None
+
+    return target_user
+
+
 def _handle_query_posts(
     player: models.Player,
     request: QueryPostsRequest,
@@ -372,6 +422,8 @@ def _handle_query_posts(
         db: Database session
     """
     try:
+        is_reactions_channel = request.channel == "reactions"
+
         # Build base query (include both artwork and playlist posts)
         query = (
             db.query(models.Post)
@@ -391,39 +443,54 @@ def _handle_query_posts(
             query = query.filter(models.Post.owner_id == player.owner_id)
         elif request.channel == "by_user":
             # Query arbitrary user's posts by handle or sqid
-            target_user = None
-            if request.user_handle:
-                target_user = (
-                    db.query(models.User)
-                    .filter(models.User.handle == request.user_handle)
-                    .first()
-                )
-            elif request.user_sqid:
-                target_user = (
-                    db.query(models.User)
-                    .filter(models.User.public_sqid == request.user_sqid)
-                    .first()
-                )
-            else:
-                _send_error_response(
-                    player.player_key,
-                    request.request_id,
-                    "user_handle or user_sqid is required when channel='by_user'",
-                    "missing_user_identifier",
-                )
-                return
-
-            if not target_user:
-                identifier = request.user_handle or request.user_sqid
-                _send_error_response(
-                    player.player_key,
-                    request.request_id,
-                    f"User '{identifier}' not found",
-                    "user_not_found",
-                )
+            target_user = _resolve_target_user(
+                player.player_key,
+                request.request_id,
+                request.user_handle,
+                request.user_sqid,
+                "by_user",
+                db,
+            )
+            if target_user is None:
                 return
 
             query = query.filter(models.Post.owner_id == target_user.id)
+        elif request.channel == "reactions":
+            # Query posts the target user has reacted to (latest reaction per post).
+            target_user = _resolve_target_user(
+                player.player_key,
+                request.request_id,
+                request.user_handle,
+                request.user_sqid,
+                "reactions",
+                db,
+            )
+            if target_user is None:
+                return
+
+            # Dedupe: latest reaction row per post for this user
+            latest_reaction_ids = (
+                db.query(func.max(models.Reaction.id))
+                .filter(
+                    models.Reaction.user_id == target_user.id,
+                    models.Reaction.user_id.isnot(None),
+                )
+                .group_by(models.Reaction.post_id)
+            )
+
+            query = (
+                query.join(
+                    models.Reaction, models.Reaction.post_id == models.Post.id
+                )
+                .filter(
+                    models.Reaction.user_id == target_user.id,
+                    models.Reaction.id.in_(latest_reaction_ids),
+                )
+                .add_columns(
+                    models.Reaction.created_at.label("reacted_at"),
+                    models.Reaction.id.label("reaction_id"),
+                )
+            )
         elif request.channel == "hashtag":
             # Query posts by hashtag
             if not request.hashtag:
@@ -469,9 +536,20 @@ def _handle_query_posts(
         )
 
         # Apply public_visibility filter unless viewing own posts
-        # Posts pending approval are visible only to their owner
+        # Posts pending approval are visible only to their owner.
+        # For the reactions channel, also exempt posts owned by the player's
+        # own owner — matches the /reacted-posts HTTP endpoint behaviour where
+        # a viewer sees their own private posts that others have reacted to.
         if not is_viewing_own_posts:
-            query = query.filter(models.Post.public_visibility.is_(True))
+            if is_reactions_channel:
+                query = query.filter(
+                    or_(
+                        models.Post.public_visibility.is_(True),
+                        models.Post.owner_id == player.owner_id,
+                    )
+                )
+            else:
+                query = query.filter(models.Post.public_visibility.is_(True))
 
         # Apply monitored hashtag filtering based on player owner's preferences
         query = apply_monitored_hashtag_filter(query, models.Post, player.owner)
@@ -489,7 +567,15 @@ def _handle_query_posts(
                 return
 
         # Apply sorting
-        if request.sort == "created_at":
+        if is_reactions_channel and request.sort in ("server_order", "reacted_at"):
+            # Latest-reaction-first, stable on ties via Reaction.id
+            query = query.order_by(
+                models.Reaction.created_at.desc(), models.Reaction.id.desc()
+            )
+        elif request.sort == "reacted_at":
+            # Non-reactions channel asking for reacted_at — fall back silently
+            query = query.order_by(models.Post.id.desc())
+        elif request.sort == "created_at":
             query = query.order_by(models.Post.created_at.desc())
         elif request.sort == "random":
             # Use random seed if provided for reproducible ordering
@@ -505,16 +591,33 @@ def _handle_query_posts(
             # "server_order" - use id order (insertion order)
             query = query.order_by(models.Post.id.desc())
 
-        # Apply cursor pagination if provided
-        # For simplicity, using offset-based pagination encoded as cursor
+        # Apply cursor pagination
         offset = 0
-        if request.cursor:
-            try:
-                offset = int(request.cursor)
-            except ValueError:
-                logger.warning(f"Invalid cursor: {request.cursor}")
-
-        query = query.offset(offset).limit(request.limit + 1)  # +1 to check if more
+        if is_reactions_channel:
+            # Keyset pagination on Reaction.created_at (see pagination.py)
+            if request.cursor:
+                cursor_data = decode_cursor(request.cursor)
+                if cursor_data:
+                    _, sort_value = cursor_data
+                    if sort_value:
+                        try:
+                            cursor_dt = datetime.fromisoformat(
+                                str(sort_value).replace("Z", "+00:00")
+                            )
+                            query = query.filter(
+                                models.Reaction.created_at < cursor_dt
+                            )
+                        except (ValueError, AttributeError):
+                            logger.warning(f"Invalid cursor: {request.cursor}")
+            query = query.limit(request.limit + 1)
+        else:
+            # Offset-based pagination for every other channel
+            if request.cursor:
+                try:
+                    offset = int(request.cursor)
+                except ValueError:
+                    logger.warning(f"Invalid cursor: {request.cursor}")
+            query = query.offset(offset).limit(request.limit + 1)
 
         # Execute query
         posts = query.all()
@@ -527,7 +630,14 @@ def _handle_query_posts(
         # Calculate next cursor
         next_cursor = None
         if has_more:
-            next_cursor = str(offset + request.limit)
+            if is_reactions_channel:
+                last_row = posts[-1]
+                next_cursor = encode_cursor(
+                    str(last_row.reaction_id),
+                    last_row.reacted_at.isoformat(),
+                )
+            else:
+                next_cursor = str(offset + request.limit)
 
         # Compute valid include_fields set
         include_fields: set[str] | None = None
@@ -536,7 +646,8 @@ def _handle_query_posts(
 
         # Build response payload posts
         payload_posts: list[PlayerPostPayload] = []
-        for post in posts:
+        for row in posts:
+            post = row.Post if is_reactions_channel else row
             if post.kind == "artwork":
                 payload_posts.append(_build_artwork_payload(post, include_fields))
             elif post.kind == "playlist":
