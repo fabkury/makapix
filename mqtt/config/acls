@@ -13,6 +13,9 @@ topic read makapix/player/+/request/+
 topic write makapix/player/+/response/+
 topic read makapix/player/+/view
 topic write makapix/player/+/view/ack
+topic read makapix/player/+/capabilities
+topic read makapix/player/+/state
+topic read makapix/player/+/command/ack
 topic write makapix/post/new/#
 topic write makapix/post/new/user/#
 topic write makapix/post/new/category/#
@@ -27,6 +30,9 @@ pattern write makapix/player/%u/request/+
 pattern read makapix/player/%u/response/#
 pattern write makapix/player/%u/view
 pattern read makapix/player/%u/view/ack
+pattern write makapix/player/%u/capabilities
+pattern write makapix/player/%u/state
+pattern write makapix/player/%u/command/ack
 
 # Web clients - can only subscribe (read) to topics
 # Username: webclient (shared password for all web browser clients)
