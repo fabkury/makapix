@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import mimetypes
 import os
@@ -160,10 +161,17 @@ async def lifespan(app: FastAPI):
     from .mqtt.player_status import start_status_subscriber
     from .mqtt.player_requests import start_request_subscriber
     from .mqtt.player_views import start_view_subscriber
+    from .mqtt.player_optional import start_optional_subscriber
+    from .services import player_events
+
+    # Hand the running loop to the in-process bus so MQTT callbacks can
+    # forward events to SSE subscribers from their worker threads.
+    player_events.set_loop(asyncio.get_running_loop())
 
     start_status_subscriber()
     start_request_subscriber()
     start_view_subscriber()
+    start_optional_subscriber()
     logger.info("Makapix API server ready")
     yield
     # Shutdown
@@ -171,9 +179,11 @@ async def lifespan(app: FastAPI):
     # Stop MQTT subscribers
     from .mqtt.player_status import stop_status_subscriber
     from .mqtt.player_requests import stop_request_subscriber
+    from .mqtt.player_optional import stop_optional_subscriber
 
     stop_status_subscriber()
     stop_request_subscriber()
+    stop_optional_subscriber()
 
 
 app = FastAPI(

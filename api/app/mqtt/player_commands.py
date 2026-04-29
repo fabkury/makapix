@@ -19,21 +19,18 @@ def publish_player_command(
     player_key: UUID,
     command_type: str,
     payload: dict[str, Any] | None = None,
+    command_id: UUID | None = None,
 ) -> UUID:
     """
     Publish command to player via MQTT.
 
-    Args:
-        player_key: Player's unique key (UUID)
-        command_type: Command type (swap_next, swap_back, show_artwork)
-        payload: Command-specific payload data
-
-    Returns:
-        Command ID (UUID) for tracking
+    If command_id is supplied it is used as-is (so it can match an existing
+    PlayerCommandLog row, enabling ack tracking).
     """
     from uuid import uuid4
 
-    command_id = uuid4()
+    if command_id is None:
+        command_id = uuid4()
     topic = f"makapix/player/{player_key}/command"
 
     message = {
@@ -60,6 +57,7 @@ def log_command(
     player_id: UUID,
     command_type: str,
     payload: dict[str, Any] | None = None,
+    command_id: UUID | None = None,
 ) -> models.PlayerCommandLog:
     """
     Log command to database for auditing.
@@ -73,11 +71,14 @@ def log_command(
     Returns:
         Created PlayerCommandLog instance
     """
-    command_log = models.PlayerCommandLog(
-        player_id=player_id,
-        command_type=command_type,
-        payload=payload,
-    )
+    kwargs: dict[str, Any] = {
+        "player_id": player_id,
+        "command_type": command_type,
+        "payload": payload,
+    }
+    if command_id is not None:
+        kwargs["id"] = command_id
+    command_log = models.PlayerCommandLog(**kwargs)
     db.add(command_log)
     db.commit()
     db.refresh(command_log)
