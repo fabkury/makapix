@@ -413,6 +413,13 @@ export async function postJson<TResponse>(
 // Player API functions
 // ============================================================================
 
+export interface PlayerCapabilitySpecs {
+  pause?: Record<string, never>;
+  brightness?: { min: number; max: number; step: number };
+  rotation?: { values: number[] };
+  mirror?: { values: string[] };
+}
+
 export interface Player {
   id: string;
   player_key: string;
@@ -426,6 +433,11 @@ export interface Player {
   cert_expires_at: string | null;
   registered_at: string | null;
   created_at: string;
+  capabilities: PlayerCapabilitySpecs | null;
+  is_paused: boolean | null;
+  brightness: number | null;
+  rotation: number | null;
+  mirror: string | null;
 }
 
 export interface PlayerProvisionResponse {
@@ -520,6 +532,53 @@ export async function deletePlayer(sqid: string, playerId: string): Promise<void
     const body = await response.text();
     throw new Error(`Request failed (${response.status}): ${body}`);
   }
+}
+
+/**
+ * Optional player commands (only valid if the capability is declared).
+ */
+export async function setPlayerPause(
+  sqid: string,
+  playerId: string,
+  paused: boolean
+): Promise<PlayerCommandResponse> {
+  return authenticatedPostJson<PlayerCommandResponse>(
+    `/api/u/${sqid}/player/${playerId}/pause`,
+    { paused }
+  );
+}
+
+export async function setPlayerBrightness(
+  sqid: string,
+  playerId: string,
+  value: number
+): Promise<PlayerCommandResponse> {
+  return authenticatedPostJson<PlayerCommandResponse>(
+    `/api/u/${sqid}/player/${playerId}/brightness`,
+    { value }
+  );
+}
+
+export async function setPlayerRotation(
+  sqid: string,
+  playerId: string,
+  value: number
+): Promise<PlayerCommandResponse> {
+  return authenticatedPostJson<PlayerCommandResponse>(
+    `/api/u/${sqid}/player/${playerId}/rotation`,
+    { value }
+  );
+}
+
+export async function setPlayerMirror(
+  sqid: string,
+  playerId: string,
+  value: string
+): Promise<PlayerCommandResponse> {
+  return authenticatedPostJson<PlayerCommandResponse>(
+    `/api/u/${sqid}/player/${playerId}/mirror`,
+    { value }
+  );
 }
 
 /**

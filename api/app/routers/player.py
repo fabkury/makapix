@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..auth import get_current_user, require_ownership
+from ..auth import JWT_ALGORITHM, JWT_SECRET_KEY, get_current_user, require_ownership
 from ..deps import get_db
 from ..sqids_config import decode_user_sqid
 
@@ -1341,3 +1341,277 @@ def renew_player_certificate(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate certificate: {str(e)}",
         )
+
+
+# ---------------------------------------------------------------------------
+# Optional commands (pause/resume, brightness, rotation, mirror)
+#
+# Each endpoint:
+#   1. validates the player exists and is owned by the caller
+#   2. validates the requested operation against the player's declared
+#      capabilities (returns 400 unsupported_command otherwise)
+#   3. allocates a UUID, logs the command, then publishes via MQTT using
+#      that same UUID so the player's ack lines up with the log row.
+# ---------------------------------------------------------------------------
+
+
+def _get_owned_player(
+    sqid: str, player_id: UUID, db: Session, current_user: models.User
+) -> models.Player:
+    user = get_user_by_sqid(sqid, db)
+    require_ownership(user.id, current_user)
+    player = (
+        db.query(models.Player)
+        .filter(models.Player.id == player_id, models.Player.owner_id == user.id)
+        .first()
+    )
+    if not player:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Player not found"
+        )
+    return player
+
+
+def _require_capability(player: models.Player, feature: str) -> dict[str, Any]:
+    caps = player.capabilities or {}
+    spec = caps.get(feature)
+    if spec is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "unsupported_command",
+                "feature": feature,
+            },
+        )
+    return spec
+
+
+def _send_optional_command(
+    db: Session,
+    player: models.Player,
+    command_type: str,
+    payload: dict[str, Any] | None,
+) -> UUID:
+    from uuid import uuid4
+
+    command_id = uuid4()
+    log_command(
+        db=db,
+        player_id=player.id,
+        command_type=command_type,
+        payload=payload,
+        command_id=command_id,
+    )
+    publish_player_command(
+        player_key=player.player_key,
+        command_type=command_type,
+        payload=payload,
+        command_id=command_id,
+    )
+    return command_id
+
+
+@router.post(
+    "/u/{sqid}/player/{player_id}/pause",
+    response_model=schemas.PlayerCommandResponse,
+)
+def set_player_pause(
+    sqid: str,
+    player_id: UUID,
+    payload: schemas.PlayerSetPauseRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.PlayerCommandResponse:
+    player = _get_owned_player(sqid, player_id, db, current_user)
+    _require_capability(player, "pause")
+    command_id = _send_optional_command(
+        db,
+        player,
+        command_type="set_paused",
+        payload={"paused": payload.paused},
+    )
+    return schemas.PlayerCommandResponse(command_id=command_id, status="sent")
+
+
+@router.post(
+    "/u/{sqid}/player/{player_id}/brightness",
+    response_model=schemas.PlayerCommandResponse,
+)
+def set_player_brightness(
+    sqid: str,
+    player_id: UUID,
+    payload: schemas.PlayerSetBrightnessRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.PlayerCommandResponse:
+    player = _get_owned_player(sqid, player_id, db, current_user)
+    spec = _require_capability(player, "brightness")
+    if not (spec["min"] <= payload.value <= spec["max"]):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "invalid_value",
+                "feature": "brightness",
+                "min": spec["min"],
+                "max": spec["max"],
+            },
+        )
+    command_id = _send_optional_command(
+        db,
+        player,
+        command_type="set_brightness",
+        payload={"value": payload.value},
+    )
+    return schemas.PlayerCommandResponse(command_id=command_id, status="sent")
+
+
+@router.post(
+    "/u/{sqid}/player/{player_id}/rotation",
+    response_model=schemas.PlayerCommandResponse,
+)
+def set_player_rotation(
+    sqid: str,
+    player_id: UUID,
+    payload: schemas.PlayerSetRotationRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.PlayerCommandResponse:
+    player = _get_owned_player(sqid, player_id, db, current_user)
+    spec = _require_capability(player, "rotation")
+    if payload.value not in spec["values"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "invalid_value",
+                "feature": "rotation",
+                "allowed": spec["values"],
+            },
+        )
+    command_id = _send_optional_command(
+        db,
+        player,
+        command_type="set_rotation",
+        payload={"value": payload.value},
+    )
+    return schemas.PlayerCommandResponse(command_id=command_id, status="sent")
+
+
+@router.post(
+    "/u/{sqid}/player/{player_id}/mirror",
+    response_model=schemas.PlayerCommandResponse,
+)
+def set_player_mirror(
+    sqid: str,
+    player_id: UUID,
+    payload: schemas.PlayerSetMirrorRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.PlayerCommandResponse:
+    player = _get_owned_player(sqid, player_id, db, current_user)
+    spec = _require_capability(player, "mirror")
+    if payload.value not in spec["values"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "invalid_value",
+                "feature": "mirror",
+                "allowed": spec["values"],
+            },
+        )
+    command_id = _send_optional_command(
+        db,
+        player,
+        command_type="set_mirror",
+        payload={"value": payload.value},
+    )
+    return schemas.PlayerCommandResponse(command_id=command_id, status="sent")
+
+
+# ---------------------------------------------------------------------------
+# Live updates via Server-Sent Events
+# ---------------------------------------------------------------------------
+
+
+def _resolve_user_from_token(token: str, db: Session) -> models.User:
+    import jwt as jwt_lib
+
+    try:
+        payload = jwt_lib.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+    except jwt_lib.PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+        )
+    user_id_str = payload.get("user_id")
+    if not user_id_str:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+        )
+    try:
+        from uuid import UUID as _UUID
+
+        user_key = _UUID(user_id_str)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+        )
+    user = db.query(models.User).filter(models.User.user_key == user_key).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found"
+        )
+    return user
+
+
+@router.get("/u/{sqid}/player/sse")
+async def player_events_sse(
+    sqid: str,
+    request: Request,
+    token: str = "",
+    db: Session = Depends(get_db),
+):
+    """Server-Sent Events stream of live capability/state/ack updates.
+
+    EventSource cannot set Bearer headers, so the access token must be
+    passed as a `token` query parameter.
+    """
+    import asyncio
+    import json as _json
+
+    from fastapi.responses import StreamingResponse
+
+    from ..services import player_events
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token required"
+        )
+    current_user = _resolve_user_from_token(token, db)
+    user = get_user_by_sqid(sqid, db)
+    require_ownership(user.id, current_user)
+    user_id = user.id
+
+    async def gen():
+        queue = await player_events.subscribe(user_id)
+        try:
+            yield ': connected\n\n'
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                except asyncio.TimeoutError:
+                    yield ': keepalive\n\n'
+                    continue
+                yield f"event: {event['type']}\ndata: {_json.dumps(event)}\n\n"
+        finally:
+            await player_events.unsubscribe(user_id, queue)
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

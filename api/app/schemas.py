@@ -895,7 +895,30 @@ class PlayerPublic(BaseModel):
     registered_at: datetime | None
     created_at: datetime
 
+    # Optional features (None until the player declares its capabilities)
+    capabilities: dict[str, Any] | None = None
+    is_paused: bool | None = None
+    brightness: int | None = None
+    rotation: int | None = None
+    mirror: str | None = None
+
     model_config = ConfigDict(from_attributes=True)
+
+
+class PlayerSetPauseRequest(BaseModel):
+    paused: bool
+
+
+class PlayerSetBrightnessRequest(BaseModel):
+    value: int
+
+
+class PlayerSetRotationRequest(BaseModel):
+    value: int
+
+
+class PlayerSetMirrorRequest(BaseModel):
+    value: str
 
 
 class PlayerProvisionRequest(BaseModel):

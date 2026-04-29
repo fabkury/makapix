@@ -1,5 +1,12 @@
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { Player, listPlayers, authenticatedFetch } from '../lib/api';
+
+interface PlayerStatePatch {
+  is_paused?: boolean;
+  brightness?: number;
+  rotation?: number;
+  mirror?: string;
+}
 
 export interface SelectedArtwork {
   id: number;
@@ -26,6 +33,11 @@ interface PlayerBarContextValue {
   setCurrentChannel: (channel: ChannelInfo | null) => void;
   isLoading: boolean;
   refreshPlayers: () => Promise<void>;
+  /** Player currently targeted by the bar (chosen by user when multiple are online). */
+  activePlayerId: string | null;
+  setActivePlayerId: (id: string | null) => void;
+  /** Optimistically update local state for a single player (used for set commands). */
+  patchPlayerState: (playerId: string, patch: PlayerStatePatch) => void;
 }
 
 const PlayerBarContext = createContext<PlayerBarContextValue | null>(null);
@@ -40,6 +52,8 @@ export function PlayerBarProvider({ children }: PlayerBarProviderProps) {
   const [selectedArtwork, setSelectedArtwork] = useState<SelectedArtwork | null>(null);
   const [currentChannel, setCurrentChannel] = useState<ChannelInfo | null>(null);
   const [userSqid, setUserSqid] = useState<string | null>(null);
+  const [activePlayerId, setActivePlayerIdState] = useState<string | null>(null);
+  const sseRef = useRef<EventSource | null>(null);
 
   // Fetch user info and then players
   const fetchPlayersForUser = useCallback(async (sqid: string) => {
@@ -105,6 +119,103 @@ export function PlayerBarProvider({ children }: PlayerBarProviderProps) {
   const onlinePlayers = players.filter((p) => p.connection_status === 'online');
   const hasOnlinePlayer = onlinePlayers.length > 0;
 
+  // Restore preferred active player from localStorage once.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const saved = localStorage.getItem('player_bar.active_player_id');
+    if (saved) setActivePlayerIdState(saved);
+  }, []);
+
+  // Auto-pick / auto-replace active player as the online set changes.
+  useEffect(() => {
+    if (!onlinePlayers.length) {
+      // No online players — clear selection so UI collapses cleanly.
+      if (activePlayerId !== null) setActivePlayerIdState(null);
+      return;
+    }
+    const stillOnline = activePlayerId &&
+      onlinePlayers.some((p) => p.id === activePlayerId);
+    if (!stillOnline) {
+      setActivePlayerIdState(onlinePlayers[0].id);
+    }
+  }, [onlinePlayers, activePlayerId]);
+
+  const setActivePlayerId = useCallback((id: string | null) => {
+    setActivePlayerIdState(id);
+    if (typeof window !== 'undefined') {
+      if (id) localStorage.setItem('player_bar.active_player_id', id);
+      else localStorage.removeItem('player_bar.active_player_id');
+    }
+  }, []);
+
+  const patchPlayerState = useCallback(
+    (playerId: string, patch: PlayerStatePatch) => {
+      setPlayers((prev) =>
+        prev.map((p) => (p.id === playerId ? { ...p, ...patch } : p))
+      );
+    },
+    []
+  );
+
+  // Live updates via SSE. Re-subscribes when sqid changes.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!userSqid) return;
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+    const url = `${apiBase}/api/u/${userSqid}/player/sse?token=${encodeURIComponent(token)}`;
+    const es = new EventSource(url);
+    sseRef.current = es;
+
+    es.addEventListener('capabilities', (event) => {
+      try {
+        const data = JSON.parse((event as MessageEvent).data);
+        setPlayers((prev) =>
+          prev.map((p) =>
+            p.id === data.player_id
+              ? {
+                  ...p,
+                  capabilities: data.capabilities ?? null,
+                  firmware_version: data.firmware_version ?? p.firmware_version,
+                }
+              : p
+          )
+        );
+      } catch (e) { /* ignore */ }
+    });
+
+    es.addEventListener('state', (event) => {
+      try {
+        const data = JSON.parse((event as MessageEvent).data);
+        setPlayers((prev) =>
+          prev.map((p) =>
+            p.id === data.player_id ? { ...p, ...data.state } : p
+          )
+        );
+      } catch (e) { /* ignore */ }
+    });
+
+    es.addEventListener('command_ack', (event) => {
+      try {
+        const data = JSON.parse((event as MessageEvent).data);
+        window.dispatchEvent(
+          new CustomEvent('player-command-ack', { detail: data })
+        );
+      } catch (e) { /* ignore */ }
+    });
+
+    es.onerror = () => {
+      // EventSource auto-reconnects; nothing to do.
+    };
+
+    return () => {
+      es.close();
+      sseRef.current = null;
+    };
+  }, [userSqid]);
+
   const value: PlayerBarContextValue = {
     players,
     onlinePlayers,
@@ -115,6 +226,9 @@ export function PlayerBarProvider({ children }: PlayerBarProviderProps) {
     setCurrentChannel,
     isLoading,
     refreshPlayers,
+    activePlayerId,
+    setActivePlayerId,
+    patchPlayerState,
   };
 
   return (

@@ -12,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -838,6 +839,17 @@ class Player(Base):
     # Current state (for UI display - player manages its own queue internally)
     current_post_id = Column(Integer, ForeignKey("posts.id"), nullable=True)
 
+    # Optional capabilities (declared by player on connect, retained MQTT topic)
+    capabilities = Column(JSON, nullable=True)
+    capabilities_updated_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Reported optional state (player publishes when changed, retained MQTT topic)
+    is_paused = Column(Boolean, nullable=True)
+    brightness = Column(SmallInteger, nullable=True)
+    rotation = Column(SmallInteger, nullable=True)
+    mirror = Column(String(16), nullable=True)
+    state_updated_at = Column(DateTime(timezone=True), nullable=True)
+
     # Certificate tracking
     cert_serial_number = Column(String(100), nullable=True, unique=True, index=True)
     cert_issued_at = Column(DateTime(timezone=True), nullable=True)
@@ -879,6 +891,10 @@ class PlayerCommandLog(Base):
     )
     command_type = Column(String(50), nullable=False)
     payload = Column(JSON, nullable=True)  # Command-specific data
+
+    # Ack tracking (set when player publishes to .../command/ack)
+    ack_status = Column(String(20), nullable=True)  # ok, error, unsupported, timeout
+    acked_at = Column(DateTime(timezone=True), nullable=True)
 
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
