@@ -60,11 +60,13 @@ interface CachedScaledPreview {
   frameCount: number;
 }
 
-const MAX_FILE_SIZE_BYTES = (() => {
+const MAX_UPLOAD_SIZE_BYTES = (() => {
   const raw = process.env.NEXT_PUBLIC_MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES || '5242880';
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : 5242880;
 })();
+
+const MAX_LOAD_SIZE_BYTES = 25 * 1024 * 1024;
 
 function formatMiB(bytes: number): string {
   const mib = bytes / (1024 * 1024);
@@ -285,11 +287,11 @@ function SubmitPageContent() {
       return;
     }
 
-    // Validate file size
-    if (file.size > MAX_FILE_SIZE_BYTES) {
+    // Reject files that exceed the loading limit outright
+    if (file.size > MAX_LOAD_SIZE_BYTES) {
       setValidationErrors([{
         type: 'size',
-        message: `File size (${formatMiB(file.size)}) exceeds maximum of ${formatMiB(MAX_FILE_SIZE_BYTES)}`,
+        message: `File size (${formatMiB(file.size)}) exceeds the loading limit of ${formatMiB(MAX_LOAD_SIZE_BYTES)}.`,
       }]);
       return;
     }
@@ -983,10 +985,27 @@ function SubmitPageContent() {
                     <div className="upload-icon">📁</div>
                     <p className="upload-text">Drop your artwork here</p>
                     <p className="upload-subtext">or click to browse</p>
-                    <p className="upload-formats">PNG, GIF, WebP, or BMP • Max {formatMiB(MAX_FILE_SIZE_BYTES)}</p>
+                    <p className="upload-formats">PNG, GIF, WebP, or BMP • Upload max {formatMiB(MAX_UPLOAD_SIZE_BYTES)} (loadable up to {formatMiB(MAX_LOAD_SIZE_BYTES)} for resizing)</p>
                   </div>
                 )}
               </div>
+
+              {validationErrors.length > 0 && (
+                <div className="error-box">
+                  <span className="error-icon">❌</span>
+                  <p>{validationErrors.map(e => e.message).join(' ')}</p>
+                </div>
+              )}
+
+              {selectedFile && selectedFile.size > MAX_UPLOAD_SIZE_BYTES && (
+                <div className="scaling-required-notice">
+                  <span className="notice-icon">⚠️</span>
+                  <span>
+                    File size {formatMiB(selectedFile.size)} exceeds the {formatMiB(MAX_UPLOAD_SIZE_BYTES)} upload limit.
+                    Resize or compress this artwork before submitting.
+                  </span>
+                </div>
+              )}
 
               <div className="size-rules-link-container">
                 <Link href="/size_rules" className="size-rules-link">See size rules</Link>
