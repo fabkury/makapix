@@ -306,6 +306,7 @@ export default function PlayerBar() {
                       </div>
                       <input
                         type="range"
+                        className="brightness-slider"
                         min={caps.brightness!.min}
                         max={caps.brightness!.max}
                         step={caps.brightness!.step}
@@ -498,9 +499,48 @@ export default function PlayerBar() {
         }
         .chip:hover { background: #2c2c2c; }
         .chip.active { background: #4ea1ff; border-color: #4ea1ff; color: #000; }
-        input[type=range] {
+        /* Native sliders keep the thumb's bounding box inside the input, so
+           thumb-center never reaches the input's edges — value=0 / value=max
+           leave a thumb_width/2 gap on each side. Drive the rendering manually
+           with -webkit-appearance:none and a custom thumb that sits on top of
+           the track, so the thumb's left/right edges line up with the input's
+           left/right edges at min/max. */
+        .brightness-slider {
           width: 100%;
-          accent-color: #4ea1ff;
+          height: 4px;
+          border-radius: 2px;
+          background: #2a2a2a;
+          -webkit-appearance: none;
+          appearance: none;
+          cursor: pointer;
+          outline: none;
+          margin: 8px 0;
+          padding: 0;
+        }
+        .brightness-slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          background: #4ea1ff;
+          cursor: pointer;
+          border: none;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+        }
+        .brightness-slider::-moz-range-thumb {
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          background: #4ea1ff;
+          cursor: pointer;
+          border: none;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+        }
+        .brightness-slider::-moz-range-track {
+          height: 4px;
+          background: #2a2a2a;
+          border-radius: 2px;
+          border: none;
         }
         .pause-btn {
           background: transparent;
