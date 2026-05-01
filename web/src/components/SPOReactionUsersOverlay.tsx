@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/router';
 
@@ -54,8 +55,11 @@ export default function SPOReactionUsersOverlay({
   };
 
   if (!isOpen) return null;
+  if (typeof document === 'undefined') return null;
 
-  return (
+  // Portal to body so zIndex applies at document root, not inside SPO's
+  // stacking context. See SPOCommentsOverlay for the full reasoning.
+  return createPortal(
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
@@ -231,6 +235,7 @@ export default function SPOReactionUsersOverlay({
           </div>
         </motion.div>
       </motion.div>
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

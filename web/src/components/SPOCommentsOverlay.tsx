@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { authenticatedFetch, authenticatedPostJson } from '../lib/api';
 import CommentLikeUsersOverlay from './CommentLikeUsersOverlay';
 
@@ -428,8 +429,13 @@ export default function SPOCommentsOverlay({
   const topLevelComments = comments.filter(c => !c.parent_id);
 
   if (!isOpen) return null;
+  if (typeof document === 'undefined') return null;
 
-  return (
+  // Portal to body so this overlay's zIndex applies at the document root,
+  // not inside SPO's stacking context (where it would be trapped at SPO's
+  // effective root z of 20000 and end up below the player-bar's three-dot
+  // menu instead of above it).
+  return createPortal(
     <>
       <div
         className="spo-comments-backdrop"
@@ -575,6 +581,7 @@ export default function SPOCommentsOverlay({
           to { opacity: 1; transform: scale(1); }
         }
       `}</style>
-    </>
+    </>,
+    document.body
   );
 }

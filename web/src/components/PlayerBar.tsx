@@ -15,7 +15,10 @@ import SelectPlayerOverlay from './SelectPlayerOverlay';
 
 export const PLAYER_BAR_HEIGHT = 64;
 
-const PLAYER_BAR_Z_INDEX = 40000;
+// Sits just above SPO/SAO base (20000) so the bar — and its three-dot
+// menu, which inherits this stacking context — paint over those overlays
+// while staying below per-modal layers like comments/reactions (20002+).
+const PLAYER_BAR_Z_INDEX = 20001;
 // How long an unconfirmed pending overlay sticks around before falling back
 // to the player's actual state. Reached only if the device never publishes a
 // matching state update (e.g. it dropped offline mid-command).
