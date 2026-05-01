@@ -37,6 +37,8 @@ export interface SubmitDraftData {
   customWidth: string;
   customHeight: string;
   maintainAspectRatio: boolean;
+  // License selection (null = All rights reserved)
+  selectedLicenseId: number | null;
 }
 
 const STORAGE_KEY = 'makapix_submit_draft';

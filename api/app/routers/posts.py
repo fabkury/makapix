@@ -658,10 +658,8 @@ async def upload_artwork(
     # Parse hidden_by_user from form (string "true"/"false" to bool)
     user_hidden = hidden_by_user.lower() in ("true", "1", "yes")
 
-    # Handle license: validate if provided, default to CC BY-ND 4.0 if not
-    resolved_license_id = license_id
+    # Validate license_id if provided; null means "All rights reserved".
     if license_id is not None:
-        # Validate the provided license_id exists
         license_obj = (
             db.query(models.License).filter(models.License.id == license_id).first()
         )
@@ -670,15 +668,6 @@ async def upload_artwork(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid license_id",
             )
-    else:
-        # Default to CC BY-ND 4.0
-        default_license = (
-            db.query(models.License)
-            .filter(models.License.identifier == "CC-BY-ND-4.0")
-            .first()
-        )
-        if default_license:
-            resolved_license_id = default_license.id
 
     # Generate UUID for storage_key and pre-compute storage shard
     storage_key = uuid.uuid4()
@@ -713,7 +702,7 @@ async def upload_artwork(
         metadata_modified_at=now,
         artwork_modified_at=now,
         dwell_time_ms=30000,
-        license_id=resolved_license_id,
+        license_id=license_id,
     )
     # Fast-path duplicate check (user-friendly error); partial unique index is the
     # authoritative protection against races.

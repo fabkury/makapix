@@ -368,6 +368,9 @@ function SubmitPageContent() {
     setCustomHeight(draft.customHeight);
     setMaintainAspectRatio(draft.maintainAspectRatio);
 
+    // Restore license selection (older drafts may not have this field)
+    setSelectedLicenseId(draft.selectedLicenseId ?? null);
+
     // Restore image info
     if (draft.imageInfo) {
       setImageInfo(draft.imageInfo);
@@ -532,6 +535,7 @@ function SubmitPageContent() {
         customWidth,
         customHeight,
         maintainAspectRatio,
+        selectedLicenseId,
       };
       saveDraft(draft);
     }, 500); // 500ms debounce
@@ -554,6 +558,7 @@ function SubmitPageContent() {
     customWidth,
     customHeight,
     maintainAspectRatio,
+    selectedLicenseId,
   ]);
 
   const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
