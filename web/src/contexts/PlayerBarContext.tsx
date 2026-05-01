@@ -1,7 +1,9 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { Player, listPlayers, authenticatedFetch } from '../lib/api';
 
-interface PlayerStatePatch {
+export type PendingField = 'is_paused' | 'brightness' | 'rotation' | 'mirror';
+
+export interface PendingPatch {
   is_paused?: boolean;
   brightness?: number;
   rotation?: number;
@@ -36,8 +38,16 @@ interface PlayerBarContextValue {
   /** Player currently targeted by the bar (chosen by user when multiple are online). */
   activePlayerId: string | null;
   setActivePlayerId: (id: string | null) => void;
-  /** Optimistically update local state for a single player (used for set commands). */
-  patchPlayerState: (playerId: string, patch: PlayerStatePatch) => void;
+  /**
+   * Per-player optimistic overlay for set commands. The displayed value for a
+   * field is `pendingPatches[id]?.[field] ?? player[field]`. Entries are
+   * cleared automatically when an SSE state event arrives reporting the same
+   * value (i.e. the device confirms the change), or by the caller on API
+   * error / timeout.
+   */
+  pendingPatches: Record<string, PendingPatch>;
+  setPendingPatch: (playerId: string, field: PendingField, value: unknown) => void;
+  clearPendingPatch: (playerId: string, field: PendingField) => void;
 }
 
 const PlayerBarContext = createContext<PlayerBarContextValue | null>(null);
@@ -53,6 +63,7 @@ export function PlayerBarProvider({ children }: PlayerBarProviderProps) {
   const [currentChannel, setCurrentChannel] = useState<ChannelInfo | null>(null);
   const [userSqid, setUserSqid] = useState<string | null>(null);
   const [activePlayerId, setActivePlayerIdState] = useState<string | null>(null);
+  const [pendingPatches, setPendingPatches] = useState<Record<string, PendingPatch>>({});
   const sseRef = useRef<EventSource | null>(null);
 
   // Fetch user info and then players
@@ -148,11 +159,52 @@ export function PlayerBarProvider({ children }: PlayerBarProviderProps) {
     }
   }, []);
 
-  const patchPlayerState = useCallback(
-    (playerId: string, patch: PlayerStatePatch) => {
-      setPlayers((prev) =>
-        prev.map((p) => (p.id === playerId ? { ...p, ...patch } : p))
-      );
+  const setPendingPatch = useCallback(
+    (playerId: string, field: PendingField, value: unknown) => {
+      setPendingPatches((prev) => ({
+        ...prev,
+        [playerId]: { ...prev[playerId], [field]: value as never },
+      }));
+    },
+    []
+  );
+
+  const clearPendingPatch = useCallback(
+    (playerId: string, field: PendingField) => {
+      setPendingPatches((prev) => {
+        const cur = prev[playerId];
+        if (!cur || !(field in cur)) return prev;
+        const next: PendingPatch = { ...cur };
+        delete next[field];
+        const out = { ...prev };
+        if (Object.keys(next).length === 0) delete out[playerId];
+        else out[playerId] = next;
+        return out;
+      });
+    },
+    []
+  );
+
+  // Drop pending entries that the player has now confirmed via state.
+  const reconcilePendingFromState = useCallback(
+    (playerId: string, state: Partial<PendingPatch>) => {
+      setPendingPatches((prev) => {
+        const cur = prev[playerId];
+        if (!cur) return prev;
+        const next: PendingPatch = { ...cur };
+        let changed = false;
+        for (const key of Object.keys(state) as Array<keyof PendingPatch>) {
+          if (key in next && next[key] === state[key]) {
+            delete next[key];
+            changed = true;
+          }
+        }
+        if (!changed) return prev;
+        const out = { ...prev };
+        if (Object.keys(next).length === 0) delete out[playerId];
+        else out[playerId] = next;
+        return out;
+      });
     },
     []
   );
@@ -189,20 +241,12 @@ export function PlayerBarProvider({ children }: PlayerBarProviderProps) {
     es.addEventListener('state', (event) => {
       try {
         const data = JSON.parse((event as MessageEvent).data);
+        const playerId: string = data.player_id;
+        const state: Partial<PendingPatch> = data.state ?? {};
         setPlayers((prev) =>
-          prev.map((p) =>
-            p.id === data.player_id ? { ...p, ...data.state } : p
-          )
+          prev.map((p) => (p.id === playerId ? { ...p, ...state } : p))
         );
-      } catch (e) { /* ignore */ }
-    });
-
-    es.addEventListener('command_ack', (event) => {
-      try {
-        const data = JSON.parse((event as MessageEvent).data);
-        window.dispatchEvent(
-          new CustomEvent('player-command-ack', { detail: data })
-        );
+        reconcilePendingFromState(playerId, state);
       } catch (e) { /* ignore */ }
     });
 
@@ -214,7 +258,7 @@ export function PlayerBarProvider({ children }: PlayerBarProviderProps) {
       es.close();
       sseRef.current = null;
     };
-  }, [userSqid]);
+  }, [userSqid, reconcilePendingFromState]);
 
   const value: PlayerBarContextValue = {
     players,
@@ -228,7 +272,9 @@ export function PlayerBarProvider({ children }: PlayerBarProviderProps) {
     refreshPlayers,
     activePlayerId,
     setActivePlayerId,
-    patchPlayerState,
+    pendingPatches,
+    setPendingPatch,
+    clearPendingPatch,
   };
 
   return (

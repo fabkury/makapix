@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { usePlayerBarOptional } from '../contexts/PlayerBarContext';
+import { PendingField, PendingPatch, usePlayerBarOptional } from '../contexts/PlayerBarContext';
 import {
   sendPlayerCommand,
   setPlayerBrightness,
@@ -16,20 +16,22 @@ import SelectPlayerOverlay from './SelectPlayerOverlay';
 export const PLAYER_BAR_HEIGHT = 64;
 
 const PLAYER_BAR_Z_INDEX = 40000;
-const ACK_TIMEOUT_MS = 5000;
+// How long an unconfirmed pending overlay sticks around before falling back
+// to the player's actual state. Reached only if the device never publishes a
+// matching state update (e.g. it dropped offline mid-command).
+const PENDING_TIMEOUT_MS = 5000;
 const BRIGHTNESS_DEBOUNCE_MS = 150;
-
-interface AckDetail {
-  command_id: string;
-  player_id: string | null;
-  status: 'ok' | 'error' | 'unsupported';
-  error: string | null;
-}
 
 /**
  * PlayerBar — controls for an online player. The bar shows base send/swap
  * actions plus a three-dot menu of optional features (pause/resume gets its
  * own button outside the menu).
+ *
+ * Optional commands use an optimistic overlay (`pendingPatches` in the
+ * context) that auto-clears when the device's `state` event confirms the
+ * new value. If the API call fails, or no confirmation arrives within
+ * PENDING_TIMEOUT_MS, the overlay is cleared and the UI falls back to the
+ * player's actual state.
  */
 export default function PlayerBar() {
   const context = usePlayerBarOptional();
@@ -44,6 +46,9 @@ export default function PlayerBar() {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const brightnessTimerRef = useRef<number | null>(null);
   const [brightnessLocal, setBrightnessLocal] = useState<number | null>(null);
+  // Per-(player,field) request token. Lets a stale timeout keep its hands off
+  // a pending value that a newer click has overwritten.
+  const pendingTokenRef = useRef<Record<string, number>>({});
 
   // Close menu on outside click
   useEffect(() => {
@@ -62,7 +67,7 @@ export default function PlayerBar() {
   }
 
   const { onlinePlayers, selectedArtwork, currentChannel, activePlayerId,
-    setActivePlayerId, patchPlayerState } = context;
+    setActivePlayerId, pendingPatches, setPendingPatch, clearPendingPatch } = context;
   const userSqid = typeof window !== 'undefined'
     ? localStorage.getItem('public_sqid') : null;
 
@@ -132,68 +137,74 @@ export default function PlayerBar() {
     }
   };
 
-  // ---- Optional commands (optimistic with rollback) ----------------------
+  // ---- Optional commands (optimistic overlay, state-confirmed) -----------
+
+  const activePending: PendingPatch = activePlayer
+    ? (pendingPatches[activePlayer.id] ?? {})
+    : {};
+
+  const displayedPaused = activePending.is_paused ?? activePlayer?.is_paused ?? false;
+  const displayedRotation = activePending.rotation ?? activePlayer?.rotation ?? null;
+  const displayedMirror = activePending.mirror ?? activePlayer?.mirror ?? null;
+  // brightnessLocal tracks the slider mid-drag (pre-debounce). Once the
+  // debounced API call fires, brightnessLocal clears and the pending overlay
+  // takes over until the device confirms.
+  const displayedBrightness =
+    brightnessLocal ?? activePending.brightness ?? activePlayer?.brightness ?? 0;
 
   /**
-   * Run an optimistic update against the active player, then await the
-   * player's ack via the SSE bridge. Roll back on error/timeout.
+   * Set an optimistic overlay for `field` and fire `apiCall`. The overlay is
+   * cleared when:
+   *   - the API call fails,
+   *   - an SSE state event confirms the value (handled in context),
+   *   - PENDING_TIMEOUT_MS elapses without confirmation.
+   *
+   * Each call increments a per-(player, field) token; only the latest token's
+   * timeout is allowed to clear the overlay, so rapid re-clicks don't fight.
    */
-  const runOptimistic = async <T,>(
-    field: keyof Pick<Player, 'is_paused' | 'brightness' | 'rotation' | 'mirror'>,
+  const submitPending = async <T,>(
+    field: PendingField,
     nextValue: T,
-    apiCall: () => Promise<{ command_id: string }>,
+    apiCall: () => Promise<unknown>,
   ) => {
     if (!activePlayer || !userSqid) return;
-    const previous = activePlayer[field];
-    patchPlayerState(activePlayer.id, { [field]: nextValue } as never);
-    let response: { command_id: string };
+    const playerId = activePlayer.id;
+    const tokenKey = `${playerId}.${field}`;
+    const token = (pendingTokenRef.current[tokenKey] ?? 0) + 1;
+    pendingTokenRef.current[tokenKey] = token;
+
+    setPendingPatch(playerId, field, nextValue);
+
     try {
-      response = await apiCall();
+      await apiCall();
     } catch (err) {
-      patchPlayerState(activePlayer.id, { [field]: previous } as never);
-      console.error(`Failed to ${String(field)} on player`, err);
+      if (pendingTokenRef.current[tokenKey] === token) {
+        clearPendingPatch(playerId, field);
+      }
+      console.error(`Failed to set ${field} on player`, err);
       return;
     }
 
-    const commandId = response.command_id;
-    let resolved = false;
-
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<AckDetail>).detail;
-      if (detail.command_id !== commandId) return;
-      resolved = true;
-      window.removeEventListener('player-command-ack', handler);
-      if (detail.status !== 'ok') {
-        patchPlayerState(activePlayer.id, { [field]: previous } as never);
-        console.warn(`Command ${commandId} failed: ${detail.status}`, detail.error);
-      }
-    };
-    window.addEventListener('player-command-ack', handler);
-
     setTimeout(() => {
-      if (resolved) return;
-      window.removeEventListener('player-command-ack', handler);
-      patchPlayerState(activePlayer.id, { [field]: previous } as never);
-      console.warn(`Command ${commandId} timed out`);
-    }, ACK_TIMEOUT_MS);
+      if (pendingTokenRef.current[tokenKey] === token) {
+        clearPendingPatch(playerId, field);
+      }
+    }, PENDING_TIMEOUT_MS);
   };
 
   const handleTogglePause = async () => {
     if (!activePlayer || !userSqid || !supportsPause) return;
-    const next = !activePlayer.is_paused;
-    await runOptimistic('is_paused', next,
+    const next = !displayedPaused;
+    await submitPending('is_paused', next,
       () => setPlayerPause(userSqid, activePlayer.id, next));
   };
-
-  // Debounce brightness — slider drag fires many onChange events.
-  const displayedBrightness = brightnessLocal ?? activePlayer?.brightness ?? 0;
 
   const onBrightnessInput = (raw: number) => {
     setBrightnessLocal(raw);
     if (brightnessTimerRef.current) window.clearTimeout(brightnessTimerRef.current);
     brightnessTimerRef.current = window.setTimeout(() => {
       if (!activePlayer || !userSqid) return;
-      runOptimistic('brightness', raw,
+      submitPending('brightness', raw,
         () => setPlayerBrightness(userSqid, activePlayer.id, raw))
         .finally(() => setBrightnessLocal(null));
     }, BRIGHTNESS_DEBOUNCE_MS);
@@ -201,13 +212,13 @@ export default function PlayerBar() {
 
   const handleSetRotation = async (value: number) => {
     if (!activePlayer || !userSqid) return;
-    await runOptimistic('rotation', value,
+    await submitPending('rotation', value,
       () => setPlayerRotation(userSqid, activePlayer.id, value));
   };
 
   const handleSetMirror = async (value: string) => {
     if (!activePlayer || !userSqid) return;
-    await runOptimistic('mirror', value,
+    await submitPending('mirror', value,
       () => setPlayerMirror(userSqid, activePlayer.id, value));
   };
 
@@ -310,7 +321,7 @@ export default function PlayerBar() {
                         {caps.rotation!.values.map((v) => (
                           <button
                             key={v}
-                            className={`chip ${activePlayer.rotation === v ? 'active' : ''}`}
+                            className={`chip ${displayedRotation === v ? 'active' : ''}`}
                             onClick={() => handleSetRotation(v)}
                           >
                             {v}°
@@ -326,7 +337,7 @@ export default function PlayerBar() {
                         {caps.mirror!.values.map((v) => (
                           <button
                             key={v}
-                            className={`chip ${activePlayer.mirror === v ? 'active' : ''}`}
+                            className={`chip ${displayedMirror === v ? 'active' : ''}`}
                             onClick={() => handleSetMirror(v)}
                           >
                             {v}
@@ -344,12 +355,12 @@ export default function PlayerBar() {
 
           {supportsPause && activePlayer && (
             <button
-              className={`pause-btn ${activePlayer.is_paused ? 'paused' : ''}`}
+              className={`pause-btn ${displayedPaused ? 'paused' : ''}`}
               onClick={handleTogglePause}
-              title={activePlayer.is_paused ? 'Resume' : 'Pause'}
-              aria-label={activePlayer.is_paused ? 'Resume' : 'Pause'}
+              title={displayedPaused ? 'Resume' : 'Pause'}
+              aria-label={displayedPaused ? 'Resume' : 'Pause'}
             >
-              {activePlayer.is_paused ? '▶' : '⏸'}
+              {displayedPaused ? '▶' : '⏸'}
             </button>
           )}
 

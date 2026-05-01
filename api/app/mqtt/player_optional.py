@@ -4,6 +4,10 @@ Three topics handled here:
   - makapix/player/{key}/capabilities  (retained, player declares features)
   - makapix/player/{key}/state         (retained, player reports current state)
   - makapix/player/{key}/command/ack   (per-command acknowledgement)
+
+Capability and state messages drive the live UI over SSE. Acks are recorded
+on PlayerCommandLog for audit only and are not forwarded to clients — the UI
+treats the player's retained state as the source of truth.
 """
 
 from __future__ import annotations
@@ -229,6 +233,7 @@ def _handle_state(player_key: UUID, payload: dict[str, Any]) -> None:
 
 
 def _handle_ack(player_key: UUID, payload: dict[str, Any]) -> None:
+    """Record the ack on PlayerCommandLog. Not forwarded to SSE clients."""
     command_id_raw = payload.get("command_id")
     if not isinstance(command_id_raw, str):
         return
@@ -240,7 +245,6 @@ def _handle_ack(player_key: UUID, payload: dict[str, Any]) -> None:
     raw_status = payload.get("status")
     if raw_status not in ("ok", "error", "unsupported"):
         return
-    error_msg = payload.get("error") if isinstance(payload.get("error"), str) else None
 
     db: Session = next(get_session())
     try:
@@ -255,20 +259,6 @@ def _handle_ack(player_key: UUID, payload: dict[str, Any]) -> None:
         log.ack_status = raw_status
         log.acked_at = datetime.now(timezone.utc)
         db.commit()
-
-        player = log.player
-        owner_id = player.owner_id if player is not None else None
-        if owner_id is not None:
-            player_events.publish_threadsafe(
-                owner_id,
-                {
-                    "type": "command_ack",
-                    "player_id": str(player.id) if player is not None else None,
-                    "command_id": str(command_id),
-                    "status": raw_status,
-                    "error": error_msg,
-                },
-            )
     except Exception:
         logger.exception("Error handling ack for %s", command_id)
         db.rollback()
