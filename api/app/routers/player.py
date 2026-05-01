@@ -731,6 +731,101 @@ def list_players(
     return {"items": [schemas.PlayerPublic.model_validate(p) for p in players]}
 
 
+# ---------------------------------------------------------------------------
+# Live updates via Server-Sent Events
+#
+# Registered before the `/u/{sqid}/player/{player_id}` GET route so that the
+# literal `sse` segment matches first — otherwise FastAPI binds the request
+# to the wildcard route, runs its `Depends(get_current_user)`, and 401s
+# because EventSource cannot send a Bearer header.
+# ---------------------------------------------------------------------------
+
+
+def _resolve_user_from_token(token: str, db: Session) -> models.User:
+    import jwt as jwt_lib
+
+    try:
+        payload = jwt_lib.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+    except jwt_lib.PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+        )
+    user_id_str = payload.get("user_id")
+    if not user_id_str:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+        )
+    try:
+        from uuid import UUID as _UUID
+
+        user_key = _UUID(user_id_str)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+        )
+    user = db.query(models.User).filter(models.User.user_key == user_key).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found"
+        )
+    return user
+
+
+@router.get("/u/{sqid}/player/sse")
+async def player_events_sse(
+    sqid: str,
+    request: Request,
+    token: str = "",
+    db: Session = Depends(get_db),
+):
+    """Server-Sent Events stream of live capability/state/ack updates.
+
+    EventSource cannot set Bearer headers, so the access token must be
+    passed as a `token` query parameter.
+    """
+    import asyncio
+    import json as _json
+
+    from fastapi.responses import StreamingResponse
+
+    from ..services import player_events
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token required"
+        )
+    current_user = _resolve_user_from_token(token, db)
+    user = get_user_by_sqid(sqid, db)
+    require_ownership(user.id, current_user)
+    user_id = user.id
+
+    async def gen():
+        queue = await player_events.subscribe(user_id)
+        try:
+            yield ': connected\n\n'
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                except asyncio.TimeoutError:
+                    yield ': keepalive\n\n'
+                    continue
+                yield f"event: {event['type']}\ndata: {_json.dumps(event)}\n\n"
+        finally:
+            await player_events.unsubscribe(user_id, queue)
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.get("/u/{sqid}/player/{player_id}", response_model=schemas.PlayerPublic)
 def get_player(
     sqid: str,
@@ -1527,91 +1622,3 @@ def set_player_mirror(
     return schemas.PlayerCommandResponse(command_id=command_id, status="sent")
 
 
-# ---------------------------------------------------------------------------
-# Live updates via Server-Sent Events
-# ---------------------------------------------------------------------------
-
-
-def _resolve_user_from_token(token: str, db: Session) -> models.User:
-    import jwt as jwt_lib
-
-    try:
-        payload = jwt_lib.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
-    except jwt_lib.PyJWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
-        )
-    user_id_str = payload.get("user_id")
-    if not user_id_str:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
-        )
-    try:
-        from uuid import UUID as _UUID
-
-        user_key = _UUID(user_id_str)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
-        )
-    user = db.query(models.User).filter(models.User.user_key == user_key).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found"
-        )
-    return user
-
-
-@router.get("/u/{sqid}/player/sse")
-async def player_events_sse(
-    sqid: str,
-    request: Request,
-    token: str = "",
-    db: Session = Depends(get_db),
-):
-    """Server-Sent Events stream of live capability/state/ack updates.
-
-    EventSource cannot set Bearer headers, so the access token must be
-    passed as a `token` query parameter.
-    """
-    import asyncio
-    import json as _json
-
-    from fastapi.responses import StreamingResponse
-
-    from ..services import player_events
-
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token required"
-        )
-    current_user = _resolve_user_from_token(token, db)
-    user = get_user_by_sqid(sqid, db)
-    require_ownership(user.id, current_user)
-    user_id = user.id
-
-    async def gen():
-        queue = await player_events.subscribe(user_id)
-        try:
-            yield ': connected\n\n'
-            while True:
-                if await request.is_disconnected():
-                    break
-                try:
-                    event = await asyncio.wait_for(queue.get(), timeout=15.0)
-                except asyncio.TimeoutError:
-                    yield ': keepalive\n\n'
-                    continue
-                yield f"event: {event['type']}\ndata: {_json.dumps(event)}\n\n"
-        finally:
-            await player_events.unsubscribe(user_id, queue)
-
-    return StreamingResponse(
-        gen(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
