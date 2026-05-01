@@ -130,17 +130,28 @@ export function PlayerBarProvider({ children }: PlayerBarProviderProps) {
   const onlinePlayers = players.filter((p) => p.connection_status === 'online');
   const hasOnlinePlayer = onlinePlayers.length > 0;
 
-  // Restore preferred active player from localStorage once.
+  // Restore preferred active player from localStorage when the user changes.
+  // Keying by sqid keeps each account's last pick separate on shared browsers.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const saved = localStorage.getItem('player_bar.active_player_id');
-    if (saved) setActivePlayerIdState(saved);
-  }, []);
+    if (!userSqid) {
+      setActivePlayerIdState(null);
+      return;
+    }
+    const saved = localStorage.getItem(`player_bar.active_player_id.${userSqid}`);
+    setActivePlayerIdState(saved);
+  }, [userSqid]);
 
   // Auto-pick / auto-replace active player as the online set changes.
+  // Gated on !isLoading: while the players API is in flight `onlinePlayers`
+  // is empty, and running this effect during that window would clobber the
+  // value just restored from localStorage.
   useEffect(() => {
+    if (isLoading) return;
     if (!onlinePlayers.length) {
       // No online players — clear selection so UI collapses cleanly.
+      // Only touch the React state; leave localStorage alone so the saved
+      // pick is restored next time that player comes back online.
       if (activePlayerId !== null) setActivePlayerIdState(null);
       return;
     }
@@ -149,15 +160,15 @@ export function PlayerBarProvider({ children }: PlayerBarProviderProps) {
     if (!stillOnline) {
       setActivePlayerIdState(onlinePlayers[0].id);
     }
-  }, [onlinePlayers, activePlayerId]);
+  }, [onlinePlayers, activePlayerId, isLoading]);
 
   const setActivePlayerId = useCallback((id: string | null) => {
     setActivePlayerIdState(id);
-    if (typeof window !== 'undefined') {
-      if (id) localStorage.setItem('player_bar.active_player_id', id);
-      else localStorage.removeItem('player_bar.active_player_id');
-    }
-  }, []);
+    if (typeof window === 'undefined' || !userSqid) return;
+    const key = `player_bar.active_player_id.${userSqid}`;
+    if (id) localStorage.setItem(key, id);
+    else localStorage.removeItem(key);
+  }, [userSqid]);
 
   const setPendingPatch = useCallback(
     (playerId: string, field: PendingField, value: unknown) => {
