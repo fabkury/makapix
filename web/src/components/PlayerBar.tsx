@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { PendingField, PendingPatch, usePlayerBarOptional } from '../contexts/PlayerBarContext';
 import {
   sendPlayerCommand,
@@ -68,6 +69,7 @@ export default function PlayerBar() {
   if (!context || context.isLoading || !context.hasOnlinePlayer) {
     return null;
   }
+  if (typeof document === 'undefined') return null;
 
   const { onlinePlayers, selectedArtwork, currentChannel, activePlayerId,
     setActivePlayerId, pendingPatches, setPendingPatch, clearPendingPatch } = context;
@@ -271,7 +273,11 @@ export default function PlayerBar() {
     ? `Play "${currentChannel.displayName}" on player`
     : 'Nothing to send';
 
-  return (
+  // Portal to body so we escape the page's `.main-content` stacking context
+  // (`view-transition-name: main-content` makes it a stacking context with
+  // effective z-index `auto`, which would otherwise trap us below SPO/SAO
+  // and any other body-level fixed overlay regardless of our own z-index).
+  return createPortal(
     <>
       <div className="player-bar">
         <div className="player-bar-content">
@@ -606,6 +612,7 @@ export default function PlayerBar() {
         .swap-btn:disabled { opacity: 0.5; cursor: pointer; }
         .swap-btn.pulse { animation: pulse 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
       `}</style>
-    </>
+    </>,
+    document.body
   );
 }
