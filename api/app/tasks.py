@@ -3582,13 +3582,25 @@ def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
         db.commit()
         logger.info(f"Deleted {counts['posts']} posts for user {user_id}")
 
-        # 4. Delete all players
-        counts["players"] = (
+        # 4. Delete all players (per-player teardown so cert revocation,
+        # MQTT password removal, and audit logging happen — bulk SQL delete
+        # would bypass all of that).
+        from .services.player_teardown import teardown_player
+
+        players = (
             db.query(models.Player)
             .filter(models.Player.owner_id == user_id)
-            .delete(synchronize_session=False)
+            .all()
         )
-        db.commit()
+        for player in players:
+            try:
+                teardown_player(db, player, removed_by=user_id)
+                counts["players"] += 1
+            except Exception:
+                logger.exception(
+                    f"Failed to tear down player {player.id} for user {user_id}"
+                )
+                db.rollback()
         logger.info(f"Deleted {counts['players']} players for user {user_id}")
 
         # 5. Delete BatchDownloadRequests AND their zip files
