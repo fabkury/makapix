@@ -32,6 +32,7 @@ interface UploadedArtwork {
   width: number;
   height: number;
   public_visibility: boolean;
+  created_at: string;
 }
 
 interface ValidationError {
@@ -878,6 +879,7 @@ function SubmitPageContent() {
         width: data.post.width,
         height: data.post.height,
         public_visibility: data.post.public_visibility,
+        created_at: data.post.created_at,
       });
 
       // Clear draft after successful upload
@@ -923,17 +925,18 @@ function SubmitPageContent() {
         {uploadedArtwork ? (
           <div className="success-container">
             <div className="success-card">
-              <div className="success-icon">✅</div>
               <h2 className="success-title">Artwork Uploaded!</h2>
-              <div className="success-preview">
-                <img
-                  src={ensureCompatibleArtUrl(`${API_BASE_URL}${uploadedArtwork.art_url}`)}
-                  alt={uploadedArtwork.title}
-                  className="success-image"
-                />
-              </div>
+              <Link href={`/p/${uploadedArtwork.public_sqid}`} legacyBehavior>
+                <a className="success-preview">
+                  <img
+                    src={ensureCompatibleArtUrl(`${API_BASE_URL}${uploadedArtwork.art_url}`)}
+                    alt={uploadedArtwork.title}
+                    className="success-image"
+                  />
+                </a>
+              </Link>
               <p className="success-name">{uploadedArtwork.title}</p>
-              <p className="success-canvas">{uploadedArtwork.width}x{uploadedArtwork.height}</p>
+              <p className="success-date">{new Date(uploadedArtwork.created_at).toLocaleString()}</p>
 
               {!uploadedArtwork.public_visibility && (
                 <div className="pending-notice">
@@ -1482,15 +1485,14 @@ function SubmitPageContent() {
         .btn-secondary:hover:not(:disabled) { border-color: var(--accent-cyan); color: var(--accent-cyan); }
         .btn-danger { background: rgba(255, 100, 100, 0.2); border: 1px solid rgba(255, 100, 100, 0.4); color: #ff6b6b; }
         .btn-danger:hover { background: rgba(255, 100, 100, 0.3); }
-        .success-container { max-width: 400px; margin: 0 auto; }
+        .success-container { max-width: 448px; margin: 0 auto; }
         .success-card { display: flex; flex-direction: column; align-items: center; padding: 32px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--bg-tertiary); border-radius: 16px; }
         .success-card > :global(* + *) { margin-top: 16px; }
-        .success-icon { font-size: 3rem; }
         .success-title { font-size: 1.25rem; font-weight: 600; color: var(--text-primary); }
-        .success-preview { width: 176px; height: 176px; background: rgba(0, 0, 0, 0.3); border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-        .success-image { max-width: 100%; max-height: 100%; object-fit: contain; image-rendering: pixelated; }
+        .success-preview { width: 384px; max-width: 100%; aspect-ratio: 1 / 1; background: rgba(0, 0, 0, 0.3); border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: pointer; }
+        .success-image { width: 100%; height: 100%; object-fit: contain; image-rendering: -webkit-optimize-contrast; image-rendering: -moz-crisp-edges; image-rendering: crisp-edges; image-rendering: pixelated; }
         .success-name { font-weight: 600; color: var(--text-primary); }
-        .success-canvas { font-size: 0.9rem; color: var(--text-secondary); }
+        .success-date { font-size: 0.9rem; color: var(--text-secondary); }
         .pending-notice { display: flex; flex-direction: column; align-items: center; padding: 16px; background: rgba(255, 200, 100, 0.1); border: 1px solid rgba(255, 200, 100, 0.3); border-radius: 12px; text-align: center; }
         .pending-notice > :global(* + *) { margin-top: 8px; }
         .pending-icon { font-size: 1.5rem; }
