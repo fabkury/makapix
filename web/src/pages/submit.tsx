@@ -1037,8 +1037,8 @@ function SubmitPageContent() {
             <div className="form-column">
               <div className="form-group">
                 <label htmlFor="title" className="form-label">Artwork Title *</label>
-                <input id="title" type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Enter artwork title..." maxLength={200} className="form-input" />
-                <span className="char-count">{title.length}/200</span>
+                <input id="title" type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Enter artwork title..." maxLength={128} className="form-input" />
+                <span className="char-count">{title.length}/128</span>
               </div>
 
               <div className="form-group">

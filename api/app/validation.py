@@ -116,8 +116,8 @@ def validate_manifest(manifest: dict) -> Tuple[bool, List[str]]:
                     errors.append(f"Missing title in artwork {idx}")
                 elif not isinstance(title, str):
                     errors.append(f"Invalid title type in artwork {idx}")
-                elif len(title) > 200:
-                    errors.append(f"Title too long in artwork {idx} (max 200 chars)")
+                elif len(title) > 128:
+                    errors.append(f"Title too long in artwork {idx} (max 128 chars)")
 
                 # Dimension validation using width/height fields
                 width = art.get("width")

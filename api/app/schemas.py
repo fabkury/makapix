@@ -325,7 +325,7 @@ class PostCreate(BaseModel):
     """Create post request."""
 
     kind: Literal["artwork"] = "artwork"
-    title: str = Field(..., min_length=1, max_length=200)
+    title: str = Field(..., min_length=1, max_length=128)
     description: str | None = Field(None, max_length=5000)
     hashtags: list[str] = Field(default_factory=list, max_length=64)
     art_url: str  # Can be relative URL for vault-hosted images or full URL for external
@@ -338,7 +338,7 @@ class PostCreate(BaseModel):
 class PostUpdate(BaseModel):
     """Update post request."""
 
-    title: str | None = Field(None, min_length=1, max_length=200)
+    title: str | None = Field(None, min_length=1, max_length=128)
     description: str | None = Field(None, max_length=5000)
     hashtags: list[str] | None = Field(None, max_length=64)
     hidden_by_user: bool | None = None
