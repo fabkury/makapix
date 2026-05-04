@@ -1118,6 +1118,7 @@ def send_player_command(
         native_pf = next((f for f in post.files if f.is_native), None)
         command_payload = {
             "post_id": post.id,
+            "title": post.title,
             "storage_key": str(post.storage_key),
             "storage_shard": post.storage_shard or "",
             "native_format": native_pf.format if native_pf else "png",
@@ -1265,6 +1266,7 @@ def send_command_to_all_players(
         native_pf = next((f for f in post.files if f.is_native), None)
         command_payload = {
             "post_id": post.id,
+            "title": post.title,
             "storage_key": str(post.storage_key),
             "storage_shard": post.storage_shard or "",
             "native_format": native_pf.format if native_pf else "png",
