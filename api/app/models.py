@@ -273,7 +273,7 @@ class Post(Base):
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
     # Content
-    title = Column(String(200), nullable=False)
+    title = Column(String(128), nullable=False)
     description = Column(Text, nullable=True)
     hashtags = Column(ARRAY(String), nullable=False, default=list)
 

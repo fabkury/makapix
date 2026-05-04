@@ -512,7 +512,7 @@ def create_post(
 async def upload_artwork(
     request: Request,
     image: UploadFile = File(...),
-    title: str = Form(..., min_length=1, max_length=200),
+    title: str = Form(..., min_length=1, max_length=128),
     description: str | None = Form(None, max_length=5000),
     hashtags: str = Form(""),  # Comma-separated hashtags
     hidden_by_user: str = Form("false"),  # User can choose to hide their artwork

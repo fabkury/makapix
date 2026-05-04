@@ -59,7 +59,7 @@ interface License {
 }
 
 const PAGE_SIZE = 20;
-const MAX_TITLE_LEN = 200;
+const MAX_TITLE_LEN = 128;
 const MAX_DESC_LEN = 5000;
 const MAX_REFRESH_BLOCKS = 200; // safety guard against infinite loops
 const SHORT_PAGE_RETRIES = 2;
