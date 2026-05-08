@@ -1,10 +1,15 @@
 """Generate the visits history report (PDF + MD + PNGs) for makapix.club."""
 from __future__ import annotations
 
+import os
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import psycopg2
+import psycopg2.extras
+from dotenv import dotenv_values
 
 START_DATE = date(2025, 12, 2)
 END_DATE = date(2026, 5, 1)
@@ -56,3 +61,46 @@ def reshape_rows(rows: list[dict[str, Any]]) -> pd.DataFrame:
         out["unique_visitors"] - out["authenticated_unique_visitors"]
     ).clip(lower=0)
     return out
+
+
+ENV_FILE = Path("/opt/makapix/.env")
+
+
+def load_db_config() -> dict[str, str]:
+    """Read DB_API_WORKER_USER, DB_API_WORKER_PASSWORD, DB_DATABASE from /opt/makapix/.env."""
+    if not ENV_FILE.exists():
+        raise RuntimeError(f"Cannot find {ENV_FILE}. Run from a host with prod env.")
+    env = dotenv_values(ENV_FILE)
+    required = ("DB_API_WORKER_USER", "DB_API_WORKER_PASSWORD", "DB_DATABASE")
+    missing = [k for k in required if not env.get(k)]
+    if missing:
+        raise RuntimeError(f"Missing env vars in {ENV_FILE}: {missing}")
+    return {
+        "user": env["DB_API_WORKER_USER"],
+        "password": env["DB_API_WORKER_PASSWORD"],
+        "database": env["DB_DATABASE"],
+        "host": "127.0.0.1",
+        "port": 5432,
+    }
+
+
+def fetch_rows() -> list[dict[str, Any]]:
+    """Fetch site_stats_daily rows in the report window from the prod DB."""
+    cfg = load_db_config()
+    query = """
+        SELECT
+            date,
+            unique_visitors,
+            authenticated_unique_visitors,
+            total_page_views,
+            new_signups,
+            views_by_device,
+            views_by_country
+        FROM site_stats_daily
+        WHERE date BETWEEN %s AND %s
+        ORDER BY date
+    """
+    with psycopg2.connect(**cfg) as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(query, (START_DATE, END_DATE))
+            return [dict(row) for row in cur.fetchall()]
