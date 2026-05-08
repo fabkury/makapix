@@ -277,21 +277,31 @@ def chart_05_device(df: pd.DataFrame) -> Path:
     return out
 
 
-def chart_06_countries(df: pd.DataFrame) -> Path:
-    """Top 10 countries by page views, all-time (horizontal bar)."""
-    out = CHARTS_DIR / "chart-06-top-countries.png"
-    totals = _sum_json_column(df, "views_by_country")
-    top = sorted(totals.items(), key=lambda kv: kv[1], reverse=True)[:10]
-    labels = [k or "—" for k, _ in top]
-    values = [v for _, v in top]
+def chart_06_dayofweek(df: pd.DataFrame) -> Path:
+    """Average daily unique visitors by weekday (Mon -> Sun)."""
+    out = CHARTS_DIR / "chart-06-day-of-week.png"
+    # Average uniques per weekday, with 0=Mon ... 6=Sun
+    by_dow = df.groupby(df.index.dayofweek)["unique_visitors"].mean()
+    # Reindex to ensure Mon-Sun order even if some weekday is missing
+    by_dow = by_dow.reindex(range(7), fill_value=0.0)
+    labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    values = [by_dow.iloc[i] for i in range(7)]
 
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.barh(labels, values, color=COLOR_PRIMARY)
-    ax.set_title("Top 10 countries by page views, all-time")
-    ax.set_xlabel("Page views")
-    ax.invert_yaxis()
-    for i, v in enumerate(values):
-        ax.text(v, i, f"  {v:,}", va="center", fontsize=9, color="#333")
+    fig, ax = plt.subplots(figsize=(10, 4))
+    bars = ax.bar(labels, values, color=COLOR_PRIMARY, width=0.65)
+    ax.set_title("Average daily unique visitors by weekday")
+    ax.set_ylabel("Average unique visitors per day")
+    ax.set_ylim(bottom=0)
+    for bar, v in zip(bars, values):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            v,
+            f" {v:.1f}",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            color="#333",
+        )
     fig.savefig(out)
     plt.close(fig)
     return out
