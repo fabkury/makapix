@@ -305,3 +305,22 @@ def chart_06_dayofweek(df: pd.DataFrame) -> Path:
     fig.savefig(out)
     plt.close(fig)
     return out
+
+
+def compute_stats(df: pd.DataFrame) -> dict[str, Any]:
+    """Compute the dynamic numbers referenced in the markdown report."""
+    peak_idx = df["unique_visitors"].idxmax()
+    return {
+        "start_date_human": pd.Timestamp(START_DATE).strftime("%B %d, %Y"),
+        "end_date_human": pd.Timestamp(END_DATE).strftime("%B %d, %Y"),
+        "total_days": len(df),
+        "days_with_traffic": int((df["unique_visitors"] > 0).sum()),
+        "total_unique_visitors": int(df["unique_visitors"].sum()),
+        "total_page_views": int(df["total_page_views"].sum()),
+        "total_signups": int(df["new_signups"].sum()),
+        "total_authenticated": int(df["authenticated_unique_visitors"].sum()),
+        "peak_unique_day": peak_idx.strftime("%B %d, %Y"),
+        "peak_unique_value": int(df.loc[peak_idx, "unique_visitors"]),
+        "peak_pv_day": df["total_page_views"].idxmax().strftime("%B %d, %Y"),
+        "peak_pv_value": int(df["total_page_views"].max()),
+    }
