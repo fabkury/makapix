@@ -6,6 +6,11 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+import matplotlib
+
+matplotlib.use("Agg")  # No display backend
+import matplotlib.pyplot as plt
+from matplotlib.dates import DateFormatter, MonthLocator
 import pandas as pd
 import psycopg2
 import psycopg2.extras
@@ -13,6 +18,17 @@ from dotenv import dotenv_values
 
 START_DATE = date(2025, 12, 2)
 END_DATE = date(2026, 5, 1)
+
+REPORT_DIR = Path(__file__).resolve().parent
+CHARTS_DIR = REPORT_DIR / "charts"
+
+# Muted palette for the report
+COLOR_PRIMARY = "#2E5266"   # deep teal
+COLOR_SECONDARY = "#6E8898" # muted slate
+COLOR_ACCENT = "#9FB1BC"    # pale slate
+COLOR_FAINT = "#D3D0CB"     # warm gray
+
+PALETTE = [COLOR_PRIMARY, COLOR_SECONDARY, COLOR_ACCENT, COLOR_FAINT]
 
 
 def reshape_rows(rows: list[dict[str, Any]]) -> pd.DataFrame:
@@ -104,3 +120,41 @@ def fetch_rows() -> list[dict[str, Any]]:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(query, (START_DATE, END_DATE))
             return [dict(row) for row in cur.fetchall()]
+
+
+def setup_style() -> None:
+    """Apply shared matplotlib style. Call once at the start of a render run."""
+    plt.rcParams.update(
+        {
+            "figure.figsize": (10, 5),
+            "figure.dpi": 160,  # 2x-ish for print quality
+            "savefig.dpi": 160,
+            "savefig.bbox": "tight",
+            "axes.spines.top": False,
+            "axes.spines.right": False,
+            "axes.grid": True,
+            "grid.color": "#EDEDED",
+            "grid.linewidth": 0.6,
+            "axes.labelcolor": "#333333",
+            "axes.edgecolor": "#888888",
+            "xtick.color": "#555555",
+            "ytick.color": "#555555",
+            "axes.titlesize": 13,
+            "axes.titleweight": "semibold",
+            "axes.titlepad": 14,
+            "axes.labelsize": 11,
+            "xtick.labelsize": 9,
+            "ytick.labelsize": 9,
+            "font.family": "sans-serif",
+            "axes.prop_cycle": plt.cycler(color=PALETTE),
+        }
+    )
+
+
+def _format_date_axis(ax: plt.Axes) -> None:
+    """Apply consistent month-tick formatting to a date x-axis."""
+    ax.xaxis.set_major_locator(MonthLocator())
+    ax.xaxis.set_major_formatter(DateFormatter("%b %d"))
+    for label in ax.get_xticklabels():
+        label.set_rotation(0)
+        label.set_horizontalalignment("center")
