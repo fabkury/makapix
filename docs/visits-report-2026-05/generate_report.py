@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
 from collections import Counter
 from datetime import date
 from pathlib import Path
@@ -405,3 +407,44 @@ The visible patterns are the December cold start, a gradual ramp through the spr
 def build_markdown(stats: dict[str, Any]) -> str:
     """Assemble the markdown report by substituting computed stats into the template."""
     return MD_TEMPLATE.format(**stats)
+
+
+def render_pdf(md_path: Path, pdf_path: Path) -> None:
+    """Run pandoc to convert the markdown to a PDF.
+
+    Tries xelatex first, falls back to pdflatex. Raises if neither is available.
+    """
+    if shutil.which("pandoc") is None:
+        raise RuntimeError(
+            "pandoc not found on PATH. Install with: sudo apt-get install pandoc"
+        )
+    engines = []
+    if shutil.which("xelatex"):
+        engines.append("xelatex")
+    if shutil.which("pdflatex"):
+        engines.append("pdflatex")
+    if not engines:
+        raise RuntimeError(
+            "No LaTeX engine found. Install with: "
+            "sudo apt-get install texlive-xetex texlive-fonts-recommended"
+        )
+    last_err: subprocess.CalledProcessError | None = None
+    for engine in engines:
+        try:
+            subprocess.run(
+                [
+                    "pandoc",
+                    str(md_path),
+                    "-o",
+                    str(pdf_path),
+                    f"--pdf-engine={engine}",
+                ],
+                check=True,
+                cwd=md_path.parent,
+            )
+            return
+        except subprocess.CalledProcessError as exc:
+            last_err = exc
+    raise RuntimeError(
+        f"All PDF engines failed. Last error: {last_err}"
+    ) from last_err
