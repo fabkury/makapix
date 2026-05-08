@@ -448,3 +448,34 @@ def render_pdf(md_path: Path, pdf_path: Path) -> None:
     raise RuntimeError(
         f"All PDF engines failed. Last error: {last_err}"
     ) from last_err
+
+
+def main() -> None:
+    """End-to-end: query DB → render charts → write MD → render PDF."""
+    setup_style()
+    print(f"Querying prod DB for {START_DATE} → {END_DATE}...")
+    df = reshape_rows(fetch_rows())
+    print(f"Loaded {len(df)} days; "
+          f"{int((df['unique_visitors'] > 0).sum())} with traffic.")
+
+    print("Rendering charts...")
+    chart_01_unique_visitors(df)
+    chart_02_page_views(df)
+    chart_03_auth_vs_anon(df)
+    chart_04_signups(df)
+    chart_05_device(df)
+    chart_06_dayofweek(df)
+
+    print("Building markdown...")
+    stats = compute_stats(df)
+    md_path = REPORT_DIR / "report.md"
+    md_path.write_text(build_markdown(stats))
+
+    print("Rendering PDF...")
+    render_pdf(md_path, REPORT_DIR / "report.pdf")
+
+    print(f"Done. Output: {REPORT_DIR}")
+
+
+if __name__ == "__main__":
+    main()
