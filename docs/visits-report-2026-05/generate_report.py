@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from collections import Counter
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -158,3 +159,139 @@ def _format_date_axis(ax: plt.Axes) -> None:
     for label in ax.get_xticklabels():
         label.set_rotation(0)
         label.set_horizontalalignment("center")
+
+
+def chart_01_unique_visitors(df: pd.DataFrame) -> Path:
+    """Daily unique visitors with 7-day rolling average overlay."""
+    out = CHARTS_DIR / "chart-01-unique-visitors.png"
+    fig, ax = plt.subplots()
+    daily = df["unique_visitors"]
+    rolling = daily.rolling(window=7, min_periods=7).mean()
+
+    ax.plot(daily.index, daily.values, color=COLOR_FAINT, linewidth=1.0,
+            label="Daily")
+    ax.plot(rolling.index, rolling.values, color=COLOR_PRIMARY, linewidth=2.2,
+            label="7-day rolling average")
+    ax.set_title("Daily unique visitors")
+    ax.set_ylabel("Unique visitors")
+    ax.set_ylim(bottom=0)
+    ax.legend(loc="upper left", frameon=False)
+    _format_date_axis(ax)
+    fig.savefig(out)
+    plt.close(fig)
+    return out
+
+
+def chart_02_page_views(df: pd.DataFrame) -> Path:
+    """Daily page views (single line, separate y-scale from uniques)."""
+    out = CHARTS_DIR / "chart-02-page-views.png"
+    fig, ax = plt.subplots()
+    series = df["total_page_views"]
+    ax.plot(series.index, series.values, color=COLOR_PRIMARY, linewidth=1.6)
+    ax.set_title("Daily page views")
+    ax.set_ylabel("Page views")
+    ax.set_ylim(bottom=0)
+    _format_date_axis(ax)
+    fig.savefig(out)
+    plt.close(fig)
+    return out
+
+
+def chart_03_auth_vs_anon(df: pd.DataFrame) -> Path:
+    """Authenticated vs. anonymous unique visitors per day (two-line overlay)."""
+    out = CHARTS_DIR / "chart-03-auth-vs-anon.png"
+    fig, ax = plt.subplots()
+    ax.plot(
+        df.index,
+        df["anonymous_visitors"].values,
+        color=COLOR_SECONDARY,
+        linewidth=1.6,
+        label="Anonymous",
+    )
+    ax.plot(
+        df.index,
+        df["authenticated_unique_visitors"].values,
+        color=COLOR_PRIMARY,
+        linewidth=1.8,
+        label="Authenticated",
+    )
+    ax.set_title("Authenticated vs. anonymous unique visitors per day")
+    ax.set_ylabel("Unique visitors")
+    ax.set_ylim(bottom=0)
+    ax.legend(loc="upper left", frameon=False)
+    _format_date_axis(ax)
+    fig.savefig(out)
+    plt.close(fig)
+    return out
+
+
+def chart_04_signups(df: pd.DataFrame) -> Path:
+    """New signups per day (sparse data, bar chart)."""
+    out = CHARTS_DIR / "chart-04-signups.png"
+    fig, ax = plt.subplots()
+    series = df["new_signups"]
+    ax.bar(series.index, series.values, color=COLOR_PRIMARY, width=1.0)
+    ax.set_title("New signups per day")
+    ax.set_ylabel("Signups")
+    ax.set_ylim(bottom=0)
+    _format_date_axis(ax)
+    fig.savefig(out)
+    plt.close(fig)
+    return out
+
+
+def _sum_json_column(df: pd.DataFrame, col: str) -> Counter:
+    """Sum a column of dicts into a single Counter."""
+    totals: Counter = Counter()
+    for value in df[col]:
+        if isinstance(value, dict):
+            totals.update(value)
+    return totals
+
+
+def chart_05_device(df: pd.DataFrame) -> Path:
+    """All-time page-view share by device (horizontal bar)."""
+    out = CHARTS_DIR / "chart-05-device.png"
+    totals = _sum_json_column(df, "views_by_device")
+    # Stable preferred order: desktop, mobile, tablet, then anything else
+    preferred = ["desktop", "mobile", "tablet"]
+    items = [(k, totals.get(k, 0)) for k in preferred if k in totals]
+    extras = sorted(
+        ((k, v) for k, v in totals.items() if k not in preferred),
+        key=lambda kv: kv[1],
+        reverse=True,
+    )
+    items.extend(extras)
+    labels = [k for k, _ in items]
+    values = [v for _, v in items]
+
+    fig, ax = plt.subplots(figsize=(10, 3.5))
+    ax.barh(labels, values, color=COLOR_PRIMARY)
+    ax.set_title("All-time page-view share by device")
+    ax.set_xlabel("Page views")
+    ax.invert_yaxis()
+    for i, v in enumerate(values):
+        ax.text(v, i, f"  {v:,}", va="center", fontsize=9, color="#333")
+    fig.savefig(out)
+    plt.close(fig)
+    return out
+
+
+def chart_06_countries(df: pd.DataFrame) -> Path:
+    """Top 10 countries by page views, all-time (horizontal bar)."""
+    out = CHARTS_DIR / "chart-06-top-countries.png"
+    totals = _sum_json_column(df, "views_by_country")
+    top = sorted(totals.items(), key=lambda kv: kv[1], reverse=True)[:10]
+    labels = [k or "—" for k, _ in top]
+    values = [v for _, v in top]
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.barh(labels, values, color=COLOR_PRIMARY)
+    ax.set_title("Top 10 countries by page views, all-time")
+    ax.set_xlabel("Page views")
+    ax.invert_yaxis()
+    for i, v in enumerate(values):
+        ax.text(v, i, f"  {v:,}", va="center", fontsize=9, color="#333")
+    fig.savefig(out)
+    plt.close(fig)
+    return out
