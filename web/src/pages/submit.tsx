@@ -67,7 +67,7 @@ const MAX_UPLOAD_SIZE_BYTES = (() => {
   return Number.isFinite(n) && n > 0 ? n : 5242880;
 })();
 
-const MAX_LOAD_SIZE_BYTES = 25 * 1024 * 1024;
+const MAX_LOAD_SIZE_BYTES = 256 * 1024 * 1024;
 
 function formatMiB(bytes: number): string {
   const mib = bytes / (1024 * 1024);
