@@ -105,7 +105,7 @@ Get TLS certificates for MQTT connection. No authentication required.
 }
 ```
 
-**Rate Limit:** 20 requests/minute/IP
+**Rate Limit:** 30 requests/minute/IP
 
 **Errors:**
 
