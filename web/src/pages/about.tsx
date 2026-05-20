@@ -388,6 +388,32 @@ function FeaturesTab() {
             </div>
           ))}
         </div>
+        <p className="maker-footnote">
+          <strong>See it running today.</strong> Two open-source player projects already
+          integrate with MPX:{' '}
+          <a href="https://github.com/fabkury/p3a" target="_blank" rel="noopener noreferrer">
+            p3a
+          </a>{' '}
+          (ESP32-P4 reference firmware) and{' '}
+          <a
+            href="https://github.com/BlueAndi/Pixelix"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Pixelix
+          </a>{' '}
+          (modular LED-matrix firmware). See the{' '}
+          <Link href="/players">player projects page</Link> for an overview, or jump
+          straight to the{' '}
+          <a
+            href="https://github.com/fabkury/makapix/blob/main/docs/player/README.md"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Player Device Guide
+          </a>
+          .
+        </p>
       </div>
 
       <style jsx>{`
@@ -438,6 +464,29 @@ function FeaturesTab() {
 
         .maker-section h2 {
           color: var(--accent-pink);
+        }
+
+        .maker-footnote {
+          margin: 16px 0 0 0;
+          padding: 12px 14px;
+          font-size: 0.9rem;
+          line-height: 1.55;
+          color: var(--text-secondary);
+          background: rgba(255, 255, 255, 0.02);
+          border-radius: 8px;
+        }
+
+        .maker-footnote :global(a) {
+          color: var(--accent-pink);
+          text-decoration: none;
+        }
+
+        .maker-footnote :global(a:hover) {
+          text-decoration: underline;
+        }
+
+        .maker-footnote :global(strong) {
+          color: var(--text-primary);
         }
 
         .feature-list {
