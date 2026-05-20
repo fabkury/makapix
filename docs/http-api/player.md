@@ -336,7 +336,7 @@ Same request body as single player command.
 | Registration code validity | 15 minutes |
 | Certificate validity | 365 days |
 | Certificate renewal threshold | 30 days |
-| Credential request rate limit | 20/minute/IP |
+| Credential request rate limit | 30/minute/IP |
 | Command rate limit (player) | 300/minute |
 | Command rate limit (user) | 1,000/minute |
 

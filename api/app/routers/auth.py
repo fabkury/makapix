@@ -205,7 +205,7 @@ def register(
     - User must verify email before logging in
     - After verification, user can optionally change password/handle
 
-    Rate limited to 15 registrations per hour per IP address.
+    Rate limited to 30 registrations per hour per IP address.
 
     Args:
         payload: Registration request with email
@@ -236,11 +236,11 @@ def register(
             detail="An account with this email already exists",
         )
 
-    # Rate limiting: 15 registrations per hour per IP
+    # Rate limiting: 30 registrations per hour per IP
     # Only checked after email validation to show more specific errors first
     client_ip = get_client_ip(request)
     rate_limit_key = f"ratelimit:register:{client_ip}"
-    allowed, remaining = check_rate_limit(rate_limit_key, limit=15, window_seconds=3600)
+    allowed, remaining = check_rate_limit(rate_limit_key, limit=30, window_seconds=3600)
 
     if not allowed:
         raise HTTPException(
@@ -346,7 +346,7 @@ def login(
     Login with email and password.
 
     Requires email verification for password-based login.
-    Rate limited to 10 login attempts per 5 minutes per IP address.
+    Rate limited to 20 login attempts per 5 minutes per IP address.
 
     The refresh token is stored in an HttpOnly cookie and not returned in the response body.
 
@@ -358,10 +358,10 @@ def login(
     """
     email = payload.email.lower().strip()
 
-    # Rate limiting: 10 login attempts per 5 minutes per IP
+    # Rate limiting: 20 login attempts per 5 minutes per IP
     client_ip = get_client_ip(request)
     rate_limit_key = f"ratelimit:login:{client_ip}"
-    allowed, remaining = check_rate_limit(rate_limit_key, limit=10, window_seconds=300)
+    allowed, remaining = check_rate_limit(rate_limit_key, limit=20, window_seconds=300)
 
     if not allowed:
         raise HTTPException(
@@ -825,10 +825,10 @@ def forgot_password(
     For security, always returns success even if email doesn't exist.
     This prevents email enumeration attacks.
     """
-    # Rate limiting: 5 password reset requests per hour per IP
+    # Rate limiting: 15 password reset requests per hour per IP
     client_ip = get_client_ip(request)
     rate_limit_key = f"ratelimit:forgot_password:{client_ip}"
-    allowed, remaining = check_rate_limit(rate_limit_key, limit=5, window_seconds=3600)
+    allowed, remaining = check_rate_limit(rate_limit_key, limit=15, window_seconds=3600)
 
     if not allowed:
         raise HTTPException(

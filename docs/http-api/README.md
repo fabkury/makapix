@@ -95,18 +95,18 @@ The `next_cursor` field in the response provides the cursor for the next page. W
 
 | Endpoint | Limit |
 |----------|-------|
-| Registration | 15/hour/IP |
-| Login | 10/5 min/IP |
+| Registration | 30/hour/IP |
+| Login | 20/5 min/IP |
 | Upload | 4-64/hour/user (by reputation) |
-| Password reset | 5/hour/IP |
-| Credential requests | 20/min/IP |
+| Password reset | 15/hour/IP |
+| Credential requests | 30/min/IP |
 | Player commands | 300/min/player |
 
 Rate limit headers:
 
 ```
-X-RateLimit-Limit: 15
-X-RateLimit-Remaining: 14
+X-RateLimit-Limit: 30
+X-RateLimit-Remaining: 29
 X-RateLimit-Reset: 1705320000
 ```
 

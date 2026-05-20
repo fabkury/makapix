@@ -31,7 +31,7 @@ Create a new account with email.
 - Generates a random password (sent via email)
 - Sends verification email
 - Account cannot login until email is verified
-- Rate limited: 15 registrations/hour/IP
+- Rate limited: 30 registrations/hour/IP
 
 **Errors:**
 

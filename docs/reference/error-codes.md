@@ -139,7 +139,7 @@ HTTP status codes and error messages returned by the API.
 
 | Detail | Cause |
 |--------|-------|
-| Too many credential requests. Please try again later. | Credential rate limit (20/min/IP) |
+| Too many credential requests. Please try again later. | Credential rate limit (30/min/IP) |
 | Rate limit exceeded for player (300 commands/minute) | Command limit per player |
 | Rate limit exceeded for user (1000 commands/minute) | Command limit per user |
 
