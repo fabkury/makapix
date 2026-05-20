@@ -318,10 +318,10 @@ def get_player_credentials(
 
     No authentication required - player_key serves as authentication.
     """
-    # Rate limiting: 20 credential requests per minute per IP
+    # Rate limiting: 30 credential requests per minute per IP
     client_ip = get_client_ip(request)
     rate_limit_key = f"ratelimit:player_creds:{client_ip}"
-    allowed, _ = check_rate_limit(rate_limit_key, limit=20, window_seconds=60)
+    allowed, _ = check_rate_limit(rate_limit_key, limit=30, window_seconds=60)
 
     if not allowed:
         raise HTTPException(

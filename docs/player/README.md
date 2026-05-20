@@ -74,7 +74,7 @@ Common platforms include:
 | Players per user | 128 |
 | Registration code validity | 15 minutes |
 | Certificate validity | 365 days |
-| Credential requests | 20/minute/IP |
+| Credential requests | 30/minute/IP |
 | Commands per player | 300/minute |
 | Commands per user | 1,000/minute |
 | View events per player | 1 per 5 seconds |
