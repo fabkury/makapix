@@ -177,7 +177,7 @@ No authentication required - the player_key serves as authentication for this en
 
 ### Rate Limiting
 
-This endpoint is rate limited to **20 requests per minute per IP** to prevent brute-force attacks.
+This endpoint is rate limited to **30 requests per minute per IP** to prevent brute-force attacks.
 
 ### Device Actions
 

@@ -153,6 +153,9 @@ export default function WelcomePage() {
             <p className="recommended-link">
               <Link href="/about">About Makapix Club →</Link>
             </p>
+            <p className="recommended-link">
+              <Link href="/players">Building a connected display? See player projects →</Link>
+            </p>
           </div>
         </section>
 

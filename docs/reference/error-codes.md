@@ -212,11 +212,11 @@ MQTT responses use structured error codes.
 
 | Operation | Limit | Window |
 |-----------|-------|--------|
-| Registration | Varies | Per IP |
-| Login | Varies | Per IP |
-| Email verification | 20 | 1 hour |
-| Password reset | Varies | Per IP |
-| Credential fetch | 20 | 1 minute per IP |
+| Registration | 30 | 1 hour per IP |
+| Login | 20 | 5 minutes per IP |
+| Email verification | 20 | 1 hour per IP |
+| Password reset | 15 | 1 hour per IP |
+| Credential fetch | 30 | 1 minute per IP |
 | Upload (rep < 100) | 4 | 1 hour |
 | Upload (rep 100-499) | 16 | 1 hour |
 | Upload (rep 500+) | 64 | 1 hour |

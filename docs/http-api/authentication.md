@@ -114,7 +114,7 @@ Always returns success to prevent email enumeration.
 
 - Refresh token is set as HttpOnly cookie
 - Access token expires in 15 minutes
-- Rate limited: 10 attempts/5 min/IP
+- Rate limited: 20 attempts/5 min/IP
 
 **Errors:**
 

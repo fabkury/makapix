@@ -120,7 +120,7 @@ services:
       caddy.handle_1.reverse_proxy: makapix-dev-mqtt:9001
 
       # Frontend pages require Basic Auth (except auth-related pages)
-      caddy.@noauth.path: /new-account-welcome /login /welcome /verify-email
+      caddy.@noauth.path: /new-account-welcome /login /welcome /verify-email /players
       caddy.handle_2: "@noauth"
       caddy.handle_2.reverse_proxy: "{{upstreams 3000}}"
 
