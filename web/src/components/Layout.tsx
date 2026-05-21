@@ -382,34 +382,11 @@ export default function Layout({ children, title, description }: LayoutProps) {
               <button
                 ref={menuTriggerRef}
                 type="button"
-                className={`menu-trigger ${menuOpen ? 'menu-trigger-open' : ''}`}
-                aria-label="More"
+                className={`logo-link ${menuOpen ? 'logo-link-open' : ''}`}
+                aria-label="Open menu"
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
                 onClick={() => setMenuOpen((v) => !v)}
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  aria-hidden="true"
-                  className="menu-trigger-icon"
-                >
-                  <circle cx="10" cy="4" r="1.8" />
-                  <circle cx="10" cy="10" r="1.8" />
-                  <circle cx="10" cy="16" r="1.8" />
-                </svg>
-              </button>
-
-              <Link
-                href="/about"
-                className="logo-link"
-                aria-label="About Makapix Club"
-                // In dev, some tooling can inject extra attributes into SSR output, triggering
-                // noisy hydration warnings (e.g. "Extra attributes from the server: data-cursor-ref").
-                // Suppress that specific warning for these nav anchors.
-                suppressHydrationWarning
               >
                 <div className="logo-container">
                   <img
@@ -419,7 +396,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
                     className="logo"
                   />
                 </div>
-              </Link>
+              </button>
 
               {isLoggedIn && publicSqid && (
                 <Link
@@ -657,10 +634,15 @@ export default function Layout({ children, title, description }: LayoutProps) {
           margin-left: 10px;
         }
 
-        .logo-link {
+        .header-left :global(button.logo-link) {
           display: flex;
           align-items: center;
-          text-decoration: none;
+          background: transparent;
+          border: 0;
+          padding: 0;
+          font: inherit;
+          color: inherit;
+          cursor: pointer;
         }
 
         .logo-container {
@@ -675,7 +657,8 @@ export default function Layout({ children, title, description }: LayoutProps) {
           transition: box-shadow var(--transition-normal);
         }
 
-        .logo-link:hover .logo-container {
+        .header-left :global(button.logo-link:hover) .logo-container,
+        .header-left :global(button.logo-link.logo-link-open) .logo-container {
           box-shadow: var(--glow-pink);
         }
 
@@ -832,32 +815,6 @@ export default function Layout({ children, title, description }: LayoutProps) {
           filter: grayscale(0) brightness(1.3) drop-shadow(0 0 4px rgba(0, 212, 255, 0.6));
         }
 
-        .header-left :global(button.menu-trigger) {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 36px;
-          height: 44px;
-          border-radius: 12px;
-          background: transparent;
-          border: 0;
-          padding: 0;
-          cursor: pointer;
-          color: var(--text-secondary);
-          transition: all var(--transition-fast);
-        }
-
-        .header-left :global(button.menu-trigger:hover) {
-          background: var(--bg-tertiary);
-          color: #fff;
-        }
-
-        .header-left :global(button.menu-trigger.menu-trigger-open) {
-          background: rgba(255, 255, 255, 0.15);
-          box-shadow: 0 0 16px rgba(0, 212, 255, 0.4), inset 0 0 0 2px rgba(0, 212, 255, 0.3);
-          color: #fff;
-        }
-
         .menu-panel {
           position: absolute;
           top: calc(var(--header-height) - 6px);
@@ -958,11 +915,6 @@ export default function Layout({ children, title, description }: LayoutProps) {
 
           .header-left > :global(* + *) {
             margin-left: 6px;
-          }
-
-          .header-left :global(button.menu-trigger) {
-            width: 32px;
-            height: 40px;
           }
 
           .menu-panel {
