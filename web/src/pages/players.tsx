@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import Layout from '../components/Layout';
 
 const PLAYER_GUIDE_URL =
@@ -24,9 +23,6 @@ export default function PlayersPage() {
             artwork the moment it&apos;s posted.
           </p>
           <div className="cta-row">
-            <Link href="/auth" className="cta cta-primary">
-              Create an account →
-            </Link>
             <a
               href={PLAYER_GUIDE_URL}
               target="_blank"
@@ -162,27 +158,6 @@ export default function PlayersPage() {
           </ul>
         </section>
 
-        <section className="get-started">
-          <h2>Get started</h2>
-          <p>
-            A free account lets you register devices, manage them from the web, and link
-            playback to your profile.
-          </p>
-          <div className="cta-row">
-            <Link href="/auth" className="cta cta-primary">
-              Create an account →
-            </Link>
-            <a
-              href={PLAYER_GUIDE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="cta cta-secondary"
-            >
-              Read the Player Guide ↗
-            </a>
-          </div>
-        </section>
-
         <style jsx>{`
           .players-root {
             width: 100%;
@@ -234,16 +209,6 @@ export default function PlayersPage() {
               border-color var(--transition-fast), color var(--transition-fast);
           }
 
-          .cta-primary {
-            background: var(--accent-pink);
-            color: #fff;
-            border: 1px solid var(--accent-pink);
-          }
-
-          .cta-primary:hover {
-            filter: brightness(1.08);
-          }
-
           .cta-secondary {
             background: transparent;
             color: var(--text-primary);
@@ -289,8 +254,7 @@ export default function PlayersPage() {
 
           .projects,
           .how-it-works,
-          .docs,
-          .get-started {
+          .docs {
             margin-bottom: 48px;
           }
 
@@ -469,8 +433,7 @@ export default function PlayersPage() {
 
             .projects,
             .how-it-works,
-            .docs,
-            .get-started {
+            .docs {
               margin-bottom: 36px;
             }
           }
