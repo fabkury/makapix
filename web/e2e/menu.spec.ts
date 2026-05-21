@@ -1,11 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
 
-const E2E_USER_EMAIL = process.env.E2E_USER_EMAIL ?? 'e2e-playwright@makapix.club';
-const E2E_USER_PASSWORD = process.env.E2E_USER_PASSWORD ?? 'E2eTestPass!2026';
+const E2E_USER_EMAIL = process.env.E2E_USER_EMAIL;
+const E2E_USER_PASSWORD = process.env.E2E_USER_PASSWORD;
+const HAS_AUTH_CREDS = Boolean(E2E_USER_EMAIL && E2E_USER_PASSWORD);
 
 async function loginViaApi(page: Page): Promise<{ token: string; userId: number; handle: string }> {
   const res = await page.request.post('/api/auth/login', {
-    data: { email: E2E_USER_EMAIL, password: E2E_USER_PASSWORD },
+    data: { email: E2E_USER_EMAIL!, password: E2E_USER_PASSWORD! },
   });
   if (!res.ok()) {
     throw new Error(`Login failed: ${res.status()} ${await res.text()}`);
@@ -89,6 +90,10 @@ test.describe('header kebab menu (unauthenticated)', () => {
 
 test.describe('header kebab menu (authenticated)', () => {
   test('shows Log out and clears auth state when clicked', async ({ page }) => {
+    test.skip(
+      !HAS_AUTH_CREDS,
+      'Set E2E_USER_EMAIL and E2E_USER_PASSWORD (e.g. via web/.env.e2e.local) to run this test'
+    );
     const auth = await loginViaApi(page);
     await seedAuthStorage(page, auth);
     await page.goto('/about');
