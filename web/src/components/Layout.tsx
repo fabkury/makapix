@@ -379,6 +379,29 @@ export default function Layout({ children, title, description }: LayoutProps) {
         <header className={`header ${isHeaderHidden ? 'header-hidden' : ''} ${showBottomRow ? 'header-with-bottom-row' : ''}`}>
           <div className="header-top-row">
             <div className="header-left">
+              <button
+                ref={menuTriggerRef}
+                type="button"
+                className={`menu-trigger ${menuOpen ? 'menu-trigger-open' : ''}`}
+                aria-label="More"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen((v) => !v)}
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  aria-hidden="true"
+                  className="menu-trigger-icon"
+                >
+                  <circle cx="10" cy="4" r="1.8" />
+                  <circle cx="10" cy="10" r="1.8" />
+                  <circle cx="10" cy="16" r="1.8" />
+                </svg>
+              </button>
+
               <Link
                 href="/about"
                 className="logo-link"
@@ -482,69 +505,46 @@ export default function Layout({ children, title, description }: LayoutProps) {
                   </Link>
                 );
               })}
-
-              <button
-                ref={menuTriggerRef}
-                type="button"
-                className={`nav-item menu-trigger ${menuOpen ? 'menu-trigger-open' : ''}`}
-                aria-label="More"
-                aria-haspopup="menu"
-                aria-expanded={menuOpen}
-                onClick={() => setMenuOpen((v) => !v)}
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  aria-hidden="true"
-                  className="menu-trigger-icon"
-                >
-                  <circle cx="10" cy="4" r="1.8" />
-                  <circle cx="10" cy="10" r="1.8" />
-                  <circle cx="10" cy="16" r="1.8" />
-                </svg>
-              </button>
-
-              {menuOpen && (
-                <div
-                  ref={menuPanelRef}
-                  className="menu-panel"
-                  role="menu"
-                  aria-label="More navigation"
-                >
-                  <Link
-                    href="/players"
-                    className="menu-item"
-                    role="menuitem"
-                    onClick={() => setMenuOpen(false)}
-                  >
-                    Players
-                  </Link>
-                  <Link
-                    href="/about"
-                    className="menu-item"
-                    role="menuitem"
-                    onClick={() => setMenuOpen(false)}
-                  >
-                    About
-                  </Link>
-                  {isLoggedIn && (
-                    <>
-                      <div className="menu-divider" role="separator" />
-                      <button
-                        type="button"
-                        className="menu-item menu-item-button"
-                        role="menuitem"
-                        onClick={handleLogout}
-                      >
-                        Log out
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
             </nav>
+
+            {menuOpen && (
+              <div
+                ref={menuPanelRef}
+                className="menu-panel"
+                role="menu"
+                aria-label="More navigation"
+              >
+                <Link
+                  href="/players"
+                  className="menu-item"
+                  role="menuitem"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  Players
+                </Link>
+                <Link
+                  href="/about"
+                  className="menu-item"
+                  role="menuitem"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  About
+                </Link>
+                {isLoggedIn && (
+                  <>
+                    <div className="menu-divider" role="separator" />
+                    <button
+                      type="button"
+                      className="menu-item menu-item-button"
+                      role="menuitem"
+                      onClick={handleLogout}
+                    >
+                      Log out
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           {showBottomRow && (
@@ -832,20 +832,27 @@ export default function Layout({ children, title, description }: LayoutProps) {
           filter: grayscale(0) brightness(1.3) drop-shadow(0 0 4px rgba(0, 212, 255, 0.6));
         }
 
-        .nav :global(button.menu-trigger) {
+        .header-left :global(button.menu-trigger) {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 44px;
+          height: 44px;
+          border-radius: 12px;
           background: transparent;
           border: 0;
           padding: 0;
           cursor: pointer;
           color: var(--text-secondary);
+          transition: all var(--transition-fast);
         }
 
-        .nav :global(button.menu-trigger:hover) {
+        .header-left :global(button.menu-trigger:hover) {
           background: var(--bg-tertiary);
           color: #fff;
         }
 
-        .nav :global(button.menu-trigger.menu-trigger-open) {
+        .header-left :global(button.menu-trigger.menu-trigger-open) {
           background: rgba(255, 255, 255, 0.15);
           box-shadow: 0 0 16px rgba(0, 212, 255, 0.4), inset 0 0 0 2px rgba(0, 212, 255, 0.3);
           color: #fff;
@@ -854,7 +861,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
         .menu-panel {
           position: absolute;
           top: calc(var(--header-height) - 6px);
-          right: 8px;
+          left: 16px;
           min-width: 180px;
           background: #0a0a0a;
           border: 1px solid #fff;
@@ -947,6 +954,15 @@ export default function Layout({ children, title, description }: LayoutProps) {
           .logo-container {
             width: 32px;
             height: 32px;
+          }
+
+          .header-left :global(button.menu-trigger) {
+            width: 40px;
+            height: 40px;
+          }
+
+          .menu-panel {
+            left: 8px;
           }
         }
       `}</style>

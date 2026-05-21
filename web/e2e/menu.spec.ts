@@ -32,7 +32,7 @@ test.describe('header kebab menu (unauthenticated)', () => {
   });
 
   test('kebab button is visible with correct aria attributes', async ({ page }) => {
-    const trigger = page.locator('header .nav button.menu-trigger');
+    const trigger = page.locator('header button.menu-trigger');
     await expect(trigger).toBeVisible();
     await expect(trigger).toHaveAttribute('aria-label', 'More');
     await expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
@@ -40,7 +40,7 @@ test.describe('header kebab menu (unauthenticated)', () => {
   });
 
   test('clicking the kebab opens the panel with the engaged highlight', async ({ page }) => {
-    const trigger = page.locator('header .nav button.menu-trigger');
+    const trigger = page.locator('header button.menu-trigger');
     await trigger.click();
     await expect(trigger).toHaveAttribute('aria-expanded', 'true');
     await expect(trigger).toHaveClass(/menu-trigger-open/);
@@ -48,7 +48,7 @@ test.describe('header kebab menu (unauthenticated)', () => {
   });
 
   test('panel contains Players and About; no Log out when signed out', async ({ page }) => {
-    await page.locator('header .nav button.menu-trigger').click();
+    await page.locator('header button.menu-trigger').click();
     const panel = page.locator('.menu-panel[role="menu"]');
     await expect(panel.getByRole('menuitem', { name: 'Players' })).toBeVisible();
     await expect(panel.getByRole('menuitem', { name: 'About' })).toBeVisible();
@@ -56,7 +56,7 @@ test.describe('header kebab menu (unauthenticated)', () => {
   });
 
   test('pressing Escape closes the panel', async ({ page }) => {
-    const trigger = page.locator('header .nav button.menu-trigger');
+    const trigger = page.locator('header button.menu-trigger');
     await trigger.click();
     await expect(page.locator('.menu-panel')).toBeVisible();
     await page.keyboard.press('Escape');
@@ -65,7 +65,7 @@ test.describe('header kebab menu (unauthenticated)', () => {
   });
 
   test('clicking outside the panel closes it', async ({ page }) => {
-    await page.locator('header .nav button.menu-trigger').click();
+    await page.locator('header button.menu-trigger').click();
     await expect(page.locator('.menu-panel')).toBeVisible();
     // Click in the middle of the page, well outside the header and panel
     await page.mouse.click(100, 400);
@@ -73,7 +73,7 @@ test.describe('header kebab menu (unauthenticated)', () => {
   });
 
   test('clicking Players navigates to /players and closes the menu', async ({ page }) => {
-    await page.locator('header .nav button.menu-trigger').click();
+    await page.locator('header button.menu-trigger').click();
     await page.locator('.menu-panel a[href="/players"]').click();
     await expect(page).toHaveURL(/\/players/);
     await expect(page.locator('.menu-panel')).toHaveCount(0);
@@ -81,7 +81,7 @@ test.describe('header kebab menu (unauthenticated)', () => {
 
   test('clicking About navigates to /about from another page', async ({ page }) => {
     await page.goto('/players');
-    await page.locator('header .nav button.menu-trigger').click();
+    await page.locator('header button.menu-trigger').click();
     await page.locator('.menu-panel a[href="/about"]').click();
     await expect(page).toHaveURL(/\/about/);
     await expect(page.locator('.menu-panel')).toHaveCount(0);
@@ -98,7 +98,7 @@ test.describe('header kebab menu (authenticated)', () => {
     await seedAuthStorage(page, auth);
     await page.goto('/about');
 
-    const trigger = page.locator('header .nav button.menu-trigger');
+    const trigger = page.locator('header button.menu-trigger');
     await trigger.click();
     const panel = page.locator('.menu-panel[role="menu"]');
     await expect(panel).toBeVisible();
