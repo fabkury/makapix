@@ -6,10 +6,10 @@ test.describe('global layout', () => {
     const header = page.locator('header.header');
     await expect(header).toBeVisible();
 
-    // Logo links to /about
-    const logo = header.locator('.logo-link');
+    // Logo is the menu trigger
+    const logo = header.locator('button.logo-link');
     await expect(logo).toBeVisible();
-    await expect(logo).toHaveAttribute('href', '/about');
+    await expect(logo).toHaveAttribute('aria-haspopup', 'menu');
 
     // Navigation bar is present
     const nav = header.locator('.nav');
@@ -22,9 +22,9 @@ test.describe('global layout', () => {
     await expect(navItems).not.toHaveCount(0);
   });
 
-  test('logo navigates to about page', async ({ page }) => {
+  test('clicking the logo opens the menu', async ({ page }) => {
     await page.goto('/auth');
-    await page.locator('header .logo-link').click();
-    await expect(page).toHaveURL(/\/about/);
+    await page.locator('header button.logo-link').click();
+    await expect(page.locator('.menu-panel[role="menu"]')).toBeVisible();
   });
 });
