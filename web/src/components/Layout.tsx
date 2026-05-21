@@ -654,7 +654,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
           align-items: center;
         }
         .header-left > :global(* + *) {
-          margin-left: 16px;
+          margin-left: 10px;
         }
 
         .logo-link {
@@ -836,7 +836,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
           display: flex;
           align-items: center;
           justify-content: center;
-          width: 44px;
+          width: 36px;
           height: 44px;
           border-radius: 12px;
           background: transparent;
@@ -956,8 +956,12 @@ export default function Layout({ children, title, description }: LayoutProps) {
             height: 32px;
           }
 
+          .header-left > :global(* + *) {
+            margin-left: 6px;
+          }
+
           .header-left :global(button.menu-trigger) {
-            width: 40px;
+            width: 32px;
             height: 40px;
           }
 
