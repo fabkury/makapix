@@ -16,11 +16,7 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
     screenshot: 'only-on-failure',
     ...(basicPass
-      ? {
-          extraHTTPHeaders: {
-            Authorization: `Basic ${Buffer.from(`${basicUser}:${basicPass}`).toString('base64')}`,
-          },
-        }
+      ? { httpCredentials: { username: basicUser, password: basicPass } }
       : {}),
   },
   outputDir: './test-results',

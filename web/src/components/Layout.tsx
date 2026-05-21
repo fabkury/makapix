@@ -2,7 +2,7 @@ import { ReactNode, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import { authenticatedFetch, clearLoggedOutMarker, clearTokens } from '../lib/api';
+import { authenticatedFetch, clearLoggedOutMarker, clearTokens, logout } from '../lib/api';
 import SocialNotificationBadge from './SocialNotificationBadge';
 
 interface LayoutProps {
@@ -74,6 +74,9 @@ export default function Layout({ children, title, description }: LayoutProps) {
   });
   const [isHeaderHidden, setIsHeaderHidden] = useState(false);
   const [topHashtags, setTopHashtags] = useState<string[]>([]);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+  const menuPanelRef = useRef<HTMLDivElement>(null);
   // Note: We intentionally do NOT change --header-offset when the header hides.
   // The header uses transform to slide out, but the page layout stays fixed.
   // This prevents scroll jumps when the header shows/hides.
@@ -301,6 +304,38 @@ export default function Layout({ children, title, description }: LayoutProps) {
     };
   }, [router]);
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onMouseDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (
+        menuPanelRef.current && !menuPanelRef.current.contains(t) &&
+        menuTriggerRef.current && !menuTriggerRef.current.contains(t)
+      ) {
+        setMenuOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [menuOpen]);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [router.pathname]);
+
+  const handleLogout = async () => {
+    setMenuOpen(false);
+    await logout();
+    router.replace('/welcome');
+  };
+
   const isActive = (item: NavItem): boolean => {
     const currentPath = router.pathname;
     if (item.matchPaths) {
@@ -447,6 +482,68 @@ export default function Layout({ children, title, description }: LayoutProps) {
                   </Link>
                 );
               })}
+
+              <button
+                ref={menuTriggerRef}
+                type="button"
+                className={`nav-item menu-trigger ${menuOpen ? 'menu-trigger-open' : ''}`}
+                aria-label="More"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen((v) => !v)}
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  aria-hidden="true"
+                  className="menu-trigger-icon"
+                >
+                  <circle cx="10" cy="4" r="1.8" />
+                  <circle cx="10" cy="10" r="1.8" />
+                  <circle cx="10" cy="16" r="1.8" />
+                </svg>
+              </button>
+
+              {menuOpen && (
+                <div
+                  ref={menuPanelRef}
+                  className="menu-panel"
+                  role="menu"
+                  aria-label="More navigation"
+                >
+                  <Link
+                    href="/players"
+                    className="menu-item"
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    Players
+                  </Link>
+                  <Link
+                    href="/about"
+                    className="menu-item"
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    About
+                  </Link>
+                  {isLoggedIn && (
+                    <>
+                      <div className="menu-divider" role="separator" />
+                      <button
+                        type="button"
+                        className="menu-item menu-item-button"
+                        role="menuitem"
+                        onClick={handleLogout}
+                      >
+                        Log out
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </nav>
           </div>
 
@@ -671,7 +768,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
           align-items: center;
         }
         .nav > :global(* + *) {
-          margin-left: 16px;
+          margin-left: 10px;
         }
 
         .nav :global(a.nav-item) {
@@ -735,6 +832,67 @@ export default function Layout({ children, title, description }: LayoutProps) {
           filter: grayscale(0) brightness(1.3) drop-shadow(0 0 4px rgba(0, 212, 255, 0.6));
         }
 
+        .nav :global(button.menu-trigger) {
+          background: transparent;
+          border: 0;
+          padding: 0;
+          cursor: pointer;
+          color: var(--text-secondary);
+        }
+
+        .nav :global(button.menu-trigger:hover) {
+          background: var(--bg-tertiary);
+          color: #fff;
+        }
+
+        .nav :global(button.menu-trigger.menu-trigger-open) {
+          background: rgba(255, 255, 255, 0.15);
+          box-shadow: 0 0 16px rgba(0, 212, 255, 0.4), inset 0 0 0 2px rgba(0, 212, 255, 0.3);
+          color: #fff;
+        }
+
+        .menu-panel {
+          position: absolute;
+          top: calc(var(--header-height) - 6px);
+          right: 8px;
+          min-width: 180px;
+          background: #0a0a0a;
+          border: 1px solid #fff;
+          border-radius: 8px;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+          padding: 6px 0;
+          z-index: 110;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .menu-panel :global(a.menu-item),
+        .menu-panel :global(button.menu-item) {
+          display: block;
+          width: 100%;
+          padding: 10px 16px;
+          text-decoration: none;
+          color: var(--text-primary);
+          background: transparent;
+          border: 0;
+          text-align: left;
+          font: inherit;
+          cursor: pointer;
+          transition: background var(--transition-fast), color var(--transition-fast);
+        }
+
+        .menu-panel :global(a.menu-item:hover),
+        .menu-panel :global(button.menu-item:hover) {
+          background: rgba(255, 255, 255, 0.08);
+          color: var(--accent-cyan);
+        }
+
+        .menu-divider {
+          height: 1px;
+          background: rgba(255, 255, 255, 0.15);
+          margin: 6px 0;
+        }
+
         .nav-icon-hash {
           font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
           font-weight: 700;
@@ -774,7 +932,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
           }
 
           .nav > :global(* + *) {
-            margin-left: 10px;
+            margin-left: 6px;
           }
 
           .nav-item {
