@@ -10,7 +10,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
 from ..auth import JWT_ALGORITHM, JWT_SECRET_KEY, get_current_user, require_ownership
@@ -713,6 +713,113 @@ def verify_reactions(
     return JSONResponse(
         content=response.model_dump(), headers={"Access-Control-Allow-Origin": "*"}
     )
+
+
+def _player_post_response(
+    post: models.Post | None,
+    request: Request,
+    db: Session,
+) -> JSONResponse:
+    """Build a CORS-wildcard JSONResponse for a player-facing post lookup.
+
+    Visibility uses can_access_post with no current user (anonymous web viewer).
+    Records a sitewide page_view; does not record per-post view events.
+    """
+    from ..services.post_stats import annotate_posts_with_counts
+    from ..utils.site_tracking import record_site_event
+    from ..utils.visibility import can_access_post
+
+    not_found = HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+    )
+
+    if post is None or not can_access_post(post, None):
+        raise not_found
+
+    annotate_posts_with_counts(db, [post], None)
+    record_site_event(request, "page_view", user=None)
+
+    payload = schemas.Post.model_validate(post).model_dump(mode="json")
+    return JSONResponse(
+        content=payload, headers={"Access-Control-Allow-Origin": "*"}
+    )
+
+
+def _enforce_player_post_rate_limit(request: Request) -> None:
+    """Shared 30/min/IP bucket with the other player verify-* endpoints."""
+    client_ip = get_client_ip(request)
+    rate_limit_key = f"ratelimit:player_verify:{client_ip}"
+    allowed, _ = check_rate_limit(rate_limit_key, limit=30, window_seconds=60)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Please try again later.",
+        )
+
+
+@router.get("/player/p/{sqid}", response_model=schemas.Post)
+def get_player_post_by_sqid(
+    sqid: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> JSONResponse:
+    """Player-facing post lookup by public sqid.
+
+    Mirrors /p/{sqid} but returns Access-Control-Allow-Origin: * so player
+    devices on .local hostnames can fetch it cross-origin.
+    """
+    from ..sqids_config import decode_sqid
+
+    _enforce_player_post_rate_limit(request)
+
+    not_found = HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+    )
+
+    if len(sqid) > 16:
+        raise not_found
+
+    post_id = decode_sqid(sqid)
+    if post_id is None:
+        raise not_found
+
+    post = (
+        db.query(models.Post)
+        .options(joinedload(models.Post.owner), joinedload(models.Post.license))
+        .filter(models.Post.id == post_id)
+        .first()
+    )
+
+    if post is None or post.public_sqid != sqid:
+        raise not_found
+
+    return _player_post_response(post, request, db)
+
+
+@router.get("/player/post/{storage_key}", response_model=schemas.Post)
+def get_player_post_by_storage_key(
+    storage_key: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> JSONResponse:
+    """Player-facing post lookup by storage_key UUID.
+
+    Mirrors /post/{storage_key} but returns Access-Control-Allow-Origin: *
+    so player devices on .local hostnames can fetch it cross-origin.
+    """
+    _enforce_player_post_rate_limit(request)
+
+    post = (
+        db.query(models.Post)
+        .options(joinedload(models.Post.owner), joinedload(models.Post.license))
+        .filter(
+            models.Post.storage_key == storage_key,
+            models.Post.kind == "artwork",
+        )
+        .first()
+    )
+
+    return _player_post_response(post, request, db)
 
 
 @router.get("/u/{sqid}/player", response_model=dict[str, list[schemas.PlayerPublic]])
