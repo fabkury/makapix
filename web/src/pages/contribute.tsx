@@ -83,6 +83,12 @@ export default function ContributePage() {
           <div className="options-grid">
             {activeTab === 'desktop' && (
               <>
+                <Link href="/submit" className="option-card">
+                  <div className="option-icon option-icon-emoji">➕</div>
+                  <h2 className="option-title">Upload File</h2>
+                  <p className="option-description">Upload PNG, GIF, WebP, or BMP directly</p>
+                </Link>
+
                 <Link href="/editor" className="option-card">
                   <div className="option-icon">
                     <img
@@ -100,17 +106,17 @@ export default function ContributePage() {
                   <h2 className="option-title">Import from Divoom</h2>
                   <p className="option-description">Import artworks from your Divoom account</p>
                 </Link>
-
-                <Link href="/submit" className="option-card">
-                  <div className="option-icon option-icon-emoji">➕</div>
-                  <h2 className="option-title">Upload File</h2>
-                  <p className="option-description">Upload PNG, GIF, WebP, or BMP directly</p>
-                </Link>
               </>
             )}
 
             {activeTab === 'mobile' && (
               <>
+                <Link href="/submit" className="option-card">
+                  <div className="option-icon option-icon-emoji">➕</div>
+                  <h2 className="option-title">Upload File</h2>
+                  <p className="option-description">Upload PNG, GIF, WebP, or BMP directly</p>
+                </Link>
+
                 <Link href="/pixelc" className="option-card">
                   <div className="option-icon option-icon-emoji">🖌️</div>
                   <h2 className="option-title">Draw in Pixelc</h2>
@@ -121,12 +127,6 @@ export default function ContributePage() {
                   <div className="option-icon option-icon-emoji">☁️</div>
                   <h2 className="option-title">Import from Divoom</h2>
                   <p className="option-description">Import artworks from your Divoom account</p>
-                </Link>
-
-                <Link href="/submit" className="option-card">
-                  <div className="option-icon option-icon-emoji">➕</div>
-                  <h2 className="option-title">Upload File</h2>
-                  <p className="option-description">Upload PNG, GIF, WebP, or BMP directly</p>
                 </Link>
               </>
             )}
