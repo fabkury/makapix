@@ -1786,6 +1786,7 @@ export default function PostPage() {
           color: var(--text-muted);
           margin-bottom: 16px;
           font-variant-numeric: tabular-nums;
+          text-align: center;
         }
 
         .tech-separator {
