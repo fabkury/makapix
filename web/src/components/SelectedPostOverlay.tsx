@@ -517,6 +517,18 @@ export default function SelectedPostOverlay({
     }, delay);
   }, []);
 
+  // Closes only the format sub-panel; leaves the parent Download submenu
+  // open so the cursor can continue down to "Native format".
+  const closeFormatSubPanelDelayed = useCallback((delay: number = 300) => {
+    if (subPanelCloseTimeoutRef.current) {
+      window.clearTimeout(subPanelCloseTimeoutRef.current);
+    }
+    subPanelCloseTimeoutRef.current = window.setTimeout(() => {
+      setShowFormatSubPanel(false);
+      subPanelCloseTimeoutRef.current = null;
+    }, delay);
+  }, []);
+
   const openFormatSub = useCallback(() => {
     if (subPanelCloseTimeoutRef.current) {
       window.clearTimeout(subPanelCloseTimeoutRef.current);
@@ -1625,10 +1637,18 @@ export default function SelectedPostOverlay({
                   >
                     Upscaled
                   </button>
+                  <button
+                    style={menuItemStyles}
+                    onClick={handleDownloadNative}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    Native format
+                  </button>
                   {/* Alternative format sub-sub-menu */}
                   <div
                     onMouseEnter={openFormatSub}
-                    onMouseLeave={() => closeSubMenuDelayed()}
+                    onMouseLeave={() => closeFormatSubPanelDelayed()}
                   >
                     <button
                       style={{ ...menuItemStyles, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
@@ -1666,14 +1686,6 @@ export default function SelectedPostOverlay({
                       );
                     })()}
                   </div>
-                  <button
-                    style={menuItemStyles}
-                    onClick={handleDownloadNative}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    Native format
-                  </button>
                 </div>
               )}
             </div>

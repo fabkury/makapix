@@ -587,6 +587,18 @@ export default function PostPage() {
     }, delay);
   };
 
+  // Closes only the format sub-panel; leaves the parent Download submenu
+  // open so the cursor can continue down to "Native format".
+  const closeFormatSubPanelDelayed = (delay: number = 300) => {
+    if (subPanelCloseTimeoutRef.current) {
+      window.clearTimeout(subPanelCloseTimeoutRef.current);
+    }
+    subPanelCloseTimeoutRef.current = window.setTimeout(() => {
+      setShowFormatSubPanel(false);
+      subPanelCloseTimeoutRef.current = null;
+    }, delay);
+  };
+
   const openFormatSub = () => {
     if (subPanelCloseTimeoutRef.current) {
       window.clearTimeout(subPanelCloseTimeoutRef.current);
@@ -1469,9 +1481,12 @@ export default function PostPage() {
                   <button className="menu-item" onClick={handleDownloadUpscaled}>
                     Upscaled
                   </button>
+                  <button className="menu-item" onClick={handleDownloadNative}>
+                    Native format
+                  </button>
                   <div
                     onMouseEnter={openFormatSub}
-                    onMouseLeave={() => closeSubMenuDelayed()}
+                    onMouseLeave={() => closeFormatSubPanelDelayed()}
                   >
                     <button
                       className="menu-item submenu-trigger"
@@ -1503,9 +1518,6 @@ export default function PostPage() {
                       );
                     })()}
                   </div>
-                  <button className="menu-item" onClick={handleDownloadNative}>
-                    Native format
-                  </button>
                 </div>
               )}
             </div>
