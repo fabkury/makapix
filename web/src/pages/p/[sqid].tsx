@@ -2018,6 +2018,17 @@ export default function PostPage() {
             padding: 16px;
           }
         }
+
+        /* Below the .post-container max-width, pull the PBS out to the
+           viewport edges and square its corners. Artwork above and the
+           comments widget below intentionally keep their side padding. */
+        @media (max-width: 512px) {
+          .post-info {
+            margin-left: -16px;
+            margin-right: -16px;
+            border-radius: 0;
+          }
+        }
       `}</style>
       <style jsx global>{`
         .more-menu-backdrop {
