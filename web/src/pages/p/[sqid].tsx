@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '../../components/Layout';
 import CommentsAndReactions from '../../components/CommentsAndReactions';
+import SPOReactionUsersOverlay from '../../components/SPOReactionUsersOverlay';
 import StatsPanel from '../../components/StatsPanel';
 import PlayerBar from '../../components/PlayerBarDynamic';
 import { authenticatedFetch, authenticatedRequestJson, authenticatedPostJson, clearTokens } from '../../lib/api';
@@ -54,7 +55,42 @@ interface Post {
     handle: string;
     display_name: string;
     public_sqid: string;
+    avatar_url?: string | null;
   };
+}
+
+interface ReactionTotals {
+  totals: Record<string, number>;
+  authenticated_totals: Record<string, number>;
+  anonymous_totals: Record<string, number>;
+  mine: string[];
+}
+
+interface WidgetData {
+  reactions: ReactionTotals;
+  comments: Array<unknown>;
+  views_count: number;
+}
+
+function formatFileSizeCompact(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const k = 1000;
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const value = bytes / Math.pow(k, i);
+  if (value >= 100) return `${Math.round(value)} ${units[i]}`;
+  if (value >= 10) return `${value.toFixed(1)} ${units[i]}`;
+  return `${value.toFixed(2)} ${units[i]}`;
+}
+
+function formatDateTime(isoString: string): string {
+  const date = new Date(isoString);
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${year}/${month}/${day} ${hours}:${minutes}`;
 }
 
 export default function PostPage() {
@@ -77,8 +113,22 @@ export default function PostPage() {
   
   // Stats panel state
   const [showStats, setShowStats] = useState(false);
-  
-  
+
+  // Widget data (reactions + comments + views counts) for the header stats row
+  const [widgetData, setWidgetData] = useState<WidgetData | null>(null);
+
+  // Reaction users overlay (opened via ⚡ stat click)
+  const [showReactionUsersOverlay, setShowReactionUsersOverlay] = useState(false);
+
+  // Kebab menu state
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [activeSubMenu, setActiveSubMenu] = useState<string | null>(null);
+  const [showFormatSubPanel, setShowFormatSubPanel] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const subPanelCloseTimeoutRef = useRef<number | null>(null);
+
   // Image error state
   const [imageError, setImageError] = useState(false);
   
@@ -493,6 +543,248 @@ export default function PostPage() {
     };
   }, [post, sqid]);
 
+  // Fetch widget data (stats counts) once per post
+  useEffect(() => {
+    if (!post) return;
+    const postId = post.id;
+    let cancelled = false;
+    (async () => {
+      try {
+        const url = `${API_BASE_URL}/api/post/${postId}/widget-data`;
+        const response = await authenticatedFetch(url);
+        if (cancelled) return;
+        if (response.ok) {
+          const data: WidgetData = await response.json();
+          setWidgetData(data);
+        }
+      } catch (err) {
+        console.error('Failed to load widget data:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [post?.id, API_BASE_URL]);
+
+  // Kebab submenu open/close helpers (mirror SPO behavior)
+  const openSubMenu = (menu: string) => {
+    if (subPanelCloseTimeoutRef.current) {
+      window.clearTimeout(subPanelCloseTimeoutRef.current);
+      subPanelCloseTimeoutRef.current = null;
+    }
+    setActiveSubMenu(menu);
+    if (menu !== 'download') setShowFormatSubPanel(false);
+  };
+
+  const closeSubMenuDelayed = (delay: number = 300) => {
+    if (subPanelCloseTimeoutRef.current) {
+      window.clearTimeout(subPanelCloseTimeoutRef.current);
+    }
+    subPanelCloseTimeoutRef.current = window.setTimeout(() => {
+      setActiveSubMenu(null);
+      setShowFormatSubPanel(false);
+      subPanelCloseTimeoutRef.current = null;
+    }, delay);
+  };
+
+  const openFormatSub = () => {
+    if (subPanelCloseTimeoutRef.current) {
+      window.clearTimeout(subPanelCloseTimeoutRef.current);
+      subPanelCloseTimeoutRef.current = null;
+    }
+    setShowFormatSubPanel(true);
+  };
+
+  const closeMoreMenu = () => {
+    if (subPanelCloseTimeoutRef.current) {
+      window.clearTimeout(subPanelCloseTimeoutRef.current);
+      subPanelCloseTimeoutRef.current = null;
+    }
+    setShowMoreMenu(false);
+    setActiveSubMenu(null);
+    setShowFormatSubPanel(false);
+  };
+
+  // Cleanup pending submenu timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (subPanelCloseTimeoutRef.current) {
+        window.clearTimeout(subPanelCloseTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Close kebab menu on outside click
+  useEffect(() => {
+    if (!showMoreMenu) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        moreMenuRef.current && !moreMenuRef.current.contains(target) &&
+        moreButtonRef.current && !moreButtonRef.current.contains(target)
+      ) {
+        closeMoreMenu();
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showMoreMenu]);
+
+  // Close kebab menu on Escape
+  useEffect(() => {
+    if (!showMoreMenu) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeMoreMenu();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showMoreMenu]);
+
+  // Open the kebab menu, positioning it just below the button
+  const handleMoreMenuToggle = () => {
+    if (!showMoreMenu && moreButtonRef.current) {
+      const rect = moreButtonRef.current.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const menuWidth = 200;
+      const margin = 8;
+      let rightPos = viewportWidth - rect.right;
+      if (rect.right - menuWidth < margin) {
+        rightPos = viewportWidth - menuWidth - margin;
+      }
+      setMenuPosition({ top: rect.bottom + 4, right: Math.max(margin, rightPos) });
+      setShowMoreMenu(true);
+    } else {
+      closeMoreMenu();
+    }
+  };
+
+  // Kebab action handlers (Edit-in-editor, Share, Download — visible to all)
+  const handleEditInPiskel = () => {
+    if (!post) return;
+    closeMoreMenu();
+    router.push(`/editor?edit=${post.public_sqid}`);
+  };
+
+  const handleEditInPixelc = () => {
+    if (!post) return;
+    closeMoreMenu();
+    router.push(`/pixelc?edit=${post.public_sqid}`);
+  };
+
+  const handleDownloadNative = async () => {
+    if (!post) return;
+    closeMoreMenu();
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/d/${post.public_sqid}`);
+      if (!resp.ok) throw new Error('Download failed');
+      const blob = await resp.blob();
+      const nativeFile = post.files?.find(f => f.is_native) || post.files?.[0];
+      const ext = nativeFile?.format || 'png';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${post.title || post.public_sqid}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Download failed:', err);
+    }
+  };
+
+  const handleDownloadUpscaled = async () => {
+    if (!post) return;
+    closeMoreMenu();
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/d/${post.public_sqid}/upscaled`);
+      if (!resp.ok) throw new Error('Download failed');
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${post.title || post.public_sqid}_upscaled.webp`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Download failed:', err);
+    }
+  };
+
+  const handleDownloadFormat = async (format: string) => {
+    if (!post) return;
+    closeMoreMenu();
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/d/${post.public_sqid}.${format}`);
+      if (!resp.ok) throw new Error('Download failed');
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${post.title || post.public_sqid}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Download failed:', err);
+    }
+  };
+
+  const shareOrCopy = async (blob: Blob, filename: string, mimeType: string) => {
+    if (!post) return;
+    const file = new File([blob], filename, { type: mimeType });
+    if (navigator.share && navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file], title: post.title });
+      return;
+    }
+    const postUrl = `${window.location.origin}/p/${post.public_sqid}`;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(postUrl);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = postUrl;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    alert('Link copied to clipboard');
+  };
+
+  const handleShareUpscaled = async () => {
+    if (!post) return;
+    closeMoreMenu();
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/d/${post.public_sqid}/upscaled`);
+      if (!resp.ok) throw new Error('Fetch failed');
+      const blob = await resp.blob();
+      await shareOrCopy(blob, `${post.title || post.public_sqid}_upscaled.webp`, 'image/webp');
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') console.error('Share failed:', err);
+    }
+  };
+
+  const handleShareNative = async () => {
+    if (!post) return;
+    closeMoreMenu();
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/d/${post.public_sqid}`);
+      if (!resp.ok) throw new Error('Fetch failed');
+      const blob = await resp.blob();
+      const nativeFile = post.files?.find(f => f.is_native) || post.files?.[0];
+      const ext = nativeFile?.format || 'png';
+      const mimeType = ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/png';
+      await shareOrCopy(blob, `${post.title || post.public_sqid}.${ext}`, mimeType);
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') console.error('Share failed:', err);
+    }
+  };
+
   const handleDelete = async () => {
     if (!post) return;
     
@@ -893,16 +1185,77 @@ export default function PostPage() {
               <h1 className="post-title">{post.title}</h1>
             )}
 
-            <div className="post-meta">
-              {post.owner && (
-                <Link href={`/u/${post.owner.public_sqid}`} className="author-link">
-                  {post.owner.display_name || post.owner.handle}
+            <div className="post-info-header">
+              {post.owner ? (
+                <Link href={`/u/${post.owner.public_sqid}`} className="post-info-author">
+                  {post.owner.avatar_url ? (
+                    <img
+                      src={post.owner.avatar_url.startsWith('http')
+                        ? post.owner.avatar_url
+                        : `${API_BASE_URL}${post.owner.avatar_url}`}
+                      alt={post.owner.handle || 'Author'}
+                      className="post-info-avatar"
+                    />
+                  ) : (
+                    <div className="post-info-avatar post-info-avatar-placeholder">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                      </svg>
+                    </div>
+                  )}
+                  <span className="post-info-handle">
+                    {post.owner.display_name || post.owner.handle}
+                  </span>
                 </Link>
+              ) : (
+                <span className="post-info-author" />
               )}
-              <span className="meta-separator">•</span>
-              <span className="post-date">{new Date(post.created_at).toLocaleDateString()}</span>
-              <span className="meta-separator">•</span>
-              <span className="post-canvas">{post.width}x{post.height}</span>
+
+              <div className="post-info-stats">
+                <button
+                  type="button"
+                  className="stat-item stat-reactions"
+                  onClick={() => setShowReactionUsersOverlay(true)}
+                  title="See who reacted"
+                  aria-label="See who reacted"
+                >
+                  <span className="stat-icon">⚡</span>
+                  <span className="stat-count">
+                    {widgetData
+                      ? Object.values(widgetData.reactions.totals).reduce((s, n) => s + n, 0)
+                      : 0}
+                  </span>
+                </button>
+                <div className="stat-item">
+                  <span className="stat-icon">💬</span>
+                  <span className="stat-count">{widgetData?.comments.length ?? 0}</span>
+                </div>
+                <div className="stat-item">
+                  <span className="stat-icon">👁</span>
+                  <span className="stat-count">{widgetData?.views_count ?? 0}</span>
+                </div>
+                <button
+                  ref={moreButtonRef}
+                  type="button"
+                  className="more-button"
+                  onClick={handleMoreMenuToggle}
+                  aria-label="More options"
+                >
+                  &#8942;
+                </button>
+              </div>
+            </div>
+
+            <div className="post-tech-info">
+              {formatDateTime(post.created_at)}
+              <span className="tech-separator">•</span>
+              <span className={(post.frame_count ?? 1) > 256 ? 'frame-count-warn' : undefined}>
+                {post.frame_count ?? 1}
+              </span>
+              ×({post.width}×{post.height})
+              <span className="tech-separator">•</span>
+              {formatFileSizeCompact(post.files?.find(f => f.is_native)?.file_bytes || 0)}{' '}
+              {(post.files?.find(f => f.is_native)?.format || 'png').toUpperCase()}
             </div>
 
             {post.description && (
@@ -948,60 +1301,11 @@ export default function PostPage() {
               )}
             </div>
 
-            {/* Stats button - visible to owner and moderators */}
-            {(isOwner || isModerator) && (
-              <div className="stats-action">
-                <button
-                  onClick={() => setShowStats(true)}
-                  className="action-button stats"
-                  title="View Statistics"
-                >
-                  📈 Statistics
-                </button>
-              </div>
-            )}
-
-
-            {isOwner && !isEditing && (
-              <div className="owner-actions">
-                <button
-                  onClick={() => router.push(`/editor?edit=${post.public_sqid}`)}
-                  className="action-button piskel-edit"
-                  title="Edit in Piskel"
-                >
-                  🖌️ Edit in Piskel
-                </button>
-                {post.files?.find(f => f.is_native)?.format?.toLowerCase() === 'webp' && (
-                  <button
-                    onClick={() => router.push(`/pixelc?edit=${post.public_sqid}`)}
-                    className="action-button pixelc-edit"
-                    title="Edit in Pixelc"
-                  >
-                    🎨 Edit in Pixelc
-                  </button>
-                )}
-                <button
-                  onClick={handleHide}
-                  className={`action-button ${post.hidden_by_user ? 'unhide' : 'hide'}`}
-                  title={post.hidden_by_user ? 'Unhide artwork' : 'Hide artwork'}
-                  aria-label={post.hidden_by_user ? 'Unhide artwork' : 'Hide artwork'}
-                >
-                  {post.hidden_by_user ? '👁️' : '🙈'}
-                </button>
-                <button
-                  onClick={handleDelete}
-                  className="action-button delete"
-                  title="Delete artwork"
-                  aria-label="Delete artwork"
-                >
-                  🗑️
-                </button>
-                <button
-                  onClick={handleEditClick}
-                  className="action-button edit"
-                >
-                  ✏️ Edit
-                </button>
+            {isModerator && (post.hidden_by_mod || post.promoted || !post.public_visibility) && (
+              <div className="mod-status-badges">
+                {post.hidden_by_mod && <span className="status-badge hidden">Hidden by mod</span>}
+                {post.promoted && <span className="status-badge promoted">Promoted</span>}
+                {!post.public_visibility && <span className="status-badge pending">Pending approval</span>}
               </div>
             )}
 
@@ -1057,48 +1361,6 @@ export default function PostPage() {
                 </div>
               </div>
             )}
-
-            {isModerator && (
-              <div className="moderator-actions">
-                <div className="mod-actions-grid">
-                  <button
-                    onClick={handleModHide}
-                    className={`mod-button ${post.hidden_by_mod ? 'active' : ''}`}
-                  >
-                    {post.hidden_by_mod ? '👁️ Unhide' : '🙈 Hide'}
-                  </button>
-                  <button
-                    onClick={handlePromote}
-                    className={`mod-button ${post.promoted ? 'active' : ''}`}
-                  >
-                    {post.promoted ? '⬇️ Demote' : '⭐ Promote'}
-                  </button>
-                  {!post.public_visibility && (
-                    <button
-                      onClick={handleApprovePublicVisibility}
-                      className="mod-button"
-                    >
-                      ✅ Approve
-                    </button>
-                  )}
-                  {(post.hidden_by_mod || post.hidden_by_user) && (
-                    <button
-                      onClick={handlePermanentDelete}
-                      className="mod-button danger"
-                    >
-                      🗑️ Delete Permanently
-                    </button>
-                  )}
-                </div>
-                {(post.hidden_by_mod || post.promoted || !post.public_visibility) && (
-                  <div className="mod-status-badges">
-                    {post.hidden_by_mod && <span className="status-badge hidden">Hidden by mod</span>}
-                    {post.promoted && <span className="status-badge promoted">Promoted</span>}
-                    {!post.public_visibility && <span className="status-badge pending">Pending approval</span>}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
           <div className="widget-section">
@@ -1112,6 +1374,225 @@ export default function PostPage() {
           </div>
         </div>
       </div>
+
+      {/* Kebab three-dot menu */}
+      {showMoreMenu && (
+        <div className="more-menu-backdrop" onClick={closeMoreMenu}>
+          <div
+            ref={moreMenuRef}
+            className="more-menu"
+            style={{
+              right: menuPosition?.right ?? 16,
+              top: menuPosition?.top ?? 64,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button className="menu-item disabled" disabled>
+              Use as profile photo
+            </button>
+            <button className="menu-item disabled" disabled>
+              Add to my favorites
+            </button>
+
+            <div className="menu-divider" />
+
+            {/* Edit submenu */}
+            <div
+              onMouseEnter={() => openSubMenu('edit')}
+              onMouseLeave={() => closeSubMenuDelayed()}
+            >
+              <button
+                className="menu-item submenu-trigger"
+                onClick={() => (activeSubMenu === 'edit' ? setActiveSubMenu(null) : openSubMenu('edit'))}
+              >
+                <span>Edit</span>
+                <span className="submenu-arrow">{activeSubMenu === 'edit' ? '▼' : '▶'}</span>
+              </button>
+              {activeSubMenu === 'edit' && (
+                <div className="submenu">
+                  <button className="menu-item" onClick={handleEditInPiskel}>
+                    In Piskel
+                  </button>
+                  {['png', 'webp', 'gif', 'bmp'].includes(
+                    (post.files?.find(f => f.is_native)?.format || '').toLowerCase()
+                  ) ? (
+                    <button className="menu-item" onClick={handleEditInPixelc}>
+                      In Pixelc
+                    </button>
+                  ) : (
+                    <button className="menu-item disabled" disabled>
+                      In Pixelc
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Share submenu */}
+            <div
+              onMouseEnter={() => openSubMenu('share')}
+              onMouseLeave={() => closeSubMenuDelayed()}
+            >
+              <button
+                className="menu-item submenu-trigger"
+                onClick={() => (activeSubMenu === 'share' ? setActiveSubMenu(null) : openSubMenu('share'))}
+              >
+                <span>Share</span>
+                <span className="submenu-arrow">{activeSubMenu === 'share' ? '▼' : '▶'}</span>
+              </button>
+              {activeSubMenu === 'share' && (
+                <div className="submenu">
+                  <button className="menu-item" onClick={handleShareUpscaled}>
+                    Upscaled
+                  </button>
+                  <button className="menu-item" onClick={handleShareNative}>
+                    Native size
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Download submenu */}
+            <div
+              onMouseEnter={() => openSubMenu('download')}
+              onMouseLeave={() => closeSubMenuDelayed()}
+            >
+              <button
+                className="menu-item submenu-trigger"
+                onClick={() => (activeSubMenu === 'download' ? setActiveSubMenu(null) : openSubMenu('download'))}
+              >
+                <span>Download</span>
+                <span className="submenu-arrow">{activeSubMenu === 'download' ? '▼' : '▶'}</span>
+              </button>
+              {activeSubMenu === 'download' && (
+                <div className="submenu">
+                  <button className="menu-item" onClick={handleDownloadUpscaled}>
+                    Upscaled
+                  </button>
+                  <div
+                    onMouseEnter={openFormatSub}
+                    onMouseLeave={() => closeSubMenuDelayed()}
+                  >
+                    <button
+                      className="menu-item submenu-trigger"
+                      onClick={() => (showFormatSubPanel ? setShowFormatSubPanel(false) : openFormatSub())}
+                    >
+                      <span>Alternative format</span>
+                      <span className="submenu-arrow">{showFormatSubPanel ? '▼' : '▶'}</span>
+                    </button>
+                    {showFormatSubPanel && (() => {
+                      const alternativeFormats = (post.files || [])
+                        .filter(f => !f.is_native)
+                        .map(f => f.format);
+                      return (
+                        <div className="submenu">
+                          {alternativeFormats.length > 0 ? (
+                            alternativeFormats.map(format => (
+                              <button
+                                key={format}
+                                className="menu-item"
+                                onClick={() => handleDownloadFormat(format)}
+                              >
+                                {format.toUpperCase()}
+                              </button>
+                            ))
+                          ) : (
+                            <div className="menu-item disabled-text">No alternatives</div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <button className="menu-item" onClick={handleDownloadNative}>
+                    Native format
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Owner-only actions */}
+            {isOwner && (
+              <>
+                <div className="menu-divider" />
+                <button
+                  className="menu-item"
+                  onClick={() => { closeMoreMenu(); handleEditClick(); }}
+                >
+                  ✏️ Edit details
+                </button>
+                <button
+                  className="menu-item"
+                  onClick={() => { closeMoreMenu(); setShowStats(true); }}
+                >
+                  📈 Statistics
+                </button>
+                <button
+                  className="menu-item"
+                  onClick={() => { closeMoreMenu(); void handleHide(); }}
+                >
+                  {post.hidden_by_user ? '👁️ Unhide' : '🙈 Hide'}
+                </button>
+                <button
+                  className="menu-item danger"
+                  onClick={() => { closeMoreMenu(); void handleDelete(); }}
+                >
+                  🗑️ Delete
+                </button>
+              </>
+            )}
+
+            {/* Moderator-only actions */}
+            {isModerator && (
+              <>
+                <div className="menu-divider" />
+                {!isOwner && (
+                  <button
+                    className="menu-item"
+                    onClick={() => { closeMoreMenu(); setShowStats(true); }}
+                  >
+                    📈 Statistics
+                  </button>
+                )}
+                <button
+                  className="menu-item"
+                  onClick={() => { closeMoreMenu(); void handleModHide(); }}
+                >
+                  {post.hidden_by_mod ? '👁️ Unhide (Mod)' : '🙈 Hide (Mod)'}
+                </button>
+                <button
+                  className="menu-item"
+                  onClick={() => { closeMoreMenu(); void handlePromote(); }}
+                >
+                  {post.promoted ? '⬇️ Demote' : '⭐ Promote'}
+                </button>
+                {!post.public_visibility && (
+                  <button
+                    className="menu-item"
+                    onClick={() => { closeMoreMenu(); void handleApprovePublicVisibility(); }}
+                  >
+                    ✅ Approve public visibility
+                  </button>
+                )}
+                {(post.hidden_by_mod || post.hidden_by_user) && (
+                  <button
+                    className="menu-item danger"
+                    onClick={() => { closeMoreMenu(); void handlePermanentDelete(); }}
+                  >
+                    🗑️ Delete permanently
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Reaction users overlay (opened by ⚡ stat) */}
+      <SPOReactionUsersOverlay
+        postId={post.id}
+        isOpen={showReactionUsersOverlay}
+        onClose={() => setShowReactionUsersOverlay(false)}
+      />
 
       {/* Stats Panel Modal */}
       <StatsPanel
@@ -1185,30 +1666,123 @@ export default function PostPage() {
           margin-bottom: 12px;
         }
 
-        .post-meta {
+        .post-info-header {
           display: flex;
           align-items: center;
-          flex-wrap: wrap;
-          margin: -4px -4px 16px;
-          font-size: 0.9rem;
-          color: var(--text-muted);
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 16px;
         }
 
-        .post-meta > :global(*) {
-          margin: 4px;
+        .post-info-author {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: var(--text-primary);
+          min-width: 0;
+          flex-shrink: 1;
         }
 
-        .author-link {
-          color: var(--accent-cyan);
-          font-weight: 500;
-        }
-
-        .author-link:hover {
+        .post-info-author:hover .post-info-handle {
           color: var(--accent-pink);
         }
 
-        .meta-separator {
+        .post-info-avatar {
+          width: 32px;
+          height: 32px;
+          border-radius: 0;
+          object-fit: cover;
+          image-rendering: pixelated;
+          flex-shrink: 0;
+        }
+
+        .post-info-avatar-placeholder {
+          background: var(--bg-tertiary);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--text-muted);
+        }
+
+        .post-info-handle {
+          font-size: 0.95rem;
+          font-weight: 500;
+          color: var(--accent-cyan);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          transition: color var(--transition-fast);
+        }
+
+        .post-info-stats {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-shrink: 0;
+          color: var(--text-secondary);
+        }
+
+        .stat-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 0.9rem;
+          background: transparent;
+          border: none;
+          color: inherit;
+          padding: 4px 2px;
+          font-family: inherit;
+        }
+
+        .stat-reactions {
+          cursor: pointer;
+          border-radius: 4px;
+          transition: background var(--transition-fast);
+        }
+
+        .stat-reactions:hover {
+          background: rgba(255, 255, 255, 0.08);
+        }
+
+        .stat-icon {
+          font-size: 1rem;
+          line-height: 1;
+        }
+
+        .stat-count {
+          font-variant-numeric: tabular-nums;
+        }
+
+        .more-button {
+          background: transparent;
+          border: none;
+          color: var(--text-primary);
+          font-size: 1.25rem;
+          line-height: 1;
+          cursor: pointer;
+          padding: 4px 6px;
+          border-radius: 4px;
+          transition: background var(--transition-fast);
+        }
+
+        .more-button:hover {
+          background: rgba(255, 255, 255, 0.08);
+        }
+
+        .post-tech-info {
+          font-size: 0.8rem;
+          color: var(--text-muted);
+          margin-bottom: 16px;
+          font-variant-numeric: tabular-nums;
+        }
+
+        .tech-separator {
+          margin: 0 8px;
           opacity: 0.5;
+        }
+
+        .frame-count-warn {
+          color: #ff8080;
         }
 
         .post-description {
@@ -1277,18 +1851,6 @@ export default function PostPage() {
           font-style: italic;
         }
 
-        .owner-actions {
-          display: flex;
-          margin-top: 24px;
-          padding-top: 24px;
-          border-top: 1px solid rgba(255, 255, 255, 0.05);
-          justify-content: flex-start;
-        }
-
-        .owner-actions > :global(* + *) {
-          margin-left: 12px;
-        }
-
         .action-button {
           padding: 10px 20px;
           border-radius: 8px;
@@ -1302,79 +1864,6 @@ export default function PostPage() {
         .action-button:disabled {
           opacity: 0.5;
           cursor: not-allowed;
-        }
-
-        .action-button.hide {
-          background: var(--bg-tertiary);
-          color: var(--text-secondary);
-        }
-
-        .action-button.hide:hover:not(:disabled) {
-          background: rgba(245, 158, 11, 0.2);
-          color: #f59e0b;
-        }
-
-        .action-button.unhide {
-          background: rgba(16, 185, 129, 0.2);
-          color: #10b981;
-        }
-
-        .action-button.unhide:hover:not(:disabled) {
-          background: rgba(16, 185, 129, 0.3);
-        }
-
-        .action-button.delete {
-          background: rgba(239, 68, 68, 0.2);
-          color: #ef4444;
-        }
-
-        .action-button.delete:hover:not(:disabled) {
-          background: rgba(239, 68, 68, 0.3);
-        }
-
-        .action-button.edit {
-          background: rgba(78, 159, 255, 0.2);
-          color: #4e9fff;
-        }
-
-        .action-button.edit:hover:not(:disabled) {
-          background: rgba(78, 159, 255, 0.3);
-        }
-
-        .action-button.stats {
-          background: rgba(180, 78, 255, 0.2);
-          color: #b44eff;
-        }
-
-        .action-button.stats:hover:not(:disabled) {
-          background: rgba(180, 78, 255, 0.3);
-          box-shadow: 0 0 12px rgba(180, 78, 255, 0.3);
-        }
-
-        .action-button.piskel-edit {
-          background: rgba(255, 165, 0, 0.2);
-          color: #ffa500;
-        }
-
-        .action-button.piskel-edit:hover:not(:disabled) {
-          background: rgba(255, 165, 0, 0.3);
-          box-shadow: 0 0 12px rgba(255, 165, 0, 0.3);
-        }
-
-        .action-button.pixelc-edit {
-          background: rgba(0, 212, 255, 0.2);
-          color: #00d4ff;
-        }
-
-        .action-button.pixelc-edit:hover:not(:disabled) {
-          background: rgba(0, 212, 255, 0.3);
-          box-shadow: 0 0 12px rgba(0, 212, 255, 0.3);
-        }
-
-        .stats-action {
-          margin-top: 16px;
-          padding-top: 16px;
-          border-top: 1px solid rgba(255, 255, 255, 0.05);
         }
 
         .action-button.save {
@@ -1479,57 +1968,6 @@ export default function PostPage() {
           margin-left: 12px;
         }
 
-        .moderator-actions {
-          margin-top: 16px;
-        }
-
-        .mod-actions-grid {
-          display: flex;
-          flex-wrap: wrap;
-          margin: -5px;
-          justify-content: flex-end;
-        }
-
-        .mod-actions-grid > :global(*) {
-          margin: 5px;
-        }
-
-        .mod-button {
-          padding: 10px 16px;
-          border-radius: 8px;
-          font-size: 0.85rem;
-          font-weight: 600;
-          background: var(--bg-tertiary);
-          color: var(--text-secondary);
-          transition: all var(--transition-fast);
-          border: 1px solid transparent;
-        }
-
-        .mod-button:hover {
-          background: rgba(180, 78, 255, 0.2);
-          color: var(--accent-purple);
-          border-color: var(--accent-purple);
-        }
-
-        .mod-button.active {
-          background: rgba(180, 78, 255, 0.15);
-          color: var(--accent-purple);
-          border-color: rgba(180, 78, 255, 0.3);
-        }
-
-        .mod-button.danger {
-          background: rgba(239, 68, 68, 0.15);
-          color: #ef4444;
-          border-color: rgba(239, 68, 68, 0.3);
-        }
-
-        .mod-button.danger:hover {
-          background: rgba(239, 68, 68, 0.3);
-          color: #f87171;
-          border-color: #ef4444;
-          box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
-        }
-
         .mod-status-badges {
           display: flex;
           flex-wrap: wrap;
@@ -1579,6 +2017,82 @@ export default function PostPage() {
           .post-page {
             padding: 16px;
           }
+        }
+      `}</style>
+      <style jsx global>{`
+        .more-menu-backdrop {
+          position: fixed;
+          inset: 0;
+          z-index: 20000;
+        }
+
+        .more-menu {
+          position: fixed;
+          background: #1a1a24;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 8px;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+          min-width: 200px;
+          padding: 4px 0;
+          z-index: 20001;
+        }
+
+        .more-menu .menu-item {
+          display: flex;
+          width: 100%;
+          padding: 10px 16px;
+          font-size: 14px;
+          color: #e8e8f0;
+          background: transparent;
+          border: none;
+          text-align: left;
+          cursor: pointer;
+          font-family: inherit;
+          align-items: center;
+          justify-content: flex-start;
+          gap: 8px;
+        }
+
+        .more-menu .menu-item.submenu-trigger {
+          justify-content: space-between;
+        }
+
+        .more-menu .menu-item:hover:not(:disabled):not(.disabled-text) {
+          background: rgba(255, 255, 255, 0.08);
+        }
+
+        .more-menu .menu-item.disabled,
+        .more-menu .menu-item.disabled-text {
+          color: #6a6a80;
+          cursor: not-allowed;
+        }
+
+        .more-menu .menu-item.disabled-text {
+          cursor: default;
+        }
+
+        .more-menu .menu-item.danger {
+          color: #ef4444;
+        }
+
+        .more-menu .menu-item.danger:hover {
+          background: rgba(239, 68, 68, 0.15);
+        }
+
+        .more-menu .menu-divider {
+          height: 1px;
+          background: rgba(255, 255, 255, 0.1);
+          margin: 4px 0;
+        }
+
+        .more-menu .submenu {
+          padding-left: 12px;
+        }
+
+        .more-menu .submenu-arrow {
+          margin-left: 8px;
+          font-size: 0.7rem;
+          opacity: 0.7;
         }
       `}</style>
       <PlayerBar />
