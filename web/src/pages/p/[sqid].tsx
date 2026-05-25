@@ -1185,6 +1185,18 @@ export default function PostPage() {
               <h1 className="post-title">{post.title}</h1>
             )}
 
+            <div className="post-tech-info">
+              {formatDateTime(post.created_at)}
+              <span className="tech-separator">•</span>
+              <span className={(post.frame_count ?? 1) > 256 ? 'frame-count-warn' : undefined}>
+                {post.frame_count ?? 1}
+              </span>
+              ×({post.width}×{post.height})
+              <span className="tech-separator">•</span>
+              {formatFileSizeCompact(post.files?.find(f => f.is_native)?.file_bytes || 0)}{' '}
+              {(post.files?.find(f => f.is_native)?.format || 'png').toUpperCase()}
+            </div>
+
             <div className="post-info-header">
               {post.owner ? (
                 <Link href={`/u/${post.owner.public_sqid}`} className="post-info-author">
@@ -1244,18 +1256,6 @@ export default function PostPage() {
                   &#8942;
                 </button>
               </div>
-            </div>
-
-            <div className="post-tech-info">
-              {formatDateTime(post.created_at)}
-              <span className="tech-separator">•</span>
-              <span className={(post.frame_count ?? 1) > 256 ? 'frame-count-warn' : undefined}>
-                {post.frame_count ?? 1}
-              </span>
-              ×({post.width}×{post.height})
-              <span className="tech-separator">•</span>
-              {formatFileSizeCompact(post.files?.find(f => f.is_native)?.file_bytes || 0)}{' '}
-              {(post.files?.find(f => f.is_native)?.format || 'png').toUpperCase()}
             </div>
 
             {post.description && (
