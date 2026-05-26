@@ -935,6 +935,8 @@ class PlayerProvisionResponse(BaseModel):
     registration_code: str
     registration_code_expires_at: datetime
     mqtt_broker: dict[str, Any]
+    # HTTPS player API discovery, e.g. {"base_url": "...", "auth": "bearer"}.
+    https_api: dict[str, Any] | None = None
 
 
 class PlayerRegisterRequest(BaseModel):
@@ -987,6 +989,13 @@ class PlayerRenewCertResponse(BaseModel):
     message: str = "Certificate renewed successfully"
 
 
+class PlayerTokenResponse(BaseModel):
+    """Device bearer token issued or rotated for the HTTPS player API."""
+
+    api_token: str
+    rotated_at: datetime
+
+
 class OnlinePlayerInfo(BaseModel):
     """Online player information for moderator dashboard."""
 
@@ -1012,6 +1021,10 @@ class TLSCertBundle(BaseModel):
     cert_pem: str
     key_pem: str
     broker: dict[str, Any]  # {host, port}
+    # HTTPS player API discovery, e.g. {"base_url": "...", "auth": "bearer"}.
+    https_api: dict[str, Any] | None = None
+    # Device bearer token, returned once on first fetch (mint-once).
+    api_token: str | None = None
 
 
 # ============================================================================

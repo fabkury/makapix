@@ -151,6 +151,7 @@ Content-Type: application/json
 | [Reactions](reactions.md) | Emoji reactions and comments |
 | [Playlists](playlists.md) | Curated artwork collections |
 | [Player](player.md) | Device management and commands |
+| [Player RPC](player-rpc.md) | HTTPS query/reaction/view protocol for player devices |
 | [Admin](admin.md) | Moderation, bans, trust, audit log |
 | [Artist Dashboard](dashboard.md) | Artist analytics and statistics |
 

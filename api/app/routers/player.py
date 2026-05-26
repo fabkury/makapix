@@ -52,6 +52,23 @@ from ..services.rate_limit import check_rate_limit
 from ..utils.registration import generate_registration_code
 
 
+def _https_api_base_url() -> str:
+    """Public base URL of the HTTPS player API (advertised during provisioning)."""
+    base = os.getenv("API_BASE_URL")
+    if base:
+        return base.rstrip("/")
+    site = os.getenv("BASE_URL")
+    if site:
+        return site.rstrip("/") + "/api"
+    host = os.getenv("MQTT_PUBLIC_HOST", "development.makapix.club")
+    return f"https://{host}/api"
+
+
+def _https_api_info() -> dict[str, Any]:
+    """Transport-discovery block describing the HTTPS player backend."""
+    return {"base_url": _https_api_base_url(), "auth": "bearer"}
+
+
 def get_client_ip(request: Request) -> str:
     """
     Extract client IP address from request, handling proxies.
@@ -120,6 +137,7 @@ def provision_player(
         registration_code=registration_code,
         registration_code_expires_at=expires_at,
         mqtt_broker={"host": broker_host, "port": broker_port},
+        https_api=_https_api_info(),
     )
 
 
@@ -364,11 +382,68 @@ def get_player_credentials(
     broker_host = os.getenv("MQTT_PUBLIC_HOST", "development.makapix.club")
     broker_port = int(os.getenv("MQTT_PUBLIC_PORT", "8884"))
 
+    # Mint the device bearer token on first fetch (returned once); subsequent
+    # fetches omit it. Device recovery uses the token/rotate endpoints below.
+    from ..services import player_tokens
+
+    api_token = None
+    if player_tokens.get_active_token(db, player.id) is None:
+        api_token = player_tokens.issue_token(db, player)
+
     return schemas.TLSCertBundle(
         ca_pem=ca_pem,
         cert_pem=player.cert_pem,
         key_pem=player.key_pem,
         broker={"host": broker_host, "port": broker_port},
+        https_api=_https_api_info(),
+        api_token=api_token,
+    )
+
+
+@router.post(
+    "/player/{player_key}/token/rotate",
+    response_model=schemas.PlayerTokenResponse,
+)
+def rotate_player_token(
+    player_key: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> schemas.PlayerTokenResponse:
+    """Device self-service token rotation.
+
+    Gated by knowledge of the player_key (the same trust level as the
+    credentials endpoint) and rate limited per IP. Revokes the player's current
+    token and returns a fresh one — for devices that lost their stored token.
+    """
+    client_ip = get_client_ip(request)
+    allowed, _ = check_rate_limit(
+        f"ratelimit:player_token_rotate:{client_ip}", limit=30, window_seconds=3600
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many token rotation requests. Please try again later.",
+        )
+
+    player = (
+        db.query(models.Player)
+        .filter(
+            models.Player.player_key == player_key,
+            models.Player.registration_status == "registered",
+        )
+        .first()
+    )
+    if not player:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Player not found or not registered",
+        )
+
+    from ..services import player_tokens
+
+    api_token = player_tokens.issue_token(db, player)
+    return schemas.PlayerTokenResponse(
+        api_token=api_token, rotated_at=datetime.now(timezone.utc)
     )
 
 
@@ -558,9 +633,7 @@ def verify_hashtag(
 
     # Base query: public-visible posts with this hashtag
     base_query = _apply_public_visibility_filters(
-        db.query(models.Post).filter(
-            models.Post.hashtags.contains([tag_normalized])
-        )
+        db.query(models.Post).filter(models.Post.hashtags.contains([tag_normalized]))
     )
 
     # Capped count: count up to 101 rows
@@ -740,9 +813,7 @@ def _player_post_response(
     record_site_event(request, "page_view", user=None)
 
     payload = schemas.Post.model_validate(post).model_dump(mode="json")
-    return JSONResponse(
-        content=payload, headers={"Access-Control-Allow-Origin": "*"}
-    )
+    return JSONResponse(content=payload, headers={"Access-Control-Allow-Origin": "*"})
 
 
 def _enforce_player_post_rate_limit(request: Request) -> None:
@@ -908,14 +979,14 @@ async def player_events_sse(
     async def gen():
         queue = await player_events.subscribe(user_id)
         try:
-            yield ': connected\n\n'
+            yield ": connected\n\n"
             while True:
                 if await request.is_disconnected():
                     break
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=15.0)
                 except asyncio.TimeoutError:
-                    yield ': keepalive\n\n'
+                    yield ": keepalive\n\n"
                     continue
                 yield f"event: {event['type']}\ndata: {_json.dumps(event)}\n\n"
         finally:
@@ -1039,6 +1110,44 @@ def download_player_certs(
         cert_pem=player.cert_pem,
         key_pem=player.key_pem,
         broker={"host": broker_host, "port": broker_port},
+        https_api=_https_api_info(),
+    )
+
+
+@router.post(
+    "/u/{sqid}/player/{player_id}/rotate-token",
+    response_model=schemas.PlayerTokenResponse,
+)
+def rotate_player_token_owner(
+    sqid: str,
+    player_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.PlayerTokenResponse:
+    """Owner-initiated device token rotation (e.g. compromise response).
+
+    Revokes the player's current token and returns a fresh one for the owner to
+    provision onto the device.
+    """
+    user = get_user_by_sqid(sqid, db)
+    require_ownership(user.id, current_user)
+
+    player = (
+        db.query(models.Player)
+        .filter(models.Player.id == player_id, models.Player.owner_id == user.id)
+        .first()
+    )
+    if not player:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Player not found",
+        )
+
+    from ..services import player_tokens
+
+    api_token = player_tokens.issue_token(db, player)
+    return schemas.PlayerTokenResponse(
+        api_token=api_token, rotated_at=datetime.now(timezone.utc)
     )
 
 
@@ -1651,5 +1760,3 @@ def set_player_mirror(
         payload={"value": payload.value},
     )
     return schemas.PlayerCommandResponse(command_id=command_id, status="sent")
-
-

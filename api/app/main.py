@@ -29,6 +29,7 @@ from .routers import (
     licenses,
     mqtt,
     player,
+    player_rpc,
     playlists,
     pmd,
     posts,
@@ -243,6 +244,7 @@ app.include_router(badges.router)
 app.include_router(licenses.router)
 app.include_router(reputation.router)
 app.include_router(player.router)
+app.include_router(player_rpc.router)
 app.include_router(categories.router)
 app.include_router(admin.router)
 app.include_router(search.router)

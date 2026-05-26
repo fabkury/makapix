@@ -1,4 +1,9 @@
-"""MQTT subscriber for player view events (fire-and-forget)."""
+"""MQTT subscriber for player view events (fire-and-forget).
+
+Transport adapter over ``app.services.player_views.record_view_event``: this
+module owns MQTT concerns (topic parsing, broker auth by player_key, acks,
+subscriber lifecycle); the ingestion logic is shared with the HTTPS backend.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +11,6 @@ import json
 import logging
 import os
 import threading
-from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -15,6 +19,12 @@ from sqlalchemy.orm import Session
 
 from ..db import get_session
 from .. import models
+from ..services.player_views import (
+    DUPLICATE,
+    POST_NOT_FOUND,
+    RATE_LIMITED,
+    record_view_event,
+)
 from .schemas import P3AViewEvent
 
 logger = logging.getLogger(__name__)
@@ -22,9 +32,6 @@ logger = logging.getLogger(__name__)
 # Subscriber client instance
 _view_client: mqtt_client.Client | None = None
 _view_client_lock = threading.Lock()
-
-# Timestamp that indicates unsynced time on p3a devices
-UNSYNC_TIMESTAMP = "1970-01-01T00:00:00Z"
 
 
 def _on_view_message(
@@ -130,21 +137,13 @@ def _on_view_message(
                     client.publish(ack_topic, ack_payload, qos=1)
                 return
 
-            # Import rate limiting and deduplication
-            from ..services.rate_limit import (
-                check_player_view_rate_limit,
-                check_view_duplicate,
-            )
+            # Record the view via the shared ingestion service (dedup, rate
+            # limit, post/self-view checks, async dispatch).
+            result = record_view_event(player, view_event, db)
 
-            # Check for duplicates (MQTT QoS 1 retransmissions)
-            if check_view_duplicate(
-                str(player_key), view_event.post_id, view_event.timestamp
-            ):
-                logger.debug(
-                    f"Discarded duplicate view: player={player_key}, post={view_event.post_id}"
-                )
-                if view_event.request_ack:
-                    ack_topic = f"makapix/player/{player_key}/view/ack"
+            if view_event.request_ack:
+                ack_topic = f"makapix/player/{player_key}/view/ack"
+                if result.status == DUPLICATE:
                     ack_payload = json.dumps(
                         {
                             "success": False,
@@ -152,39 +151,15 @@ def _on_view_message(
                             "error_code": "duplicate",
                         }
                     )
-                    client.publish(ack_topic, ack_payload, qos=1)
-                return
-
-            # Check rate limit (1 view per 5 seconds per player)
-            allowed, retry_after = check_player_view_rate_limit(str(player_key))
-            if not allowed:
-                logger.debug(
-                    f"Rate limited view from player {player_key}, retry after {retry_after}s"
-                )
-                if view_event.request_ack:
-                    ack_topic = f"makapix/player/{player_key}/view/ack"
+                elif result.status == RATE_LIMITED:
                     ack_payload = json.dumps(
                         {
                             "success": False,
-                            "error": f"Rate limited, retry after {retry_after}s",
+                            "error": f"Rate limited, retry after {result.retry_after}s",
                             "error_code": "rate_limited",
                         }
                     )
-                    client.publish(ack_topic, ack_payload, qos=1)
-                return
-
-            # Check if post exists
-            post = (
-                db.query(models.Post)
-                .filter(models.Post.id == view_event.post_id)
-                .first()
-            )
-            if not post:
-                logger.warning(
-                    f"View event for non-existent post: {view_event.post_id}"
-                )
-                if view_event.request_ack:
-                    ack_topic = f"makapix/player/{player_key}/view/ack"
+                elif result.status == POST_NOT_FOUND:
                     ack_payload = json.dumps(
                         {
                             "success": False,
@@ -192,89 +167,9 @@ def _on_view_message(
                             "error_code": "post_not_found",
                         }
                     )
-                    client.publish(ack_topic, ack_payload, qos=1)
-                return
-
-            # Don't record view if player owner is the post owner
-            if player.owner_id == post.owner_id:
-                logger.debug(
-                    f"Skipped view recording for post {view_event.post_id} - player owner is post owner"
-                )
-                if view_event.request_ack:
-                    ack_topic = f"makapix/player/{player_key}/view/ack"
+                else:
+                    # RECORDED or SELF_VIEW -> success
                     ack_payload = json.dumps({"success": True})
-                    client.publish(ack_topic, ack_payload, qos=1)
-                return
-
-            # Import view tracking utilities
-            from ..utils.view_tracking import ViewType, ViewSource, hash_ip
-            from ..tasks import write_view_event
-
-            # Map p3a's intent to our view_type
-            if view_event.intent == "artwork":
-                view_type = ViewType.INTENTIONAL
-            elif view_event.intent == "channel":
-                view_type = ViewType.LISTING
-            else:
-                logger.warning(
-                    f"Unexpected intent value: {view_event.intent}, defaulting to LISTING"
-                )
-                view_type = ViewType.LISTING
-
-            # Handle timestamp - reject "1970-01-01T00:00:00Z" (unsynced device)
-            local_datetime = None
-            if view_event.timestamp != UNSYNC_TIMESTAMP:
-                local_datetime = view_event.timestamp
-            else:
-                logger.debug(
-                    f"Player {player_key} has unsynced time, storing NULL for local_datetime"
-                )
-
-            # Build channel_context from channel-specific fields
-            channel_context = None
-            if (
-                view_event.channel in ("by_user", "reactions")
-                and view_event.channel_user_sqid
-            ):
-                channel_context = view_event.channel_user_sqid
-            elif view_event.channel == "hashtag" and view_event.channel_hashtag:
-                channel_context = view_event.channel_hashtag
-
-            # Create view event data
-            # For player views, we use a synthetic IP hash based on player_key
-            player_ip_hash = hash_ip(f"player:{player_key}")
-
-            event_data = {
-                "post_id": str(view_event.post_id),
-                "viewer_user_id": str(player.owner_id),
-                "viewer_ip_hash": player_ip_hash,
-                "country_code": None,  # Players don't have geographic info
-                "device_type": "player",
-                "view_source": ViewSource.PLAYER.value,
-                "view_type": view_type.value,
-                "user_agent_hash": None,
-                "referrer_domain": None,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                # Player-specific fields
-                "player_id": str(player.id),
-                "local_datetime": local_datetime,
-                "local_timezone": view_event.timezone if view_event.timezone else None,
-                "play_order": view_event.play_order,
-                "channel": view_event.channel,
-                "channel_context": channel_context,
-            }
-
-            # Dispatch to Celery for async write
-            write_view_event.delay(event_data)
-
-            logger.info(
-                f"Recorded view for post {view_event.post_id} from player {player_key} (fire-and-forget)"
-            )
-
-            # Send acknowledgment if requested
-            if view_event.request_ack:
-                ack_topic = f"makapix/player/{player_key}/view/ack"
-                ack_payload = json.dumps({"success": True})
                 client.publish(ack_topic, ack_payload, qos=1)
                 logger.debug(f"Sent view ack to {ack_topic}")
 
