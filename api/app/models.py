@@ -866,6 +866,9 @@ class Player(Base):
     # Relationships
     owner = relationship("User", back_populates="players")
     current_post = relationship("Post", foreign_keys=[current_post_id])
+    tokens = relationship(
+        "PlayerToken", back_populates="player", cascade="all, delete-orphan"
+    )
 
 
 class PlayerCommandLog(Base):
@@ -902,6 +905,38 @@ class PlayerCommandLog(Base):
 
     # Relationship (optional since player_id can be null)
     player = relationship("Player", backref="command_logs")
+
+
+class PlayerToken(Base):
+    """Opaque bearer token authenticating a player over the HTTPS player API.
+
+    Distinct from user JWTs: the token resolves directly to a registered
+    Player, and reactions/views are attributed to that player's owner. Stored
+    only as a SHA-256 hash (the plaintext is shown once at issuance). Revocable
+    independently of the player's MQTT client certificate.
+    """
+
+    __tablename__ = "player_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    player_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("players.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    # First chars of the plaintext (e.g. "mpx_live_7Qf") for display/audit only.
+    prefix = Column(String(16), nullable=True)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+    # NULL = long-lived device credential (revocable any time).
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    revoked = Column(Boolean, nullable=False, default=False, index=True)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+
+    player = relationship("Player", back_populates="tokens")
 
 
 # ============================================================================

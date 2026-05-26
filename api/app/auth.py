@@ -329,6 +329,56 @@ async def get_current_user(
         )
 
 
+def get_current_player(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> models.Player:
+    """
+    Authenticate a player device from its ``Authorization: Bearer`` token.
+
+    The HTTPS counterpart to the MQTT broker's certificate auth: the opaque
+    device token resolves to a registered ``Player`` whose owner is allowed to
+    authenticate (not banned/deactivated). Mirrors the
+    ``mqtt.player_requests._authenticate_player`` checks. Repeated failures are
+    rate limited per client IP to slow brute-force attempts.
+    """
+    from .services import player_tokens
+    from .services.rate_limit import check_rate_limit
+
+    def _fail() -> None:
+        ip = get_client_ip(request)
+        allowed, _ = check_rate_limit(
+            f"ratelimit:player_auth_fail:{ip}", limit=60, window_seconds=3600
+        )
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many failed authentication attempts. Try again later.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing player token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not credentials:
+        _fail()
+
+    player = player_tokens.resolve_player(db, credentials.credentials)
+    if (
+        player is None
+        or player.registration_status != "registered"
+        or player.owner is None
+    ):
+        _fail()
+
+    # Block banned/deactivated owners, consistent with user authentication.
+    check_user_can_authenticate(player.owner)
+
+    return player
+
+
 async def get_current_user_optional(
     credentials: HTTPAuthorizationCredentials | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
