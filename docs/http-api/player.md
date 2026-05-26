@@ -14,7 +14,7 @@ Provision a new player device. No authentication required.
 
 ```json
 {
-  "device_model": "p3a-64x64",
+  "device_model": "p3a-720x720",
   "firmware_version": "2.1.0"
 }
 ```
@@ -71,7 +71,7 @@ Link a provisioned device to user account. Requires authentication.
   "id": "123e4567-e89b-12d3-a456-426614174000",
   "player_key": "550e8400-e29b-41d4-a716-446655440000",
   "name": "Living Room Display",
-  "device_model": "p3a-64x64",
+  "device_model": "p3a-720x720",
   "firmware_version": "2.1.0",
   "registration_status": "registered",
   "registered_at": "2024-01-15T10:20:00Z"
@@ -130,7 +130,7 @@ List all players for a user. Requires authentication and ownership.
       "id": "123e4567-e89b-12d3-a456-426614174000",
       "player_key": "550e8400-e29b-41d4-a716-446655440000",
       "name": "Living Room Display",
-      "device_model": "p3a-64x64",
+      "device_model": "p3a-720x720",
       "firmware_version": "2.1.0",
       "registration_status": "registered",
       "registered_at": "2024-01-15T10:20:00Z",
