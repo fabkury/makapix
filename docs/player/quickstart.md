@@ -132,6 +132,10 @@ Content-Type: application/json
 
 The response is the HTTP body (status 200).
 
+> Prefer a working example? [`scripts/test_https_player_api.py`](../../scripts/test_https_player_api.py)
+> runs this entire flow (provision → token → query → download) — see
+> [HTTPS Connection](https-connection.md#reference-example-start-here).
+
 ### Response (identical either way)
 
 ```json
