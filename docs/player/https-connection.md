@@ -12,6 +12,27 @@ from the web app and live online/offline presence are MQTT-only, because they
 need a persistent connection. Everything a player *asks for* works identically
 on both.
 
+## Reference example (start here)
+
+A complete, runnable example lives in the repository at
+[`scripts/test_https_player_api.py`](../../scripts/test_https_player_api.py). It
+walks the entire flow end to end — provision a player, capture and store the
+bearer token, query posts, and download a few artworks — using only the Python
+standard library (nothing to install):
+
+```bash
+# Provision (you enter the shown code in the web app), then query + download
+python3 scripts/test_https_player_api.py
+
+# Re-runs reuse the stored token; tweak the query or reset entirely
+python3 scripts/test_https_player_api.py --channel hashtag --hashtag landscape --download 5
+python3 scripts/test_https_player_api.py --reset
+```
+
+It's the recommended starting point when porting the protocol to your own
+device — clone it, run it against production, then adapt. The rest of this page
+documents what it does under the hood.
+
 ## Base URL
 
 | Environment | Base URL |

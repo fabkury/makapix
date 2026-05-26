@@ -105,5 +105,6 @@ authenticated `POST` calls to the player API.
 
 ## Example Implementations
 
+- **HTTPS quickstart script** — [`scripts/test_https_player_api.py`](../../scripts/test_https_player_api.py): a runnable, dependency-free Python example of the full HTTPS flow (provision → token → query → download). The fastest way to see a working connection; see [HTTPS Connection → Reference example](https-connection.md#reference-example-start-here).
 - **p3a** - ESP32-based player with 64x64 LED matrix (reference implementation)
 - See Discord for community projects and starter code
