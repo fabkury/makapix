@@ -10,6 +10,10 @@ All queries follow the same pattern:
 2. Publish request to `makapix/player/{player_key}/request/{request_id}`
 3. Receive response on `makapix/player/{player_key}/response/{request_id}`
 
+> **Over HTTPS:** every request body on this page works unchanged — `POST` the
+> same object (you can drop `player_key` and `request_id`) to `/player/rpc` and
+> read the reply from the HTTP response. See [HTTPS Connection](https-connection.md).
+
 ## Query Posts
 
 Fetch multiple posts with optional filtering.

@@ -1,9 +1,10 @@
 # Player RPC over HTTPS
 
-Request-response and view-reporting protocol for player devices that cannot
-(or choose not to) use MQTT. This is the HTTPS sibling of the MQTT
-[Player Requests](../mqtt-api/player-requests.md) and
-[Player View reporting](player-status.md) protocols.
+Request-response and view-reporting protocol for player devices over HTTPS — a
+parallel transport to MQTT, not a fallback. This is the HTTPS sibling of the
+MQTT [Player Requests](../mqtt-api/player-requests.md) and
+[Player View reporting](../mqtt-api/player-status.md) protocols, and shares
+their exact request and response shapes.
 
 > **Status:** implemented (v1). The transport-agnostic refactor, device
 > bearer-token auth, `POST /player/rpc`, and `POST /player/events/view` are
@@ -24,7 +25,7 @@ visibility rules, pagination, and payloads. The transports differ only in:
 | Framing | publish to topic, await response topic | one `POST`, one JSON response |
 | Push (server→player) | native (`…/command`) | **not available in v1** (see [Parity](#parity-with-mqtt)) |
 
-A device picks a transport at runtime and can fall back without re-pairing
+A device chooses either transport — or uses both at once — without re-pairing
 (see [Transport selection](#transport-selection)).
 
 ## Base URL
@@ -593,15 +594,19 @@ Responses include `X-RateLimit-Limit` / `-Remaining` / `-Reset` headers.
 
 ## Transport selection
 
-Provisioning advertises both backends. Recommended firmware logic:
+Provisioning advertises both backends (`mqtt_broker` and `https_api`), so a
+device chooses at runtime based on its hardware and network — neither is a
+fallback for the other:
 
-1. Attempt MQTT (port 8884) using the downloaded client certificate.
-2. On connect timeout / blocked port / N consecutive failures, switch to
-   `POST /player/rpc` (port 443) with `Authorization: Bearer <api_token>`.
-3. Send the **same request objects** either way.
+- **MQTT** (port 8883, mTLS) when the device wants real-time commands and live
+  presence and can hold a persistent connection.
+- **HTTPS** (port 443, bearer token) for request/response queries and view
+  reporting without a long-lived socket.
 
-Reads reach full parity over HTTPS. While in HTTPS mode the device loses
-real-time server→player push and precise presence (see below).
+The request objects are identical on both, so supporting either one — or both
+at once (e.g. MQTT for commands, HTTPS for queries) — needs no protocol
+changes. Querying and reporting reach full parity over HTTPS; only real-time
+push and precise presence are MQTT-only (see below).
 
 ## Parity with MQTT
 

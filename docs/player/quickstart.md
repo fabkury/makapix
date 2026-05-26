@@ -4,7 +4,7 @@ Get a player device connected to Makapix in four steps.
 
 ## Prerequisites
 
-- A device with network connectivity and MQTT support
+- A device with network connectivity (MQTT *or* HTTPS — your choice)
 - A Makapix Club account ([makapix.club](https://makapix.club))
 
 ## Step 1: Provision the Device
@@ -28,12 +28,13 @@ Response:
   "player_key": "550e8400-e29b-41d4-a716-446655440000",
   "registration_code": "A7B3K9",
   "registration_code_expires_at": "2024-01-15T10:30:00Z",
-  "mqtt_broker": {
-    "host": "makapix.club",
-    "port": 8883
-  }
+  "mqtt_broker": { "host": "makapix.club", "port": 8883 },
+  "https_api": { "base_url": "https://makapix.club/api", "auth": "bearer" }
 }
 ```
+
+The response advertises **both** transports — `mqtt_broker` and `https_api` —
+so you can pick either one later.
 
 Save the `player_key` - this is your device's permanent identifier.
 
@@ -63,16 +64,26 @@ Response:
   "ca_pem": "-----BEGIN CERTIFICATE-----\n...",
   "cert_pem": "-----BEGIN CERTIFICATE-----\n...",
   "key_pem": "-----BEGIN RSA PRIVATE KEY-----\n...",
-  "broker": {
-    "host": "makapix.club",
-    "port": 8883
-  }
+  "broker": { "host": "makapix.club", "port": 8883 },
+  "https_api": { "base_url": "https://makapix.club/api", "auth": "bearer" },
+  "api_token": "mpx_live_8sK2f9Qd..."
 }
 ```
 
-Store these certificates securely on your device.
+This single response sets you up for either transport: the **TLS certificates**
+(`ca_pem` / `cert_pem` / `key_pem`) for MQTT, and the **bearer token**
+(`api_token`) for HTTPS. The `api_token` is returned **once**, on the first
+fetch — store it alongside the certificates. (If you lose it, rotate a new one;
+see [HTTPS Connection](https-connection.md).)
 
-## Step 4: Connect to MQTT
+Store these credentials securely on your device.
+
+## Step 4: Connect and make your first request
+
+You now have credentials for **both** transports. Use whichever suits your
+device — they accept the same request and return the same data.
+
+### Option A — MQTT (adds real-time commands + presence)
 
 Connect to the broker using the certificates:
 
@@ -82,20 +93,13 @@ Port: 8883
 Protocol: MQTT 5.0 over TLS
 Client ID: {player_key}
 Username: {player_key}
-TLS: Use ca_pem, cert_pem, key_pem from credentials
+TLS: ca_pem, cert_pem, key_pem from credentials
 ```
 
-Subscribe to receive commands:
+Subscribe for commands and responses, then query the feed:
 
-```
-makapix/player/{player_key}/command
-```
-
-## Your First Request
-
-Query artwork from the community feed:
-
-**Publish to:** `makapix/player/{player_key}/request/{request_id}`
+- **Subscribe:** `makapix/player/{player_key}/command` and `.../response/+`
+- **Publish to:** `makapix/player/{player_key}/request/{request_id}`
 
 ```json
 {
@@ -107,13 +111,31 @@ Query artwork from the community feed:
 }
 ```
 
-**Subscribe to:** `makapix/player/{player_key}/response/{request_id}`
+The response arrives on `makapix/player/{player_key}/response/{request_id}`.
 
-Response:
+### Option B — HTTPS (request/response, no persistent socket)
+
+Send the same request as one authenticated `POST`. Identity comes from the
+bearer token, so `player_key` and `request_id` aren't required:
+
+```
+POST https://makapix.club/api/player/rpc
+Authorization: Bearer mpx_live_8sK2f9Qd...
+Content-Type: application/json
+
+{
+  "request_type": "query_posts",
+  "channel": "all",
+  "limit": 10
+}
+```
+
+The response is the HTTP body (status 200).
+
+### Response (identical either way)
 
 ```json
 {
-  "request_id": "req-001",
   "success": true,
   "posts": [
     {
@@ -131,9 +153,12 @@ Response:
 }
 ```
 
+(Over MQTT, the response also echoes your `request_id`.)
+
 ## Next Steps
 
 - [Registration](registration.md) - Full provisioning flow details
 - [MQTT Connection](mqtt-connection.md) - TLS configuration and reconnection
+- [HTTPS Connection](https-connection.md) - Bearer-token auth and the player RPC API
 - [Querying Artwork](querying-artwork.md) - Filtering and pagination
 - [Displaying Artwork](displaying-artwork.md) - Image handling
