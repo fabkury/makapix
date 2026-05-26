@@ -2,6 +2,13 @@
 
 Report player status, view events, and submit reactions.
 
+> **Transports:** view events, reactions, comments, and playsets work over
+> **either** MQTT or HTTPS. Over HTTPS, `POST` view events to
+> `/player/events/view` and everything else to `/player/rpc` — same bodies,
+> minus `player_key` / `request_id` / `request_ack`. **Status updates are
+> MQTT-only** (live presence needs a persistent connection). See
+> [HTTPS Connection](https-connection.md).
+
 ## Status Updates
 
 Report your player's connection status and current state.

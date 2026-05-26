@@ -8,7 +8,10 @@ Registration is a three-step handshake:
 
 1. **Provision** - Device requests credentials from server (no auth required)
 2. **Register** - User authenticates on web and enters the code
-3. **Credentials** - Device retrieves TLS certificates
+3. **Credentials** - Device retrieves its TLS certificates **and** HTTPS bearer token
+
+The same flow sets up both transports: the certificates are used for MQTT, and
+the bearer token for HTTPS. A device only needs whichever it intends to use.
 
 ```
 ┌──────────┐                    ┌──────────┐                    ┌──────────┐
@@ -69,10 +72,8 @@ Content-Type: application/json
   "player_key": "550e8400-e29b-41d4-a716-446655440000",
   "registration_code": "A7B3K9",
   "registration_code_expires_at": "2024-01-15T10:30:00Z",
-  "mqtt_broker": {
-    "host": "makapix.club",
-    "port": 8883
-  }
+  "mqtt_broker": { "host": "makapix.club", "port": 8883 },
+  "https_api": { "base_url": "https://makapix.club/api", "auth": "bearer" }
 }
 ```
 
@@ -83,6 +84,8 @@ Content-Type: application/json
 | `registration_code_expires_at` | datetime | Code expiry (15 minutes from creation) |
 | `mqtt_broker.host` | string | MQTT broker hostname |
 | `mqtt_broker.port` | integer | MQTT broker TLS port |
+| `https_api.base_url` | string | Base URL of the HTTPS player API |
+| `https_api.auth` | string | HTTPS auth scheme (`bearer`) |
 
 ### Device Actions
 
@@ -160,20 +163,22 @@ No authentication required - the player_key serves as authentication for this en
   "ca_pem": "-----BEGIN CERTIFICATE-----\nMIID...\n-----END CERTIFICATE-----\n",
   "cert_pem": "-----BEGIN CERTIFICATE-----\nMIID...\n-----END CERTIFICATE-----\n",
   "key_pem": "-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----\n",
-  "broker": {
-    "host": "makapix.club",
-    "port": 8883
-  }
+  "broker": { "host": "makapix.club", "port": 8883 },
+  "https_api": { "base_url": "https://makapix.club/api", "auth": "bearer" },
+  "api_token": "mpx_live_8sK2f9Qd..."
 }
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `ca_pem` | string | CA certificate (PEM format) |
-| `cert_pem` | string | Client certificate (PEM format) |
-| `key_pem` | string | Client private key (PEM format) |
+| `cert_pem` | string | Client certificate (PEM format) — for MQTT |
+| `key_pem` | string | Client private key (PEM format) — for MQTT |
 | `broker.host` | string | MQTT broker hostname |
 | `broker.port` | integer | MQTT broker TLS port |
+| `https_api.base_url` | string | Base URL of the HTTPS player API |
+| `https_api.auth` | string | HTTPS auth scheme (`bearer`) |
+| `api_token` | string \| null | HTTPS bearer token — present **only on the first fetch** |
 
 ### Rate Limiting
 
@@ -181,8 +186,27 @@ This endpoint is rate limited to **30 requests per minute per IP** to prevent br
 
 ### Device Actions
 
-1. Store certificates securely in flash/EEPROM
-2. Proceed to MQTT connection
+1. Store the certificates and `api_token` securely in flash/EEPROM
+2. Connect over MQTT *or* HTTPS — see [MQTT Connection](mqtt-connection.md) or [HTTPS Connection](https-connection.md)
+
+### The HTTPS device token
+
+`api_token` is the bearer credential for the HTTPS transport. It is returned
+**once**, on the first successful credentials fetch (later fetches omit it), so
+store it persistently like the private key.
+
+If a device loses its token, rotate a fresh one (this revokes the old token):
+
+```
+POST /api/player/{player_key}/token/rotate
+```
+
+```json
+{ "api_token": "mpx_live_<new>", "rotated_at": "2024-01-15T12:00:00Z" }
+```
+
+Owners can also rotate a device's token from the web app (Settings > Players),
+for example if it may have leaked.
 
 ## Polling for Credentials
 
