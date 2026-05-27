@@ -97,7 +97,7 @@ authenticated `POST` calls to the player API.
 |----------|-------|
 | Players per user | 128 |
 | Registration code validity | 15 minutes |
-| Certificate validity | 365 days |
+| Certificate validity | 1095 days (3 years) |
 | Credential requests | 30/minute/IP |
 | Commands per player | 300/minute |
 | Commands per user | 1,000/minute |

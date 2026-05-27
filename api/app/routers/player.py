@@ -1508,7 +1508,7 @@ def renew_player_certificate(
     """
     Renew player certificate.
 
-    Only available if certificate is within 30 days of expiry or already expired.
+    Only available if certificate is within 90 days of expiry or already expired.
     """
     user = get_user_by_sqid(sqid, db)
     require_ownership(user.id, current_user)
