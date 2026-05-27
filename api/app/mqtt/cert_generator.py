@@ -29,7 +29,7 @@ def generate_client_certificate(
     player_key: UUID,
     ca_cert_path: str,
     ca_key_path: str,
-    cert_validity_days: int = 365,
+    cert_validity_days: int = 1095,
 ) -> tuple[str, str, str]:
     """
     Generate a client certificate for an MQTT device.
@@ -42,7 +42,7 @@ def generate_client_certificate(
         player_key: Player's unique key UUID (becomes the certificate CN)
         ca_cert_path: Path to CA certificate file
         ca_key_path: Path to CA private key file
-        cert_validity_days: Certificate validity in days (default: 1 year)
+        cert_validity_days: Certificate validity in days (default: 3 years)
 
     Returns:
         Tuple of (cert_pem, key_pem, serial_number) as strings
