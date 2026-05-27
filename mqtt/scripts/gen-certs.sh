@@ -11,7 +11,7 @@ SRV_CSR="${CERT_DIR}/server.csr"
 SRV_CRT="${CERT_DIR}/server.crt"
 
 if [[ ! -f "${CA_CRT}" || ! -f "${CA_KEY}" ]]; then
-  openssl req -x509 -nodes -days 365 \
+  openssl req -x509 -nodes -days 3650 \
     -subj "/CN=Makapix Dev CA" \
     -newkey rsa:4096 \
     -keyout "${CA_KEY}" \
@@ -47,7 +47,7 @@ SANEOF
   openssl req -new -key "${SRV_KEY}" -out "${SRV_CSR}" -config "${CERT_DIR}/server_san.cnf"
   openssl x509 -req -in "${SRV_CSR}" \
     -CA "${CA_CRT}" -CAkey "${CA_KEY}" -CAcreateserial \
-    -out "${SRV_CRT}" -days 365 -sha256 \
+    -out "${SRV_CRT}" -days 3650 -sha256 \
     -extfile "${CERT_DIR}/server_san.cnf" -extensions req_ext
   rm -f "${SRV_CSR}" "${CERT_DIR}/server_san.cnf"
 fi
