@@ -96,7 +96,10 @@ router = APIRouter(tags=["Players"])
 MAX_PLAYERS_PER_USER = 128
 REGISTRATION_CODE_EXPIRY_MINUTES = 15
 CERT_VALIDITY_DAYS = 1095  # 3 years
-CERT_RENEWAL_THRESHOLD_DAYS = 90
+# Renewal is allowed within this many days of expiry. Configurable per
+# environment (default 90) so dev can raise it to exercise renewal against
+# certs that are not yet near expiry.
+CERT_RENEWAL_THRESHOLD_DAYS = int(os.getenv("CERT_RENEWAL_THRESHOLD_DAYS", "90"))
 
 
 @router.post(
