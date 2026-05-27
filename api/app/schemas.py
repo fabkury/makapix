@@ -989,6 +989,20 @@ class PlayerRenewCertResponse(BaseModel):
     message: str = "Certificate renewed successfully"
 
 
+class PlayerSelfRenewResponse(BaseModel):
+    """Device-initiated certificate renewal result.
+
+    Returns the freshly minted client cert + key and the current CA bundle, so a
+    single call refreshes both the client certificate and the trust anchor.
+    """
+
+    cert_pem: str
+    key_pem: str
+    ca_pem: str
+    cert_expires_at: datetime
+    message: str = "Certificate renewed successfully"
+
+
 class PlayerTokenResponse(BaseModel):
     """Device bearer token issued or rotated for the HTTPS player API."""
 
