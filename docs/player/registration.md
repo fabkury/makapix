@@ -257,7 +257,7 @@ Recommended polling interval: 5 seconds.
 
 ## Certificate Renewal
 
-Certificates are valid for 365 days. The web interface shows certificate status and allows renewal when within 30 days of expiry.
+Certificates are valid for 1095 days (3 years). The web interface shows certificate status and allows renewal when within 90 days of expiry.
 
 Users can also download certificates manually from Settings > Players > [Device] > Download Certificates.
 

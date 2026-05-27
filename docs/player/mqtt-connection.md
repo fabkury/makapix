@@ -176,10 +176,10 @@ Common MQTT connection errors:
 
 ## Certificate Expiry
 
-Certificates are valid for 365 days. Your device should:
+Certificates are valid for 1095 days (3 years). Your device should:
 
 1. Track certificate expiry date
-2. Warn user when within 30 days of expiry
+2. Warn user when within 90 days of expiry
 3. Support certificate refresh via web interface
 
 After certificate renewal, the device must fetch new credentials and reconnect.

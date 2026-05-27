@@ -205,7 +205,7 @@ Renew player certificate. Requires authentication and ownership.
 
 **Notes:**
 
-- Only available within 30 days of expiry
+- Only available within 90 days of expiry
 - Device must re-fetch credentials after renewal
 
 **Errors:**
@@ -334,8 +334,8 @@ Same request body as single player command.
 |----------|-------|
 | Max players per user | 128 |
 | Registration code validity | 15 minutes |
-| Certificate validity | 365 days |
-| Certificate renewal threshold | 30 days |
+| Certificate validity | 1095 days (3 years) |
+| Certificate renewal threshold | 90 days |
 | Credential request rate limit | 30/minute/IP |
 | Command rate limit (player) | 300/minute |
 | Command rate limit (user) | 1,000/minute |
