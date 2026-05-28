@@ -98,6 +98,5 @@ test-results/
 playwright-report/
 
 # Claude Code configuration (environment-specific, not tracked)
-CLAUDE.md
 AGENTS.md
 .claude/settings.local.json
