@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
+import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
@@ -707,6 +708,129 @@ def get_sitewide_stats(
         views_by_player=stats.views_by_player,
         computed_at=datetime.fromisoformat(stats.computed_at),
     )
+
+
+@router.get("/download-stats", response_model=schemas.DownloadStatsResponse)
+def get_download_stats(
+    days: int = Query(14, ge=1, le=90, description="Window size in days"),
+    top_n: int = Query(50, ge=1, le=200, description="Number of top artworks to return"),
+    include_bots: bool = Query(
+        False,
+        description="If true, count bot/crawler downloads in the totals alongside humans",
+    ),
+    refresh: bool = Query(False, description="Force cache refresh"),
+    db: Session = Depends(get_db),
+    _moderator: models.User = Depends(require_moderator),
+) -> schemas.DownloadStatsResponse:
+    """
+    Get per-artwork download statistics from the vault access log (moderator only).
+
+    Aggregates the ``download_stats_daily`` rollup table populated by
+    ``app.tasks.rollup_download_stats``. Results are cached in Redis for 5
+    minutes. The bot-filter toggle simply selects which of the
+    ``downloads_human``/``downloads_bot`` columns to sum (or both when
+    ``include_bots=True``).
+    """
+    from datetime import date, datetime, timedelta, timezone
+
+    from .. import cache
+    from ..services.site_stats import STATS_CACHE_TTL
+
+    cache_key = f"download_stats:{days}:{top_n}:{1 if include_bots else 0}"
+    if refresh:
+        cache.cache_delete(cache_key)
+    else:
+        cached = cache.cache_get(cache_key)
+        if cached is not None:
+            return schemas.DownloadStatsResponse.model_validate(cached)
+
+    today = datetime.now(timezone.utc).date()
+    start_date = today - timedelta(days=days - 1)
+
+    DS = models.DownloadStatsDaily
+    # The column we treat as "downloads" for this view.
+    if include_bots:
+        downloads_col = (DS.downloads_human + DS.downloads_bot).label("downloads")
+    else:
+        downloads_col = DS.downloads_human.label("downloads")
+
+    # Daily totals for the trend chart (one row per date in the window, even zeros).
+    daily_rows = dict(
+        db.query(DS.date, sa.func.sum(downloads_col))
+        .filter(DS.date >= start_date, DS.date <= today)
+        .group_by(DS.date)
+        .all()
+    )
+    daily_downloads = []
+    for offset in range(days):
+        d = start_date + timedelta(days=offset)
+        daily_downloads.append(
+            schemas.DailyCount(date=d.isoformat(), count=int(daily_rows.get(d, 0) or 0))
+        )
+
+    # Top-N artwork rows for the window.
+    top_subq = (
+        db.query(DS.post_id, sa.func.sum(downloads_col).label("downloads"))
+        .filter(DS.date >= start_date, DS.date <= today)
+        .group_by(DS.post_id)
+        .having(sa.func.sum(downloads_col) > 0)
+        .subquery()
+    )
+    top_rows = (
+        db.query(
+            models.Post.id,
+            models.Post.public_sqid,
+            models.Post.title,
+            models.Post.art_url,
+            models.User.handle,
+            top_subq.c.downloads,
+        )
+        .join(top_subq, top_subq.c.post_id == models.Post.id)
+        .join(models.User, models.User.id == models.Post.owner_id)
+        .order_by(top_subq.c.downloads.desc(), models.Post.id.asc())
+        .limit(top_n)
+        .all()
+    )
+
+    top_artworks = [
+        schemas.TopArtworkRow(
+            post_id=r.id,
+            public_sqid=r.public_sqid,
+            title=r.title,
+            art_url=r.art_url,
+            owner_handle=r.handle,
+            downloads=int(r.downloads or 0),
+        )
+        for r in top_rows
+    ]
+
+    total_downloads = sum(dc.count for dc in daily_downloads)
+    unique_artworks_row = (
+        db.query(sa.func.count(sa.func.distinct(DS.post_id)))
+        .filter(DS.date >= start_date, DS.date <= today)
+        .filter(downloads_col > 0)
+        .scalar()
+    )
+    unique_artworks = int(unique_artworks_row or 0)
+    avg_per_artwork = (
+        round(total_downloads / unique_artworks, 2) if unique_artworks else 0.0
+    )
+
+    response = schemas.DownloadStatsResponse(
+        window_days=days,
+        include_bots=include_bots,
+        summary=schemas.DownloadStatsSummary(
+            total_downloads=total_downloads,
+            unique_artworks=unique_artworks,
+            avg_per_artwork=avg_per_artwork,
+        ),
+        daily_downloads=daily_downloads,
+        top_artworks=top_artworks,
+        computed_at=datetime.now(timezone.utc),
+    )
+
+    cache.cache_set(cache_key, response.model_dump(mode="json"), ttl=STATS_CACHE_TTL)
+    return response
 
 
 @router.get("/online-players", response_model=schemas.OnlinePlayersResponse)

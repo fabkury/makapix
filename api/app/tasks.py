@@ -359,6 +359,11 @@ celery_app.conf.update(
             "schedule": 86400.0,  # Daily at 1AM UTC (in seconds)
             "options": {"queue": "default"},
         },
+        "rollup-download-stats": {
+            "task": "app.tasks.rollup_download_stats",
+            "schedule": 86400.0,  # Daily (in seconds)
+            "options": {"queue": "default"},
+        },
         # NOTE: cleanup-old-site-events removed — it raced with rollup-site-events,
         # deleting raw events before they could be aggregated into site_stats_daily.
         # The rollup task already handles deletion after aggregation.
@@ -3919,3 +3924,31 @@ def backfill_post_files(batch_size: int = 100) -> dict[str, Any]:
 
     finally:
         db.close()
+
+
+@celery_app.task(name="app.tasks.rollup_download_stats", bind=True)
+def rollup_download_stats(self, target_date_iso: str | None = None) -> dict[str, Any]:
+    """Roll up the Caddy vault access log into download_stats_daily.
+
+    By default targets yesterday (UTC). Pass `target_date_iso="YYYY-MM-DD"` to
+    re-aggregate a specific date — the UPSERT in the service makes this safe
+    to re-run.
+
+    Should run daily (configured in beat_schedule).
+    """
+    from datetime import date, datetime, timedelta, timezone
+
+    from .services.download_stats import rollup_download_stats as _impl
+
+    if target_date_iso:
+        target_date = date.fromisoformat(target_date_iso)
+    else:
+        target_date = (datetime.now(timezone.utc) - timedelta(days=1)).date()
+
+    try:
+        result = _impl(target_date)
+        logger.info(f"rollup_download_stats({target_date}) -> {result}")
+        return result
+    except Exception as e:
+        logger.error(f"rollup_download_stats failed: {e}", exc_info=True)
+        raise

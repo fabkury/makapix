@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Layout from '../components/Layout';
 import StatsPanel from '../components/StatsPanel';
 import SiteMetricsPanel from '../components/SiteMetricsPanel';
+import DownloadStatsPanel from '../components/DownloadStatsPanel';
 import { authenticatedFetch, clearTokens } from '../lib/api';
 import { ensureCompatibleArtUrl } from '../utils/imageCompat';
 
@@ -79,7 +80,7 @@ interface PageResponse<T> {
   next_cursor: string | null;
 }
 
-type Tab = 'pending' | 'reports' | 'posts' | 'profiles' | 'audit' | 'notes' | 'metrics';
+type Tab = 'pending' | 'reports' | 'posts' | 'profiles' | 'audit' | 'notes' | 'metrics' | 'downloads';
 
 export default function ModDashboardPage() {
   const router = useRouter();
@@ -501,7 +502,7 @@ export default function ModDashboardPage() {
 
   if (!isModerator) return null;
 
-  const tabs: Tab[] = ['pending', 'reports', 'posts', 'profiles', 'audit', 'notes', 'metrics'];
+  const tabs: Tab[] = ['pending', 'reports', 'posts', 'profiles', 'audit', 'notes', 'metrics', 'downloads'];
   const tabLabels: Record<Tab, string> = {
     pending: 'Pending Approval',
     reports: 'Reports',
@@ -509,7 +510,8 @@ export default function ModDashboardPage() {
     profiles: 'Profiles',
     audit: 'Audit',
     notes: 'Notes',
-    metrics: 'Metrics'
+    metrics: 'Metrics',
+    downloads: 'Downloads'
   };
 
   return (
@@ -783,6 +785,10 @@ export default function ModDashboardPage() {
 
           {activeTab === 'metrics' && (
             <SiteMetricsPanel />
+          )}
+
+          {activeTab === 'downloads' && (
+            <DownloadStatsPanel />
           )}
         </div>
       </div>

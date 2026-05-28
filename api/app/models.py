@@ -1164,6 +1164,45 @@ class PostStatsDaily(Base):
     )
 
 
+class DownloadStatsDaily(Base):
+    """Daily per-artwork download counts, rolled up from the Caddy vault access log.
+
+    Populated by app.tasks.rollup_download_stats (runs daily). One row per
+    (post_id, date). `downloads_human` and `downloads_bot` are split via the
+    UA classifier in app.utils.bot_detection so the dashboard can show human
+    downloads by default with a toggle to include bots.
+    """
+
+    __tablename__ = "download_stats_daily"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    post_id = Column(
+        Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    date = Column(Date, nullable=False, index=True)
+
+    downloads_human = Column(Integer, nullable=False, default=0)
+    downloads_bot = Column(Integer, nullable=False, default=0)
+
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    post = relationship(
+        "Post",
+        backref=backref("download_stats_daily", passive_deletes=True),
+        passive_deletes=True,
+    )
+
+    __table_args__ = (
+        UniqueConstraint("post_id", "date", name="uq_download_stats_daily_post_date"),
+        Index("ix_download_stats_daily_post_date", post_id, date),
+    )
+
+
 class PostStatsCache(Base):
     """Cached computed statistics for a post."""
 
