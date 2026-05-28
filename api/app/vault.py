@@ -17,7 +17,7 @@ import os
 from pathlib import Path
 from uuid import UUID
 
-from .settings import MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES
+from .settings import MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES, vault_public_base_url
 
 logger = logging.getLogger(__name__)
 
@@ -210,9 +210,11 @@ def get_artwork_url(
     artwork_id: UUID, extension: str, storage_shard: str | None = None
 ) -> str:
     """
-    Get the URL path for accessing an artwork.
+    Get the URL for accessing an artwork.
 
-    This returns a relative URL path that can be served by the API.
+    When VAULT_PUBLIC_BASE_URL is set, returns an absolute URL pointing at
+    the Caddy vault subdomain so browsers fetch images directly. Otherwise
+    returns a relative /api/vault/... path served by FastAPI StaticFiles.
 
     Args:
         artwork_id: The UUID of the artwork
@@ -221,7 +223,8 @@ def get_artwork_url(
                        skips hash computation.
 
     Returns:
-        URL path like /api/vault/a1/b2/c3/artwork-id.png
+        URL like https://vault.makapix.club/a1/b2/c3/<uuid>.png
+        or       /api/vault/a1/b2/c3/<uuid>.png
     """
     if storage_shard:
         shard_path = storage_shard
@@ -231,8 +234,9 @@ def get_artwork_url(
         shard_path = f"{hash_value[0:2]}/{hash_value[2:4]}/{hash_value[4:6]}"
 
     ext = extension.lower() if extension.startswith(".") else f".{extension.lower()}"
+    prefix = vault_public_base_url() or "/api/vault"
 
-    return f"/api/vault/{shard_path}/{artwork_id}{ext}"
+    return f"{prefix}/{shard_path}/{artwork_id}{ext}"
 
 
 def validate_image_dimensions(width: int, height: int) -> tuple[bool, str | None]:

@@ -13,7 +13,13 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
-from ..auth import JWT_ALGORITHM, JWT_SECRET_KEY, get_current_user, require_ownership
+from ..auth import (
+    JWT_ALGORITHM,
+    JWT_SECRET_KEY,
+    get_current_player,
+    get_current_user,
+    require_ownership,
+)
 from ..deps import get_db
 from ..sqids_config import decode_user_sqid
 
@@ -90,7 +96,10 @@ router = APIRouter(tags=["Players"])
 MAX_PLAYERS_PER_USER = 128
 REGISTRATION_CODE_EXPIRY_MINUTES = 15
 CERT_VALIDITY_DAYS = 1095  # 3 years
-CERT_RENEWAL_THRESHOLD_DAYS = 90
+# Renewal is allowed within this many days of expiry. Configurable per
+# environment (default 90) so dev can raise it to exercise renewal against
+# certs that are not yet near expiry.
+CERT_RENEWAL_THRESHOLD_DAYS = int(os.getenv("CERT_RENEWAL_THRESHOLD_DAYS", "90"))
 
 
 @router.post(
@@ -444,6 +453,96 @@ def rotate_player_token(
     api_token = player_tokens.issue_token(db, player)
     return schemas.PlayerTokenResponse(
         api_token=api_token, rotated_at=datetime.now(timezone.utc)
+    )
+
+
+@router.post("/player/renew-cert", response_model=schemas.PlayerSelfRenewResponse)
+def renew_player_certificate_self(
+    request: Request,
+    db: Session = Depends(get_db),
+    player: models.Player = Depends(get_current_player),
+) -> schemas.PlayerSelfRenewResponse:
+    """Device-initiated certificate renewal (no owner involvement).
+
+    Authenticated by the device bearer token (``get_current_player``), so it
+    works even after the client certificate has already expired. Mints a fresh
+    cert + key (same ``player_key``) when the current cert is within
+    ``CERT_RENEWAL_THRESHOLD_DAYS`` of expiry or already expired. The previous
+    certificate is intentionally NOT revoked (make-before-break): the old cert
+    keeps working until the device adopts the new one. Returns the new cert,
+    key, and current CA bundle so a single call refreshes everything the device
+    needs.
+    """
+    # Rate limiting: per-IP and per-player.
+    client_ip = get_client_ip(request)
+    allowed_ip, _ = check_rate_limit(
+        f"ratelimit:player_renew_ip:{client_ip}", limit=30, window_seconds=3600
+    )
+    allowed_player, _ = check_rate_limit(
+        f"ratelimit:player_renew:{player.id}", limit=10, window_seconds=86400
+    )
+    if not (allowed_ip and allowed_player):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many renewal requests. Please try again later.",
+        )
+
+    # Window guard: only within the renewal threshold of expiry, or already
+    # expired. Mirrors the owner-initiated renew-cert endpoint.
+    now = datetime.now(timezone.utc)
+    if player.cert_expires_at is not None:
+        days_until_expiry = (player.cert_expires_at - now).days
+        if days_until_expiry > CERT_RENEWAL_THRESHOLD_DAYS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Certificate is still valid for {days_until_expiry} days. "
+                    f"Renewal only available within {CERT_RENEWAL_THRESHOLD_DAYS} "
+                    "days of expiry."
+                ),
+            )
+
+    ca_cert_path = os.getenv("MQTT_CA_FILE", "/certs/ca.crt")
+    ca_key_path = os.getenv("MQTT_CA_KEY_FILE", "/certs/ca.key")
+
+    try:
+        cert_pem, key_pem, serial_number = generate_client_certificate(
+            player_key=player.player_key,
+            ca_cert_path=ca_cert_path,
+            ca_key_path=ca_key_path,
+            cert_validity_days=CERT_VALIDITY_DAYS,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"CA certificate files not found: {e}",
+        )
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "Failed to generate player certificate (self-renew)"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate certificate",
+        )
+
+    # Persist the new cert. The previous serial is intentionally NOT revoked.
+    player.cert_pem = cert_pem
+    player.key_pem = key_pem
+    player.cert_serial_number = serial_number
+    player.cert_issued_at = now
+    player.cert_expires_at = now + timedelta(days=CERT_VALIDITY_DAYS)
+    db.commit()
+    db.refresh(player)
+
+    ca_pem = load_ca_certificate(ca_cert_path)
+    return schemas.PlayerSelfRenewResponse(
+        cert_pem=cert_pem,
+        key_pem=key_pem,
+        ca_pem=ca_pem,
+        cert_expires_at=player.cert_expires_at,
     )
 
 

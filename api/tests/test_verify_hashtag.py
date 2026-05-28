@@ -113,7 +113,6 @@ def test_verify_hashtag_valid(client: "TestClient", db: "Session"):
     assert data["latest_artwork_width"] == 32
     assert data["latest_artwork_height"] == 64
     assert data["latest_artwork_url"] is not None
-    assert data["latest_artwork_url"].startswith("/api/vault/")
     assert data["latest_artwork_url"].endswith(f"{post.storage_key}.png")
 
 

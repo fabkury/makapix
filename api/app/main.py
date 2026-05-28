@@ -181,10 +181,12 @@ async def lifespan(app: FastAPI):
     from .mqtt.player_status import stop_status_subscriber
     from .mqtt.player_requests import stop_request_subscriber
     from .mqtt.player_optional import stop_optional_subscriber
+    from .mqtt.publisher import stop_publisher
 
     stop_status_subscriber()
     stop_request_subscriber()
     stop_optional_subscriber()
+    stop_publisher()
 
 
 app = FastAPI(

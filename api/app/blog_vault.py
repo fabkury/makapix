@@ -17,6 +17,8 @@ import os
 from pathlib import Path
 from uuid import UUID
 
+from .settings import vault_public_base_url
+
 logger = logging.getLogger(__name__)
 
 # Maximum file size: 10 MB
@@ -176,16 +178,19 @@ def delete_blog_image(image_id: UUID, extension: str) -> bool:
 
 def get_blog_image_url(image_id: UUID, extension: str) -> str:
     """
-    Get the URL path for accessing a blog image.
+    Get the URL for accessing a blog image.
 
-    This returns a relative URL path that can be served by the API.
+    When VAULT_PUBLIC_BASE_URL is set, returns an absolute URL on the Caddy
+    vault subdomain. Otherwise returns /api/vault/blog_image/<...>, served by
+    FastAPI StaticFiles via the Caddy reverse proxy.
 
     Args:
         image_id: The UUID of the image
         extension: The file extension
 
     Returns:
-        URL path like /api/vault/blog_image/a1/b2/c3/image-id.png
+        URL like https://vault.makapix.club/blog_image/a1/b2/c3/<uuid>.png
+        or       /api/vault/blog_image/a1/b2/c3/<uuid>.png
     """
     hash_value = hash_image_id(image_id)
     chunk1 = hash_value[0:2]
@@ -193,8 +198,9 @@ def get_blog_image_url(image_id: UUID, extension: str) -> str:
     chunk3 = hash_value[4:6]
 
     ext = extension.lower() if extension.startswith(".") else f".{extension.lower()}"
+    prefix = vault_public_base_url() or "/api/vault"
 
-    return f"/api/vault/blog_image/{chunk1}/{chunk2}/{chunk3}/{image_id}{ext}"
+    return f"{prefix}/blog_image/{chunk1}/{chunk2}/{chunk3}/{image_id}{ext}"
 
 
 def validate_blog_image_file_size(file_size: int) -> tuple[bool, str | None]:

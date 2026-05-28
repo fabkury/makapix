@@ -7,5 +7,65 @@
 	}
 }
 
-# Import docker-generated config (caddy-docker-proxy will inject routes here)
-import /config/caddy/Caddyfile
+# -----------------------------------------------------------------------------
+# Vault subdomains (manual blocks — NOT managed by caddy-docker-proxy labels)
+#
+# Each site binds BOTH http:// and the bare hostname so Caddy auto-provisions
+# a TLS cert for HTTPS *and* keeps plain HTTP available (no auto-redirect).
+# This lets the web app load images over HTTPS while existing physical
+# players continue using HTTP exactly as today.
+#
+# Caddy already has direct read-only mounts of the vault directories:
+#   /mnt/vault-1   -> /srv/vault-prod   (prod artwork)
+#   /mnt/vault-dev -> /srv/vault-dev    (dev artwork)
+# so it can serve files natively via file_server. The standalone `vault`
+# alpine containers in compose are unused no-ops.
+#
+# Cache-Control is `immutable` because vault filenames are content-addressed
+# UUIDs — they never change in place. CORP `cross-origin` keeps the divoom-
+# import page (which sets COEP `require-corp`) able to load these images.
+# -----------------------------------------------------------------------------
+
+http://vault.makapix.club, vault.makapix.club {
+	root * /srv/vault-prod
+	file_server
+	encode gzip
+	header {
+		Access-Control-Allow-Origin "*"
+		X-Content-Type-Options "nosniff"
+		X-Robots-Tag "noindex, nofollow"
+		Cross-Origin-Resource-Policy "cross-origin"
+		Cache-Control "public, max-age=31536000, immutable"
+	}
+	log {
+		output file /var/log/caddy/vault-access.log {
+			roll_size 50mb
+			roll_keep 10
+			roll_keep_for 90d
+		}
+		format json
+		level INFO
+	}
+}
+
+http://vault-dev.makapix.club, vault-dev.makapix.club {
+	root * /srv/vault-dev
+	file_server
+	encode gzip
+	header {
+		Access-Control-Allow-Origin "*"
+		X-Content-Type-Options "nosniff"
+		X-Robots-Tag "noindex, nofollow"
+		Cross-Origin-Resource-Policy "cross-origin"
+		Cache-Control "public, max-age=31536000, immutable"
+	}
+	log {
+		output file /var/log/caddy/vault-dev-access.log {
+			roll_size 50mb
+			roll_keep 10
+			roll_keep_for 90d
+		}
+		format json
+		level INFO
+	}
+}

@@ -107,6 +107,7 @@ services:
       MQTT_USERNAME: svc_backend
       MQTT_PASSWORD: ${MQTT_PASSWORD:-}
       VAULT_LOCATION: ${VAULT_LOCATION}
+      VAULT_PUBLIC_BASE_URL: ${VAULT_PUBLIC_BASE_URL:-}
       MAKAPIX_ADMIN_USER: ${MAKAPIX_ADMIN_USER}
       MAKAPIX_ADMIN_PASSWORD: ${MAKAPIX_ADMIN_PASSWORD}
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
@@ -154,6 +155,7 @@ services:
       MQTT_CA_KEY_FILE: /certs/ca.key
       MQTT_CRL_FILE: /certs/crl.pem
       VAULT_LOCATION: ${VAULT_LOCATION}
+      VAULT_PUBLIC_BASE_URL: ${VAULT_PUBLIC_BASE_URL:-}
     command: python /workspace/worker/worker.py
     volumes:
       - ../../api:/workspace/api
@@ -186,11 +188,18 @@ services:
       - ACME_AGREE=true
       - CADDY_ADMIN=0.0.0.0:2019
       - EMAIL=${ACME_EMAIL}
+      # caddy-docker-proxy prepends the contents of this file to the Caddyfile
+      # it auto-generates from container labels. Used to declare the vault
+      # subdomain site blocks (HTTPS + HTTP, log rotation, CORP, etc.) which
+      # need richer syntax than docker labels can express.
+      - CADDY_DOCKER_CADDYFILE_PATH=/etc/caddy/Caddyfile
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - caddy_data:/data
       - caddy_config:/config
       - /var/log/caddy:/var/log/caddy
+      # Static Caddyfile (vault site blocks + global options)
+      - ./caddy/Caddyfile.global:/etc/caddy/Caddyfile:ro
       # Mount both vaults for multi-environment support
       - /mnt/vault-1:/srv/vault-prod:ro
       - /mnt/vault-dev:/srv/vault-dev:ro
@@ -203,8 +212,13 @@ services:
       - caddy_net
 
   # ---------------------------------------------------------------------------
-  # Vault HTTP - Static file server for physical players
-  # Labels set in environment-specific override files
+  # Vault HTTP - No-op placeholder
+  #
+  # Vault subdomains (vault.makapix.club / vault-dev.makapix.club) are served
+  # directly by Caddy via manual site blocks in caddy/Caddyfile.global. Caddy
+  # already mounts /mnt/vault-1 and /mnt/vault-dev read-only, so this
+  # container does not need to run an HTTP server. Kept as a stub so existing
+  # references / metrics dashboards don't break.
   # ---------------------------------------------------------------------------
   vault:
     image: alpine:latest
