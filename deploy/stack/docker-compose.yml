@@ -163,6 +163,8 @@ services:
       - api_pip_cache:/root/.cache/pip
       - ../../mqtt/certs:/certs
       - ${VAULT_HOST_PATH}:${VAULT_LOCATION}
+      # Read Caddy vault access logs for the daily download_stats rollup.
+      - /var/log/caddy:/var/log/caddy:ro
     depends_on:
       cache:
         condition: service_healthy

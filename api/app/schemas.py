@@ -1716,6 +1716,46 @@ class SitewideStatsResponse(BaseModel):
 
 
 # ============================================================================
+# DOWNLOAD STATS SCHEMAS
+# ============================================================================
+
+
+class DownloadStatsSummary(BaseModel):
+    """Headline KPIs for the download-stats tab."""
+
+    total_downloads: int
+    unique_artworks: int
+    avg_per_artwork: float
+
+
+class TopArtworkRow(BaseModel):
+    """One row of the 'top downloaded artworks' table."""
+
+    post_id: int
+    public_sqid: str | None
+    title: str
+    art_url: str | None
+    owner_handle: str
+    downloads: int
+
+
+class DownloadStatsResponse(BaseModel):
+    """Artwork download statistics (moderator only).
+
+    Data is rolled up daily by ``app.tasks.rollup_download_stats`` from the
+    Caddy vault access log. Counts are split into human vs bot via the UA
+    classifier; the ``downloads`` field on each row uses the requested view.
+    """
+
+    window_days: int
+    include_bots: bool
+    summary: DownloadStatsSummary
+    daily_downloads: list[DailyCount]
+    top_artworks: list[TopArtworkRow]
+    computed_at: datetime
+
+
+# ============================================================================
 # ARTIST DASHBOARD SCHEMAS
 # ============================================================================
 
