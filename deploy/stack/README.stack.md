@@ -85,50 +85,81 @@ docker logs -f makapix-vault
 
 ## Vault HTTP Server
 
-The vault provides **HTTP-only** access to artwork files for physical players (IoT devices).
-This reduces TLS handshake overhead for resource-constrained devices.
+The vault provides direct access to artwork files for both physical players (HTTP)
+and the website (HTTPS). Both protocols bind the same hostname so existing players
+keep working unchanged while browsers fetch over TLS.
 
 ### Architecture
 
-The vault is served directly by the main **Caddy proxy container**, not a separate container:
-- The `makapix-vault` container only provides Docker labels for caddy-docker-proxy
-- Actual file serving is done by Caddy using its `/srv/vault` mount
-- This is more efficient than proxying through another container
+The vault is served directly by the main **Caddy proxy container** via manual
+site blocks in `caddy/Caddyfile.global` (not via docker labels). Caddy already
+mounts the vault directories read-only:
 
-### URL Pattern
+- `/mnt/vault-1   -> /srv/vault-prod` (prod artwork)
+- `/mnt/vault-dev -> /srv/vault-dev`  (dev artwork)
+
+The `makapix-vault` / `makapix-dev-vault` containers are no-op placeholders; no
+HTTP server runs inside them.
+
+### URL patterns
+
+Posts, avatars, and blog images now live on the vault subdomain when
+`VAULT_PUBLIC_BASE_URL` is set in `.env`:
 
 ```
-http://vault.makapix.club/{hash1}/{hash2}/{hash3}/{storage_key}.{ext}
-
-Example:
-http://vault.makapix.club/a1/b2/c3/550e8400-e29b-41d4-a716-446655440000.png
+https://vault.makapix.club/{h1}/{h2}/{h3}/{storage_key}.{ext}        # artwork
+https://vault.makapix.club/avatar/{h1}/{h2}/{h3}/{uuid}.{ext}        # avatars
+https://vault.makapix.club/blog_image/{h1}/{h2}/{h3}/{uuid}.{ext}    # blog
 ```
+
+The legacy `/api/vault/...` path (served by FastAPI StaticFiles) remains live
+indefinitely as a backward-compatibility fallback for existing players.
 
 ### Features
 
-- **No TLS overhead**: HTTP-only for IoT efficiency
-- **Direct file serving**: Caddy serves files directly (no Python)
-- **CORS enabled**: `Access-Control-Allow-Origin: *`
-- **Compression**: gzip enabled
-- **Security headers**: `X-Content-Type-Options: nosniff`
+- **HTTPS + HTTP, no auto-redirect**: browsers use HTTPS, players keep HTTP
+- **Direct file serving**: Caddy `file_server`, no Python in the hot path
+- **CORS**: `Access-Control-Allow-Origin: *`
+- **CORP**: `Cross-Origin-Resource-Policy: cross-origin` (so the divoom-import
+  page, which sets COEP `require-corp`, can load these images)
+- **Immutable cache**: `Cache-Control: public, max-age=31536000, immutable`
+  (filenames are UUID-keyed and content-addressed)
+- **Compression**: gzip
+- **Security headers**: `X-Content-Type-Options: nosniff`, `X-Robots-Tag: noindex`
 
-### Security Considerations
+### Security considerations
 
-⚠️ **Important**: The vault serves files **without authentication**. This is intentional and matches
-the security model of the HTTPS vault (`/api/vault/...`). Access control for hidden/deleted
-artworks relies on URL obscurity (UUIDs are not guessable).
+⚠️ **Important**: The vault serves files **without authentication**. This is
+intentional and matches the security model of the legacy `/api/vault/...`
+mount. Access control for hidden/deleted artworks relies on URL obscurity
+(UUIDs are not guessable).
 
-### Managing the Vault
+### Access logs
+
+Each vault subdomain writes its own JSON-formatted access log with rotation:
+
+| Subdomain | Log file | Rotation |
+|---|---|---|
+| `vault.makapix.club` | `/var/log/caddy/vault-access.log` | `roll_size 50mb`, `roll_keep 10`, `roll_keep_for 90d` |
+| `vault-dev.makapix.club` | `/var/log/caddy/vault-dev-access.log` | same |
+
+These logs are the canonical record of image downloads. A future PR can build
+a daily download-counter rollup on top of them, following the pattern in
+`api/app/tasks.py` (`rollup_site_events` reading `view_events` into
+`site_stats_daily`).
+
+### Managing the vault
 
 ```bash
-# Start/restart vault (restarts caddy to apply label changes)
-docker compose up -d vault && docker compose restart caddy
+# Apply site-block changes (after editing caddy/Caddyfile.global)
+docker compose restart caddy
 
-# Verify vault is working
-curl -I http://vault.makapix.club/path/to/file.png
+# Verify vault is working over both protocols
+curl -I https://vault.makapix.club/<shard>/<uuid>.png
+curl -I http://vault.makapix.club/<shard>/<uuid>.png   # must NOT redirect
 
-# View vault access logs
-docker exec caddy tail -f /var/log/caddy/vault-access.log
+# Tail the vault access log
+docker run --rm -v /var/log/caddy:/logs:ro alpine tail -f /logs/vault-access.log
 ```
 
 ---

@@ -15,6 +15,8 @@ import os
 from pathlib import Path
 from uuid import UUID
 
+from .settings import vault_public_base_url
+
 logger = logging.getLogger(__name__)
 
 # Maximum avatar file size: 5 MB
@@ -100,10 +102,12 @@ def save_avatar_image(avatar_id: UUID, file_content: bytes, mime_type: str) -> P
 
 def get_avatar_url(avatar_id: UUID, extension: str) -> str:
     """
-    Get the public URL path for accessing an avatar image.
+    Get the public URL for an avatar image.
 
-    We return an /api/vault/... path because the reverse proxy strips /api and
-    the FastAPI app mounts the vault at /vault.
+    When VAULT_PUBLIC_BASE_URL is set, returns an absolute URL on the Caddy
+    vault subdomain (e.g. https://vault.makapix.club/avatar/<...>). Otherwise
+    returns /api/vault/avatar/<...>, served by FastAPI StaticFiles via the
+    Caddy reverse proxy (which strips /api before forwarding).
     """
     hash_value = hash_avatar_id(avatar_id)
     chunk1 = hash_value[0:2]
@@ -111,15 +115,18 @@ def get_avatar_url(avatar_id: UUID, extension: str) -> str:
     chunk3 = hash_value[4:6]
 
     ext = extension.lower() if extension.startswith(".") else f".{extension.lower()}"
-    return f"/api/vault/avatar/{chunk1}/{chunk2}/{chunk3}/{avatar_id}{ext}"
+    prefix = vault_public_base_url() or "/api/vault"
+    return f"{prefix}/avatar/{chunk1}/{chunk2}/{chunk3}/{avatar_id}{ext}"
 
 
 def try_delete_avatar_by_public_url(avatar_url: str | None) -> bool:
     """
     Best-effort delete of an avatar file referenced by its public URL.
 
-    We only delete avatars that match our vault URL scheme:
-        /api/vault/avatar/<xx>/<yy>/<zz>/<uuid>.<ext>
+    Accepts both URL forms:
+        /api/vault/avatar/<c1>/<c2>/<c3>/<uuid>.<ext>          (legacy)
+        https://vault.makapix.club/avatar/<c1>/<c2>/<c3>/<uuid>.<ext>
+        (and the bare /avatar/... path that urlparse yields from the above)
 
     Returns True if we deleted a file, False otherwise.
     """
@@ -131,16 +138,21 @@ def try_delete_avatar_by_public_url(avatar_url: str | None) -> bool:
 
         # Accept absolute URLs as well; normalize to just the path.
         path = urlparse(avatar_url).path if "://" in avatar_url else avatar_url
-        if not path.startswith("/api/vault/avatar/"):
+
+        # Strip the legacy /api/vault prefix so both forms collapse to
+        # /avatar/<c1>/<c2>/<c3>/<filename>.
+        if path.startswith("/api/vault/avatar/"):
+            path = path[len("/api/vault") :]
+        if not path.startswith("/avatar/"):
             return False
 
-        # Path parts: /api/vault/avatar/{c1}/{c2}/{c3}/{filename}
+        # Path parts after normalization: ["", "avatar", c1, c2, c3, filename]
         parts = path.split("/")
-        if len(parts) < 8:
+        if len(parts) < 6:
             return False
 
-        c1, c2, c3 = parts[4], parts[5], parts[6]
-        filename = parts[7]
+        c1, c2, c3 = parts[2], parts[3], parts[4]
+        filename = parts[5]
         if "." not in filename:
             return False
 

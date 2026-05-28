@@ -51,19 +51,20 @@ def test_post(test_user: User, db: Session) -> Post:
     """Create a test post."""
     import uuid
     from app.sqids_config import encode_id
-    from app.vault import compute_storage_shard
+    from app.vault import compute_storage_shard, get_artwork_url
 
     storage_key = uuid.uuid4()
+    storage_shard = compute_storage_shard(storage_key)
     now = datetime.now(timezone.utc)
     post = Post(
         storage_key=storage_key,
-        storage_shard=compute_storage_shard(storage_key),
+        storage_shard=storage_shard,
         owner_id=test_user.id,
         kind="artwork",
         title="Test Art",
         description="A test artwork",
         hashtags=["test", "art"],
-        art_url="/api/vault/test.png",
+        art_url=get_artwork_url(storage_key, "png", storage_shard=storage_shard),
         width=64,
         height=64,
         frame_count=1,
@@ -94,19 +95,20 @@ def test_hidden_post(test_user: User, db: Session) -> Post:
     """Create a hidden test post."""
     import uuid
     from app.sqids_config import encode_id
-    from app.vault import compute_storage_shard
+    from app.vault import compute_storage_shard, get_artwork_url
 
     storage_key = uuid.uuid4()
+    storage_shard = compute_storage_shard(storage_key)
     now = datetime.now(timezone.utc)
     post = Post(
         storage_key=storage_key,
-        storage_shard=compute_storage_shard(storage_key),
+        storage_shard=storage_shard,
         owner_id=test_user.id,
         kind="artwork",
         title="Hidden Art",
         description="A hidden artwork",
         hashtags=[],
-        art_url="/api/vault/hidden.png",
+        art_url=get_artwork_url(storage_key, "png", storage_shard=storage_shard),
         width=64,
         height=64,
         frame_count=1,

@@ -135,21 +135,15 @@ services:
           memory: 256M
 
   # ---------------------------------------------------------------------------
-  # Vault HTTP - Development (for player devices in dev mode)
+  # Vault HTTP - Development (placeholder)
+  #
+  # vault-dev.makapix.club is now served directly by Caddy via manual site
+  # blocks in caddy/Caddyfile.global (using Caddy's existing read-only mount
+  # of /mnt/vault-dev -> /srv/vault-dev). This container is a no-op kept only
+  # so that `docker compose up` doesn't error on a missing service reference.
   # ---------------------------------------------------------------------------
   vault:
     container_name: makapix-dev-vault
-    labels:
-      caddy: http://vault-dev.makapix.club
-      caddy.file_server: "*"
-      caddy.root: "* /srv/vault-dev"
-      caddy.encode: "gzip"
-      caddy.header.Access-Control-Allow-Origin: "*"
-      caddy.header.X-Content-Type-Options: "nosniff"
-      caddy.header.X-Robots-Tag: "noindex, nofollow"
-      caddy.log.output: "file /var/log/caddy/vault-dev-access.log"
-      caddy.log.format: "json"
-      caddy.log.level: "INFO"
     deploy:
       resources:
         limits:

@@ -82,20 +82,15 @@ services:
       caddy.handle_2.reverse_proxy: "{{upstreams 3000}}"
 
   # ---------------------------------------------------------------------------
-  # Vault HTTP - Production
+  # Vault HTTP - Production (placeholder)
+  #
+  # vault.makapix.club is now served directly by Caddy via manual site
+  # blocks in caddy/Caddyfile.global (using Caddy's existing read-only mount
+  # of /mnt/vault-1 -> /srv/vault-prod). This container is a no-op kept only
+  # so that `docker compose up` doesn't error on a missing service reference.
   # ---------------------------------------------------------------------------
   vault:
     container_name: makapix-prod-vault
-    labels:
-      caddy: http://vault.makapix.club
-      caddy.file_server: "*"
-      caddy.root: "* /srv/vault-prod"
-      caddy.encode: "gzip"
-      caddy.header.Access-Control-Allow-Origin: "*"
-      caddy.header.X-Content-Type-Options: "nosniff"
-      caddy.log.output: "file /var/log/caddy/vault-access.log"
-      caddy.log.format: "json"
-      caddy.log.level: "INFO"
 
   # ---------------------------------------------------------------------------
   # WWW Redirect
