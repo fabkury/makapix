@@ -465,19 +465,21 @@ export default function WelcomePage() {
           color: var(--text-primary);
         }
 
+        /* Fixed cells of canonical 128x128 artwork, centered in the row. */
         .samples-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-          gap: 10px;
+          grid-template-columns: repeat(auto-fill, 146px);
+          justify-content: center;
+          gap: 12px;
         }
 
+        /* 146px border-box = 128px artwork + 8px frame each side + 1px border. */
         .samples-grid :global(.sample-cell) {
           display: flex;
           align-items: center;
           justify-content: center;
-          aspect-ratio: 1 / 1;
-          min-width: 0;
-          padding: 8px;
+          width: 146px;
+          height: 146px;
           border-radius: 10px;
           background: #0a0a0a;
           border: 1px solid rgba(255, 255, 255, 0.06);
@@ -491,11 +493,11 @@ export default function WelcomePage() {
           box-shadow: var(--glow-cyan, 0 0 16px rgba(0, 212, 255, 0.25));
         }
 
-        /* Fill the cell so small artworks scale UP (not just large ones down).
+        /* Canonical 128x128 thumbnail: small art scales UP, large scales down.
            The .pixel-art class forces nearest-neighbor, so upscales stay crisp. */
         .samples-grid :global(.sample-cell img) {
-          width: 100%;
-          height: 100%;
+          width: 128px;
+          height: 128px;
           object-fit: contain;
         }
 
@@ -574,11 +576,6 @@ export default function WelcomePage() {
 
           .samples {
             padding: 16px 18px 40px;
-          }
-
-          .samples-grid {
-            grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
-            gap: 8px;
           }
         }
       `}</style>
