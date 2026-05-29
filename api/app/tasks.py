@@ -13,6 +13,7 @@ from typing import Any, List
 
 import requests
 from celery import Celery
+from celery.schedules import crontab
 
 logger = logging.getLogger(__name__)
 
@@ -340,28 +341,61 @@ celery_app.conf.update(
     worker_max_tasks_per_child=100,
     task_routes={"app.tasks.hash_url": {"queue": "default"}},
     beat_schedule={
+        # --- High-frequency maintenance ----------------------------------
+        # These run often enough that the exact wall-clock instant is
+        # irrelevant, so they stay as plain second-intervals (anchored to
+        # beat start, timezone-independent).
+        "mark-stale-players-offline": {
+            "task": "app.tasks.mark_stale_players_offline",
+            "schedule": 60.0,  # Every minute
+            "options": {"queue": "default"},
+        },
+        "cleanup-expired-stats-cache": {
+            "task": "app.tasks.cleanup_expired_stats_cache",
+            "schedule": 3600.0,  # Every hour
+            "options": {"queue": "default"},
+        },
+        "cleanup-expired-player-registrations": {
+            "task": "app.tasks.cleanup_expired_player_registrations",
+            "schedule": 3600.0,  # Every hour
+            "options": {"queue": "default"},
+        },
         "check-post-hashes": {
             "task": "app.tasks.periodic_check_post_hashes",
-            "schedule": 21600.0,  # Every 6 hours (in seconds)
+            "schedule": 21600.0,  # Every 6 hours
         },
+        "cleanup-unverified-accounts": {
+            "task": "app.tasks.cleanup_unverified_accounts",
+            "schedule": 43200.0,  # Every 12 hours
+            "options": {"queue": "default"},
+        },
+        # --- Daily jobs: fixed wall-clock times -------------------------------
+        # crontab() schedules fire at a fixed local time in the beat timezone
+        # (America/New_York), so these all run at the stated US Eastern time
+        # year-round, DST-aware. They are staggered across the 01:00-05:00 ET
+        # low-traffic window so they don't pile onto the worker (concurrency=2)
+        # at once.
+        #
+        # Ordering is load-bearing for the view/site-event pipeline:
+        # rollup_view_events aggregates raw view events into post_stats_daily and
+        # then deletes the non-player ones; cleanup_old_view_events is a
+        # safety-net that also deletes non-player events, so it MUST run after the
+        # rollup, never before, or it would delete events before they're rolled
+        # up. rollup_site_events consumes the surviving player view events, so it
+        # sits between them.
         "rollup-view-events": {
             "task": "app.tasks.rollup_view_events",
-            "schedule": 86400.0,  # Daily (in seconds)
+            "schedule": crontab(minute=0, hour=1),  # 01:00 ET
             "options": {"queue": "default"},
         },
         "rollup-blog-post-view-events": {
             "task": "app.tasks.rollup_blog_post_view_events",
-            "schedule": 86400.0,  # Daily (in seconds)
+            "schedule": crontab(minute=30, hour=1),  # 01:30 ET
             "options": {"queue": "default"},
         },
         "rollup-site-events": {
             "task": "app.tasks.rollup_site_events",
-            "schedule": 86400.0,  # Daily at 1AM UTC (in seconds)
-            "options": {"queue": "default"},
-        },
-        "rollup-download-stats": {
-            "task": "app.tasks.rollup_download_stats",
-            "schedule": 86400.0,  # Daily (in seconds)
+            "schedule": crontab(minute=0, hour=2),  # 02:00 ET (after view rollup)
             "options": {"queue": "default"},
         },
         # NOTE: cleanup-old-site-events removed — it raced with rollup-site-events,
@@ -369,51 +403,42 @@ celery_app.conf.update(
         # The rollup task already handles deletion after aggregation.
         "cleanup-old-view-events": {
             "task": "app.tasks.cleanup_old_view_events",
-            "schedule": 86400.0,  # Daily at 3AM UTC (in seconds)
+            "schedule": crontab(minute=30, hour=2),  # 02:30 ET (after the rollups)
             "options": {"queue": "default"},
         },
-        "cleanup-expired-stats-cache": {
-            "task": "app.tasks.cleanup_expired_stats_cache",
-            "schedule": 3600.0,  # Every hour (in seconds)
-            "options": {"queue": "default"},
-        },
-        "cleanup-expired-player-registrations": {
-            "task": "app.tasks.cleanup_expired_player_registrations",
-            "schedule": 3600.0,  # Every hour (in seconds)
-            "options": {"queue": "default"},
-        },
-        "mark-stale-players-offline": {
-            "task": "app.tasks.mark_stale_players_offline",
-            "schedule": 60.0,  # Every minute (in seconds)
-            "options": {"queue": "default"},
-        },
-        "cleanup-expired-auth-tokens": {
-            "task": "app.tasks.cleanup_expired_auth_tokens",
-            "schedule": 86400.0,  # Daily at 3AM UTC (in seconds)
-            "options": {"queue": "default"},
-        },
-        "cleanup-unverified-accounts": {
-            "task": "app.tasks.cleanup_unverified_accounts",
-            "schedule": 43200.0,  # Every 12 hours (in seconds)
+        "rollup-download-stats": {
+            "task": "app.tasks.rollup_download_stats",
+            # 03:00 ET. 3 AM ET == 07:00 UTC (EDT) / 08:00 UTC (EST), both safely
+            # past the UTC midnight boundary, so the prior UTC day this task rolls
+            # up (it processes "yesterday") is always complete when it fires.
+            "schedule": crontab(minute=0, hour=3),  # 03:00 ET
             "options": {"queue": "default"},
         },
         "cleanup-deleted-posts": {
             "task": "app.tasks.cleanup_deleted_posts",
-            "schedule": 86400.0,  # Daily at 5AM UTC (in seconds)
+            "schedule": crontab(minute=30, hour=3),  # 03:30 ET
+            "options": {"queue": "default"},
+        },
+        "cleanup-expired-auth-tokens": {
+            "task": "app.tasks.cleanup_expired_auth_tokens",
+            "schedule": crontab(minute=0, hour=4),  # 04:00 ET
             "options": {"queue": "default"},
         },
         "cleanup-expired-bdrs": {
             "task": "app.tasks.cleanup_expired_bdrs",
-            "schedule": 86400.0,  # Daily (in seconds)
+            "schedule": crontab(minute=30, hour=4),  # 04:30 ET
             "options": {"queue": "default"},
         },
         "renew-crl-if-needed": {
             "task": "app.tasks.renew_crl_if_needed",
-            "schedule": 86400.0,  # Daily (in seconds)
+            "schedule": crontab(minute=0, hour=5),  # 05:00 ET
             "options": {"queue": "default"},
         },
     },
-    timezone="UTC",
+    # Beat timezone governs every crontab() schedule above: the daily jobs run at
+    # fixed times in US Eastern (DST-aware). The high-frequency entries are plain
+    # second-intervals and are unaffected by this setting.
+    timezone="America/New_York",
 )
 
 MAX_BYTES = 1_000_000
@@ -1218,7 +1243,7 @@ def rollup_view_events(self) -> dict[str, Any]:
     4. Deletes the old raw events
 
     Uses batched processing to handle large datasets without OOM errors.
-    Should run daily (configured in beat_schedule).
+    Runs daily at 01:00 US Eastern (configured in beat_schedule).
     """
     from datetime import datetime, timedelta, timezone
     from sqlalchemy import func, cast, Date
@@ -1464,7 +1489,7 @@ def rollup_blog_post_view_events(self) -> dict[str, Any]:
     3. Upserts into blog_post_stats_daily table
     4. Deletes the old raw events
 
-    Should run daily (configured in beat_schedule).
+    Runs daily at 01:30 US Eastern (configured in beat_schedule).
     """
     from datetime import datetime, timedelta, timezone
     from sqlalchemy import func, cast, Date
@@ -1650,7 +1675,7 @@ def rollup_site_events(self) -> dict[str, Any]:
     4. Deletes the old raw events
 
     Uses batched processing to handle large datasets without OOM errors.
-    Should run daily at 1AM UTC (configured in beat_schedule).
+    Runs daily at 02:00 US Eastern (configured in beat_schedule).
     """
     from datetime import datetime, timedelta, timezone, date
     from sqlalchemy import func
@@ -2076,7 +2101,9 @@ def cleanup_old_site_events(self) -> dict[str, Any]:
     This is a safety net - rollup_site_events should delete events after rolling them up,
     but this ensures any stragglers are cleaned up.
 
-    Should run daily at 2AM UTC (configured in beat_schedule).
+    NOTE: no longer scheduled — removed from beat_schedule because it raced with
+    rollup_site_events (deleting raw events before aggregation). Retained for
+    manual invocation only.
     """
     from datetime import datetime, timedelta, timezone
     from . import models
@@ -2115,7 +2142,7 @@ def cleanup_old_view_events(self) -> dict[str, Any]:
     This is a safety net - rollup_view_events should delete events after rolling them up,
     but this ensures any stragglers are cleaned up if the rollup fails partway through.
 
-    Should run daily at 3AM UTC (configured in beat_schedule).
+    Runs daily at 02:30 US Eastern, after the rollups (configured in beat_schedule).
     """
     from datetime import datetime, timedelta, timezone
     from . import models
@@ -2273,7 +2300,7 @@ def cleanup_expired_auth_tokens(self) -> dict[str, Any]:
     This prevents the database from accumulating stale authentication data
     which could grow unbounded over time.
 
-    Should run daily at 3AM UTC (configured in beat_schedule).
+    Runs daily at 04:00 US Eastern (configured in beat_schedule).
     """
     from datetime import datetime, timezone, timedelta
     from . import models
@@ -2453,7 +2480,7 @@ def cleanup_deleted_posts(self) -> dict[str, Any]:
     And performs permanent deletion (vault file + database record).
     Cascades delete to: comments, reactions, admin_notes, view_events, stats, notifications.
 
-    Should run daily at 5AM UTC (configured in beat_schedule).
+    Runs daily at 03:30 US Eastern (configured in beat_schedule).
     """
     from datetime import datetime, timezone, timedelta
     from . import models
@@ -3279,7 +3306,7 @@ def cleanup_expired_bdrs(self) -> dict[str, Any]:
     2. Delete the ZIP file from vault
     3. Update status to 'expired'
 
-    Should run daily (configured in beat_schedule).
+    Runs daily at 04:30 US Eastern (configured in beat_schedule).
     """
     from datetime import datetime, timezone
 
@@ -3368,7 +3395,7 @@ def renew_crl_if_needed(self) -> dict[str, Any]:
     all client connections will be rejected. This task proactively renews the CRL
     when it's within 7 days of expiration.
 
-    Should run daily (configured in beat_schedule).
+    Runs daily at 05:00 US Eastern (configured in beat_schedule).
     """
     from datetime import datetime, timedelta, timezone
 
@@ -3934,7 +3961,7 @@ def rollup_download_stats(self, target_date_iso: str | None = None) -> dict[str,
     re-aggregate a specific date — the UPSERT in the service makes this safe
     to re-run.
 
-    Should run daily (configured in beat_schedule).
+    Runs daily at 03:00 US Eastern (configured in beat_schedule).
     """
     from datetime import date, datetime, timedelta, timezone
 
