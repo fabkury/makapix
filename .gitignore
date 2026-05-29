@@ -100,3 +100,7 @@ playwright-report/
 # Claude Code configuration (environment-specific, not tracked)
 AGENTS.md
 .claude/settings.local.json
+
+# Local-only marketing/outreach strategy — the GitHub repo is public,
+# so keep the strategy docs (budget, tactics, copy) out of it.
+docs/outreach/
