@@ -1,11 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import Layout from '../components/Layout';
 import AuthPanel from '../components/AuthPanel';
+import { authenticatedFetch } from '../lib/api';
+import { ensureCompatibleArtUrl } from '../utils/imageCompat';
 
 const LOGO_INTRO_MS = 1188;
-const AFTER_LOGO_PAUSE_MS = 900;
-const BETWEEN_STAGES_PAUSE_MS = 1400;
+// Reveal the value prop quickly — it must NOT wait for the logo animation.
+const STAGE1_MS = 450; // headline + subhead + benefit chips
+const STAGE2_MS = 1100; // audience copy + links
+
+interface SamplePost {
+  id: number;
+  public_sqid: string;
+  title: string;
+  art_url: string;
+  width: number;
+  height: number;
+  frame_count?: number;
+}
 
 export default function WelcomePage() {
   const [stage, setStage] = useState<0 | 1 | 2 | 3>(0);
@@ -14,6 +27,11 @@ export default function WelcomePage() {
   const [unmountAnimated, setUnmountAnimated] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [instantMode, setInstantMode] = useState(false);
+  const [samples, setSamples] = useState<SamplePost[]>([]);
+
+  const API_BASE_URL = typeof window !== 'undefined'
+    ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
+    : '';
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -43,6 +61,29 @@ export default function WelcomePage() {
     }
   }, []);
 
+  // Load a few real promoted artworks so the value prop is instantly visible
+  // and alive. Independent of the logo animation; the endpoint is public.
+  const loadSamples = useCallback(async () => {
+    if (!API_BASE_URL) return;
+    try {
+      const url =
+        `${API_BASE_URL}/api/feed/promoted?limit=12` +
+        `&fields=id,public_sqid,title,art_url,width,height,frame_count`;
+      const response = await authenticatedFetch(url);
+      if (!response.ok) return;
+      const data = await response.json();
+      if (data && Array.isArray(data.items)) {
+        setSamples(data.items);
+      }
+    } catch {
+      // A missing sample grid is non-fatal — the hero still stands on its own.
+    }
+  }, [API_BASE_URL]);
+
+  useEffect(() => {
+    loadSamples();
+  }, [loadSamples]);
+
   useEffect(() => {
     if (prefersReducedMotion || instantMode) {
       setWantFreezeLogo(true);
@@ -54,32 +95,26 @@ export default function WelcomePage() {
 
     timers.push(
       window.setTimeout(() => {
+        setStage((s) => (s < 1 ? 1 : s));
+      }, STAGE1_MS)
+    );
+
+    timers.push(
+      window.setTimeout(() => {
+        setStage((s) => (s < 2 ? 2 : s));
+      }, STAGE2_MS)
+    );
+
+    timers.push(
+      window.setTimeout(() => {
         setWantFreezeLogo(true);
       }, LOGO_INTRO_MS)
-    );
-
-    timers.push(
-      window.setTimeout(() => {
-        setStage(1);
-      }, LOGO_INTRO_MS + AFTER_LOGO_PAUSE_MS)
-    );
-
-    timers.push(
-      window.setTimeout(() => {
-        setStage(2);
-      }, LOGO_INTRO_MS + AFTER_LOGO_PAUSE_MS + BETWEEN_STAGES_PAUSE_MS)
-    );
-
-    timers.push(
-      window.setTimeout(() => {
-        setStage(3);
-      }, LOGO_INTRO_MS + AFTER_LOGO_PAUSE_MS + BETWEEN_STAGES_PAUSE_MS * 2)
     );
 
     return () => {
       timers.forEach((t) => window.clearTimeout(t));
     };
-  }, [prefersReducedMotion]);
+  }, [prefersReducedMotion, instantMode]);
 
   // Preload the last-frame still so the swap is seamless (no flash).
   useEffect(() => {
@@ -114,7 +149,10 @@ export default function WelcomePage() {
   }, [showStill]);
 
   return (
-    <Layout title="Makapix Club" description="Let's meet at the pixel.">
+    <Layout
+      title="Makapix Club — pixel art on real displays"
+      description="The open community where pixel art comes off the screen and onto real displays. Free, no ads, no algorithm."
+    >
       <div className={`welcome-root stage-${stage} ${instantMode ? 'instant' : ''}`}>
         <section className="welcome-left" aria-label="Makapix Club introduction">
           <div className="logo-wrap" aria-hidden="true">
@@ -137,15 +175,21 @@ export default function WelcomePage() {
             />
           </div>
 
-          <h1 className="headline">Let&apos;s meet at the pixel.</h1>
+          <h1 className="headline">Pixel art, alive on real displays.</h1>
+
+          <p className="subhead">
+            The open community where pixel art comes off the screen &mdash;
+            free, no ads, no algorithm.
+          </p>
+
+          <ul className="chips" aria-label="What makes Makapix different">
+            <li className="chip chip-cyan">On real displays</li>
+            <li className="chip chip-pink">Creator analytics</li>
+            <li className="chip chip-green">Open &amp; ad-free</li>
+          </ul>
 
           <div className="copy">
-            <p>From 1-bpp to 24-bpp, Makapix Club convenes:</p>
-            <ul>
-              <li>DIY makers</li>
-              <li>Pixel artists</li>
-              <li>Art lovers</li>
-            </ul>
+            <p>From 1-bpp to 24-bpp, Makapix Club convenes makers, pixel artists, and art lovers.</p>
             <p className="closing">Come in, we are open!</p>
             <p className="recommended-link">
               <Link href="/recommended">See our Recommended artworks without logging in →</Link>
@@ -164,6 +208,34 @@ export default function WelcomePage() {
         </aside>
       </div>
 
+      {samples.length > 0 && (
+        <section className="samples" aria-label="Recent community artwork">
+          <div className="samples-head">
+            <h2>Fresh from the community</h2>
+            <Link href="/recommended" className="samples-more">Browse the gallery →</Link>
+          </div>
+          <div className="samples-grid">
+            {samples.map((post) => (
+              <Link
+                key={post.id}
+                href={`/p/${post.public_sqid}`}
+                className="sample-cell"
+                aria-label={post.title}
+                title={post.title}
+              >
+                <img
+                  src={ensureCompatibleArtUrl(post.art_url, post.frame_count)}
+                  alt={post.title}
+                  className="pixel-art"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
       <style jsx global>{`
         /* Landing page: pure black backdrop (and header) unlike the rest of the site */
         body {
@@ -181,7 +253,7 @@ export default function WelcomePage() {
           width: 100%;
           max-width: 1100px;
           margin: 0 auto;
-          padding: 36px 32px 64px;
+          padding: 36px 32px 32px;
           display: grid;
           grid-template-columns: 1.2fr 1fr;
           gap: 28px;
@@ -236,9 +308,9 @@ export default function WelcomePage() {
         }
 
         .headline {
-          margin-top: 0;
-          font-size: 30px;
-          line-height: 1.12;
+          margin-top: 18px;
+          font-size: 32px;
+          line-height: 1.1;
           letter-spacing: -0.02em;
           font-weight: 700;
           color: var(--text-primary);
@@ -246,11 +318,62 @@ export default function WelcomePage() {
           position: relative;
           z-index: 2;
           text-align: center;
-          margin-top: 18px;
+        }
+
+        .subhead {
+          margin: 12px auto 0;
+          max-width: 42ch;
+          text-align: center;
+          color: var(--text-secondary);
+          font-size: 17px;
+          line-height: 1.5;
+          position: relative;
+          z-index: 2;
+        }
+
+        .chips {
+          list-style: none;
+          margin: 16px auto 0;
+          padding: 0;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          justify-content: center;
+          position: relative;
+          z-index: 2;
+        }
+
+        .chip {
+          font-size: 13px;
+          font-weight: 600;
+          letter-spacing: 0.01em;
+          padding: 5px 12px;
+          border-radius: 999px;
+          border: 1px solid transparent;
+          white-space: nowrap;
+          color: var(--text-primary);
+        }
+
+        .chip-cyan {
+          border-color: rgba(0, 212, 255, 0.45);
+          color: var(--accent-cyan, #00d4ff);
+          background: rgba(0, 212, 255, 0.08);
+        }
+
+        .chip-pink {
+          border-color: rgba(255, 110, 180, 0.45);
+          color: var(--accent-pink, #ff6eb4);
+          background: rgba(255, 110, 180, 0.08);
+        }
+
+        .chip-green {
+          border-color: rgba(120, 230, 150, 0.45);
+          color: #78e696;
+          background: rgba(120, 230, 150, 0.08);
         }
 
         .copy {
-          margin-top: 18px;
+          margin-top: 20px;
           color: var(--text-secondary);
           font-size: 16px;
           line-height: 1.65;
@@ -261,15 +384,7 @@ export default function WelcomePage() {
           padding-right: 56px;
           position: relative;
           z-index: 2;
-        }
-
-        .copy ul {
-          margin: 10px 0 14px;
-          padding-left: 56px;
-        }
-
-        .copy li {
-          margin: 6px 0;
+          text-align: center;
         }
 
         .closing {
@@ -303,17 +418,106 @@ export default function WelcomePage() {
           max-width: 460px;
         }
 
-        /* Staged reveal */
+        /* Live sample grid */
+        .samples {
+          width: 100%;
+          max-width: 1100px;
+          margin: 8px auto 0;
+          padding: 24px 32px 56px;
+          opacity: 0;
+          animation: samples-in 700ms ease forwards;
+        }
+
+        @keyframes samples-in {
+          to {
+            opacity: 1;
+          }
+        }
+
+        .samples-head {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 16px;
+          border-top: 1px solid rgba(255, 255, 255, 0.06);
+          padding-top: 24px;
+        }
+
+        .samples-head h2 {
+          margin: 0;
+          font-size: 18px;
+          font-weight: 700;
+          color: var(--text-primary);
+          letter-spacing: -0.01em;
+        }
+
+        /* Link renders an <a>; styled-jsx only scopes native tags, so target it
+           via :global() under the scoped grid (same pattern as .recommended-link). */
+        .samples-head :global(.samples-more) {
+          font-size: 14px;
+          color: var(--text-secondary);
+          text-decoration: none;
+          white-space: nowrap;
+        }
+
+        .samples-head :global(.samples-more:hover) {
+          color: var(--text-primary);
+        }
+
+        .samples-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+          gap: 10px;
+        }
+
+        .samples-grid :global(.sample-cell) {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          aspect-ratio: 1 / 1;
+          min-width: 0;
+          padding: 8px;
+          border-radius: 10px;
+          background: #0a0a0a;
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          overflow: hidden;
+          transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+        }
+
+        .samples-grid :global(.sample-cell:hover) {
+          border-color: rgba(0, 212, 255, 0.5);
+          transform: translateY(-2px);
+          box-shadow: var(--glow-cyan, 0 0 16px rgba(0, 212, 255, 0.25));
+        }
+
+        .samples-grid :global(.sample-cell img) {
+          max-width: 100%;
+          max-height: 100%;
+          width: auto;
+          height: auto;
+          object-fit: contain;
+        }
+
+        /* Staged reveal — value prop is revealed early (stage 1), copy at stage 2 */
         .headline,
+        .subhead,
+        .chips,
         .copy {
           opacity: 0;
           transform: translateY(6px);
-          transition: opacity 1400ms ease, transform 1400ms ease;
+          transition: opacity 900ms ease, transform 900ms ease;
         }
 
         .stage-1 .headline,
         .stage-2 .headline,
-        .stage-3 .headline {
+        .stage-3 .headline,
+        .stage-1 .subhead,
+        .stage-2 .subhead,
+        .stage-3 .subhead,
+        .stage-1 .chips,
+        .stage-2 .chips,
+        .stage-3 .chips {
           opacity: 1;
           transform: translateY(0);
         }
@@ -326,6 +530,8 @@ export default function WelcomePage() {
 
         /* Internal navigation: show instantly (no delays/fades). */
         .instant .headline,
+        .instant .subhead,
+        .instant .chips,
         .instant .copy {
           transition: none !important;
           opacity: 1 !important;
@@ -336,7 +542,7 @@ export default function WelcomePage() {
           .welcome-root {
             grid-template-columns: 1fr;
             gap: 18px;
-            padding: 28px 18px 48px;
+            padding: 28px 18px 24px;
           }
 
           .welcome-right {
@@ -358,11 +564,24 @@ export default function WelcomePage() {
 
           .headline {
             margin-top: 22px;
+            font-size: 27px;
+          }
+
+          .copy {
+            padding-left: 16px;
+            padding-right: 16px;
+          }
+
+          .samples {
+            padding: 16px 18px 40px;
+          }
+
+          .samples-grid {
+            grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+            gap: 8px;
           }
         }
       `}</style>
     </Layout>
   );
 }
-
-
