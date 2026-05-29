@@ -39,6 +39,7 @@ from .routers import (
     reports,
     reputation,
     search,
+    sitemap,
     social_notifications,
     stats,
     system,
@@ -250,6 +251,7 @@ app.include_router(player_rpc.router)
 app.include_router(categories.router)
 app.include_router(admin.router)
 app.include_router(search.router)
+app.include_router(sitemap.router)
 app.include_router(stats.router)
 app.include_router(tracking.router)
 app.include_router(relay.router)

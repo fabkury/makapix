@@ -1,11 +1,24 @@
 import type { AppProps } from 'next/app';
 import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
+import Head from 'next/head';
 import '../styles/globals.css';
 import { getAccessToken, isTokenExpired, refreshAccessToken, wasRecentlyLoggedOut } from '../lib/api';
 import { usePageViewTracking } from '../hooks/usePageViewTracking';
 import { PlayerBarProvider } from '../contexts/PlayerBarContext';
 import { SocialNotificationsProvider } from '../contexts/SocialNotificationsContext';
+
+// Site-wide default SEO / social-share (Open Graph + Twitter) metadata.
+// Rendered via next/head so individual pages can override any tag by emitting
+// their own <Head> with a matching `key` (e.g. a per-artwork og:image on
+// /p/[sqid] — see docs/outreach/05-onsite-conversion-and-seo.md §2b).
+// NEXT_PUBLIC_API_BASE_URL is the public site origin (https://makapix.club in
+// prod, https://development.makapix.club in dev), so OG_IMAGE is absolute.
+const SITE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://makapix.club';
+const OG_IMAGE = `${SITE_URL}/og-default.png`;
+const DEFAULT_TITLE = 'Makapix Club — pixel art on real displays';
+const DEFAULT_DESCRIPTION =
+  'The open community where pixel art comes alive on physical displays. Free, no ads, no algorithm.';
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -211,6 +224,23 @@ export default function App({ Component, pageProps }: AppProps) {
 
   return (
     <ErrorBoundary>
+      <Head>
+        <title key="title">{DEFAULT_TITLE}</title>
+        <meta name="description" content={DEFAULT_DESCRIPTION} key="description" />
+        <meta property="og:site_name" content="Makapix Club" key="og:site_name" />
+        <meta property="og:type" content="website" key="og:type" />
+        <meta property="og:title" content={DEFAULT_TITLE} key="og:title" />
+        <meta property="og:description" content={DEFAULT_DESCRIPTION} key="og:description" />
+        <meta property="og:image" content={OG_IMAGE} key="og:image" />
+        <meta property="og:image:type" content="image/png" key="og:image:type" />
+        <meta property="og:image:width" content="1200" key="og:image:width" />
+        <meta property="og:image:height" content="630" key="og:image:height" />
+        <meta property="og:image:alt" content="Makapix Club — pixel art on real displays" key="og:image:alt" />
+        <meta name="twitter:card" content="summary_large_image" key="twitter:card" />
+        <meta name="twitter:title" content={DEFAULT_TITLE} key="twitter:title" />
+        <meta name="twitter:description" content={DEFAULT_DESCRIPTION} key="twitter:description" />
+        <meta name="twitter:image" content={OG_IMAGE} key="twitter:image" />
+      </Head>
       <SocialNotificationsProvider userId={userId}>
         <PlayerBarProvider>
           <Component {...pageProps} />
