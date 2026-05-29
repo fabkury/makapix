@@ -491,11 +491,11 @@ export default function WelcomePage() {
           box-shadow: var(--glow-cyan, 0 0 16px rgba(0, 212, 255, 0.25));
         }
 
+        /* Fill the cell so small artworks scale UP (not just large ones down).
+           The .pixel-art class forces nearest-neighbor, so upscales stay crisp. */
         .samples-grid :global(.sample-cell img) {
-          max-width: 100%;
-          max-height: 100%;
-          width: auto;
-          height: auto;
+          width: 100%;
+          height: 100%;
           object-fit: contain;
         }
 
