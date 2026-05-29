@@ -370,7 +370,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
     <>
       <Head>
         <title>{pageTitle}</title>
-        {description && <meta name="description" content={description} />}
+        {description && <meta name="description" content={description} key="description" />}
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/logo.png" />
       </Head>
