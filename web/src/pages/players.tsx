@@ -34,16 +34,28 @@ export default function PlayersPage() {
           </div>
         </header>
 
-        <figure className="hero-photo">
-          <img
-            src="/players/p3a-with-makapix-club-artwork.jpg"
-            alt="A p3a player device on a desk, displaying pixel art from Makapix Club."
-            loading="lazy"
-          />
-          <figcaption>
-            A p3a player displaying a fresh post from the Makapix Club feed.
-          </figcaption>
-        </figure>
+        <div className="hero-gallery">
+          <figure className="hero-photo">
+            <img
+              src="/players/p3a-with-makapix-club-artwork.jpg"
+              alt="A p3a player device on a desk, displaying pixel art from Makapix Club."
+              loading="lazy"
+            />
+            <figcaption>
+              A p3a player displaying a fresh post from the Makapix Club feed.
+            </figcaption>
+          </figure>
+          <figure className="hero-photo">
+            <img
+              src="/players/pixelix-with-makapix-club-artwork.jpg"
+              alt="A Pixelix LED-matrix player displaying pixel art from the Makapix Club feed."
+              loading="lazy"
+            />
+            <figcaption>
+              A Pixelix LED matrix rendering a Makapix Club post.
+            </figcaption>
+          </figure>
+        </div>
 
         <section className="projects">
           <h2>Reference projects</h2>
@@ -220,8 +232,16 @@ export default function PlayersPage() {
             background: rgba(255, 255, 255, 0.04);
           }
 
-          .hero-photo {
+          .hero-gallery {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            align-items: start;
             margin: 0 0 48px 0;
+          }
+
+          .hero-photo {
+            margin: 0;
             padding: 0;
           }
 
@@ -421,6 +441,10 @@ export default function PlayersPage() {
 
             .lead {
               font-size: 1rem;
+            }
+
+            .hero-gallery {
+              grid-template-columns: 1fr;
             }
 
             .project-cards {
