@@ -57,6 +57,15 @@ def _ca_env(tmp_path):
     return {"MQTT_CA_FILE": ca_cert_path, "MQTT_CA_KEY_FILE": ca_key_path}
 
 
+@pytest.fixture(autouse=True)
+def _bypass_rate_limit():
+    """These exercise renewal logic, not rate limiting. Keep them independent of
+    the shared per-IP renewal counter, which lives in Redis with a TTL that is
+    refreshed on every call and so leaks across test runs from a fixed client IP."""
+    with patch("app.routers.player.check_rate_limit", return_value=(True, 999)):
+        yield
+
+
 def test_self_renew_requires_token(client: TestClient):
     """No / invalid bearer token is rejected."""
     assert client.post("/player/renew-cert").status_code == 401
