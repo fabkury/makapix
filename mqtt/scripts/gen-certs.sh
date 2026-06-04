@@ -10,13 +10,45 @@ SRV_KEY="${CERT_DIR}/server.key"
 SRV_CSR="${CERT_DIR}/server.csr"
 SRV_CRT="${CERT_DIR}/server.crt"
 
-if [[ ! -f "${CA_CRT}" || ! -f "${CA_KEY}" ]]; then
+# CA bootstrap / integrity guard.
+#   both present -> verify they are a matched pair (warn loudly if not)
+#   neither      -> fresh environment: generate a new CA
+#   exactly one  -> REFUSE: regenerating would mint a NEW key and invalidate
+#                   every existing player certificate (2026-06 incident guard).
+if [[ -f "${CA_CRT}" ]]; then ca_present=1; else ca_present=0; fi
+if [[ -f "${CA_KEY}" ]]; then key_present=1; else key_present=0; fi
+
+if [[ "${ca_present}" -eq 1 && "${key_present}" -eq 1 ]]; then
+  crt_mod="$(openssl x509 -in "${CA_CRT}" -noout -modulus 2>/dev/null || true)"
+  key_mod="$(openssl rsa  -in "${CA_KEY}" -noout -modulus 2>/dev/null || true)"
+  if [[ -n "${crt_mod}" && "${crt_mod}" == "${key_mod}" ]]; then
+    echo "gen-certs: CA cert/key pair verified (modulus match)."
+  else
+    echo "===================================================================" >&2
+    echo "gen-certs: WARNING - CA cert/key MISMATCH in ${CERT_DIR}" >&2
+    echo "  ca.crt and ca.key do NOT share a modulus." >&2
+    echo "  The broker still verifies existing players against ca.crt, but the" >&2
+    echo "  API will sign NEW player certs that the broker REJECTS." >&2
+    echo "  Restore the ca.key that matches ca.crt - do NOT regenerate the CA." >&2
+    echo "===================================================================" >&2
+  fi
+elif [[ "${ca_present}" -eq 0 && "${key_present}" -eq 0 ]]; then
+  echo "gen-certs: no CA present - generating a fresh CA (new environment)."
   openssl req -x509 -nodes -days 3650 \
     -subj "/CN=Makapix Dev CA" \
     -newkey rsa:4096 \
     -keyout "${CA_KEY}" \
     -out "${CA_CRT}" \
     -sha256
+else
+  echo "===================================================================" >&2
+  echo "gen-certs: FATAL - exactly one of ca.crt / ca.key exists in ${CERT_DIR}" >&2
+  echo "  ca.crt present=${ca_present}  ca.key present=${key_present}" >&2
+  echo "  Refusing to regenerate the CA: that would mint a NEW key and" >&2
+  echo "  invalidate every existing player certificate." >&2
+  echo "  Restore the missing file from backup, then restart." >&2
+  echo "===================================================================" >&2
+  exit 1
 fi
 
 if [[ ! -f "${SRV_CRT}" || ! -f "${SRV_KEY}" ]]; then

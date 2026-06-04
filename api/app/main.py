@@ -146,6 +146,12 @@ def run_startup_tasks() -> None:
         from .mqtt.crl_init import ensure_crl_exists
 
         ensure_crl_exists()
+        logger.info("run_startup_tasks: CRL ensured, verifying CA keypair...")
+        # Defense-in-depth: surface a ca.key/ca.crt mismatch loudly at boot.
+        # Non-fatal — signing is independently guarded in generate_client_certificate.
+        from .mqtt.cert_generator import check_ca_keypair
+
+        check_ca_keypair()
         _STARTUP_COMPLETE = True
         logger.info("Startup tasks completed.")
     except Exception as e:
