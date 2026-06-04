@@ -25,6 +25,76 @@ def _get_logger():
     return logger
 
 
+class CAKeypairMismatchError(Exception):
+    """Raised when the CA private key does not correspond to the CA certificate.
+
+    Signing a client cert with a key that doesn't match the CA certificate the
+    broker trusts produces a cert the broker rejects at the TLS handshake — the
+    device fetches it and can never connect. We refuse to sign rather than issue
+    such a doomed certificate. (Regression guard for the 2026-06 incident where
+    prod's ca.key was replaced by a key that didn't match ca.crt.)
+    """
+
+
+def _public_spki_der(public_key) -> bytes:
+    """Serialize a public key to DER SubjectPublicKeyInfo for identity comparison."""
+    return public_key.public_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+
+
+def ca_keypair_matches(ca_cert: x509.Certificate, ca_key) -> bool:
+    """Return True iff ``ca_key``'s public half matches ``ca_cert``'s public key."""
+    return _public_spki_der(ca_cert.public_key()) == _public_spki_der(
+        ca_key.public_key()
+    )
+
+
+def check_ca_keypair(
+    ca_cert_path: str | None = None,
+    ca_key_path: str | None = None,
+) -> bool:
+    """Self-check that the CA cert/key on disk form a matching pair.
+
+    Intended to run at API startup. Logs at CRITICAL on mismatch but does NOT
+    raise, so the API still serves traffic that doesn't require signing. Paths
+    default to the MQTT_CA_FILE / MQTT_CA_KEY_FILE env vars.
+
+    Returns True only if both files load and their public keys match.
+    """
+    log = _get_logger()
+    if ca_cert_path is None:
+        ca_cert_path = os.getenv("MQTT_CA_FILE", "/certs/ca.crt")
+    if ca_key_path is None:
+        ca_key_path = os.getenv("MQTT_CA_KEY_FILE", "/certs/ca.key")
+
+    try:
+        with open(ca_cert_path, "rb") as f:
+            ca_cert = x509.load_pem_x509_certificate(f.read())
+        with open(ca_key_path, "rb") as f:
+            ca_key = serialization.load_pem_private_key(f.read(), password=None)
+    except FileNotFoundError as e:
+        log.error("CA keypair self-check skipped (missing file): %s", e)
+        return False
+    except Exception as e:
+        log.error("CA keypair self-check could not load CA material: %s", e)
+        return False
+
+    if ca_keypair_matches(ca_cert, ca_key):
+        log.info("CA keypair self-check OK: ca.key matches ca.crt (%s).", ca_cert_path)
+        return True
+
+    log.critical(
+        "CA KEYPAIR MISMATCH: ca.key (%s) does NOT match ca.crt (%s). New player "
+        "certificates will be REJECTED by the broker until the matching ca.key is "
+        "restored. Do NOT regenerate the CA — that invalidates all existing players.",
+        ca_key_path,
+        ca_cert_path,
+    )
+    return False
+
+
 def generate_client_certificate(
     player_key: UUID,
     ca_cert_path: str,
@@ -63,6 +133,16 @@ def generate_client_certificate(
 
     with open(ca_key_path_obj, "rb") as f:
         ca_key = serialization.load_pem_private_key(f.read(), password=None)
+
+    # Refuse to sign with a CA key that doesn't match the CA certificate the
+    # broker trusts: the resulting client cert would fail signature verification
+    # at the broker's TLS handshake, silently bricking the device. Fail loudly.
+    if not ca_keypair_matches(ca_cert, ca_key):
+        raise CAKeypairMismatchError(
+            f"CA private key ({ca_key_path}) does not match CA certificate "
+            f"({ca_cert_path}); refusing to sign a client certificate the broker "
+            "would reject. Restore the matching ca.key (do NOT regenerate the CA)."
+        )
 
     # Generate client key pair
     client_key = rsa.generate_private_key(
