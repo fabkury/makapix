@@ -57,6 +57,15 @@ def _ca_env(tmp_path):
     return {"MQTT_CA_FILE": ca_cert_path, "MQTT_CA_KEY_FILE": ca_key_path}
 
 
+@pytest.fixture(autouse=True)
+def _bypass_rate_limit():
+    """These exercise renewal logic, not rate limiting. Keep them independent of
+    the shared per-IP renewal counter, which lives in Redis with a TTL that is
+    refreshed on every call and so leaks across test runs from a fixed client IP."""
+    with patch("app.routers.player.check_rate_limit", return_value=(True, 999)):
+        yield
+
+
 def test_self_renew_requires_token(client: TestClient):
     """No / invalid bearer token is rejected."""
     assert client.post("/player/renew-cert").status_code == 401
@@ -116,7 +125,13 @@ def test_self_renew_within_window_succeeds(
     soon = datetime.now(timezone.utc) + timedelta(days=30)
     player = _make_player(db, owner, expires_at=soon)
     token = player_tokens.issue_token(db, player)
-    with patch.dict(os.environ, _ca_env(tmp_path)):
+    # Pin the renewal window: CERT_RENEWAL_THRESHOLD_DAYS is read at import time,
+    # so patching the env wouldn't take effect and an ambient override (e.g. dev's
+    # CERT_RENEWAL_THRESHOLD_DAYS=100000) would otherwise decide these tests.
+    with (
+        patch.dict(os.environ, _ca_env(tmp_path)),
+        patch("app.routers.player.CERT_RENEWAL_THRESHOLD_DAYS", 90),
+    ):
         resp = client.post(
             "/player/renew-cert", headers={"Authorization": f"Bearer {token}"}
         )
@@ -130,7 +145,13 @@ def test_self_renew_too_early_is_rejected(
     far = datetime.now(timezone.utc) + timedelta(days=200)
     player = _make_player(db, owner, expires_at=far)
     token = player_tokens.issue_token(db, player)
-    with patch.dict(os.environ, _ca_env(tmp_path)):
+    # Pin the renewal window (see note in test_self_renew_within_window_succeeds):
+    # without this, an ambient CERT_RENEWAL_THRESHOLD_DAYS > 200 lets the renewal
+    # through and masks this rejection path.
+    with (
+        patch.dict(os.environ, _ca_env(tmp_path)),
+        patch("app.routers.player.CERT_RENEWAL_THRESHOLD_DAYS", 90),
+    ):
         resp = client.post(
             "/player/renew-cert", headers={"Authorization": f"Bearer {token}"}
         )
