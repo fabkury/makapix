@@ -774,6 +774,22 @@ class ReactionUsersResponse(BaseModel):
     total: int
 
 
+class RecentReactionItem(BaseModel):
+    """A reaction with post and reactor details, for the moderator dashboard."""
+
+    id: int
+    emoji: str
+    created_at: datetime
+    post_id: int
+    post_public_sqid: str | None = None
+    post_title: str
+    post_art_url: str | None = None
+    user_handle: str | None = None  # null for anonymous reactions
+    user_public_sqid: str | None = None
+    user_avatar_url: str | None = None
+    anonymous_id: str | None = None  # truncated IP; null for authenticated
+
+
 class WidgetData(BaseModel):
     """Combined widget data (reactions + comments) for efficient loading."""
 

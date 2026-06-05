@@ -75,12 +75,26 @@ interface AdminNote {
   created_at: string;
 }
 
+interface RecentReactionItem {
+  id: number;
+  emoji: string;
+  created_at: string;
+  post_id: number;
+  post_public_sqid: string | null;
+  post_title: string;
+  post_art_url: string | null;
+  user_handle: string | null;
+  user_public_sqid: string | null;
+  user_avatar_url: string | null;
+  anonymous_id: string | null;
+}
+
 interface PageResponse<T> {
   items: T[];
   next_cursor: string | null;
 }
 
-type Tab = 'pending' | 'reports' | 'posts' | 'profiles' | 'audit' | 'notes' | 'metrics' | 'downloads';
+type Tab = 'pending' | 'reports' | 'posts' | 'profiles' | 'reactions' | 'audit' | 'notes' | 'metrics' | 'downloads';
 
 export default function ModDashboardPage() {
   const router = useRouter();
@@ -107,6 +121,11 @@ export default function ModDashboardPage() {
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
   const [auditCursor, setAuditCursor] = useState<string | null>(null);
   const [auditLoading, setAuditLoading] = useState(false);
+
+  const [reactions, setReactions] = useState<RecentReactionItem[]>([]);
+  const [reactionsCursor, setReactionsCursor] = useState<string | null>(null);
+  const [reactionsLoading, setReactionsLoading] = useState(false);
+  const [includeAnonReactions, setIncludeAnonReactions] = useState(true);
   
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [adminNotes, setAdminNotes] = useState<AdminNote[]>([]);
@@ -179,6 +198,7 @@ export default function ModDashboardPage() {
       case 'reports': await loadReports(reset); break;
       case 'posts': await loadRecentPosts(reset); break;
       case 'profiles': await loadRecentProfiles(reset); break;
+      case 'reactions': await loadRecentReactions(reset); break;
       case 'audit': await loadAuditLog(reset); break;
     }
   };
@@ -278,6 +298,30 @@ export default function ModDashboardPage() {
       console.error('Error loading posts:', error);
     } finally {
       setPostsLoading(false);
+    }
+  };
+
+  const loadRecentReactions = async (reset = false, includeAnon = includeAnonReactions) => {
+    if (reactionsLoading) return;
+    setReactionsLoading(true);
+    try {
+      const cursor = reset ? null : reactionsCursor;
+      const url = `${API_BASE_URL}/api/admin/recent-reactions?limit=50&include_anonymous=${includeAnon}${cursor ? `&cursor=${cursor}` : ''}`;
+      const response = await authenticatedFetch(url);
+      if (response.ok) {
+        const data: PageResponse<RecentReactionItem> = await response.json();
+        if (reset) {
+          setReactions(data.items);
+          setReactionsCursor(data.next_cursor);
+        } else {
+          setReactions(prev => [...prev, ...data.items]);
+          setReactionsCursor(data.next_cursor);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading reactions:', error);
+    } finally {
+      setReactionsLoading(false);
     }
   };
 
@@ -502,12 +546,13 @@ export default function ModDashboardPage() {
 
   if (!isModerator) return null;
 
-  const tabs: Tab[] = ['pending', 'reports', 'posts', 'profiles', 'audit', 'notes', 'metrics', 'downloads'];
+  const tabs: Tab[] = ['pending', 'reports', 'posts', 'profiles', 'reactions', 'audit', 'notes', 'metrics', 'downloads'];
   const tabLabels: Record<Tab, string> = {
     pending: 'Pending Approval',
     reports: 'Reports',
     posts: 'Posts',
     profiles: 'Profiles',
+    reactions: 'Reactions',
     audit: 'Audit',
     notes: 'Notes',
     metrics: 'Metrics',
@@ -530,6 +575,7 @@ export default function ModDashboardPage() {
                 else if (tab === 'reports') { setReports([]); setReportsCursor(null); }
                 else if (tab === 'posts') { setPosts([]); setPostsCursor(null); }
                 else if (tab === 'profiles') { setProfiles([]); setProfilesCursor(null); }
+                else if (tab === 'reactions') { setReactions([]); setReactionsCursor(null); }
                 else if (tab === 'audit') { setAuditLog([]); setAuditCursor(null); }
               }}
               className={`tab ${activeTab === tab ? 'active' : ''}`}
@@ -705,6 +751,69 @@ export default function ModDashboardPage() {
                   {profilesCursor && (
                     <button onClick={() => loadRecentProfiles(false)} disabled={profilesLoading} className="load-more">
                       {profilesLoading ? 'Loading...' : 'Load More'}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'reactions' && (
+            <div className="section">
+              <h2>Recent Reactions</h2>
+              <label className="anon-toggle">
+                <input
+                  type="checkbox"
+                  checked={includeAnonReactions}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    setIncludeAnonReactions(next);
+                    setReactions([]);
+                    setReactionsCursor(null);
+                    loadRecentReactions(true, next);
+                  }}
+                />
+                <span>Include anonymous reactions</span>
+              </label>
+              {reactions.length === 0 && !reactionsLoading ? (
+                <p className="empty">No reactions found</p>
+              ) : (
+                <>
+                  {reactions.map(reaction => (
+                    <div key={reaction.id} className="item-card pending-card">
+                      <span className="reaction-emoji">{reaction.emoji}</span>
+                      {reaction.post_art_url && (
+                        <Link href={`/p/${reaction.post_public_sqid}`} className="pending-thumbnail">
+                          <img src={ensureCompatibleArtUrl(reaction.post_art_url)} alt={reaction.post_title} className="pixel-art" style={{ width: '64px', height: '64px', maxWidth: '64px', maxHeight: '64px', objectFit: 'contain' }} />
+                        </Link>
+                      )}
+                      <div className="item-info">
+                        {reaction.user_handle ? (
+                          <div className="post-author">
+                            {reaction.user_avatar_url && (
+                              <img src={reaction.user_avatar_url} alt={reaction.user_handle} className="author-avatar-small" />
+                            )}
+                            <Link href={`/u/${reaction.user_public_sqid}`} className="author-link">
+                              {reaction.user_handle}
+                            </Link>
+                          </div>
+                        ) : (
+                          <div className="post-author">
+                            <span className="anon-reactor" title="Anonymous visitor (truncated IP)">👤 {reaction.anonymous_id}</span>
+                          </div>
+                        )}
+                        <h3>
+                          <Link href={`/p/${reaction.post_public_sqid}`} className="post-title-link">
+                            {reaction.post_title}
+                          </Link>
+                        </h3>
+                        <p className="item-date">{new Date(reaction.created_at).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {reactionsCursor && (
+                    <button onClick={() => loadRecentReactions(false)} disabled={reactionsLoading} className="load-more">
+                      {reactionsLoading ? 'Loading...' : 'Load More'}
                     </button>
                   )}
                 </>
@@ -1032,6 +1141,29 @@ export default function ModDashboardPage() {
 
         .author-link:hover {
           color: var(--accent-cyan);
+        }
+
+        .anon-reactor {
+          color: var(--text-muted);
+          font-family: monospace;
+          font-size: 0.85rem;
+        }
+
+        .reaction-emoji {
+          font-size: 1.8rem;
+          flex-shrink: 0;
+          align-self: center;
+          margin-right: 8px;
+        }
+
+        .anon-toggle {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 12px;
+          color: var(--text-secondary);
+          font-size: 0.85rem;
+          cursor: pointer;
         }
 
         .item-date {

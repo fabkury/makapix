@@ -8,6 +8,7 @@ including device detection, IP hashing, and GeoIP resolution.
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import logging
 import re
 import uuid
@@ -219,6 +220,34 @@ def get_client_ip(request: Request) -> str:
 
     # Fallback if neither is available
     return "unknown"
+
+
+def truncate_ip(ip: str) -> str:
+    """
+    Truncate an IP address for privacy-preserving display.
+
+    Keeps only the tail of the address so moderators can differentiate
+    visitors without seeing the full (routable) IP:
+    - IPv4: last 2 octets, e.g. "203.0.113.45" -> "…113.45"
+    - IPv6: last 2 groups of the exploded form, e.g. "…0370:7334"
+
+    Args:
+        ip: IP address string
+
+    Returns:
+        Truncated display string; "…" if the input is not a valid IP
+    """
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return "…"
+
+    if addr.version == 4:
+        octets = str(addr).split(".")
+        return f"…{octets[2]}.{octets[3]}"
+
+    groups = addr.exploded.split(":")
+    return f"…{groups[6]}:{groups[7]}"
 
 
 def record_view(
