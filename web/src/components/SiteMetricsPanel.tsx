@@ -244,6 +244,18 @@ export default function SiteMetricsPanel() {
   const maxPageViews = Math.max(...Object.values(displayedStats.views_by_page), 1);
   const maxReferrerViews = Math.max(...Object.values(displayedStats.top_referrers), 1);
 
+  // Views per unique visitor (views and unique-visitor series share aligned buckets)
+  const dailyViewsPerVisitor = displayedStats.daily_views.map((day, i) => {
+    const visitors = displayedStats.daily_unique_visitors?.[i]?.count ?? 0;
+    return { date: day.date, ratio: visitors > 0 ? day.count / visitors : 0 };
+  });
+  const hourlyViewsPerVisitor = displayedStats.hourly_views.map((hour, i) => {
+    const visitors = displayedStats.hourly_unique_visitors?.[i]?.count ?? 0;
+    return { hour: hour.hour, ratio: visitors > 0 ? hour.count / visitors : 0 };
+  });
+  const maxDailyRatio = Math.max(...dailyViewsPerVisitor.map(d => d.ratio), 1);
+  const maxHourlyRatio = Math.max(...hourlyViewsPerVisitor.map(h => h.ratio), 1);
+
   return (
     <div className="site-metrics">
       {/* Toggle */}
@@ -368,6 +380,44 @@ export default function SiteMetricsPanel() {
         </div>
       )}
 
+      {/* 14-Day Views per Unique Visitor */}
+      {dailyViewsPerVisitor.length > 0 && (
+        <div className="metrics-section">
+          <h3>📊 Views per Unique Visitor (Last 14 Days)</h3>
+          <div className="trend-chart">
+            {dailyViewsPerVisitor.map((day, index) => {
+              const height = maxDailyRatio > 0 ? (day.ratio / maxDailyRatio) * 100 : 0;
+              const date = new Date(day.date);
+              const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+              const showLabel =
+                index % 3 === 0 ||
+                index === dailyViewsPerVisitor.length - 1 ||
+                day.ratio === maxDailyRatio;
+              return (
+                <div key={day.date} className="trend-bar-wrap">
+                  {showLabel && (
+                    <span className="trend-bar-label" aria-hidden="true">
+                      {day.ratio.toFixed(1)}
+                    </span>
+                  )}
+                  <div
+                    className={`trend-bar ratio-bar ${isWeekend ? 'weekend' : ''}`}
+                    style={{ height: `${Math.max(height, 2)}%` }}
+                    title={`${day.date}: ${day.ratio.toFixed(1)} views/visitor`}
+                    aria-label={`${day.date}: ${day.ratio.toFixed(1)} views per visitor`}
+                    role="img"
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <div className="trend-labels">
+            <span>14 days ago</span>
+            <span>Today</span>
+          </div>
+        </div>
+      )}
+
       {/* 24-Hour Granular Chart */}
       <div className="metrics-section">
         <h3>⏰ Page Views (Last 24 Hours - Hourly)</h3>
@@ -436,6 +486,47 @@ export default function SiteMetricsPanel() {
                     style={{ height: `${Math.max(height, 2)}%` }}
                     title={`${hourLabel}:00 - ${hour.count} unique visitors`}
                     aria-label={`${hourLabel}:00 - ${hour.count} unique visitors`}
+                    role="img"
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <div className="trend-labels">
+            <span>24h ago</span>
+            <span>Now</span>
+          </div>
+        </div>
+      )}
+
+      {/* 24-Hour Views per Unique Visitor */}
+      {hourlyViewsPerVisitor.length > 0 && (
+        <div className="metrics-section">
+          <h3>📊 Views per Unique Visitor (Last 24 Hours - Hourly)</h3>
+          <div className="trend-chart hourly">
+            {hourlyViewsPerVisitor.map((hour, index) => {
+              const height = maxHourlyRatio > 0 ? (hour.ratio / maxHourlyRatio) * 100 : 0;
+              const hourDate = new Date(hour.hour);
+              const hourLabel = hourDate.getHours();
+              const showLabel =
+                index % 3 === 0 ||
+                index === hourlyViewsPerVisitor.length - 1 ||
+                hour.ratio === maxHourlyRatio;
+              return (
+                <div key={hour.hour} className="trend-bar-wrap">
+                  <span className="trend-bar-xlabel" aria-hidden="true">
+                    {hourLabel}
+                  </span>
+                  {showLabel && (
+                    <span className="trend-bar-label" aria-hidden="true">
+                      {hour.ratio.toFixed(1)}
+                    </span>
+                  )}
+                  <div
+                    className="trend-bar ratio-bar"
+                    style={{ height: `${Math.max(height, 2)}%` }}
+                    title={`${hourLabel}:00 - ${hour.ratio.toFixed(1)} views/visitor`}
+                    aria-label={`${hourLabel}:00 - ${hour.ratio.toFixed(1)} views per visitor`}
                     role="img"
                   />
                 </div>
@@ -895,6 +986,10 @@ export default function SiteMetricsPanel() {
 
         .trend-bar.visitor-bar {
           background: linear-gradient(to top, #6366f1, #a78bfa);
+        }
+
+        .trend-bar.ratio-bar {
+          background: linear-gradient(to top, #f59e0b, #fbbf24);
         }
 
         .trend-bar.weekend {
