@@ -7,7 +7,7 @@ from uuid import UUID
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
 from ..auth import (
@@ -19,6 +19,7 @@ from ..auth import (
 )
 from ..deps import get_db
 from ..utils.audit import log_moderation_action
+from ..utils.view_tracking import truncate_ip
 from ..pagination import apply_cursor_filter, create_page_response
 from ..services.social_notifications import SocialNotificationService
 
@@ -498,6 +499,66 @@ def recent_posts(
     )
 
 
+@router.get(
+    "/recent-reactions", response_model=schemas.Page[schemas.RecentReactionItem]
+)
+def recent_reactions(
+    cursor: str | None = None,
+    limit: int = Query(50, ge=1, le=200),
+    include_anonymous: bool = Query(True),
+    db: Session = Depends(get_db),
+    _moderator: models.User = Depends(require_moderator),
+) -> schemas.Page[schemas.RecentReactionItem]:
+    """
+    Recent reactions across all posts (moderator only).
+
+    Anonymous reactions are identified by a truncated IP so moderators can
+    differentiate visitors without seeing full addresses.
+    """
+    query = db.query(models.Reaction).options(
+        joinedload(models.Reaction.user),
+        joinedload(models.Reaction.post),
+    )
+
+    if not include_anonymous:
+        query = query.filter(models.Reaction.user_id.isnot(None))
+
+    # Apply cursor pagination
+    query = apply_cursor_filter(
+        query, models.Reaction, cursor, "created_at", sort_desc=True
+    )
+
+    # Order and limit (id as tie-break: reactions can share timestamps)
+    query = query.order_by(
+        models.Reaction.created_at.desc(), models.Reaction.id.desc()
+    ).limit(limit + 1)
+    reactions = query.all()
+
+    page_data = create_page_response(reactions, limit, cursor)
+
+    items = []
+    for r in page_data["items"]:
+        items.append(
+            schemas.RecentReactionItem(
+                id=r.id,
+                emoji=r.emoji,
+                created_at=r.created_at,
+                post_id=r.post_id,
+                post_public_sqid=r.post.public_sqid if r.post else None,
+                post_title=r.post.title if r.post else "",
+                post_art_url=r.post.art_url if r.post else None,
+                user_handle=r.user.handle if r.user else None,
+                user_public_sqid=r.user.public_sqid if r.user else None,
+                user_avatar_url=r.user.avatar_url if r.user else None,
+                anonymous_id=(
+                    truncate_ip(r.user_ip) if r.user is None and r.user_ip else None
+                ),
+            )
+        )
+
+    return schemas.Page(items=items, next_cursor=page_data["next_cursor"])
+
+
 @router.get("/audit-log", response_model=schemas.Page[schemas.AuditLogEntry])
 def get_audit_log(
     cursor: str | None = None,
@@ -713,7 +774,9 @@ def get_sitewide_stats(
 @router.get("/download-stats", response_model=schemas.DownloadStatsResponse)
 def get_download_stats(
     days: int = Query(14, ge=1, le=90, description="Window size in days"),
-    top_n: int = Query(50, ge=1, le=200, description="Number of top artworks to return"),
+    top_n: int = Query(
+        50, ge=1, le=200, description="Number of top artworks to return"
+    ),
     include_bots: bool = Query(
         False,
         description="If true, count bot/crawler downloads in the totals alongside humans",
