@@ -152,9 +152,14 @@ Hash-based file storage for artwork images.
 | Aspect | Detail |
 |--------|--------|
 | Path | `/mnt/vault-dev` (dev), `/mnt/vault-1` (prod) |
-| Structure | `/{h1}/{h2}/{h3}/{artwork_id}.{ext}` |
+| Structure | `/{a}/{b}/{artwork_id}.{ext}` (2-level, 4,096 shards) |
 
-Hash sharding uses first 6 characters of SHA-256(artwork_id) split into 3 directories.
+Hash sharding: `a` and `b` are the low 6 bits of the first two bytes of
+SHA-256(artwork_id), hex-rendered (`00`–`3f`). The stored
+`posts.storage_shard` is the source of truth for every path — treat it as
+opaque. Legacy 3-level paths (`/{h1}/{h2}/{h3}/…`, first 6 hex chars of the
+hash) remain served from twin copies during the resharding dual window
+(`docs/vault-resharding/`).
 
 ## Networks
 

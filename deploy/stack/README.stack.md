@@ -107,10 +107,14 @@ Posts, avatars, and blog images now live on the vault subdomain when
 `VAULT_PUBLIC_BASE_URL` is set in `.env`:
 
 ```
-https://vault.makapix.club/{h1}/{h2}/{h3}/{storage_key}.{ext}        # artwork
-https://vault.makapix.club/avatar/{h1}/{h2}/{h3}/{uuid}.{ext}        # avatars
-https://vault.makapix.club/blog_image/{h1}/{h2}/{h3}/{uuid}.{ext}    # blog
+https://vault.makapix.club/{a}/{b}/{storage_key}.{ext}        # artwork
+https://vault.makapix.club/avatar/{a}/{b}/{uuid}.{ext}        # avatars
+https://vault.makapix.club/blog_image/{a}/{b}/{uuid}.{ext}    # blog
 ```
+
+Shards are 2-level (`{a}`/`{b}` = low 6 bits of the first two SHA-256 bytes,
+hex `00`-`3f`). Legacy 3-level URLs (`{h1}/{h2}/{h3}/...`) keep serving from
+twin copies during the resharding dual window (see docs/vault-resharding/).
 
 The legacy `/api/vault/...` path (served by FastAPI StaticFiles) remains live
 indefinitely as a backward-compatibility fallback for existing players.

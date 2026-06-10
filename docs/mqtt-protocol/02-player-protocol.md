@@ -139,8 +139,8 @@ Query posts from various channels with optional filtering, sorting, and paginati
       "kind": "artwork",
       "created_at": "2025-12-09T01:30:00Z",
       "storage_key": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-      "art_url": "https://makapix.club/api/vault/7c/9e/66/7c9e6679.png",
-      "storage_shard": "7c/9e/66",
+      "art_url": "https://makapix.club/api/vault/23/16/7c9e6679.png",
+      "storage_shard": "23/16",
       "native_format": "png"
     }
   ],
@@ -180,7 +180,7 @@ Query posts from various channels with optional filtering, sorting, and paginati
 | `created_at` | string | ISO 8601 timestamp |
 | `storage_key` | string | UUID for vault path resolution |
 | `art_url` | string | Full URL to artwork file |
-| `storage_shard` | string | Opaque relative vault path (e.g. `"7c/9e/66"`). Use verbatim — do not parse, validate, or assume a fixed depth; the number of components may change |
+| `storage_shard` | string | Opaque relative vault path (e.g. `"23/16"`). Use verbatim — do not parse, validate, or assume a fixed depth; the number of components may change |
 | `native_format` | string? | File format: `"png"`, `"gif"`, `"webp"`, `"bmp"`, or null |
 
 **Artwork post optional fields (only included if requested via `include_fields`):**
@@ -283,8 +283,8 @@ Fetch a single post by ID.
     "kind": "artwork",
     "created_at": "2025-12-09T01:30:00Z",
     "storage_key": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-    "art_url": "https://makapix.club/api/vault/7c/9e/66/7c9e6679.png",
-    "storage_shard": "7c/9e/66",
+    "art_url": "https://makapix.club/api/vault/23/16/7c9e6679.png",
+    "storage_shard": "23/16",
     "native_format": "png",
     "owner_handle": "artist123",
     "width": 64,
@@ -549,7 +549,7 @@ Display a specific artwork.
 {
   "post_id": 123,
   "storage_key": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-  "storage_shard": "7c/9e/66",
+  "storage_shard": "23/16",
   "native_format": "png",
   "width": 64,
   "height": 64
@@ -560,7 +560,7 @@ Display a specific artwork.
 |-------|------|-------------|
 | `post_id` | int | Post ID |
 | `storage_key` | string (UUID) | Storage identifier for vault path |
-| `storage_shard` | string | Opaque relative vault path (e.g. `"7c/9e/66"`). Use verbatim — do not parse, validate, or assume a fixed depth; the number of components may change |
+| `storage_shard` | string | Opaque relative vault path (e.g. `"23/16"`). Use verbatim — do not parse, validate, or assume a fixed depth; the number of components may change |
 | `native_format` | string | Original file format (`png`, `gif`, `webp`, `bmp`) |
 | `width` | int | Canvas width in pixels |
 | `height` | int | Canvas height in pixels |

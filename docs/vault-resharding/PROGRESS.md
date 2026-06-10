@@ -268,6 +268,19 @@ archived in each env's `api/reshard-reports/phase1-baseline-{dev,prod}.json`.
 - **Phase 4 (observe) begins now.** The retirement streak can start
   counting once daily non-bot legacy downloads reach 0.
 
+### 2026-06-10 — repo docs aligned to the 2-level structure (Claude + fab)
+
+- Structural descriptions updated: `CLAUDE.md` (Vault Storage System),
+  `docs/architecture.md`, `deploy/stack/README.stack.md`,
+  `_docs/ARCHITECTURE.md`, `_docs/dual-environment/01-current-architecture.md`.
+- Example payloads across `docs/player/*`, `docs/http-api/*`,
+  `docs/mqtt-protocol/*`, `docs/mqtt-api/*`, `_docs/MQTT_PLAYER_API.md`,
+  `_docs/PHYSICAL_PLAYER.md` now show 2-level shards (generic examples
+  `21/32`; the real protocol UUID's true shard `23/16`; the worked-example
+  UUID's true shard `24/07`). `_docs/legacy/` left as historical record.
+- The opacity contract ("use `storage_shard` verbatim, depth may change")
+  stays in all player-facing docs.
+
 Open items carried forward:
 - ~48 h: re-run `status` on both envs (`v1_url_refs` must still be 0 —
   in-flight sessions/notification snapshots can reinstate v1 values; if

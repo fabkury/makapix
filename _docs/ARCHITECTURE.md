@@ -350,10 +350,10 @@ Makapix uses a **local vault** for image storage instead of third-party object s
 
 #### Key Features
 
-1. **Hash-Based Organization**: First 6 characters of SHA-256 hash of the artwork ID determine folder structure (a1/b2/c3/)
+1. **Hash-Based Organization**: 2-level shard from SHA-256 of the artwork ID — low 6 bits of the first two digest bytes, hex-rendered (e.g. `21/32/`, 4,096 shards). Legacy 3-level paths remain served during the resharding dual window (see docs/vault-resharding/)
 2. **No Single-Folder Overcrowding**: Hash-based distribution ensures no folder has too many files
 3. **Direct Serving**: Caddy proxy serves files directly from vault via `/api/vault/` route
-4. **Deterministic URLs**: URL path is derived from artwork ID: `/api/vault/a1/b2/c3/{id}.png`
+4. **Deterministic URLs**: URL path is derived from artwork ID: `/api/vault/21/32/{id}.png`
 
 #### Storage Limits
 
@@ -367,11 +367,11 @@ Makapix uses a **local vault** for image storage instead of third-party object s
 ```python
 # Save artwork to vault
 save_artwork_to_vault(artwork_id, file_content, mime_type)
-# Generates: /vault/a1/b2/c3/artwork-id.png
+# Generates: /vault/21/32/artwork-id.png
 
 # Get artwork URL
 get_artwork_url(artwork_id, extension)
-# Returns: /api/vault/a1/b2/c3/artwork-id.png
+# Returns: /api/vault/21/32/artwork-id.png
 
 # Delete artwork from vault
 delete_artwork_from_vault(artwork_id, extension)

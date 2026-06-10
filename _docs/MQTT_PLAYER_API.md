@@ -92,7 +92,7 @@ The response contains a list of posts, where each post is either an artwork or a
       "created_at": "2025-12-08T17:00:00Z",
       "storage_key": "uuid",
       "art_url": "https://...",
-      "storage_shard": "ab/cd/ef"
+      "storage_shard": "23/16"
     }
   ],
   "next_cursor": "50",
@@ -112,7 +112,7 @@ The response contains a list of posts, where each post is either an artwork or a
       "created_at": "2025-12-08T17:00:00Z",
       "storage_key": "uuid",
       "art_url": "https://...",
-      "storage_shard": "ab/cd/ef",
+      "storage_shard": "23/16",
       "owner_handle": "artist123",
       "width": 64,
       "height": 64
@@ -135,7 +135,7 @@ The response contains a list of posts, where each post is either an artwork or a
       "created_at": "2025-12-08T17:00:00Z",
       "storage_key": "uuid",
       "art_url": "https://...",
-      "storage_shard": "ab/cd/ef",
+      "storage_shard": "23/16",
       "owner_handle": "artist123",
       "metadata_modified_at": "2025-12-08T17:00:00Z",
       "artwork_modified_at": "2025-12-08T17:00:00Z",
@@ -401,7 +401,7 @@ Returns a single post object (artwork or playlist) with the same structure as `q
     "created_at": "2025-12-08T17:00:00Z",
     "storage_key": "uuid",
     "art_url": "https://...",
-    "storage_shard": "ab/cd/ef"
+    "storage_shard": "23/16"
   }
 }
 ```
@@ -417,7 +417,7 @@ Returns a single post object (artwork or playlist) with the same structure as `q
     "created_at": "2025-12-08T17:00:00Z",
     "storage_key": "uuid",
     "art_url": "https://...",
-    "storage_shard": "ab/cd/ef",
+    "storage_shard": "23/16",
     "owner_handle": "artist123",
     "width": 64,
     "height": 64
@@ -795,7 +795,7 @@ The script will run through all API operations and report success/failure for ea
 ### Version 1.4 (2026-01-24)
 - Added `include_fields` parameter to `query_posts` and `get_post` operations for optional field selection
 - Artwork responses now return minimal payload by default (only mandatory fields)
-- Added `storage_shard` as a mandatory field in artwork responses (for vault path resolution)
+- Added `storage_shard` as a mandatory field in artwork responses (opaque relative vault path — use verbatim, never parse or assume a fixed depth)
 - Mandatory fields (always included): `post_id`, `kind`, `created_at`, `storage_key`, `art_url`, `storage_shard`
 - Optional fields (opt-in via `include_fields`): `owner_handle`, `metadata_modified_at`, `artwork_modified_at`, `width`, `height`, `frame_count`, `dwell_time_ms`, `transparency_actual`, `alpha_actual`
 - Responses now exclude `null` values for cleaner payloads
