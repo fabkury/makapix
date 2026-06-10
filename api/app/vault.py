@@ -14,10 +14,11 @@ Sharding schemes (see docs/vault-resharding/):
 The stored ``posts.storage_shard`` value is the single source of truth for
 an artwork's canonical location and is treated as an opaque relative path
 ("aa/bb/cc" = v1, "aa/bb" = v2). During the resharding dual-location window
-(migration Phases 0-5) every write and delete in this module also touches
-the *twin* location — the same key's path under the other scheme — so the
-two copies never diverge. Dual-location logic lives only in these
-primitives, never at call sites.
+(migration Phases 0-5) writes and deletes in this module also touch the
+*twin* location — the same key's path under the other scheme — per the
+asset-level rule in ``should_mirror_to_twin``, so legacy assets' two copies
+never diverge while v2-born assets stay single-copy. Dual-location logic
+lives only in these primitives, never at call sites.
 """
 
 from __future__ import annotations
@@ -111,10 +112,11 @@ def compute_storage_shard(storage_key: UUID) -> str:
     creation; the value is persisted in posts.storage_shard and treated as
     opaque afterwards.
 
-    Currently v1; flips to v2 with migration Phase 0 PR-B
-    (docs/vault-resharding/PLAN.md §9).
+    v2 (2-level) since migration Phase 0 PR-B
+    (docs/vault-resharding/PLAN.md §9). Existing rows keep their stored v1
+    shards until the Phase 3 flip.
     """
-    return compute_storage_shard_v1(storage_key)
+    return compute_storage_shard_v2(storage_key)
 
 
 def derive_twin_shard(storage_key: UUID, storage_shard: str) -> str:
@@ -199,19 +201,38 @@ def write_file_atomic(file_path: Path, content: bytes) -> None:
         raise
 
 
+def should_mirror_to_twin(
+    item_id: UUID, canonical_shard: str, twin_folder: Path
+) -> bool:
+    """
+    Asset-level dual-write rule (DECISIONS.md D10): legacy-canonical (v1)
+    assets always maintain their v2 twin; v2-canonical assets mirror back
+    only when the asset has a *legacy presence* (any of its files at the
+    legacy path). v2-born assets get no v1 twin — the legacy tree stops
+    growing at the cutover.
+    """
+    if len(canonical_shard) == SHARD_V1_LEN:
+        return True
+    if not twin_folder.is_dir():
+        return False
+    return any(twin_folder.glob(f"{item_id}*"))
+
+
 def _mirror_to_twin(
     artwork_id: UUID, file_name: str, content: bytes, shard: str
 ) -> None:
     """
-    Dual-location window: mirror a freshly written file to the twin path.
-    Best-effort — a failed mirror is logged loudly but does not fail the
-    user's request; the reshard tooling's copy/verify/flip passes repair
-    missing or stale twins (DECISIONS.md D9/D10).
+    Dual-location window: mirror a freshly written file to the twin path
+    when the D10 rule applies. Best-effort — a failed mirror is logged
+    loudly but does not fail the user's request; the reshard tooling's
+    copy/verify/flip passes repair missing or stale twins (D9/D10).
     """
     try:
         twin_shard = derive_twin_shard(artwork_id, shard)
-        twin_path = get_vault_location() / Path(twin_shard) / file_name
-        write_file_atomic(twin_path, content)
+        twin_folder = get_vault_location() / Path(twin_shard)
+        if not should_mirror_to_twin(artwork_id, shard, twin_folder):
+            return
+        write_file_atomic(twin_folder / file_name, content)
     except Exception as e:
         logger.error(
             "Dual-write mirror failed for %s (canonical shard %s): %s",

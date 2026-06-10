@@ -21,7 +21,12 @@ from pathlib import Path
 from uuid import UUID
 
 from .settings import vault_public_base_url
-from .vault import compute_storage_shard, derive_twin_shard, write_file_atomic
+from .vault import (
+    compute_storage_shard,
+    derive_twin_shard,
+    should_mirror_to_twin,
+    write_file_atomic,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +149,9 @@ def save_blog_image(
         raise
 
     try:
-        write_file_atomic(twin, file_content)
+        canonical_shard = compute_storage_shard(image_id)
+        if should_mirror_to_twin(image_id, canonical_shard, twin.parent):
+            write_file_atomic(twin, file_content)
     except Exception as e:
         logger.error(f"Dual-write mirror failed for blog image {image_id}: {e}")
 

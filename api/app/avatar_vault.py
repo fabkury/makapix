@@ -23,7 +23,12 @@ from pathlib import Path
 from uuid import UUID
 
 from .settings import vault_public_base_url
-from .vault import compute_storage_shard, derive_twin_shard, write_file_atomic
+from .vault import (
+    compute_storage_shard,
+    derive_twin_shard,
+    should_mirror_to_twin,
+    write_file_atomic,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +116,9 @@ def save_avatar_image(avatar_id: UUID, file_content: bytes, mime_type: str) -> P
     logger.info(f"Saved avatar {avatar_id} to {canonical}")
 
     try:
-        write_file_atomic(twin, file_content)
+        canonical_shard = compute_storage_shard(avatar_id)
+        if should_mirror_to_twin(avatar_id, canonical_shard, twin.parent):
+            write_file_atomic(twin, file_content)
     except Exception as e:
         logger.error(f"Dual-write mirror failed for avatar {avatar_id}: {e}")
 

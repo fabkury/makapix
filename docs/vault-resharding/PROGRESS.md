@@ -1,9 +1,11 @@
 # Progress Log — Vault Resharding
 
-**Current phase: Phase 0 PR-A — implemented on dev, pending review/commit.**
-**Next action: owner reviews + commits PR-A; verify dashboard at
-development.makapix.club (mod dashboard → Downloads tab); then PR-B
-(v2 cutover: `compute_storage_shard` → v2 + tests).**
+**Current phase: Phase 0 complete on dev (PR-A + PR-B committed and live).**
+**Next action: owner eyeballs the dashboard at development.makapix.club
+(mod dashboard → Downloads tab) and ideally does one real test upload;
+then push `develop`, PR → `main`, deploy to prod (`cd /opt/makapix &&
+make deploy`), apply the same dev verifications on prod → that closes G0.
+After G0: Phase 1 (`reshard_vault.py copy`), dev first.**
 
 Newest entries first in the log; checklists mirror PLAN.md §9 gates.
 Update this file at the end of every working session on this effort.
@@ -125,8 +127,26 @@ Update this file at the end of every working session on this effort.
   changes** (HTTP 200 with immutable cache headers).
 - `make rebuild` run on dev to load the new code into running services.
 
+### 2026-06-10 — PR-A committed; PR-B implemented, verified, committed (Claude + fab)
+
+- PR-A committed as two commits on `develop`: `d3153c0` (plan docs) and
+  `c732d25` (implementation).
+- **PR-B (v2 cutover):** `compute_storage_shard` → v2; avatar/blog URL
+  builders follow automatically. D10 refined with the v2-born exemption:
+  `vault.should_mirror_to_twin` — v1-canonical assets always maintain
+  their v2 twin; v2-canonical assets mirror back only with legacy
+  presence; **v2-born assets stay single-copy** (legacy tree stops
+  growing at cutover). Tests updated/added (v2-born no-twin,
+  legacy-presence mirror, avatar equivalents).
+- Full suite green (250 tests) under the cutover; api+worker restarted on
+  dev (code is bind-mounted; web unchanged by PR-B).
+- **Live dev verification:** new-asset save through the primitive landed
+  at a 5-char v2 shard (`2c/20`), v2 file only, no v1 twin, dual-delete
+  cleanup OK; existing v1 post download endpoint returned 200
+  (`/api/d/zVQ`, 35 KB); MQTT subscribers healthy after restart.
+
 Open items carried forward:
-- PR-B: flip `compute_storage_shard` to v2 (+ avatar/blog URL builders
-  follow automatically) + v2-cutover tests → completes G0 after deploy.
-- G0 verification on dev after rebuild: new upload lands at 2-level and
-  round-trips; existing post downloads still work; dashboard renders.
+- G0 (gate): needs prod deploy + same verifications on prod; plus one
+  human-eye check of the dashboard panel and a real test upload on dev.
+- First nightly rollup under the new code runs tonight (01:00 ET window);
+  check the Downloads tab tomorrow for the first liveness-valid day.

@@ -104,14 +104,20 @@ From Phase 0 until Phase 6, the vault write/delete **primitives** (in
 operate on both locations. The twin rule is decided at the **asset level**,
 not per file: the canonical side is whatever `storage_shard` (or the stored
 URL) says; the derived twin path is computed via the explicit v1/v2
-derivation functions, and writes mirror to it **unconditionally** — a
-brand-new file (e.g. a freshly generated format variant or upscale) gets a
-twin even though none pre-existed. Deletes remove both candidate paths
-(including avatar replacement — otherwise the twin keeps serving a
-supposedly-deleted image, a privacy regression). All writes go through
-temp-file + fsync + atomic rename. *Amendment rationale: the original
-per-file "where the twin exists" condition silently exempted new sibling
-files, producing post-flip 404s.*
+derivation functions. **v1-canonical assets mirror to their v2 twin
+unconditionally** — a brand-new file (e.g. a freshly generated format
+variant or upscale) gets a twin even though none pre-existed.
+**v2-canonical assets mirror back to v1 only when the asset has a legacy
+presence** (any of its files exist at the v1 path — i.e. it predates the
+cutover or was flipped); v2-born assets stay single-copy so the legacy tree
+stops growing at the PR-B cutover (`vault.should_mirror_to_twin`). Deletes
+remove both candidate paths regardless (including avatar replacement —
+otherwise the twin keeps serving a supposedly-deleted image, a privacy
+regression). All writes go through temp-file + fsync + atomic rename.
+*Amendment rationale: the original per-file "where the twin exists"
+condition silently exempted new sibling files, producing post-flip 404s;
+the v2-born exemption was added at PR-B so new uploads don't pointlessly
+double-store for the whole dual window.*
 
 ## D11 — URL rewrites are pattern-scoped, never blind (planning; amended after critique)
 

@@ -29,12 +29,23 @@ def test_shard_constants_match_derivation():
     assert compute_storage_shard_v2(AVATAR_ID) == V2
 
 
-def test_save_writes_canonical_and_twin(vault):
+def test_new_avatar_is_v2_single_copy(vault):
+    """New avatars (fresh UUID, no legacy presence) land at the v2 canonical
+    path only — no v1 twin is created (D10)."""
     save_avatar_image(AVATAR_ID, b"png bytes", "image/png")
-    # Canonical follows compute_storage_shard (v1 until the PR-B cutover);
-    # both copies must exist either way.
-    assert (vault / "avatar" / V1 / f"{AVATAR_ID}.png").read_bytes() == b"png bytes"
     assert (vault / "avatar" / V2 / f"{AVATAR_ID}.png").read_bytes() == b"png bytes"
+    assert not (vault / "avatar" / V1).exists()
+
+
+def test_avatar_with_legacy_presence_mirrors_to_v1(vault):
+    """An avatar that already has files at the legacy path (pre-cutover
+    upload) keeps its v1 copy in sync on re-save."""
+    legacy = vault / "avatar" / V1 / f"{AVATAR_ID}.png"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_bytes(b"old")
+    save_avatar_image(AVATAR_ID, b"new bytes", "image/png")
+    assert (vault / "avatar" / V2 / f"{AVATAR_ID}.png").read_bytes() == b"new bytes"
+    assert legacy.read_bytes() == b"new bytes"
 
 
 def test_save_rejects_bad_mime(vault):

@@ -62,9 +62,9 @@ class TestShardDerivation:
             assert 0 <= int(a, 16) <= 0x3F
             assert 0 <= int(b, 16) <= 0x3F
 
-    def test_canonical_is_v1_until_cutover(self):
-        """PR-A: compute_storage_shard is still v1; PR-B flips it to v2."""
-        assert compute_storage_shard(WORKED_KEY) == compute_storage_shard_v1(WORKED_KEY)
+    def test_canonical_is_v2_since_cutover(self):
+        """PR-B: new assets shard under the 2-level scheme."""
+        assert compute_storage_shard(WORKED_KEY) == compute_storage_shard_v2(WORKED_KEY)
 
     def test_deterministic(self):
         key = UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
@@ -150,12 +150,24 @@ class TestDualWrite:
         twin = vault / "24/07" / f"{WORKED_KEY}.png"
         assert twin.read_bytes() == content
 
-    def test_save_with_v2_canonical_mirrors_to_v1(self, vault):
-        """Post-cutover: canonical v2, twin at the derived v1 path."""
+    def test_v2_canonical_with_legacy_presence_mirrors_to_v1(self, vault):
+        """A flipped (formerly v1) asset keeps its legacy sibling set in
+        sync: any file of the asset at the v1 path triggers the mirror."""
+        legacy_sibling = vault / "a4/47/ee" / f"{WORKED_KEY}.png"
+        legacy_sibling.parent.mkdir(parents=True)
+        legacy_sibling.write_bytes(b"old png")
+
         content = b"bytes"
         canonical = save_artwork_to_vault(WORKED_KEY, content, "gif", "24/07")
         assert canonical == vault / "24/07" / f"{WORKED_KEY}.gif"
         assert (vault / "a4/47/ee" / f"{WORKED_KEY}.gif").read_bytes() == content
+
+    def test_v2_born_asset_gets_no_v1_twin(self, vault):
+        """A v2-born asset (no legacy presence) must stay single-copy —
+        the legacy tree stops growing at the cutover (D10)."""
+        canonical = save_artwork_to_vault(WORKED_KEY, b"bytes", "gif", "24/07")
+        assert canonical == vault / "24/07" / f"{WORKED_KEY}.gif"
+        assert not (vault / "a4/47/ee").exists()
 
     def test_save_requires_shard(self, vault):
         with pytest.raises(ValueError):
