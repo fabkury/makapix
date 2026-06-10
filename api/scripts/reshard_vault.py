@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Vault resharding migration tool — see docs/vault-resharding/PLAN.md §6.
 
-Subcommands (this PR ships the non-destructive modes; flip/unflip/
-delete-legacy land in a later PR, gated on the plan's phase progression):
+Subcommands (delete-legacy/prune-empty-dirs land in a later PR, gated on
+the plan's phase progression):
 
     status      Reconciliation report with gate-mapped fields (DB vs disk,
                 both sharding schemes, orphans, out-of-scope paths).
@@ -10,10 +10,26 @@ delete-legacy land in a later PR, gated on the plan's phase progression):
                 identical v2 (2-level) twin. Never touches v1 files.
     verify      Phase 2: full sha256 pass over every referenced file pair;
                 writes a JSON manifest; exits nonzero on any failure.
+    flip        Phase 3: point the DB at the v2 locations. Per post:
+                re-verify/repair the v2 sibling set (D9), then rewrite
+                storage_shard + art_url. Rewrites the other D11 URL columns
+                (users.avatar_url, social_notifications.*, blog_posts
+                image_urls[] and body) pattern-scoped, and only when the v2
+                target file exists. Every change is appended to a JSONL
+                manifest BEFORE the DB write. Idempotent — re-run until the
+                summary reports no work.
+    unflip      Phase 3 rollback: consumes a flip manifest (never a blind
+                pattern rewrite — that would corrupt v2-born assets), in
+                reverse order. Restores a row only if its current value
+                still matches what flip wrote AND the v1 file still exists.
     clean-tmp   Remove stray atomic-write temp files (*.reshard-tmp).
 
 Common flags: --class artwork|avatar|blog_image (default: all), --dry-run,
---limit N, --key UUID, --json.
+--limit N, --key UUID, --json. Flip extras: --manifest PATH (output;
+required input for unflip), --batch N (commit interval, default 500),
+--null-dangling (NULL nullable scalar URL columns whose target file exists
+at NEITHER location — pre-existing broken thumbnails; recorded in the
+manifest).
 
 Usage (inside the api container):
 
@@ -22,6 +38,12 @@ Usage (inside the api container):
     docker compose exec api python scripts/reshard_vault.py copy --dry-run
     docker compose exec api python scripts/reshard_vault.py copy --limit 10
     docker compose exec api python scripts/reshard_vault.py verify
+    # Phase 3 (after pg_dump; see PLAN.md §9):
+    docker compose exec api python scripts/reshard_vault.py flip --dry-run
+    docker compose exec api python scripts/reshard_vault.py flip --limit 10
+    docker compose exec api python scripts/reshard_vault.py flip
+    docker compose exec api python scripts/reshard_vault.py unflip \
+        --manifest /workspace/api/reshard-reports/flip-manifest-<ts>.jsonl
 
 Safety invariants (PLAN.md §5):
 - I2: stored values are the source of truth; this tool flags (never "fixes")
@@ -51,6 +73,7 @@ sys.path.insert(0, "/workspace/api")
 
 from sqlalchemy import text  # noqa: E402
 
+from app import models  # noqa: E402
 from app.db import SessionLocal  # noqa: E402
 from app.vault import (  # noqa: E402
     TMP_SUFFIX,
@@ -625,6 +648,402 @@ def mode_verify(db, args) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# Phase 3: flip / unflip
+# ---------------------------------------------------------------------------
+
+
+class FlipManifest:
+    """Append-only JSONL record of every DB value the flip changes.
+
+    Each line: {"table", "pk", "column", "old", "new"}. Written and flushed
+    BEFORE the corresponding DB write, so the manifest is always a superset
+    of applied changes — `unflip` skips entries whose current value doesn't
+    match, so replaying a too-long manifest is safe.
+    """
+
+    def __init__(self, path: Path):
+        self.path = path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._fh = open(path, "a", encoding="utf-8")
+
+    def record(self, table: str, pk, column: str, old, new) -> None:
+        self._fh.write(
+            json.dumps(
+                {
+                    "table": table,
+                    "pk": str(pk),
+                    "column": column,
+                    "old": old,
+                    "new": new,
+                }
+            )
+            + "\n"
+        )
+        self._fh.flush()
+        os.fsync(self._fh.fileno())
+
+    def close(self) -> None:
+        self._fh.close()
+
+
+def _parsed_paths(parsed: dict) -> tuple[Path, Path]:
+    """(v1_path, v2_path) for a parsed vault URL."""
+    key = UUID(parsed["uuid"])
+    base = class_base(parsed["cls"])
+    name = f"{parsed['uuid']}{'_upscaled' if parsed['upscaled'] else ''}{parsed['ext']}"
+    return (
+        base / compute_storage_shard_v1(key) / name,
+        base / compute_storage_shard_v2(key) / name,
+    )
+
+
+def _rewrite_v1_url(value: str, parsed: dict) -> str | None:
+    """Rewrite the parsed v1 vault URL inside ``value`` to its v2 form,
+    preserving the prefix style (absolute vault base or /api/vault).
+    Returns None if the expected fragment is not present verbatim."""
+    key = UUID(parsed["uuid"])
+    old_frag = "/".join(parsed["components"]) + "/" + parsed["uuid"]
+    new_frag = compute_storage_shard_v2(key) + "/" + parsed["uuid"]
+    if old_frag not in value:
+        return None
+    return value.replace(old_frag, new_frag)
+
+
+def _check_v1_url_target(parsed: dict, args, counters) -> str | None:
+    """Shared D11 gate for URL rewrites. Returns:
+    "rewrite" | "null" (dangling, --null-dangling active) | None (skip)."""
+    key = UUID(parsed["uuid"])
+    if "/".join(parsed["components"]) != compute_storage_shard_v1(key):
+        counters["skipped_anomalous_url"] += 1
+        return None
+    v1_path, v2_path = _parsed_paths(parsed)
+    if v2_path.exists():
+        return "rewrite"
+    if args.null_dangling and not v1_path.exists():
+        return "null"
+    counters["skipped_missing_v2_target"] += 1
+    logger.warning(
+        "flip: v2 target missing for %s (v1 exists: %s) — skipped",
+        v2_path,
+        v1_path.exists(),
+    )
+    return None
+
+
+def _reverify_post_siblings(post, v2_shard: str, dry_run: bool, counters) -> None:
+    """D9: immediately before flipping a post, ensure every file of its v1
+    sibling set has an identical v2 twin; copy missing twins, repair stale
+    ones. Globs the v1 folder (not post_files) so late-created variants and
+    the upscaled file are covered."""
+    v1_folder = get_vault_location() / post.storage_shard
+    v2_folder = get_vault_location() / v2_shard
+    if not v1_folder.is_dir():
+        counters["posts_no_v1_files"] += 1
+        return
+    for v1_file in sorted(v1_folder.glob(f"{post.storage_key}*")):
+        if v1_file.name.endswith(TMP_SUFFIX):
+            continue
+        v2_file = v2_folder / v1_file.name
+        if v2_file.exists() and sha256_file(v1_file) == sha256_file(v2_file):
+            continue
+        if dry_run:
+            counters["would_repair_twins"] += 1
+        else:
+            write_file_atomic(v2_file, v1_file.read_bytes())
+            counters["repaired_twins"] += 1
+            logger.info("flip: repaired twin %s", v2_file)
+
+
+def mode_flip(db, args) -> int:
+    _, db_report = collect_refs(db, args.classes)
+    if db_report["shard_derivation_mismatches"]:
+        logger.error(
+            "Refusing to flip: %d post(s) whose stored shard disagrees with "
+            "the sha256 derivation. Resolve these first (see `status`).",
+            len(db_report["shard_derivation_mismatches"]),
+        )
+        return 1
+
+    counters: dict = defaultdict(int)
+    manifest: FlipManifest | None = None
+    if not args.dry_run:
+        manifest = FlipManifest(Path(args.manifest))
+        logger.info("Flip manifest: %s", manifest.path)
+
+    def commit_batch() -> None:
+        counters["_pending"] += 1
+        if counters["_pending"] >= args.batch:
+            db.commit()
+            counters["_pending"] = 0
+
+    # --- 1. posts: storage_shard + art_url ---------------------------------
+    if "artwork" in args.classes:
+        posts = (
+            db.query(models.Post)
+            .filter(
+                models.Post.kind == "artwork",
+                models.Post.storage_key.isnot(None),
+                models.Post.storage_shard.isnot(None),
+            )
+            .order_by(models.Post.id)
+            .all()
+        )
+        for post in posts:
+            if len(post.storage_shard) != 8:
+                continue  # already flipped or v2-born
+            if args.key and str(post.storage_key).lower() != args.key:
+                continue
+            if args.limit and counters["posts_flipped"] >= args.limit:
+                counters["limit_reached"] = 1
+                break
+
+            v1_shard = post.storage_shard
+            v2_shard = compute_storage_shard_v2(post.storage_key)
+
+            # art_url decision first — a post whose art_url can't be safely
+            # rewritten is skipped whole, never half-flipped.
+            new_art_url = None
+            if post.art_url:
+                parsed = parse_vault_url(post.art_url)
+                if parsed and parsed["level"] == 3:
+                    if parsed["uuid"] != str(post.storage_key).lower():
+                        counters["skipped_art_url_uuid_mismatch"] += 1
+                        logger.warning(
+                            "flip: post %d art_url uuid != storage_key — skipped",
+                            post.id,
+                        )
+                        continue
+                    new_art_url = _rewrite_v1_url(post.art_url, parsed)
+                    if new_art_url is None:
+                        counters["skipped_art_url_rewrite_failed"] += 1
+                        continue
+                # level-2 or non-vault URL: leave art_url untouched
+
+            _reverify_post_siblings(post, v2_shard, args.dry_run, counters)
+
+            if args.dry_run:
+                counters["posts_would_flip"] += 1
+                continue
+
+            manifest.record("posts", post.id, "storage_shard", v1_shard, v2_shard)
+            post.storage_shard = v2_shard
+            if new_art_url:
+                manifest.record("posts", post.id, "art_url", post.art_url, new_art_url)
+                post.art_url = new_art_url
+            counters["posts_flipped"] += 1
+            commit_batch()
+        db.commit()
+
+    # --- 2. scalar URL columns ---------------------------------------------
+    scalar_targets = [
+        (models.User, "users", "avatar_url", True),
+        (models.SocialNotification, "social_notifications", "actor_avatar_url", True),
+        (models.SocialNotification, "social_notifications", "content_art_url", True),
+    ]
+    for model, table, attr, nullable in scalar_targets:
+        col = getattr(model, attr)
+        rows = db.query(model).filter(col.isnot(None), col != "").all()
+        for row in rows:
+            value = getattr(row, attr)
+            parsed = parse_vault_url(value)
+            if not parsed or parsed["level"] != 3:
+                continue
+            if parsed["cls"] not in args.classes:
+                continue
+            action = _check_v1_url_target(parsed, args, counters)
+            if action is None:
+                continue
+            if action == "null" and not nullable:
+                counters["skipped_missing_v2_target"] += 1
+                continue
+            new_value = None if action == "null" else _rewrite_v1_url(value, parsed)
+            if action == "rewrite" and new_value is None:
+                counters["skipped_url_rewrite_failed"] += 1
+                continue
+            if args.dry_run:
+                counters[f"would_rewrite:{table}.{attr}"] += 1
+                continue
+            manifest.record(table, row.id, attr, value, new_value)
+            setattr(row, attr, new_value)
+            counters[
+                f"{'nulled' if action == 'null' else 'rewritten'}:{table}.{attr}"
+            ] += 1
+            commit_batch()
+        db.commit()
+
+    # --- 3. blog_posts: image_urls[] and body markdown ----------------------
+    if "blog_image" in args.classes:
+        for row in db.query(models.BlogPost).order_by(models.BlogPost.id).all():
+            # image_urls[]
+            old_list = list(row.image_urls or [])
+            new_list = []
+            changed = False
+            for element in old_list:
+                parsed = parse_vault_url(element)
+                if parsed and parsed["level"] == 3 and parsed["cls"] in args.classes:
+                    action = _check_v1_url_target(parsed, args, counters)
+                    if action == "rewrite":
+                        rewritten = _rewrite_v1_url(element, parsed)
+                        if rewritten:
+                            new_list.append(rewritten)
+                            changed = True
+                            continue
+                    # dangling array elements are left in place (arrays
+                    # can't hold NULL meaningfully) and counted above
+                new_list.append(element)
+            if changed:
+                if args.dry_run:
+                    counters["would_rewrite:blog_posts.image_urls"] += 1
+                else:
+                    manifest.record(
+                        "blog_posts", row.id, "image_urls", old_list, new_list
+                    )
+                    row.image_urls = new_list
+                    counters["rewritten:blog_posts.image_urls"] += 1
+                    commit_batch()
+
+            # body markdown
+            body = row.body or ""
+            new_body = body
+            for m in _URL_IN_TEXT_RE.finditer(body):
+                parsed = parse_vault_url(m.group(1))
+                if not parsed or parsed["level"] != 3:
+                    continue
+                if parsed["cls"] not in args.classes:
+                    continue
+                if _check_v1_url_target(parsed, args, counters) != "rewrite":
+                    continue
+                rewritten = _rewrite_v1_url(m.group(1), parsed)
+                if rewritten:
+                    new_body = new_body.replace(m.group(1), rewritten)
+            if new_body != body:
+                if args.dry_run:
+                    counters["would_rewrite:blog_posts.body"] += 1
+                else:
+                    manifest.record("blog_posts", row.id, "body", body, new_body)
+                    row.body = new_body
+                    counters["rewritten:blog_posts.body"] += 1
+                    commit_batch()
+        db.commit()
+
+    if manifest:
+        manifest.close()
+    counters.pop("_pending", None)
+    summary = dict(counters)
+    if manifest:
+        summary["manifest"] = str(manifest.path)
+    print(json.dumps(summary, indent=2) if args.json else summary)
+    return 0
+
+
+_UNFLIP_MODELS = {
+    "posts": models.Post,
+    "users": models.User,
+    "social_notifications": models.SocialNotification,
+    "blog_posts": models.BlogPost,
+}
+
+
+def _unflip_pk(table: str, pk: str):
+    return UUID(pk) if table == "social_notifications" else int(pk)
+
+
+def mode_unflip(db, args) -> int:
+    if not args.manifest or not Path(args.manifest).is_file():
+        logger.error("unflip requires --manifest pointing at a flip manifest")
+        return 1
+
+    entries = []
+    with open(args.manifest, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if line:
+                entries.append(json.loads(line))
+
+    counters: dict = defaultdict(int)
+    pending = 0
+    # Reverse order: later changes unwind first.
+    for entry in reversed(entries):
+        model = _UNFLIP_MODELS.get(entry["table"])
+        if model is None:
+            counters["skipped_unknown_table"] += 1
+            continue
+        row = db.get(model, _unflip_pk(entry["table"], entry["pk"]))
+        if row is None:
+            counters["skipped_missing_row"] += 1
+            continue
+        current = getattr(row, entry["column"])
+        if isinstance(current, list):
+            current = list(current)
+        if current != entry["new"]:
+            counters["skipped_changed_since_flip"] += 1
+            logger.warning(
+                "unflip: %s %s.%s changed since flip — skipped",
+                entry["table"],
+                entry["pk"],
+                entry["column"],
+            )
+            continue
+
+        # Safety: never point the DB at a v1 location whose file is gone.
+        old = entry["old"]
+        if entry["column"] == "storage_shard":
+            v1_folder = get_vault_location() / old
+            if not (v1_folder.is_dir() and any(v1_folder.glob(f"{row.storage_key}*"))):
+                counters["skipped_no_v1_file"] += 1
+                logger.warning(
+                    "unflip: post %s has no files at v1 shard %s — skipped",
+                    entry["pk"],
+                    old,
+                )
+                continue
+        elif isinstance(old, str):
+            parsed = parse_vault_url(old)
+            if (
+                parsed
+                and parsed["level"] == 3
+                and not _parsed_paths(parsed)[0].exists()
+            ):
+                counters["skipped_no_v1_file"] += 1
+                logger.warning(
+                    "unflip: v1 file gone for %s.%s (%s) — skipped",
+                    entry["table"],
+                    entry["column"],
+                    entry["pk"],
+                )
+                continue
+        elif isinstance(old, list):
+            missing = False
+            for element in old:
+                parsed = parse_vault_url(element)
+                if (
+                    parsed
+                    and parsed["level"] == 3
+                    and not _parsed_paths(parsed)[0].exists()
+                ):
+                    missing = True
+                    break
+            if missing:
+                counters["skipped_no_v1_file"] += 1
+                continue
+
+        if args.dry_run:
+            counters["would_restore"] += 1
+            continue
+        setattr(row, entry["column"], old)
+        counters["restored"] += 1
+        pending += 1
+        if pending >= args.batch:
+            db.commit()
+            pending = 0
+    db.commit()
+
+    summary = dict(counters)
+    print(json.dumps(summary, indent=2) if args.json else summary)
+    return 0
+
+
 def mode_clean_tmp(db, args) -> int:
     disk = walk_disk(args.classes)
     removed = 0
@@ -653,7 +1072,10 @@ def mode_clean_tmp(db, args) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("mode", choices=["status", "copy", "verify", "clean-tmp"])
+    parser.add_argument(
+        "mode",
+        choices=["status", "copy", "verify", "flip", "unflip", "clean-tmp"],
+    )
     parser.add_argument(
         "--class",
         dest="classes",
@@ -670,6 +1092,20 @@ def main() -> int:
         default=f"/workspace/api/reshard-reports/verify-{time.strftime('%Y%m%d-%H%M%S')}.json",
         help="Verification manifest path (verify mode)",
     )
+    parser.add_argument(
+        "--manifest",
+        default=f"/workspace/api/reshard-reports/flip-manifest-{time.strftime('%Y%m%d-%H%M%S')}.jsonl",
+        help="Flip manifest path (output for flip; required input for unflip)",
+    )
+    parser.add_argument(
+        "--batch", type=int, default=500, help="DB commit interval (flip/unflip)"
+    )
+    parser.add_argument(
+        "--null-dangling",
+        action="store_true",
+        help="flip: NULL nullable scalar URL columns whose target file exists "
+        "at NEITHER location (pre-existing broken references)",
+    )
     args = parser.parse_args()
     if not args.classes:
         args.classes = list(ASSET_CLASSES)
@@ -682,6 +1118,8 @@ def main() -> int:
             "status": mode_status,
             "copy": mode_copy,
             "verify": mode_verify,
+            "flip": mode_flip,
+            "unflip": mode_unflip,
             "clean-tmp": mode_clean_tmp,
         }[args.mode](db, args)
     finally:

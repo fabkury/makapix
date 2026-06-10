@@ -209,10 +209,32 @@ archived in each env's `api/reshard-reports/phase1-baseline-{dev,prod}.json`.
   both environments. Both URL forms are live. The DB still references v1
   everywhere (flip pending).**
 
+### 2026-06-10 — flip/unflip tool modes implemented (Claude + fab)
+
+- `reshard_vault.py` gains `flip` and `unflip` per PLAN §6 (+13 tests
+  against the real test DB):
+  - flip: JSONL manifest written+fsynced BEFORE each DB write; per-post D9
+    re-verify globs the actual v1 sibling set and repairs missing/stale v2
+    twins; posts whose art_url can't be safely rewritten are skipped whole
+    (never half-flipped); pattern-scoped rewrites of all D11 columns incl.
+    blog body, gated on the v2 target file existing; idempotent.
+  - `--null-dangling` (opt-in): NULLs nullable scalar URL columns whose
+    file exists at NEITHER location (the documented prod dangling avatar
+    ref) — without it, `v1_url_refs` can never reach 0 at G3.
+  - unflip: manifest-driven (never a blind rewrite), reverse order, skips
+    rows changed since flip, refuses to restore a row whose v1 files are
+    gone.
+- Dev dry-run sanity: 2,696 posts + 8/36/58/1/1 column rewrites — matches
+  `status` predictions exactly. `would_repair_twins=5224` is dev-only:
+  D9 re-verify covers each post's full on-disk sibling set, which on dev
+  exceeds its sparse `post_files` (the same divergence behind dev's orphan
+  count); expect ~0 on prod.
+
 Open items carried forward:
 - Owner: eyeball the dashboard panel once (Downloads tab, both envs).
-- Next code work: flip/unflip modes in `reshard_vault.py` (+ tests), per
-  PLAN.md §6 — manifest-driven, per-row re-verify, pattern-scoped D11
-  rewrites with target-exists check.
-- At flip time: handle the dangling avatar reference (flip skips it; the
-  log entry is the record).
+- Phase 3 execution when scheduled (after PR merge + prod pull/restart):
+  `pg_dump` both DBs → dev rehearsal `flip --limit 10` → full `flip` →
+  `verify` → `unflip` → `verify` → `flip` → checks (web, API payloads,
+  player sync, avatars, blog) → prod quiet-window flip with
+  `--null-dangling` decision → re-run flip+status until `v1_url_refs`
+  stays 0 → watch a fielded player fetch v2 → G3.
