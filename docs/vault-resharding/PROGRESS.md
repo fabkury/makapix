@@ -1,11 +1,11 @@
 # Progress Log — Vault Resharding
 
-**Current phase: Phase 0 complete on dev (PR-A + PR-B committed and live).**
-**Next action: owner eyeballs the dashboard at development.makapix.club
-(mod dashboard → Downloads tab) and ideally does one real test upload;
-then push `develop`, PR → `main`, deploy to prod (`cd /opt/makapix &&
-make deploy`), apply the same dev verifications on prod → that closes G0.
-After G0: Phase 1 (`reshard_vault.py copy`), dev first.**
+**Current phase: Phases 0–2 COMPLETE on dev and prod (2026-06-10). The
+vault is fully dual-located; DB still points at v1.**
+**Next action: (a) owner eyeballs the dashboard panel (Downloads tab);
+(b) implement the flip/unflip tool modes (small PR — see PLAN.md §6) so
+Phase 3 is ready; (c) schedule the Phase 3 flip (pg_dump first; dev
+rehearsal incl. flip→verify→unflip→verify→flip).**
 
 Newest entries first in the log; checklists mirror PLAN.md §9 gates.
 Update this file at the end of every working session on this effort.
@@ -14,13 +14,16 @@ Update this file at the end of every working session on this effort.
 
 | Gate | Description | Dev | Prod |
 |---|---|---|---|
-| G0 | Groundwork deployed (PR-A refactor/instrumentation + PR-B v2 cutover) | ☐ | ☐ |
-| G1 | All v1 assets copied to v2 locations (`v1_only_files` = 0) | ☐ | ☐ |
-| G2 | Duplication verified (sha256, reconciliation, orphans recorded) | ☐ | ☐ |
+| G0 | Groundwork deployed (PR-A refactor/instrumentation + PR-B v2 cutover) | ✅ 2026-06-10 | ✅ 2026-06-10 |
+| G1 | All v1 assets copied to v2 locations (`v1_only_files` = 0) | ✅ 2026-06-10 | ✅ 2026-06-10 |
+| G2 | Duplication verified (sha256, reconciliation, orphans recorded) | ✅ 2026-06-10 | ✅ 2026-06-10 ¹ |
 | G3 | DB references flipped; `v1_url_refs` = 0 stable; fielded-player v2 fetch confirmed | ☐ | ☐ |
 | G4 | ≥14 consecutive liveness-valid days of 0 non-bot legacy downloads (evidence archived) | — | ☐ |
 | G5 | Legacy copies deleted; 7 days healthy | ☐ | ☐ |
 | G6 | Code cleanup merged; docs closed out | ☐ | ☐ |
+
+¹ G2 prod carries one documented exception: a dangling reference (see
+2026-06-10 Phase 1–2 log entry), not a copy/verify defect.
 
 ## Log
 
@@ -145,8 +148,93 @@ Update this file at the end of every working session on this effort.
   cleanup OK; existing v1 post download endpoint returned 200
   (`/api/d/zVQ`, 35 KB); MQTT subscribers healthy after restart.
 
+### 2026-06-10 — G0 closed: dev e2e upload + prod deploy + verifications (Claude + fab)
+
+- **Dev e2e upload** (post 3425, hidden, deleted after): landed at v2 shard
+  `2b/1a` (5 chars in DB); worker generated all 4 format variants +
+  upscaled at v2 only — **no v1 twin**; `art_url` served 200 via Caddy;
+  `/api/d/MU3S` 200 (authed; anonymous 404 was the hidden_by_user
+  visibility check working). Moderator permanent-delete removed every copy
+  (dual-delete verified through the API).
+- **Pushed develop; PR #190 merged to main; prod deployed** via
+  `make deploy` (migration `a71f178d6e9b` auto-applied). Prod MQTT
+  subscribers needed the known post-broker-restart api restart; settled.
+- **Prod hotfix (PR #191):** rollup returned all zeros on prod — Caddy
+  tags per-site log outputs `http.log.access.log0/.log1`, and the
+  exact-match logger filter dropped every vault-subdomain entry (dev's
+  genuinely-quiet log masked it). Prefix-match fix + regression test;
+  merged, pulled on prod, api+worker restarted.
+- **Prod verifications, all green:**
+  - existing v1 post download 200; legacy `/api/vault/...` form serves 200
+    (live specimen of the second-feed population);
+  - v2-born primitive smoke: shard `06/1c`, v2-only, dual-delete clean;
+  - `status` baseline: **2,871 posts / 11,324 referenced files / 11,329 on
+    disk / 0 NULL shards / 0 derivation mismatches / 0 anomalous URL refs /
+    only 6 orphans** (dev's 5,233 were dev-divergence noise, R16);
+    v1 URL refs: art_url 2,871, avatars 15, notifications 322+461, blog 1+1;
+  - rollup for 2026-06-09: 2,491 artworks, 3,131 human downloads, 3,144
+    legacy non-bot hits (incl. avatar 13), 0 misses, streak 0 — correct,
+    legacy traffic is alive until the Phase 3 flip;
+  - aggregate zero-rows present for all 6 class×level combos;
+  - `/admin/vault-sharding-stats` 401 anonymous.
+
+### 2026-06-10 — Phases 1–2 executed on dev and prod (Claude + fab)
+
+Pre-flight: 8.3–8.4 GB free on both vault mounts (~1 GB needed). Baselines
+archived in each env's `api/reshard-reports/phase1-baseline-{dev,prod}.json`.
+
+- **Dev copy:** `--limit 10` smoke → full run: 5,536 copied (+13 from the
+  earlier smoke, +1 `optional_absent` = an upscaled that was never
+  generated), 0 missing sources; converge re-run: 5,549 already_twinned,
+  0 work. Post-state: twinned=5,549, v1-only=5,233 = exactly the orphan
+  set (dev/prod divergence residue, R16).
+- **Dev verify:** 5,549/5,549 sha256 matches, 0 failures
+  (`phase2-verify-dev.json`).
+- **Prod copy:** `--limit 10` smoke → full run: 11,313 copied (+10 smoke),
+  converge re-run clean. **1 missing source**: avatar
+  `ef0124df-…gif` is referenced only by old
+  `social_notifications.actor_avatar_url` snapshots and exists at NEITHER
+  location — a pre-existing dangling reference (those thumbnails already
+  404 today). Phase 3's flip will skip+log it per D11's target-exists
+  check; no action needed.
+- **Prod verify:** 11,323/11,324 verified, the single failure is the
+  documented dangling reference (`phase2-verify-prod.json`).
+- **Prod orphans (6) identified and explained:** 2 artwork GIFs whose
+  posts were permanently deleted (no DB rows) + 4 avatar files replaced
+  before deletes were robust (no `users.avatar_url` references). True
+  residue; Phase 5 sweeps them after review.
+- Spot-check: freshly copied prod v2 file served 200 via
+  vault.makapix.club.
+- **State now: every servable v1 file has a sha256-verified v2 twin in
+  both environments. Both URL forms are live. The DB still references v1
+  everywhere (flip pending).**
+
+### 2026-06-10 — flip/unflip tool modes implemented (Claude + fab)
+
+- `reshard_vault.py` gains `flip` and `unflip` per PLAN §6 (+13 tests
+  against the real test DB):
+  - flip: JSONL manifest written+fsynced BEFORE each DB write; per-post D9
+    re-verify globs the actual v1 sibling set and repairs missing/stale v2
+    twins; posts whose art_url can't be safely rewritten are skipped whole
+    (never half-flipped); pattern-scoped rewrites of all D11 columns incl.
+    blog body, gated on the v2 target file existing; idempotent.
+  - `--null-dangling` (opt-in): NULLs nullable scalar URL columns whose
+    file exists at NEITHER location (the documented prod dangling avatar
+    ref) — without it, `v1_url_refs` can never reach 0 at G3.
+  - unflip: manifest-driven (never a blind rewrite), reverse order, skips
+    rows changed since flip, refuses to restore a row whose v1 files are
+    gone.
+- Dev dry-run sanity: 2,696 posts + 8/36/58/1/1 column rewrites — matches
+  `status` predictions exactly. `would_repair_twins=5224` is dev-only:
+  D9 re-verify covers each post's full on-disk sibling set, which on dev
+  exceeds its sparse `post_files` (the same divergence behind dev's orphan
+  count); expect ~0 on prod.
+
 Open items carried forward:
-- G0 (gate): needs prod deploy + same verifications on prod; plus one
-  human-eye check of the dashboard panel and a real test upload on dev.
-- First nightly rollup under the new code runs tonight (01:00 ET window);
-  check the Downloads tab tomorrow for the first liveness-valid day.
+- Owner: eyeball the dashboard panel once (Downloads tab, both envs).
+- Phase 3 execution when scheduled (after PR merge + prod pull/restart):
+  `pg_dump` both DBs → dev rehearsal `flip --limit 10` → full `flip` →
+  `verify` → `unflip` → `verify` → `flip` → checks (web, API payloads,
+  player sync, avatars, blog) → prod quiet-window flip with
+  `--null-dangling` decision → re-run flip+status until `v1_url_refs`
+  stays 0 → watch a fielded player fetch v2 → G3.
