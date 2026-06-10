@@ -36,6 +36,12 @@ For physical players over HTTP (no TLS overhead):
 http://vault.makapix.club/{storage_shard}/{storage_key}.{format}
 ```
 
+> **`storage_shard` is opaque.** Treat it as a relative path fragment and
+> substitute it verbatim. Do not parse it, validate its length, or assume a
+> fixed number of `/`-separated components — the server may change the
+> sharding depth (e.g. `"a1/b2/c3"` today, `"21/32"` in the future), and
+> URLs you have already received remain valid either way.
+
 ### URL Components
 
 From the query response:

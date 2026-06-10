@@ -5,6 +5,7 @@ import Layout from '../components/Layout';
 import StatsPanel from '../components/StatsPanel';
 import SiteMetricsPanel from '../components/SiteMetricsPanel';
 import DownloadStatsPanel from '../components/DownloadStatsPanel';
+import VaultShardingPanel from '../components/VaultShardingPanel';
 import { authenticatedFetch, clearTokens } from '../lib/api';
 import { ensureCompatibleArtUrl } from '../utils/imageCompat';
 
@@ -897,7 +898,10 @@ export default function ModDashboardPage() {
           )}
 
           {activeTab === 'downloads' && (
-            <DownloadStatsPanel />
+            <>
+              <DownloadStatsPanel />
+              <VaultShardingPanel />
+            </>
           )}
         </div>
       </div>

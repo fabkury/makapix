@@ -1203,6 +1203,70 @@ class DownloadStatsDaily(Base):
     )
 
 
+class VaultShardingStatsDaily(Base):
+    """Daily vault downloads split by sharding scheme (resharding migration).
+
+    Instrumentation for the vault resharding migration
+    (docs/vault-resharding/): the retirement of legacy 3-level paths is gated
+    on this table showing zero non-bot level-3 downloads for 14+ consecutive
+    liveness-valid days.
+
+    Two kinds of rows, distinguished by post_id:
+    - Aggregate rows (post_id IS NULL): one per (date, asset_class,
+      shard_level), upserted EVERY day including all-zero days — a missing
+      day means "rollup did not run", never "quiet day". Feeds the trend
+      chart and the retirement streak.
+    - Per-post rows (post_id set): written only for level-3 artwork hits;
+      feeds the "legacy stragglers" drill-down.
+
+    Counting semantics differ deliberately from DownloadStatsDaily:
+    GET/HEAD with status 200/206/304 all count as downloads (a 304
+    revalidation is a live reference to the URL), and 404s are counted in
+    `misses` on aggregate rows (a level-3 404 during the dual window signals
+    a dual-delete/copy bug; after retirement it confirms residual demand).
+    """
+
+    __tablename__ = "vault_sharding_stats_daily"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(Date, nullable=False, index=True)
+    asset_class = Column(String(16), nullable=False)  # artwork | avatar | blog_image
+    shard_level = Column(SmallInteger, nullable=False)  # 2 | 3
+    post_id = Column(
+        Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+
+    downloads_human = Column(Integer, nullable=False, default=0)
+    downloads_bot = Column(Integer, nullable=False, default=0)
+    misses = Column(Integer, nullable=False, default=0)
+
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    post = relationship(
+        "Post",
+        backref=backref("vault_sharding_stats_daily", passive_deletes=True),
+        passive_deletes=True,
+    )
+
+    __table_args__ = (
+        # NULLS NOT DISTINCT so the aggregate rows (post_id IS NULL) also
+        # collapse onto a single upsertable row per (date, class, level).
+        UniqueConstraint(
+            "date",
+            "asset_class",
+            "shard_level",
+            "post_id",
+            name="uq_vault_sharding_stats_daily",
+            postgresql_nulls_not_distinct=True,
+        ),
+    )
+
+
 class PostStatsCache(Base):
     """Cached computed statistics for a post."""
 

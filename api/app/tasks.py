@@ -2733,9 +2733,6 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
                 continue
 
             try:
-                # Create target directory if needed
-                target_path.parent.mkdir(parents=True, exist_ok=True)
-
                 output = BytesIO()
 
                 if is_animated:
@@ -2825,9 +2822,14 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
                                 img = img.convert("RGB")
                         img.save(output, format="BMP")
 
-                # Write to file
+                # Write to file (vault primitive: atomic + twin mirror)
                 converted_bytes = len(output.getvalue())
-                target_path.write_bytes(output.getvalue())
+                vault.save_artwork_to_vault(
+                    post.storage_key,
+                    output.getvalue(),
+                    target_format,
+                    storage_shard=post.storage_shard,
+                )
                 formats_available.append(target_format)
                 conversion_results[target_format] = "created"
 
@@ -2871,7 +2873,6 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
                     new_width = width * scale_factor
                     new_height = height * scale_factor
 
-                    upscaled_path.parent.mkdir(parents=True, exist_ok=True)
                     output = BytesIO()
 
                     # Determine if output should be lossy or lossless
@@ -2931,7 +2932,11 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
                             quality=90 if use_lossy else 100,
                         )
 
-                    upscaled_path.write_bytes(output.getvalue())
+                    vault.save_upscaled_artwork(
+                        post.storage_key,
+                        output.getvalue(),
+                        storage_shard=post.storage_shard,
+                    )
                     upscaled_result = (
                         f"created ({new_width}x{new_height}, scale={scale_factor})"
                     )
@@ -3620,9 +3625,7 @@ def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
         from .services.player_teardown import teardown_player
 
         players = (
-            db.query(models.Player)
-            .filter(models.Player.owner_id == user_id)
-            .all()
+            db.query(models.Player).filter(models.Player.owner_id == user_id).all()
         )
         for player in players:
             try:

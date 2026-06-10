@@ -1,77 +1,203 @@
-"""Test vault storage utilities."""
+"""Test vault storage utilities, including the resharding dual-location
+primitives (docs/vault-resharding/)."""
 
 import hashlib
 from uuid import UUID
 
 import pytest
 
-from app.vault import compute_storage_shard, hash_artwork_id
+from app.vault import (
+    TMP_SUFFIX,
+    compute_storage_shard,
+    compute_storage_shard_v1,
+    compute_storage_shard_v2,
+    delete_all_artwork_formats,
+    delete_artwork_from_vault,
+    derive_twin_shard,
+    get_artwork_file_path,
+    get_artwork_url,
+    get_upscaled_file_path,
+    hash_artwork_id,
+    save_artwork_to_vault,
+    save_upscaled_artwork,
+    write_file_atomic,
+)
+
+# Worked example from docs/vault-resharding/PLAN.md §2:
+# sha256("a1b2c3d4-e5f6-7890-abcd-ef1234567890") starts a447ee...
+WORKED_KEY = UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
 
 
-class TestComputeStorageShard:
-    """Tests for compute_storage_shard function."""
+@pytest.fixture()
+def vault(tmp_path, monkeypatch):
+    """Point VAULT_LOCATION at a temp dir."""
+    monkeypatch.setenv("VAULT_LOCATION", str(tmp_path))
+    return tmp_path
 
-    def test_returns_correct_format(self):
-        """Test that compute_storage_shard returns 'xx/yy/zz' format."""
-        storage_key = UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
-        result = compute_storage_shard(storage_key)
 
-        # Should be exactly 8 characters: "xx/yy/zz"
-        assert len(result) == 8
-        # Should have slashes at correct positions
-        assert result[2] == "/"
-        assert result[5] == "/"
-        # Each chunk should be 2 hex characters
-        chunks = result.split("/")
-        assert len(chunks) == 3
-        for chunk in chunks:
-            assert len(chunk) == 2
-            # Verify each chunk is valid hex
-            int(chunk, 16)
+class TestShardDerivation:
+    def test_v1_worked_example(self):
+        assert compute_storage_shard_v1(WORKED_KEY) == "a4/47/ee"
 
-    def test_matches_hash_artwork_id(self):
-        """Test that compute_storage_shard uses the same hash as hash_artwork_id."""
-        storage_key = UUID("12345678-1234-5678-1234-567812345678")
+    def test_v2_worked_example(self):
+        # digest bytes 0xa4, 0x47 -> masked 0x24, 0x07
+        assert compute_storage_shard_v2(WORKED_KEY) == "24/07"
 
-        # Get the full hash
-        full_hash = hash_artwork_id(storage_key)
+    def test_v1_matches_hash_artwork_id(self):
+        key = UUID("12345678-1234-5678-1234-567812345678")
+        h = hash_artwork_id(key)
+        assert compute_storage_shard_v1(key) == f"{h[0:2]}/{h[2:4]}/{h[4:6]}"
 
-        # Compute the shard
-        shard = compute_storage_shard(storage_key)
+    def test_v2_matches_digest_masking(self):
+        key = UUID("12345678-1234-5678-1234-567812345678")
+        d = hashlib.sha256(str(key).encode()).digest()
+        assert compute_storage_shard_v2(key) == f"{d[0] & 0x3F:02x}/{d[1] & 0x3F:02x}"
 
-        # Shard should be derived from first 6 chars of hash
-        expected_shard = f"{full_hash[0:2]}/{full_hash[2:4]}/{full_hash[4:6]}"
-        assert shard == expected_shard
+    def test_v2_components_in_range(self):
+        """All v2 components must be in 00..3f."""
+        for i in range(50):
+            key = UUID(int=i)
+            shard = compute_storage_shard_v2(key)
+            a, b = shard.split("/")
+            assert 0 <= int(a, 16) <= 0x3F
+            assert 0 <= int(b, 16) <= 0x3F
+
+    def test_canonical_is_v1_until_cutover(self):
+        """PR-A: compute_storage_shard is still v1; PR-B flips it to v2."""
+        assert compute_storage_shard(WORKED_KEY) == compute_storage_shard_v1(WORKED_KEY)
 
     def test_deterministic(self):
-        """Test that compute_storage_shard returns the same result for the same input."""
-        storage_key = UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        key = UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        assert compute_storage_shard_v1(key) == compute_storage_shard_v1(key)
+        assert compute_storage_shard_v2(key) == compute_storage_shard_v2(key)
 
-        result1 = compute_storage_shard(storage_key)
-        result2 = compute_storage_shard(storage_key)
 
-        assert result1 == result2
+class TestDeriveTwinShard:
+    def test_from_v1_gives_v2(self):
+        assert derive_twin_shard(WORKED_KEY, "a4/47/ee") == "24/07"
 
-    def test_different_keys_different_shards(self):
-        """Test that different storage keys produce different shards (with high probability)."""
-        key1 = UUID("11111111-1111-1111-1111-111111111111")
-        key2 = UUID("22222222-2222-2222-2222-222222222222")
+    def test_from_v2_gives_v1(self):
+        assert derive_twin_shard(WORKED_KEY, "24/07") == "a4/47/ee"
 
-        shard1 = compute_storage_shard(key1)
-        shard2 = compute_storage_shard(key2)
+    def test_unrecognized_shard_raises(self):
+        with pytest.raises(ValueError):
+            derive_twin_shard(WORKED_KEY, "a447ee")  # slash-less 6 chars
+        with pytest.raises(ValueError):
+            derive_twin_shard(WORKED_KEY, "")
 
-        assert shard1 != shard2
 
-    def test_known_value(self):
-        """Test against a known hash value for regression testing."""
-        # Use a specific UUID and verify the expected shard
-        storage_key = UUID("00000000-0000-0000-0000-000000000000")
+class TestRequiredShard:
+    """Paths must never be silently derived from the key (I2): the stored
+    shard is the source of truth and a derived path can point at the wrong
+    scheme for the row."""
 
-        # Compute expected hash manually
-        expected_hash = hashlib.sha256(str(storage_key).encode()).hexdigest()
-        expected_shard = (
-            f"{expected_hash[0:2]}/{expected_hash[2:4]}/{expected_hash[4:6]}"
+    def test_file_path_requires_shard(self, vault):
+        with pytest.raises(ValueError):
+            get_artwork_file_path(WORKED_KEY, ".png", None)
+        with pytest.raises(ValueError):
+            get_artwork_file_path(WORKED_KEY, ".png", "")
+
+    def test_url_requires_shard(self, vault):
+        with pytest.raises(ValueError):
+            get_artwork_url(WORKED_KEY, ".png", None)
+
+    def test_upscaled_path_requires_shard(self, vault):
+        with pytest.raises(ValueError):
+            get_upscaled_file_path(WORKED_KEY, None)
+
+
+class TestPathAndUrlBuilders:
+    def test_v1_shard_path(self, vault):
+        p = get_artwork_file_path(WORKED_KEY, ".png", "a4/47/ee")
+        assert p == vault / "a4/47/ee" / f"{WORKED_KEY}.png"
+
+    def test_v2_shard_path(self, vault):
+        p = get_artwork_file_path(WORKED_KEY, "png", "24/07")
+        assert p == vault / "24/07" / f"{WORKED_KEY}.png"
+
+    def test_url_uses_shard_opaquely(self, vault, monkeypatch):
+        monkeypatch.setenv("VAULT_PUBLIC_BASE_URL", "")
+        assert (
+            get_artwork_url(WORKED_KEY, ".gif", "24/07")
+            == f"/api/vault/24/07/{WORKED_KEY}.gif"
+        )
+        assert (
+            get_artwork_url(WORKED_KEY, ".gif", "a4/47/ee")
+            == f"/api/vault/a4/47/ee/{WORKED_KEY}.gif"
         )
 
-        result = compute_storage_shard(storage_key)
-        assert result == expected_shard
+
+class TestAtomicWrite:
+    def test_writes_content_and_leaves_no_tmp(self, vault):
+        target = vault / "x" / "file.bin"
+        write_file_atomic(target, b"hello")
+        assert target.read_bytes() == b"hello"
+        assert not list(vault.rglob(f"*{TMP_SUFFIX}"))
+
+    def test_overwrites_existing(self, vault):
+        target = vault / "file.bin"
+        write_file_atomic(target, b"one")
+        write_file_atomic(target, b"two")
+        assert target.read_bytes() == b"two"
+
+
+class TestDualWrite:
+    def test_save_writes_canonical_and_twin(self, vault):
+        content = b"fake png bytes"
+        canonical = save_artwork_to_vault(WORKED_KEY, content, "png", "a4/47/ee")
+        assert canonical == vault / "a4/47/ee" / f"{WORKED_KEY}.png"
+        assert canonical.read_bytes() == content
+        twin = vault / "24/07" / f"{WORKED_KEY}.png"
+        assert twin.read_bytes() == content
+
+    def test_save_with_v2_canonical_mirrors_to_v1(self, vault):
+        """Post-cutover: canonical v2, twin at the derived v1 path."""
+        content = b"bytes"
+        canonical = save_artwork_to_vault(WORKED_KEY, content, "gif", "24/07")
+        assert canonical == vault / "24/07" / f"{WORKED_KEY}.gif"
+        assert (vault / "a4/47/ee" / f"{WORKED_KEY}.gif").read_bytes() == content
+
+    def test_save_requires_shard(self, vault):
+        with pytest.raises(ValueError):
+            save_artwork_to_vault(WORKED_KEY, b"x", "png", None)
+
+    def test_save_rejects_unknown_format(self, vault):
+        with pytest.raises(ValueError):
+            save_artwork_to_vault(WORKED_KEY, b"x", "tiff", "a4/47/ee")
+
+    def test_save_upscaled_writes_both(self, vault):
+        content = b"upscaled webp"
+        canonical = save_upscaled_artwork(WORKED_KEY, content, "a4/47/ee")
+        assert canonical == vault / "a4/47/ee" / f"{WORKED_KEY}_upscaled.webp"
+        twin = vault / "24/07" / f"{WORKED_KEY}_upscaled.webp"
+        assert twin.read_bytes() == content
+
+
+class TestDualDelete:
+    def test_delete_removes_both_copies(self, vault):
+        save_artwork_to_vault(WORKED_KEY, b"x", "png", "a4/47/ee")
+        assert delete_artwork_from_vault(WORKED_KEY, ".png", "a4/47/ee") is True
+        assert not (vault / "a4/47/ee" / f"{WORKED_KEY}.png").exists()
+        assert not (vault / "24/07" / f"{WORKED_KEY}.png").exists()
+
+    def test_delete_removes_twin_even_if_canonical_missing(self, vault):
+        """A delete during the dual window must not leave the other copy
+        fetchable."""
+        twin = vault / "24/07" / f"{WORKED_KEY}.png"
+        twin.parent.mkdir(parents=True)
+        twin.write_bytes(b"x")
+        assert delete_artwork_from_vault(WORKED_KEY, ".png", "a4/47/ee") is True
+        assert not twin.exists()
+
+    def test_delete_missing_returns_false(self, vault):
+        assert delete_artwork_from_vault(WORKED_KEY, ".png", "a4/47/ee") is False
+
+    def test_delete_all_formats_clears_both_trees(self, vault):
+        save_artwork_to_vault(WORKED_KEY, b"p", "png", "a4/47/ee")
+        save_artwork_to_vault(WORKED_KEY, b"g", "gif", "a4/47/ee")
+        save_upscaled_artwork(WORKED_KEY, b"u", "a4/47/ee")
+
+        results = delete_all_artwork_formats(WORKED_KEY, ["png", "gif"], "a4/47/ee")
+        assert results == {"png": True, "gif": True, "upscaled": True}
+        leftovers = [p for p in vault.rglob("*") if p.is_file()]
+        assert leftovers == []

@@ -3,10 +3,13 @@
 Blog images are stored in a sub-vault inside the regular vault under blog_image/
 using the same hash-based folder structure as artwork images.
 
-Example:
-    If the image ID is "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-    and it hashes to "a1b2c3..."
-    The file will be stored at: VAULT_LOCATION/blog_image/a1/b2/c3/a1b2c3d4-e5f6-7890-abcd-ef1234567890.png
+Like avatars (and unlike artwork), blog images have no stored shard column —
+the stored URLs (``blog_posts.image_urls[]`` and markdown embeds in
+``blog_posts.body``) are the reference, and filesystem paths are derived from
+the UUID at call time using the *current* canonical sharding scheme
+(``vault.compute_storage_shard``). During the resharding dual-location
+window (docs/vault-resharding/), saves mirror to the twin scheme's path and
+deletes remove both.
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ from pathlib import Path
 from uuid import UUID
 
 from .settings import vault_public_base_url
+from .vault import compute_storage_shard, derive_twin_shard, write_file_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -57,29 +61,28 @@ def hash_image_id(image_id: UUID) -> str:
 
 def get_blog_image_folder_path(image_id: UUID) -> Path:
     """
-    Get the folder path for a blog image based on its hashed ID.
-
-    The first 6 characters of the hash are split into 3 chunks of 2 characters
-    to create a folder structure.
-
-    Example:
-        hash = "a1b2c3d4..."
-        folder = VAULT_LOCATION/blog_image/a1/b2/c3/
+    Get the canonical folder path for a blog image (current sharding scheme).
     """
-    blog_vault_location = get_blog_vault_location()
-    hash_value = hash_image_id(image_id)
+    return get_blog_vault_location() / compute_storage_shard(image_id)
 
-    # Split first 6 characters into 3 chunks of 2
-    chunk1 = hash_value[0:2]
-    chunk2 = hash_value[2:4]
-    chunk3 = hash_value[4:6]
 
-    return blog_vault_location / chunk1 / chunk2 / chunk3
+def _candidate_file_paths(image_id: UUID, extension: str) -> list[Path]:
+    """
+    The image's file path under the canonical scheme followed by its twin
+    (the other sharding scheme). Both are touched by writes and deletes
+    during the dual-location window.
+    """
+    ext = extension.lower() if extension.startswith(".") else f".{extension.lower()}"
+    name = f"{image_id}{ext}"
+    base = get_blog_vault_location()
+    canonical_shard = compute_storage_shard(image_id)
+    twin_shard = derive_twin_shard(image_id, canonical_shard)
+    return [base / canonical_shard / name, base / twin_shard / name]
 
 
 def get_blog_image_file_path(image_id: UUID, extension: str) -> Path:
     """
-    Get the full file path for a blog image.
+    Get the canonical file path for a blog image.
 
     Args:
         image_id: The UUID of the image
@@ -88,10 +91,7 @@ def get_blog_image_file_path(image_id: UUID, extension: str) -> Path:
     Returns:
         Full path where the image file should be stored
     """
-    folder_path = get_blog_image_folder_path(image_id)
-    # Ensure extension is lowercase and starts with a dot
-    ext = extension.lower() if extension.startswith(".") else f".{extension.lower()}"
-    return folder_path / f"{image_id}{ext}"
+    return _candidate_file_paths(image_id, extension)[0]
 
 
 def save_blog_image(
@@ -100,7 +100,7 @@ def save_blog_image(
     mime_type: str,
 ) -> Path:
     """
-    Save a blog image to the vault.
+    Save a blog image to the vault (canonical location + twin mirror).
 
     Args:
         image_id: The UUID of the image
@@ -108,11 +108,11 @@ def save_blog_image(
         mime_type: The MIME type of the image (image/png, image/jpeg, image/gif, etc.)
 
     Returns:
-        The path where the file was saved
+        The canonical path where the file was saved
 
     Raises:
         ValueError: If the MIME type is not allowed or file size exceeds limit
-        IOError: If there's an error writing the file
+        OSError: If there's an error writing the file
     """
     # Normalize MIME type
     mime_type_lower = mime_type.lower()
@@ -134,51 +134,53 @@ def save_blog_image(
         )
 
     extension = ALLOWED_MIME_TYPES[mime_type_lower]
-    file_path = get_blog_image_file_path(image_id, extension)
+    canonical, twin = _candidate_file_paths(image_id, extension)
 
-    # Create the directory structure if it doesn't exist
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Write the file
     try:
-        with open(file_path, "wb") as f:
-            f.write(file_content)
-        logger.info(f"Saved blog image {image_id} to {file_path}")
-        return file_path
-    except IOError as e:
+        write_file_atomic(canonical, file_content)
+        logger.info(f"Saved blog image {image_id} to {canonical}")
+    except OSError as e:
         logger.error(f"Failed to save blog image {image_id}: {e}")
         raise
+
+    try:
+        write_file_atomic(twin, file_content)
+    except Exception as e:
+        logger.error(f"Dual-write mirror failed for blog image {image_id}: {e}")
+
+    return canonical
 
 
 def delete_blog_image(image_id: UUID, extension: str) -> bool:
     """
-    Delete a blog image from the vault.
+    Delete a blog image from the vault (canonical location and its twin).
 
     Args:
         image_id: The UUID of the image
         extension: The file extension
 
     Returns:
-        True if the file was deleted, False if it didn't exist
+        True if at least one copy was deleted
     """
-    file_path = get_blog_image_file_path(image_id, extension)
-
-    try:
-        if file_path.exists():
-            file_path.unlink()
-            logger.info(f"Deleted blog image {image_id} from {file_path}")
-            return True
-        else:
-            logger.warning(f"Blog image {image_id} not found at {file_path}")
-            return False
-    except IOError as e:
-        logger.error(f"Failed to delete blog image {image_id}: {e}")
-        raise
+    deleted = False
+    for candidate in _candidate_file_paths(image_id, extension):
+        try:
+            candidate.unlink()
+            logger.info(f"Deleted blog image {image_id} from {candidate}")
+            deleted = True
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            logger.error(f"Failed to delete blog image {image_id}: {e}")
+            raise
+    if not deleted:
+        logger.warning(f"Blog image {image_id} not found in either vault location")
+    return deleted
 
 
 def get_blog_image_url(image_id: UUID, extension: str) -> str:
     """
-    Get the URL for accessing a blog image.
+    Get the URL for accessing a blog image (canonical sharding scheme).
 
     When VAULT_PUBLIC_BASE_URL is set, returns an absolute URL on the Caddy
     vault subdomain. Otherwise returns /api/vault/blog_image/<...>, served by
@@ -190,17 +192,12 @@ def get_blog_image_url(image_id: UUID, extension: str) -> str:
 
     Returns:
         URL like https://vault.makapix.club/blog_image/a1/b2/c3/<uuid>.png
-        or       /api/vault/blog_image/a1/b2/c3/<uuid>.png
+        or       /api/vault/blog_image/a1/b2/<uuid>.png
     """
-    hash_value = hash_image_id(image_id)
-    chunk1 = hash_value[0:2]
-    chunk2 = hash_value[2:4]
-    chunk3 = hash_value[4:6]
-
     ext = extension.lower() if extension.startswith(".") else f".{extension.lower()}"
     prefix = vault_public_base_url() or "/api/vault"
-
-    return f"{prefix}/blog_image/{chunk1}/{chunk2}/{chunk3}/{image_id}{ext}"
+    shard = compute_storage_shard(image_id)
+    return f"{prefix}/blog_image/{shard}/{image_id}{ext}"
 
 
 def validate_blog_image_file_size(file_size: int) -> tuple[bool, str | None]:

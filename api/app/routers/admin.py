@@ -896,6 +896,173 @@ def get_download_stats(
     return response
 
 
+STREAK_CRITERION_DAYS = 14
+STRAGGLER_WINDOW_DAYS = 14
+
+
+@router.get("/vault-sharding-stats", response_model=schemas.VaultShardingStatsResponse)
+def get_vault_sharding_stats(
+    days: int = Query(30, ge=1, le=90, description="Window size in days"),
+    refresh: bool = Query(False, description="Force cache refresh"),
+    db: Session = Depends(get_db),
+    _moderator: models.User = Depends(require_moderator),
+) -> schemas.VaultShardingStatsResponse:
+    """
+    Vault resharding migration statistics (moderator only).
+
+    Aggregates ``vault_sharding_stats_daily`` (populated nightly by
+    ``app.tasks.rollup_download_stats``): daily downloads split by sharding
+    level, the retirement streak counter, and the legacy-straggler list.
+    See docs/vault-resharding/ for the migration this instruments.
+    Results are cached in Redis for 5 minutes.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from .. import cache
+    from ..services.download_stats import compute_legacy_streak
+    from ..services.site_stats import STATS_CACHE_TTL
+
+    cache_key = f"vault_sharding_stats:{days}"
+    if refresh:
+        cache.cache_delete(cache_key)
+    else:
+        cached = cache.cache_get(cache_key)
+        if cached is not None:
+            return schemas.VaultShardingStatsResponse.model_validate(cached)
+
+    today = datetime.now(timezone.utc).date()
+    yesterday = today - timedelta(days=1)
+    start_date = today - timedelta(days=days - 1)
+
+    VS = models.VaultShardingStatsDaily
+
+    # Aggregate rows (post_id IS NULL) for the window.
+    agg_rows = (
+        db.query(
+            VS.date,
+            VS.asset_class,
+            VS.shard_level,
+            VS.downloads_human,
+            VS.downloads_bot,
+            VS.misses,
+        )
+        .filter(VS.post_id.is_(None), VS.date >= start_date, VS.date <= today)
+        .all()
+    )
+
+    # Daily trend rows: every date in the window, gaps marked explicitly.
+    by_day: dict = {}
+    class_totals: dict[tuple[str, int], list[int]] = {}
+    for r in agg_rows:
+        day_bucket = by_day.setdefault(r.date, {2: [0, 0, 0], 3: [0, 0, 0]})
+        day_bucket[r.shard_level][0] += r.downloads_human
+        day_bucket[r.shard_level][1] += r.downloads_bot
+        day_bucket[r.shard_level][2] += r.misses
+        ct = class_totals.setdefault((r.asset_class, r.shard_level), [0, 0, 0])
+        ct[0] += r.downloads_human
+        ct[1] += r.downloads_bot
+        ct[2] += r.misses
+
+    daily = []
+    for offset in range(days):
+        d = start_date + timedelta(days=offset)
+        bucket = by_day.get(d)
+        if bucket is None:
+            daily.append(
+                schemas.VaultShardingDailyRow(date=d.isoformat(), has_data=False)
+            )
+        else:
+            daily.append(
+                schemas.VaultShardingDailyRow(
+                    date=d.isoformat(),
+                    has_data=True,
+                    level2_human=bucket[2][0],
+                    level2_bot=bucket[2][1],
+                    level2_misses=bucket[2][2],
+                    level3_human=bucket[3][0],
+                    level3_bot=bucket[3][1],
+                    level3_misses=bucket[3][2],
+                )
+            )
+
+    class_total_rows = [
+        schemas.VaultShardingClassRow(
+            asset_class=cls,
+            shard_level=lvl,
+            downloads_human=counts[0],
+            downloads_bot=counts[1],
+            misses=counts[2],
+        )
+        for (cls, lvl), counts in sorted(class_totals.items())
+    ]
+
+    # Legacy stragglers: per-post level-3 rows from the last 14 days.
+    straggler_start = today - timedelta(days=STRAGGLER_WINDOW_DAYS - 1)
+    straggler_subq = (
+        db.query(
+            VS.post_id,
+            sa.func.sum(VS.downloads_human).label("human"),
+            sa.func.sum(VS.downloads_bot).label("bot"),
+            sa.func.max(VS.date).label("last_seen"),
+        )
+        .filter(VS.post_id.isnot(None), VS.date >= straggler_start)
+        .group_by(VS.post_id)
+        .having(sa.func.sum(VS.downloads_human + VS.downloads_bot) > 0)
+        .subquery()
+    )
+    straggler_rows = (
+        db.query(
+            models.Post.id,
+            models.Post.public_sqid,
+            models.Post.title,
+            models.Post.art_url,
+            models.User.handle,
+            straggler_subq.c.human,
+            straggler_subq.c.bot,
+            straggler_subq.c.last_seen,
+        )
+        .join(straggler_subq, straggler_subq.c.post_id == models.Post.id)
+        .join(models.User, models.User.id == models.Post.owner_id)
+        .order_by(
+            (straggler_subq.c.human + straggler_subq.c.bot).desc(),
+            models.Post.id.asc(),
+        )
+        .limit(200)
+        .all()
+    )
+    stragglers = [
+        schemas.LegacyStragglerRow(
+            post_id=r.id,
+            public_sqid=r.public_sqid,
+            title=r.title,
+            art_url=r.art_url,
+            owner_handle=r.handle,
+            downloads_human=int(r.human or 0),
+            downloads_bot=int(r.bot or 0),
+            last_seen=r.last_seen.isoformat(),
+        )
+        for r in straggler_rows
+    ]
+
+    # Streak is computed against yesterday — today's rollup hasn't run yet.
+    streak = compute_legacy_streak(db, as_of=yesterday)
+
+    response = schemas.VaultShardingStatsResponse(
+        window_days=days,
+        streak_days=streak,
+        streak_criterion_days=STREAK_CRITERION_DAYS,
+        streak_as_of=yesterday.isoformat(),
+        daily=daily,
+        class_totals=class_total_rows,
+        stragglers=stragglers,
+        straggler_window_days=STRAGGLER_WINDOW_DAYS,
+        computed_at=datetime.now(timezone.utc),
+    )
+
+    cache.cache_set(cache_key, response.model_dump(mode="json"), ttl=STATS_CACHE_TTL)
+    return response
+
+
 @router.get("/online-players", response_model=schemas.OnlinePlayersResponse)
 def get_online_players(
     db: Session = Depends(get_db),

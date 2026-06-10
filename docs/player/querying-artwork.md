@@ -276,7 +276,7 @@ By default, responses include only mandatory fields to minimize payload size. Re
 | `created_at` | datetime | Post creation time |
 | `storage_key` | string | Vault storage identifier |
 | `art_url` | string | Full URL to artwork |
-| `storage_shard` | string | Vault path prefix |
+| `storage_shard` | string | Opaque relative vault path (e.g. `"7c/9e/66"`). Use verbatim — do not parse, validate, or assume a fixed depth; the number of components may change |
 | `native_format` | string | Original file format |
 
 ### Optional Fields
