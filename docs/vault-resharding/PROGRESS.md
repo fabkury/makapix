@@ -1,11 +1,13 @@
 # Progress Log — Vault Resharding
 
-**Current phase: Phases 0–2 COMPLETE on dev and prod (2026-06-10). The
-vault is fully dual-located; DB still points at v1.**
-**Next action: (a) owner eyeballs the dashboard panel (Downloads tab);
-(b) implement the flip/unflip tool modes (small PR — see PLAN.md §6) so
-Phase 3 is ready; (c) schedule the Phase 3 flip (pg_dump first; dev
-rehearsal incl. flip→verify→unflip→verify→flip).**
+**Current phase: Phase 3 EXECUTED on dev and prod (2026-06-10) — Phase 4
+(observe) has begun. The DB points at v2 everywhere; legacy v1 URLs keep
+serving from the twin copies.**
+**Next action: G3 closes after (a) `status` re-check ~48 h post-flip shows
+`v1_url_refs` still 0, and (b) a fielded player is observed fetching a
+v2 path (will appear as level-2 traffic on the dashboard as players
+receive new payloads). Then: watch the streak counter weekly (criterion:
+14 liveness-valid days at 0 non-bot legacy downloads) → Phase 5.**
 
 Newest entries first in the log; checklists mirror PLAN.md §9 gates.
 Update this file at the end of every working session on this effort.
@@ -17,13 +19,17 @@ Update this file at the end of every working session on this effort.
 | G0 | Groundwork deployed (PR-A refactor/instrumentation + PR-B v2 cutover) | ✅ 2026-06-10 | ✅ 2026-06-10 |
 | G1 | All v1 assets copied to v2 locations (`v1_only_files` = 0) | ✅ 2026-06-10 | ✅ 2026-06-10 |
 | G2 | Duplication verified (sha256, reconciliation, orphans recorded) | ✅ 2026-06-10 | ✅ 2026-06-10 ¹ |
-| G3 | DB references flipped; `v1_url_refs` = 0 stable; fielded-player v2 fetch confirmed | ☐ | ☐ |
+| G3 | DB references flipped; `v1_url_refs` = 0 stable; fielded-player v2 fetch confirmed | ✅ 2026-06-10 ² | ◐ flipped 2026-06-10 ² |
 | G4 | ≥14 consecutive liveness-valid days of 0 non-bot legacy downloads (evidence archived) | — | ☐ |
 | G5 | Legacy copies deleted; 7 days healthy | ☐ | ☐ |
 | G6 | Code cleanup merged; docs closed out | ☐ | ☐ |
 
 ¹ G2 prod carries one documented exception: a dangling reference (see
 2026-06-10 Phase 1–2 log entry), not a copy/verify defect.
+² G3: flip executed, idempotent, `v1_url_refs` = 0, all spot checks pass.
+Remaining before fully closing: 48 h `status` re-check and observing a
+fielded player fetch a v2 path (no player was due a fetch during the flip
+window; their caches serve repeats).
 
 ## Log
 
@@ -230,11 +236,42 @@ archived in each env's `api/reshard-reports/phase1-baseline-{dev,prod}.json`.
   exceeds its sparse `post_files` (the same divergence behind dev's orphan
   count); expect ~0 on prod.
 
+### 2026-06-10 — Phase 3 executed on dev and prod (Claude + fab)
+
+- PR #192 merged; prod pulled (script-only change, no restarts needed).
+- **pg_dumps** (pre-flip, both DBs):
+  `/home/fab/backups/vault-resharding/pre-flip-{dev,prod}-2026-06-10.sql.gz`
+  (sha256 `5d5c7936…` dev, `25418df4…` prod).
+- **Dev rehearsal** (manifest `flip-manifest-dev-rehearsal.jsonl`):
+  `flip --limit 10` → spot checks 200 → full flip (2,696 posts; 5,203
+  twins repaired = the post_files-sparsity variants; 8/36/58/1/1 column
+  rewrites) → idempotent re-run clean → `v1_url_refs` all 0 → **unflip
+  restored exactly 5,496 rows** and counts returned to pre-flip values →
+  v1 serving re-verified → **final flip** (manifest
+  `flip-manifest-dev-final.jsonl`), zero repairs needed. App checks:
+  API payload art_url v2, download endpoint 200, avatar 200.
+- **Prod flip** (manifest `flip-manifest-prod.jsonl`): smoke `--limit 10`
+  verified the 54 `skipped_missing_v2_target` were all rows referencing
+  the single known dangling avatar (count matched exactly) → full flip
+  with `--null-dangling`: **2,871 posts flipped, 15+729+2 URL columns
+  rewritten, 54 dangling notification thumbnails NULLed** (recorded in
+  manifest), zero twin repairs (post_files complete on prod) → idempotent
+  re-run clean → `v1_url_refs` = 0 across all columns, 0 shard
+  mismatches, disk untouched (6 orphans remain the only v1-only files).
+- **Prod app checks:** flipped post payload serves v2 art_url (fetch
+  200), download endpoint 200, flipped avatar 200, 0 api errors.
+- **Player observation:** no fielded player was due a vault fetch during
+  the flip window (their on-device caches serve repeats; v2 fetches begin
+  as new payloads arrive). Level-2 traffic on the dashboard is the
+  confirmation signal. Recent v1 fetches (one human browser on cached
+  pages) are harmless — both URL forms serve throughout Phase 4.
+- **Phase 4 (observe) begins now.** The retirement streak can start
+  counting once daily non-bot legacy downloads reach 0.
+
 Open items carried forward:
-- Owner: eyeball the dashboard panel once (Downloads tab, both envs).
-- Phase 3 execution when scheduled (after PR merge + prod pull/restart):
-  `pg_dump` both DBs → dev rehearsal `flip --limit 10` → full `flip` →
-  `verify` → `unflip` → `verify` → `flip` → checks (web, API payloads,
-  player sync, avatars, blog) → prod quiet-window flip with
-  `--null-dangling` decision → re-run flip+status until `v1_url_refs`
-  stays 0 → watch a fielded player fetch v2 → G3.
+- ~48 h: re-run `status` on both envs (`v1_url_refs` must still be 0 —
+  in-flight sessions/notification snapshots can reinstate v1 values; if
+  any appear, re-run `flip`).
+- Confirm level-2 player traffic on the dashboard (closes G3 prod).
+- Owner: eyeball the dashboard panel (Downloads tab, both envs).
+- Weekly: check the streak counter; investigate any `misses`.
