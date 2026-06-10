@@ -207,7 +207,13 @@ def _iter_vault_hits(
                 except (json.JSONDecodeError, ValueError):
                     continue
 
-                if entry.get("logger") != "http.log.access":
+                # Caddy names access loggers per configured output:
+                # plain "http.log.access" in the shared default log, but
+                # "http.log.access.log0"/".log1"/... for sites with their
+                # own log directive (the vault subdomains). Prefix-match.
+                if not str(entry.get("logger") or "").startswith(
+                    "http.log.access"
+                ):
                     continue
                 ts = entry.get("ts")
                 if not isinstance(ts, (int, float)):
