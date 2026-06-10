@@ -1,10 +1,11 @@
 # Progress Log — Vault Resharding
 
-**Current phase: Phase 0 COMPLETE — G0 closed on dev and prod (2026-06-10).**
-**Next action: owner eyeballs the dashboard panel (mod dashboard →
-Downloads tab; first populated day = 2026-06-09, legacy-only as expected).
-Then Phase 1: `reshard_vault.py copy` — dev rehearsal first, then prod
-(pre-flight `df`, `--limit 10` smoke, full run, re-run to converge).**
+**Current phase: Phases 0–2 COMPLETE on dev and prod (2026-06-10). The
+vault is fully dual-located; DB still points at v1.**
+**Next action: (a) owner eyeballs the dashboard panel (Downloads tab);
+(b) implement the flip/unflip tool modes (small PR — see PLAN.md §6) so
+Phase 3 is ready; (c) schedule the Phase 3 flip (pg_dump first; dev
+rehearsal incl. flip→verify→unflip→verify→flip).**
 
 Newest entries first in the log; checklists mirror PLAN.md §9 gates.
 Update this file at the end of every working session on this effort.
@@ -14,12 +15,15 @@ Update this file at the end of every working session on this effort.
 | Gate | Description | Dev | Prod |
 |---|---|---|---|
 | G0 | Groundwork deployed (PR-A refactor/instrumentation + PR-B v2 cutover) | ✅ 2026-06-10 | ✅ 2026-06-10 |
-| G1 | All v1 assets copied to v2 locations (`v1_only_files` = 0) | ☐ | ☐ |
-| G2 | Duplication verified (sha256, reconciliation, orphans recorded) | ☐ | ☐ |
+| G1 | All v1 assets copied to v2 locations (`v1_only_files` = 0) | ✅ 2026-06-10 | ✅ 2026-06-10 |
+| G2 | Duplication verified (sha256, reconciliation, orphans recorded) | ✅ 2026-06-10 | ✅ 2026-06-10 ¹ |
 | G3 | DB references flipped; `v1_url_refs` = 0 stable; fielded-player v2 fetch confirmed | ☐ | ☐ |
 | G4 | ≥14 consecutive liveness-valid days of 0 non-bot legacy downloads (evidence archived) | — | ☐ |
 | G5 | Legacy copies deleted; 7 days healthy | ☐ | ☐ |
 | G6 | Code cleanup merged; docs closed out | ☐ | ☐ |
+
+¹ G2 prod carries one documented exception: a dangling reference (see
+2026-06-10 Phase 1–2 log entry), not a copy/verify defect.
 
 ## Log
 
@@ -174,7 +178,41 @@ Update this file at the end of every working session on this effort.
   - aggregate zero-rows present for all 6 class×level combos;
   - `/admin/vault-sharding-stats` 401 anonymous.
 
+### 2026-06-10 — Phases 1–2 executed on dev and prod (Claude + fab)
+
+Pre-flight: 8.3–8.4 GB free on both vault mounts (~1 GB needed). Baselines
+archived in each env's `api/reshard-reports/phase1-baseline-{dev,prod}.json`.
+
+- **Dev copy:** `--limit 10` smoke → full run: 5,536 copied (+13 from the
+  earlier smoke, +1 `optional_absent` = an upscaled that was never
+  generated), 0 missing sources; converge re-run: 5,549 already_twinned,
+  0 work. Post-state: twinned=5,549, v1-only=5,233 = exactly the orphan
+  set (dev/prod divergence residue, R16).
+- **Dev verify:** 5,549/5,549 sha256 matches, 0 failures
+  (`phase2-verify-dev.json`).
+- **Prod copy:** `--limit 10` smoke → full run: 11,313 copied (+10 smoke),
+  converge re-run clean. **1 missing source**: avatar
+  `ef0124df-…gif` is referenced only by old
+  `social_notifications.actor_avatar_url` snapshots and exists at NEITHER
+  location — a pre-existing dangling reference (those thumbnails already
+  404 today). Phase 3's flip will skip+log it per D11's target-exists
+  check; no action needed.
+- **Prod verify:** 11,323/11,324 verified, the single failure is the
+  documented dangling reference (`phase2-verify-prod.json`).
+- **Prod orphans (6) identified and explained:** 2 artwork GIFs whose
+  posts were permanently deleted (no DB rows) + 4 avatar files replaced
+  before deletes were robust (no `users.avatar_url` references). True
+  residue; Phase 5 sweeps them after review.
+- Spot-check: freshly copied prod v2 file served 200 via
+  vault.makapix.club.
+- **State now: every servable v1 file has a sha256-verified v2 twin in
+  both environments. Both URL forms are live. The DB still references v1
+  everywhere (flip pending).**
+
 Open items carried forward:
 - Owner: eyeball the dashboard panel once (Downloads tab, both envs).
-- Phase 1 pre-flight when ready: `df` headroom, archive `status --json`
-  baseline here, then `copy` (dev → prod).
+- Next code work: flip/unflip modes in `reshard_vault.py` (+ tests), per
+  PLAN.md §6 — manifest-driven, per-row re-verify, pattern-scoped D11
+  rewrites with target-exists check.
+- At flip time: handle the dangling avatar reference (flip skips it; the
+  log entry is the record).
