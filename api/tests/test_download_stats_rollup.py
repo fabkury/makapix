@@ -148,6 +148,19 @@ class TestIterVaultHits:
         )
         assert list(_iter_vault_hits([log], DAY)) == []
 
+    def test_named_access_logger_outputs_counted(self, tmp_path):
+        """Sites with their own log directive (the vault subdomains) tag
+        entries http.log.access.log0/.log1 — these must count (prod bug
+        found at deploy: an exact match dropped every vault entry)."""
+        log = _write_log(
+            tmp_path,
+            [
+                _entry(f"/a4/47/ee/{KEY}.png", logger="http.log.access.log0"),
+                _entry(f"/24/07/{KEY}.png", logger="http.log.access.log1"),
+            ],
+        )
+        assert len(list(_iter_vault_hits([log], DAY))) == 2
+
     def test_bot_classification(self, tmp_path):
         log = _write_log(
             tmp_path,
