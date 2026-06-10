@@ -97,7 +97,7 @@ Display a specific artwork immediately.
   "payload": {
     "post_id": 12345,
     "storage_key": "abc123-def456-789",
-    "storage_shard": "ab/c1/23",
+    "storage_shard": "21/32",
     "native_format": "png",
     "width": 64,
     "height": 64
@@ -110,7 +110,7 @@ Display a specific artwork immediately.
 |-------|------|-------------|
 | `post_id` | integer | Post identifier |
 | `storage_key` | string | Vault storage key |
-| `storage_shard` | string | Opaque relative vault path (e.g. `"7c/9e/66"`). Use verbatim — do not parse, validate, or assume a fixed depth; the number of components may change |
+| `storage_shard` | string | Opaque relative vault path (e.g. `"23/16"`). Use verbatim — do not parse, validate, or assume a fixed depth; the number of components may change |
 | `native_format` | string | Original file format (`png`, `gif`, `webp`, `bmp`) |
 | `width` | integer | Canvas width in pixels |
 | `height` | integer | Canvas height in pixels |

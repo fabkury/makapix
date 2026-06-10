@@ -62,12 +62,12 @@ Key relationship: Users cascade-delete to posts, which cascade to comments, reac
 Artwork files are stored locally using hash-based sharding:
 
 ```
-/mnt/vault-1/{h1}/{h2}/{h3}/{storage_key}.{format}
+/mnt/vault-1/{a}/{b}/{storage_key}.{format}
 
 Example: /mnt/vault-1/8c/4f/2a/a1b2c3d4-e5f6-7890.png
 ```
 
-- Hash derived from SHA-256 of storage_key UUID
+- `{a}`/`{b}` = low 6 bits of the first two SHA-256(storage_key) bytes, hex `00`-`3f` (legacy 3-level paths still served during the resharding window)
 - Served via HTTPS at `/api/vault/` (through Caddy)
 - Served via HTTP at `http://vault.makapix.club/` (for IoT players)
 

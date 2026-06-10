@@ -190,7 +190,7 @@ Display a specific artwork immediately.
   "payload": {
     "post_id": 123,
     "storage_key": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    "art_url": "https://makapix.club/api/vault/a1/b2/c3/a1b2c3d4-e5f6-7890-abcd-ef1234567890.png",
+    "art_url": "https://makapix.club/api/vault/24/07/a1b2c3d4-e5f6-7890-abcd-ef1234567890.png",
     "canvas": "64x64"
   },
   "timestamp": "..."
@@ -275,7 +275,7 @@ The player maintains its own internal queue/playlist of artworks. This queue is 
 When receiving a `show_artwork` command:
 
 1. **Download the image** from the `art_url`
-   - The URL points to the vault on the VPS (e.g., `https://makapix.club/api/vault/a1/b2/c3/{storage_key}.png`)
+   - The URL points to the vault on the VPS (e.g., `https://makapix.club/api/vault/21/32/{storage_key}.png`)
    - Images are served directly from the VPS storage vault
    - The URL uses a hash-based folder structure (derived from the artwork ID)
    - Supported formats: PNG, GIF, WebP

@@ -38,9 +38,10 @@ http://vault.makapix.club/{storage_shard}/{storage_key}.{format}
 
 > **`storage_shard` is opaque.** Treat it as a relative path fragment and
 > substitute it verbatim. Do not parse it, validate its length, or assume a
-> fixed number of `/`-separated components — the server may change the
-> sharding depth (e.g. `"a1/b2/c3"` today, `"21/32"` in the future), and
-> URLs you have already received remain valid either way.
+> fixed number of `/`-separated components — the depth has changed before
+> (current artworks use 2-level shards like `"21/32"`; older URLs used
+> 3-level shards like `"a1/b2/c3"`) and URLs you have already received
+> remain valid either way.
 
 ### URL Components
 
@@ -49,16 +50,16 @@ From the query response:
 ```json
 {
   "storage_key": "abc123-def456-789",
-  "storage_shard": "a1/b2/c3",
+  "storage_shard": "21/32",
   "native_format": "png",
-  "art_url": "https://makapix.club/api/vault/a1/b2/c3/abc123-def456-789.png"
+  "art_url": "https://makapix.club/api/vault/21/32/abc123-def456-789.png"
 }
 ```
 
 You can use `art_url` directly, or construct the HTTP variant:
 
 ```
-http://vault.makapix.club/a1/b2/c3/abc123-def456-789.png
+http://vault.makapix.club/21/32/abc123-def456-789.png
 ```
 
 ## Image Formats

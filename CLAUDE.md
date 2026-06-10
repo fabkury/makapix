@@ -134,8 +134,10 @@ Frontend must mirror in `DEVICE_LABELS` constant (`web/src/components/SiteMetric
 ## Vault Storage System
 
 Images stored in hash-based folder structure:
-- Path format: `/vault/{h1}/{h2}/{h3}/{artwork_id}.{ext}`
-- Hash derived from first 6 chars of SHA-256 of artwork ID
+- Path format: `/vault/{a}/{b}/{artwork_id}.{ext}` (2-level, 4,096 shards)
+- `a`/`b` = low 6 bits of the first two bytes of SHA-256(artwork ID), hex-rendered (`00`–`3f`); see `api/app/vault.py:compute_storage_shard_v2`
+- `posts.storage_shard` stores the shard as an opaque relative path — never derive paths from the key; always pass the stored shard
+- Legacy 3-level paths (`{h1}/{h2}/{h3}`, first 6 hex chars of the hash) remain served from twin copies during the resharding dual window — **read `docs/vault-resharding/` before any vault work**
 - Served via `/api/vault/` (HTTPS) and the env-specific vault subdomain (HTTP for physical players) — see Environments table
 - Supported formats: PNG, GIF, WebP, BMP (max 5 MB by default, configurable via `MAKAPIX_ARTWORK_SIZE_LIMIT`)
 - Dimension rules (`api/app/vault.py:validate_image_dimensions`):

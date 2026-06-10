@@ -63,8 +63,8 @@ Fetch multiple posts with optional filtering.
       "kind": "artwork",
       "created_at": "2024-01-15T09:00:00Z",
       "storage_key": "abc123-def456",
-      "art_url": "https://makapix.club/api/vault/a1/b2/c3/abc123-def456.png",
-      "storage_shard": "a1/b2/c3",
+      "art_url": "https://makapix.club/api/vault/21/32/abc123-def456.png",
+      "storage_shard": "21/32",
       "native_format": "png",
       "width": 64,
       "height": 64,
@@ -276,7 +276,7 @@ By default, responses include only mandatory fields to minimize payload size. Re
 | `created_at` | datetime | Post creation time |
 | `storage_key` | string | Vault storage identifier |
 | `art_url` | string | Full URL to artwork |
-| `storage_shard` | string | Opaque relative vault path (e.g. `"7c/9e/66"`). Use verbatim — do not parse, validate, or assume a fixed depth; the number of components may change |
+| `storage_shard` | string | Opaque relative vault path (e.g. `"23/16"`). Use verbatim — do not parse, validate, or assume a fixed depth; the number of components may change |
 | `native_format` | string | Original file format |
 
 ### Optional Fields
@@ -338,8 +338,8 @@ Fetch a specific post by ID.
     "kind": "artwork",
     "created_at": "2024-01-15T09:00:00Z",
     "storage_key": "abc123-def456",
-    "art_url": "https://makapix.club/api/vault/a1/b2/c3/abc123-def456.png",
-    "storage_shard": "a1/b2/c3",
+    "art_url": "https://makapix.club/api/vault/21/32/abc123-def456.png",
+    "storage_shard": "21/32",
     "native_format": "png",
     "owner_handle": "pixelartist",
     "width": 64,

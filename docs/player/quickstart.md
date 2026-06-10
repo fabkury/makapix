@@ -147,8 +147,8 @@ The response is the HTTP body (status 200).
       "kind": "artwork",
       "created_at": "2024-01-15T09:00:00Z",
       "storage_key": "abc123",
-      "art_url": "https://makapix.club/api/vault/a1/b2/c3/abc123.png",
-      "storage_shard": "a1/b2/c3",
+      "art_url": "https://makapix.club/api/vault/21/32/abc123.png",
+      "storage_shard": "21/32",
       "native_format": "png"
     }
   ],

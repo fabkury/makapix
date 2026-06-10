@@ -24,7 +24,7 @@ All published with QoS 1, no retention.
   "owner_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "owner_handle": "artist123",
   "title": "Cool Pixel Art",
-  "art_url": "https://makapix.club/api/vault/7c/9e/66/7c9e6679.png",
+  "art_url": "https://makapix.club/api/vault/23/16/7c9e6679.png",
   "width": 64,
   "height": 64,
   "promoted_category": null,
