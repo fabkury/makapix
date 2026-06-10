@@ -1771,6 +1771,67 @@ class DownloadStatsResponse(BaseModel):
     computed_at: datetime
 
 
+class VaultShardingDailyRow(BaseModel):
+    """One day of vault downloads split by sharding level (classes summed).
+
+    ``has_data=False`` means the rollup did not run for that day (no
+    aggregate rows) — the dashboard must show it as a data gap, never as a
+    quiet day, because gaps block the retirement streak.
+    """
+
+    date: str  # ISO format date (YYYY-MM-DD)
+    has_data: bool
+    level2_human: int = 0
+    level2_bot: int = 0
+    level3_human: int = 0
+    level3_bot: int = 0
+    level2_misses: int = 0
+    level3_misses: int = 0
+
+
+class VaultShardingClassRow(BaseModel):
+    """Window totals for one (asset class, sharding level) pair."""
+
+    asset_class: str  # artwork | avatar | blog_image
+    shard_level: int  # 2 | 3
+    downloads_human: int
+    downloads_bot: int
+    misses: int
+
+
+class LegacyStragglerRow(BaseModel):
+    """An artwork still being fetched via legacy 3-level URLs."""
+
+    post_id: int
+    public_sqid: str | None
+    title: str | None
+    art_url: str | None
+    owner_handle: str | None
+    downloads_human: int
+    downloads_bot: int
+    last_seen: str  # ISO format date of the most recent legacy fetch
+
+
+class VaultShardingStatsResponse(BaseModel):
+    """Vault resharding migration statistics (moderator only).
+
+    Instrumentation for docs/vault-resharding/: retirement of the legacy
+    3-level paths is gated on ``streak_days`` reaching
+    ``streak_criterion_days`` — consecutive liveness-valid days with zero
+    non-bot legacy downloads (services.download_stats.compute_legacy_streak).
+    """
+
+    window_days: int
+    streak_days: int
+    streak_criterion_days: int
+    streak_as_of: str  # ISO date the streak was computed against (yesterday)
+    daily: list[VaultShardingDailyRow]
+    class_totals: list[VaultShardingClassRow]
+    stragglers: list[LegacyStragglerRow]
+    straggler_window_days: int
+    computed_at: datetime
+
+
 # ============================================================================
 # ARTIST DASHBOARD SCHEMAS
 # ============================================================================

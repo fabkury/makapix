@@ -30,7 +30,7 @@ router = APIRouter(tags=["Artwork"])
 
 
 def get_post_file_path_from_storage_key(
-    storage_key: UUID, file_format: str | None
+    storage_key: UUID, file_format: str | None, storage_shard: str
 ) -> Path:
     """
     Get the file path for a post from its storage_key (UUID).
@@ -38,6 +38,8 @@ def get_post_file_path_from_storage_key(
     Args:
         storage_key: The UUID storage key
         file_format: The file format string (e.g., "png", "gif")
+        storage_shard: The post's stored shard path (source of truth for
+            the vault location — paths must never be re-derived from the key)
 
     Returns:
         Path to the file in the vault
@@ -49,7 +51,7 @@ def get_post_file_path_from_storage_key(
         # Default to .png if file_format is not available
         extension = ".png"
 
-    return get_artwork_file_path(storage_key, extension)
+    return get_artwork_file_path(storage_key, extension, storage_shard)
 
 
 @router.get("/p/{public_sqid}", response_model=schemas.Post)
@@ -252,7 +254,9 @@ def download_by_sqid(
     native_format = native_pf.format if native_pf else None
 
     # Get file path
-    file_path = get_post_file_path_from_storage_key(post.storage_key, native_format)
+    file_path = get_post_file_path_from_storage_key(
+        post.storage_key, native_format, post.storage_shard
+    )
 
     if not file_path.exists():
         raise HTTPException(
@@ -367,7 +371,9 @@ def download_by_storage_key(
     native_format = native_pf.format if native_pf else None
 
     # Get file path
-    file_path = get_post_file_path_from_storage_key(post.storage_key, native_format)
+    file_path = get_post_file_path_from_storage_key(
+        post.storage_key, native_format, post.storage_shard
+    )
 
     if not file_path.exists():
         raise HTTPException(

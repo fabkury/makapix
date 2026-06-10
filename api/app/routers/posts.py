@@ -454,6 +454,10 @@ def create_post(
 
     post = models.Post(
         storage_key=storage_key,
+        # Set even though this route stores no vault file: storage_shard is
+        # the source of truth for vault locations, and the path builders
+        # refuse to derive it from the key (docs/vault-resharding/).
+        storage_shard=compute_storage_shard(storage_key),
         owner_id=current_user.id,
         kind=payload.kind,
         title=payload.title,

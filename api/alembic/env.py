@@ -8,6 +8,11 @@ from sqlalchemy import create_engine
 
 from app.db import Base
 
+# Imported for its side effect: registering all models on Base.metadata.
+# Without this, autogenerate sees an empty metadata and emits drop_table
+# for every table in the database.
+from app import models  # noqa: F401
+
 config = context.config
 
 if config.config_file_name:

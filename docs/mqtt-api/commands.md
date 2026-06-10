@@ -110,7 +110,7 @@ Display a specific artwork immediately.
 |-------|------|-------------|
 | `post_id` | integer | Post identifier |
 | `storage_key` | string | Vault storage key |
-| `storage_shard` | string | Vault shard prefix for path resolution |
+| `storage_shard` | string | Opaque relative vault path (e.g. `"7c/9e/66"`). Use verbatim — do not parse, validate, or assume a fixed depth; the number of components may change |
 | `native_format` | string | Original file format (`png`, `gif`, `webp`, `bmp`) |
 | `width` | integer | Canvas width in pixels |
 | `height` | integer | Canvas height in pixels |
