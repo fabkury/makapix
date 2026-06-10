@@ -281,6 +281,42 @@ archived in each env's `api/reshard-reports/phase1-baseline-{dev,prod}.json`.
 - The opacity contract ("use `storage_shard` verbatim, depth may change")
   stays in all player-facing docs.
 
+### 2026-06-10 — prod `VAULT_PUBLIC_BASE_URL` finally in effect (Claude + fab)
+
+- Found while investigating player p3a downloads: prod had the variable
+  in `deploy/stack/.env`, but the Makefile runs compose with
+  `--env-file .env.prod` — so the running api/worker had it **empty**
+  since the feature shipped, and every prod upload stored a relative
+  `/api/vault/...` in `art_url` (served through FastAPI StaticFiles, no
+  immutable cache headers). Dev was unaffected (`.env` → `.env.dev`
+  symlink).
+- Fix: added `VAULT_PUBLIC_BASE_URL=https://vault.makapix.club` to
+  `.env.prod`, recreated api + worker (`up -d --no-deps`). Verified:
+  env present in both containers, API healthy, `get_artwork_url` emits
+  the vault-subdomain URL, MQTT subscriber processing player status.
+- Stats impact: new-upload downloads will shift from the main-domain
+  `/api/vault` feed (pass 2) to the vault-subdomain feed — expect the
+  main-domain share of sharding stats to decay from today.
+- **URL-prefix backfill (same day):** rewrote every stored relative
+  `/api/vault/...` value to the absolute vault-subdomain form
+  (`'^/api/vault' → 'https://vault[-dev].makapix.club'` — prefix only,
+  shard paths untouched; pattern-scoped per D11, external URLs can't
+  match). Prod: 13 `posts.art_url` + 2 `users.avatar_url` +
+  381 `sn.content_art_url` + 251 `sn.actor_avatar_url` + 1
+  `blog_posts.body` = 648 rows. Dev: 58 + 36 + 1 = 95 rows (posts/users
+  already clean — the var has been live on dev since May 31). Old/new
+  values recorded in `api/reshard-reports/backfill-url-prefix-{prod,dev}-
+  20260610.jsonl` (same style as flip manifests). Verified: 0 relative
+  refs remain in either env; rewritten artwork/avatar/blog-image URLs
+  fetch 200 from both vault subdomains. Note 2,858 prod posts already
+  stored absolute vault URLs, so consumers (web + firmware) demonstrably
+  handle the absolute form.
+- Caveat for the dev-DB-clones-prod flow: prod rows carry
+  `https://vault.makapix.club/...`, so a fresh clone points dev payloads
+  at the prod vault (pre-existing for posts; now also true for the
+  backfilled columns). Harmless for browsing; rewrite the host if dev
+  must be self-contained.
+
 Open items carried forward:
 - ~48 h: re-run `status` on both envs (`v1_url_refs` must still be 0 —
   in-flight sessions/notification snapshots can reinstate v1 values; if
