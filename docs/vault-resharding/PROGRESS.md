@@ -1,11 +1,10 @@
 # Progress Log — Vault Resharding
 
-**Current phase: Phase 0 complete on dev (PR-A + PR-B committed and live).**
-**Next action: owner eyeballs the dashboard at development.makapix.club
-(mod dashboard → Downloads tab) and ideally does one real test upload;
-then push `develop`, PR → `main`, deploy to prod (`cd /opt/makapix &&
-make deploy`), apply the same dev verifications on prod → that closes G0.
-After G0: Phase 1 (`reshard_vault.py copy`), dev first.**
+**Current phase: Phase 0 COMPLETE — G0 closed on dev and prod (2026-06-10).**
+**Next action: owner eyeballs the dashboard panel (mod dashboard →
+Downloads tab; first populated day = 2026-06-09, legacy-only as expected).
+Then Phase 1: `reshard_vault.py copy` — dev rehearsal first, then prod
+(pre-flight `df`, `--limit 10` smoke, full run, re-run to converge).**
 
 Newest entries first in the log; checklists mirror PLAN.md §9 gates.
 Update this file at the end of every working session on this effort.
@@ -14,7 +13,7 @@ Update this file at the end of every working session on this effort.
 
 | Gate | Description | Dev | Prod |
 |---|---|---|---|
-| G0 | Groundwork deployed (PR-A refactor/instrumentation + PR-B v2 cutover) | ☐ | ☐ |
+| G0 | Groundwork deployed (PR-A refactor/instrumentation + PR-B v2 cutover) | ✅ 2026-06-10 | ✅ 2026-06-10 |
 | G1 | All v1 assets copied to v2 locations (`v1_only_files` = 0) | ☐ | ☐ |
 | G2 | Duplication verified (sha256, reconciliation, orphans recorded) | ☐ | ☐ |
 | G3 | DB references flipped; `v1_url_refs` = 0 stable; fielded-player v2 fetch confirmed | ☐ | ☐ |
@@ -145,8 +144,37 @@ Update this file at the end of every working session on this effort.
   cleanup OK; existing v1 post download endpoint returned 200
   (`/api/d/zVQ`, 35 KB); MQTT subscribers healthy after restart.
 
+### 2026-06-10 — G0 closed: dev e2e upload + prod deploy + verifications (Claude + fab)
+
+- **Dev e2e upload** (post 3425, hidden, deleted after): landed at v2 shard
+  `2b/1a` (5 chars in DB); worker generated all 4 format variants +
+  upscaled at v2 only — **no v1 twin**; `art_url` served 200 via Caddy;
+  `/api/d/MU3S` 200 (authed; anonymous 404 was the hidden_by_user
+  visibility check working). Moderator permanent-delete removed every copy
+  (dual-delete verified through the API).
+- **Pushed develop; PR #190 merged to main; prod deployed** via
+  `make deploy` (migration `a71f178d6e9b` auto-applied). Prod MQTT
+  subscribers needed the known post-broker-restart api restart; settled.
+- **Prod hotfix (PR #191):** rollup returned all zeros on prod — Caddy
+  tags per-site log outputs `http.log.access.log0/.log1`, and the
+  exact-match logger filter dropped every vault-subdomain entry (dev's
+  genuinely-quiet log masked it). Prefix-match fix + regression test;
+  merged, pulled on prod, api+worker restarted.
+- **Prod verifications, all green:**
+  - existing v1 post download 200; legacy `/api/vault/...` form serves 200
+    (live specimen of the second-feed population);
+  - v2-born primitive smoke: shard `06/1c`, v2-only, dual-delete clean;
+  - `status` baseline: **2,871 posts / 11,324 referenced files / 11,329 on
+    disk / 0 NULL shards / 0 derivation mismatches / 0 anomalous URL refs /
+    only 6 orphans** (dev's 5,233 were dev-divergence noise, R16);
+    v1 URL refs: art_url 2,871, avatars 15, notifications 322+461, blog 1+1;
+  - rollup for 2026-06-09: 2,491 artworks, 3,131 human downloads, 3,144
+    legacy non-bot hits (incl. avatar 13), 0 misses, streak 0 — correct,
+    legacy traffic is alive until the Phase 3 flip;
+  - aggregate zero-rows present for all 6 class×level combos;
+  - `/admin/vault-sharding-stats` 401 anonymous.
+
 Open items carried forward:
-- G0 (gate): needs prod deploy + same verifications on prod; plus one
-  human-eye check of the dashboard panel and a real test upload on dev.
-- First nightly rollup under the new code runs tonight (01:00 ET window);
-  check the Downloads tab tomorrow for the first liveness-valid day.
+- Owner: eyeball the dashboard panel once (Downloads tab, both envs).
+- Phase 1 pre-flight when ready: `df` headroom, archive `status --json`
+  baseline here, then `copy` (dev → prod).
