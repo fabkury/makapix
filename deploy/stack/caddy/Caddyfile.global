@@ -26,7 +26,66 @@
 # import page (which sets COEP `require-corp`) able to load these images.
 # -----------------------------------------------------------------------------
 
+# -----------------------------------------------------------------------------
+# Legacy 3-level -> 2-level shard remap (docs/vault-resharding/ D16).
+#
+# The 2-level shard is the first two legacy path components with each byte
+# masked to its low 6 bits (api/app/vault.py:compute_storage_shard_v2). In
+# hex that changes only the leading character of each component (c -> c & 0x3),
+# which the two maps below implement — no hashing needed.
+#
+# Fires only when no file exists at the requested path ("not file"), so twin
+# copies keep serving unchanged during the dual window. The access log records
+# the original (3-level) URI, so download-stats keeps measuring legacy
+# traffic. The API's /api/vault mount applies the same fallback
+# (api/app/vault_serving.py); keep the two in sync.
+# -----------------------------------------------------------------------------
+(legacy_shard_remap) {
+	@legacy_miss {
+		path_regexp legacy ^/(avatar/)?([0-9a-f])([0-9a-f])/([0-9a-f])([0-9a-f])/[0-9a-f]{2}/([^/]+)$
+		not file
+	}
+	map {re.legacy.2} {legacy_a_hi} {
+		0 0
+		1 1
+		2 2
+		3 3
+		4 0
+		5 1
+		6 2
+		7 3
+		8 0
+		9 1
+		a 2
+		b 3
+		c 0
+		d 1
+		e 2
+		f 3
+	}
+	map {re.legacy.4} {legacy_b_hi} {
+		0 0
+		1 1
+		2 2
+		3 3
+		4 0
+		5 1
+		6 2
+		7 3
+		8 0
+		9 1
+		a 2
+		b 3
+		c 0
+		d 1
+		e 2
+		f 3
+	}
+	rewrite @legacy_miss /{re.legacy.1}{legacy_a_hi}{re.legacy.3}/{legacy_b_hi}{re.legacy.5}/{re.legacy.6}
+}
+
 http://vault.makapix.club, vault.makapix.club {
+	import legacy_shard_remap
 	root * /srv/vault-prod
 	file_server
 	encode gzip
@@ -49,6 +108,7 @@ http://vault.makapix.club, vault.makapix.club {
 }
 
 http://vault-dev.makapix.club, vault-dev.makapix.club {
+	import legacy_shard_remap
 	root * /srv/vault-dev
 	file_server
 	encode gzip
