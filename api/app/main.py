@@ -14,7 +14,6 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
 
 from .routers import (
     admin,
@@ -49,6 +48,7 @@ from .routers import (
 )
 from .seed import ensure_seed_data
 from .middleware import RequestIdMiddleware, SecurityHeadersMiddleware
+from .vault_serving import LegacyShardFallbackStaticFiles
 
 load_dotenv()
 
@@ -274,14 +274,23 @@ mimetypes.add_type("image/webp", ".webp")
 
 # Mount vault directory for serving uploaded artwork images
 # Note: Caddy strips /api prefix, so mount at /vault (requests arrive as /vault/...)
+# LegacyShardFallbackStaticFiles keeps legacy 3-level URLs valid (D16).
 vault_location = os.environ.get("VAULT_LOCATION")
 if vault_location:
     vault_path = Path(vault_location)
     if vault_path.exists():
-        app.mount("/vault", StaticFiles(directory=str(vault_path)), name="vault")
+        app.mount(
+            "/vault",
+            LegacyShardFallbackStaticFiles(directory=str(vault_path)),
+            name="vault",
+        )
         logger.info(f"Mounted vault at /vault from {vault_location}")
     else:
         # Create the vault directory if it doesn't exist
         vault_path.mkdir(parents=True, exist_ok=True)
-        app.mount("/vault", StaticFiles(directory=str(vault_path)), name="vault")
+        app.mount(
+            "/vault",
+            LegacyShardFallbackStaticFiles(directory=str(vault_path)),
+            name="vault",
+        )
         logger.info(f"Created and mounted vault at /vault from {vault_location}")

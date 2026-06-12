@@ -169,3 +169,31 @@ The tool recognizes exactly: 2-hex-char shard directories at the vault root,
 `bdr/` (batch-download zips referenced by `batch_download_requests.file_path`)
 and `lost+found` — which delete/prune/orphan logic must treat as out of
 scope: reported, never touched.
+
+## D16 — Legacy 3-level URLs stay valid at the serving layer (implemented, 2026-06-12)
+
+Both vault serving paths remap a 3-level-shaped request whose file is missing
+to the asset's 2-level location and serve it directly — HTTP 200, no
+redirect: the vault subdomains via the `legacy_shard_remap` snippet in
+`deploy/stack/caddy/Caddyfile.global`, the main-domain `/api/vault/` feed via
+`LegacyShardFallbackStaticFiles` (`api/app/vault_serving.py`). The remap is a
+pure string transform — the first two legacy shard components are the first
+two SHA-256 digest bytes hex-rendered, and the v2 shard is those same bytes
+masked to their low 6 bits, so only each component's leading hex char changes
+(`c -> c & 0x3`). No hashing, no DB access; ~1 µs per request against ~228
+requests/day on the prod vault subdomain.
+
+Properties that drove the decision:
+
+- **Miss-only.** While a twin copy exists at the requested path it is served
+  as-is; dual-window behavior is byte-identical to before.
+- **Measurement-safe.** The Caddy access log records the *original* URI
+  (verified empirically on caddy 2.7.6), so the D8/D13 stats pipeline and the
+  G4 retirement signal keep seeing legacy traffic as legacy.
+- **Defuses R1's worst case.** Firmware that derives v1 paths locally from
+  `sha256(storage_key)` keeps working even for v2-born assets (whose
+  legacy-shaped URLs 404ed until now) and after Phase 5 deletion.
+
+What this does **not** change: D4's retirement criterion still gates Phase 5
+deletion. The alias is a safety net behind that gate, not a substitute for
+it; relaxing D4 because the alias exists is a separate owner decision.

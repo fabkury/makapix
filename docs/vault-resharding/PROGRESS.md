@@ -324,3 +324,39 @@ Open items carried forward:
 - Confirm level-2 player traffic on the dashboard (closes G3 prod).
 - Owner: eyeball the dashboard panel (Downloads tab, both envs).
 - Weekly: check the streak counter; investigate any `misses`.
+
+### 2026-06-12 — D16: serving-layer legacy-URL alias implemented on develop (Claude + fab)
+
+- **Decision D16** (see DECISIONS.md): legacy 3-level URLs stay valid
+  permanently at the serving layer — miss-only remap to the 2-level
+  location, served directly (200, no redirect). Pure string transform
+  (leading hex char of each of the first two components `& 0x3`); no
+  hashing, no DB. D4/G4 unchanged: the alias is a safety net behind the
+  retirement gate, not a substitute for it.
+- **Caddy** (`deploy/stack/caddy/Caddyfile.global`): new
+  `legacy_shard_remap` snippet (path_regexp + two 16-entry char maps +
+  `rewrite`, gated on `not file`), imported by both vault site blocks.
+  `caddy validate` clean on caddy 2.7.6. Functionally verified in a
+  scratch caddy:2.7.6 container: legacy→v2 200, twin-on-disk served
+  as-is, avatar prefix, 404 when missing everywhere, non-vault paths
+  untouched — and the access log records the **original** 3-level URI,
+  so the D8/D13 stats pipeline and G4 keep measuring legacy traffic.
+- **API** (`api/app/vault_serving.py`): `/api/vault/` mount now uses
+  `LegacyShardFallbackStaticFiles` (StaticFiles subclass overriding
+  `lookup_path`; same miss-only semantics, artwork + avatar shapes).
+  New `api/tests/test_vault_serving.py` (transform cross-checked against
+  `compute_storage_shard_v1/v2`, worked example, serving semantics);
+  full API suite green (275 passed). Live-verified on dev after API
+  restart: legacy-shaped path with no file at that location serves the
+  v2 bytes (200); true v1 twin path and v2 path unchanged; 404 preserved.
+- **Activation status:** dev API live as of today. The Caddy change is
+  NOT live anywhere yet — the shared caddy container (owned by
+  makapix-prod) mounts `/opt/makapix/deploy/stack/caddy/Caddyfile.global`,
+  so both vault subdomains pick it up only after merge to `main` + prod
+  pull + `docker restart caddy` (caddy-docker-proxy does not watch the
+  base file). Post-activation check: curl a legacy-shaped URL that has
+  no legacy file (e.g. a v2-born asset's v1-derived path) on each vault
+  subdomain → 200, and confirm the log line shows the 3-level URI.
+- Note for Phase 5 planning: dev currently has no v2-born posts (no
+  uploads since the 2026-06-10 cutover), so every dev asset still has a
+  twin; the live remap test used a synthetic legacy-shaped path.
