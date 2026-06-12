@@ -360,3 +360,22 @@ Open items carried forward:
 - Note for Phase 5 planning: dev currently has no v2-born posts (no
   uploads since the 2026-06-10 cutover), so every dev asset still has a
   twin; the live remap test used a synthetic legacy-shaped path.
+
+### 2026-06-12 (later) — D16 deployed to prod; live on all serving paths (Claude + fab)
+
+- PR #195 (develop → main, merge `1e41b47`) deployed via `make deploy`;
+  the whole prod stack was recreated, so caddy re-read the new
+  Caddyfile.global on start (no separate restart needed).
+- Live verification, both envs, synthetic legacy-shaped paths with no
+  file at the requested location (prod `42/4a/ff/…` → `02/0a/…`, dev
+  `51/44/aa/…` → `11/04/…`): HTTP and HTTPS both 200 with bytes
+  identical to the v2 file; misses still 404; prod `/api/vault/` mount
+  fallback 200.
+- Confirmed in the live prod vault-access.log: the remapped request is
+  logged with the ORIGINAL 3-level URI (status 200) — G4 measurement
+  intact.
+- MQTT subscribers reconnected cleanly after the stack restart (api
+  started after the broker; no publisher-left-dead condition).
+- D16 is now fully active: legacy 3-level URLs remain valid on
+  vault.makapix.club, vault-dev.makapix.club, and /api/vault/ in both
+  environments, independent of the twin copies' existence.
