@@ -218,7 +218,11 @@ class UserUpdate(BaseModel):
     bio: str | None = Field(None, max_length=1000)
     tagline: str | None = Field(None, max_length=48)  # Short one-liner
     website: str | None = Field(None, max_length=500)
-    avatar_url: str | None = None
+    # NOTE: avatar_url is intentionally NOT settable here. Avatars are mutated
+    # only via POST/DELETE /user/{id}/avatar, which enforce format/size limits
+    # and store the bytes in our vault. Allowing a free-form URL through PATCH
+    # would let a user point their avatar at any external/off-site resource,
+    # bypassing the upload pipeline.
     hidden_by_user: bool | None = None
     approved_hashtags: list[str] | None = None
 
