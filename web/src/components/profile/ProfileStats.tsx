@@ -7,6 +7,7 @@
  * - 🧮 Reputation
  */
 
+import { ReactNode } from 'react';
 import { formatCount } from '../../utils/formatCount';
 import { UserProfileStats as Stats } from '../../types/profile';
 
@@ -14,9 +15,11 @@ interface ProfileStatsProps {
   stats: Stats;
   reputation: number;
   onFollowerClick?: () => void;
+  /** Optional actions rendered at the right of the row (e.g. the overflow menu). */
+  actions?: ReactNode;
 }
 
-export default function ProfileStats({ stats, reputation, onFollowerClick }: ProfileStatsProps) {
+export default function ProfileStats({ stats, reputation, onFollowerClick, actions }: ProfileStatsProps) {
   return (
     <div className="profile-stats">
       <div
@@ -41,6 +44,7 @@ export default function ProfileStats({ stats, reputation, onFollowerClick }: Pro
         <span className="stat-icon">🧮</span>
         <span className="stat-value">{formatCount(reputation)}</span>
       </div>
+      {actions && <div className="stat-actions">{actions}</div>}
 
       <style jsx>{`
         .profile-stats {
@@ -68,6 +72,10 @@ export default function ProfileStats({ stats, reputation, onFollowerClick }: Pro
         .stat-value {
           color: var(--text-primary);
           font-weight: 500;
+        }
+        .stat-actions {
+          display: flex;
+          align-items: center;
         }
         .stat-clickable {
           cursor: pointer;
