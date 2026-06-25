@@ -777,6 +777,10 @@ export default function UserProfilePage() {
   const targetIsModerator = profile.badges?.some(
     (b) => b.badge === 'moderator' || b.badge === 'owner'
   );
+  // Stat-row shortcuts are only active for viewers who can reach the target page
+  // (same gating as the corresponding overflow-menu items).
+  const canManagePosts = isSelf || (isModerator && !isOwner);
+  const canViewDashboard = isSelf || isModerator;
   const menuItems: ProfileMenuItem[] = [];
   if (isSelf || isModerator) {
     // Artist Dashboard — always available when the menu is shown.
@@ -1132,6 +1136,8 @@ export default function UserProfilePage() {
               stats={profile.stats}
               reputation={profile.reputation}
               onFollowerClick={() => setShowFollowersOverlay(true)}
+              onPostsClick={canManagePosts ? () => router.push(`/u/${sqidForLinks}/posts`) : undefined}
+              onViewsClick={canViewDashboard ? () => router.push(`/u/${sqidForLinks}/dashboard`) : undefined}
               actions={showMenu ? <ProfileMenu items={menuItems} /> : undefined}
             />
           </div>
