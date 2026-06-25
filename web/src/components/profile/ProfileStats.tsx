@@ -15,11 +15,22 @@ interface ProfileStatsProps {
   stats: Stats;
   reputation: number;
   onFollowerClick?: () => void;
+  /** Opens Post Management; clicking the 🖼️ icon or the artwork count. */
+  onPostsClick?: () => void;
+  /** Opens the Artist Dashboard; clicking the 👁️ icon or the view count. */
+  onViewsClick?: () => void;
   /** Optional actions rendered at the right of the row (e.g. the overflow menu). */
   actions?: ReactNode;
 }
 
-export default function ProfileStats({ stats, reputation, onFollowerClick, actions }: ProfileStatsProps) {
+export default function ProfileStats({
+  stats,
+  reputation,
+  onFollowerClick,
+  onPostsClick,
+  onViewsClick,
+  actions,
+}: ProfileStatsProps) {
   return (
     <div className="profile-stats">
       <div
@@ -30,12 +41,20 @@ export default function ProfileStats({ stats, reputation, onFollowerClick, actio
         <span className="stat-value">{formatCount(stats.follower_count)}</span>
       </div>
       <div className="stat-separator" />
-      <div className="stat">
+      <div
+        className={`stat${onPostsClick ? ' stat-clickable' : ''}`}
+        onClick={onPostsClick}
+        title={onPostsClick ? 'Post Management' : undefined}
+      >
         <span className="stat-icon">🖼️</span>
         <span className="stat-value">{formatCount(stats.total_posts)}</span>
       </div>
       <div className="stat-separator" />
-      <div className="stat">
+      <div
+        className={`stat${onViewsClick ? ' stat-clickable' : ''}`}
+        onClick={onViewsClick}
+        title={onViewsClick ? 'Artist Dashboard' : undefined}
+      >
         <span className="stat-icon">👁️</span>
         <span className="stat-value">{formatCount(stats.total_views)}</span>
       </div>
