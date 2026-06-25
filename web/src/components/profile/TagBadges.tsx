@@ -1,6 +1,7 @@
 /**
  * TagBadges component - displays tag badges under the username.
- * Shows 16x16 badge icons, or 🛡️ emoji if no badges.
+ * Shows 16x16 badge icons. Renders nothing when the user has no badges,
+ * so the tagline flows up directly below the handle.
  * Clicking anywhere in the area opens the badges overlay.
  */
 
@@ -12,6 +13,10 @@ interface TagBadgesProps {
 }
 
 export default function TagBadges({ badges, onAreaClick }: TagBadgesProps) {
+  if (badges.length === 0) {
+    return null;
+  }
+
   return (
     <button
       className="tag-badges-area"
@@ -19,25 +24,21 @@ export default function TagBadges({ badges, onAreaClick }: TagBadgesProps) {
       aria-label="View all badges"
       type="button"
     >
-      {badges.length > 0 ? (
-        badges.map((badge) => {
-          const icon32 = badge.icon_url_16.replace('_16.png', '_32.png');
-          return (
-            <img
-              key={badge.badge}
-              src={badge.icon_url_16}
-              srcSet={`${badge.icon_url_16} 1x, ${icon32} 2x`}
-              alt={badge.label}
-              title={badge.label}
-              className="tag-badge-icon"
-              width={16}
-              height={16}
-            />
-          );
-        })
-      ) : (
-        <span className="tag-badge-placeholder">🛡️</span>
-      )}
+      {badges.map((badge) => {
+        const icon32 = badge.icon_url_16.replace('_16.png', '_32.png');
+        return (
+          <img
+            key={badge.badge}
+            src={badge.icon_url_16}
+            srcSet={`${badge.icon_url_16} 1x, ${icon32} 2x`}
+            alt={badge.label}
+            title={badge.label}
+            className="tag-badge-icon"
+            width={16}
+            height={16}
+          />
+        );
+      })}
 
       <style jsx>{`
         .tag-badges-area {
@@ -67,10 +68,6 @@ export default function TagBadges({ badges, onAreaClick }: TagBadgesProps) {
           width: 16px;
           height: 16px;
           image-rendering: pixelated;
-        }
-        .tag-badge-placeholder {
-          font-size: 16px;
-          line-height: 16px;
         }
       `}</style>
     </button>

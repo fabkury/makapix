@@ -15,7 +15,6 @@ import {
   TagBadges,
   ProfileStats,
   FollowButton,
-  GiftButton,
   ProfileMenu,
   HighlightsGallery,
   ProfileTabs,
@@ -1126,7 +1125,6 @@ export default function UserProfilePage() {
                       } : prev);
                     }}
                   />
-                  <GiftButton userSqid={profile.public_sqid || ''} />
                 </div>
               )}
             </div>
@@ -1167,7 +1165,6 @@ export default function UserProfilePage() {
                 } : prev);
               }}
             />
-            <GiftButton userSqid={profile.public_sqid || ''} />
           </div>
         )}
 
