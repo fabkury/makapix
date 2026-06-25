@@ -447,8 +447,8 @@ def update_user(
         user.tagline = payload.tagline
     if payload.website is not None:
         user.website = payload.website
-    if payload.avatar_url is not None:
-        user.avatar_url = payload.avatar_url
+    # avatar_url is deliberately not accepted here — see schemas.UserUpdate.
+    # Avatar changes go through POST/DELETE /user/{id}/avatar only.
 
     # Only allow moderators to update hidden_by_user for other users
     if payload.hidden_by_user is not None:
