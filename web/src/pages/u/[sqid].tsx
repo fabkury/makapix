@@ -1440,7 +1440,7 @@ export default function UserProfilePage() {
           display: flex;
           align-items: center;
           margin-bottom: 8px;
-          max-width: 350px;
+          max-width: 600px;
         }
 
         .handle-edit-row > :global(* + *) {
@@ -1500,6 +1500,7 @@ export default function UserProfilePage() {
         .handle-status.error { color: #f87171; }
 
         .edit-tagline-input {
+          display: block;
           font-size: 0.95rem;
           color: var(--accent-cyan);
           background: var(--bg-tertiary);
@@ -1507,7 +1508,7 @@ export default function UserProfilePage() {
           border-radius: 8px;
           padding: 8px 12px;
           width: 100%;
-          max-width: 400px;
+          max-width: 600px;
           margin-bottom: 12px;
           font-style: italic;
           transition: border-color var(--transition-fast);
@@ -1519,6 +1520,7 @@ export default function UserProfilePage() {
         }
 
         .edit-bio-input {
+          display: block;
           font-size: 1rem;
           color: var(--text-secondary);
           background: var(--bg-tertiary);
