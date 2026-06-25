@@ -7,7 +7,7 @@ import PlayerBar from '../../components/PlayerBarDynamic';
 import { FilterButton } from '../../components/FilterButton';
 import { WPButton } from '../../components/WPButton';
 import { WebPlayer } from '../../components/WebPlayerDynamic';
-import { authenticatedFetch, clearTokens } from '../../lib/api';
+import { authenticatedFetch, clearTokens, logout } from '../../lib/api';
 import { usePlayerBarOptional } from '../../contexts/PlayerBarContext';
 import { useFilters, FilterConfig } from '../../hooks/useFilters';
 import { calculatePageSize } from '../../utils/gridUtils';
@@ -16,13 +16,14 @@ import {
   ProfileStats,
   FollowButton,
   GiftButton,
-  OwnerPanel,
+  ProfileMenu,
   HighlightsGallery,
   ProfileTabs,
   MarkdownBio,
   BadgesOverlay,
   FollowersOverlay,
 } from '../../components/profile';
+import type { ProfileMenuItem } from '../../components/profile/ProfileMenu';
 import {
   UserProfileEnhanced,
   BadgeGrant,
@@ -389,6 +390,13 @@ export default function UserProfilePage() {
       setHandleStatus('idle');
       setHandleMessage('');
       setIsEditing(true);
+    }
+  };
+
+  const handleLogout = async () => {
+    if (window.confirm('Are you sure you want to log out?')) {
+      await logout();
+      router.push('/');
     }
   };
 
@@ -761,6 +769,84 @@ export default function UserProfilePage() {
   const currentPosts = activeTab === 'gallery' ? posts : reactedPosts;
   const currentHasMore = activeTab === 'gallery' ? hasMore : hasMoreReacted;
 
+  // Build the overflow (three-dot) menu shown at the right of the stats row.
+  // Consolidates the former owner-panel and moderation-row actions. Only the
+  // profile owner or a moderator sees a menu at all.
+  const sqidForLinks = profile.public_sqid || '';
+  const isSelf = profile.is_own_profile;
+  const targetIsModerator = profile.badges?.some(
+    (b) => b.badge === 'moderator' || b.badge === 'owner'
+  );
+  const menuItems: ProfileMenuItem[] = [];
+  if (isSelf || isModerator) {
+    // Artist Dashboard — always available when the menu is shown.
+    menuItems.push({
+      key: 'dashboard',
+      icon: '📊',
+      label: 'Artist Dashboard',
+      href: `/u/${sqidForLinks}/dashboard`,
+    });
+    // Post Management — self, or moderator viewing a non-owner.
+    if (isSelf || (isModerator && !isOwner)) {
+      menuItems.push({
+        key: 'posts',
+        icon: '🗂️',
+        label: 'Post Management',
+        href: `/u/${sqidForLinks}/posts`,
+      });
+    }
+    // User Management (UMD) — moderator, for self or non-owner targets.
+    if (isModerator && (isSelf || !isOwner)) {
+      menuItems.push({
+        key: 'manage',
+        icon: '🛠️',
+        label: 'User Management',
+        href: `/u/${sqidForLinks}/manage`,
+      });
+    }
+    // Owner-only actions.
+    if (isSelf) {
+      menuItems.push({
+        key: 'players',
+        icon: '📺',
+        label: 'Manage Players',
+        href: `/u/${sqidForLinks}/player`,
+      });
+      menuItems.push({
+        key: 'settings',
+        icon: '⚙️',
+        label: 'User Settings',
+        href: `/u/${sqidForLinks}/settings`,
+      });
+      menuItems.push({
+        key: 'edit',
+        icon: '✏️',
+        label: 'Edit Profile',
+        onClick: handleEditClick,
+      });
+    }
+    // Moderator editing another (non-owner) user.
+    if (isModerator && !isSelf && (isViewerOwner || !targetIsModerator)) {
+      menuItems.push({
+        key: 'edit-user',
+        icon: '✏️',
+        label: 'Edit User',
+        onClick: handleEditClick,
+      });
+    }
+    // Log Out — owner-only, kept last.
+    if (isSelf) {
+      menuItems.push({
+        key: 'logout',
+        icon: '🚪',
+        label: 'Log Out',
+        onClick: handleLogout,
+        danger: true,
+      });
+    }
+  }
+  const showMenu = !isEditing && menuItems.length > 0;
+
   return (
     <Layout title={profile.handle} description={profile.bio || `${profile.handle}'s profile on Makapix Club`}>
       <FilterButton
@@ -1041,41 +1127,13 @@ export default function UserProfilePage() {
               )}
             </div>
 
-            {/* Stats Row */}
+            {/* Stats Row (with overflow actions menu at the right) */}
             <ProfileStats
               stats={profile.stats}
               reputation={profile.reputation}
               onFollowerClick={() => setShowFollowersOverlay(true)}
+              actions={showMenu ? <ProfileMenu items={menuItems} /> : undefined}
             />
-
-            {/* Owner Panel (own profile or moderators) */}
-            {!isEditing && (profile.is_own_profile || isModerator) && (
-              <OwnerPanel
-                userSqid={profile.public_sqid || ''}
-                onEditClick={handleEditClick}
-                isOwner={profile.is_own_profile}
-                isModerator={isModerator}
-                isTargetOwner={isOwner}
-              />
-            )}
-
-            {/* Moderation Buttons */}
-            {!isEditing && isModerator && (
-              <div className="moderation-row">
-                {/* UMD link - visible for self OR non-owner targets */}
-                {(profile.is_own_profile || !isOwner) && (
-                  <Link href={`/u/${profile.public_sqid}/manage`} className="mod-btn" title="User Management">
-                    🛠️
-                  </Link>
-                )}
-                {/* Edit button - only for others, not self */}
-                {!profile.is_own_profile && (isViewerOwner || !(profile.badges?.some(b => b.badge === 'moderator' || b.badge === 'owner'))) && (
-                  <button className="mod-btn" onClick={handleEditClick}>
-                    ✏️ Edit
-                  </button>
-                )}
-              </div>
-            )}
           </div>
         </div>
 
@@ -1335,16 +1393,6 @@ export default function UserProfilePage() {
           }
         }
 
-        .moderation-row {
-          display: flex;
-          flex-wrap: wrap;
-          margin: 16px -4px -4px;
-        }
-
-        .moderation-row > :global(*) {
-          margin: 4px;
-        }
-
         .display-name {
           font-size: 1.75rem;
           font-weight: 700;
@@ -1388,28 +1436,11 @@ export default function UserProfilePage() {
           }
         }
 
-        :global(.mod-btn) {
-          background: transparent;
-          border: 1px solid rgba(255, 255, 255, 0.2);
-          border-radius: 6px;
-          padding: 8px 12px;
-          font-size: 1rem;
-          cursor: pointer;
-          color: var(--text-primary);
-          text-decoration: none;
-          transition: all var(--transition-fast);
-        }
-
-        :global(.mod-btn:hover) {
-          background: rgba(255, 255, 255, 0.1);
-          border-color: var(--accent-cyan);
-        }
-
         .handle-edit-row {
           display: flex;
           align-items: center;
           margin-bottom: 8px;
-          max-width: 350px;
+          max-width: 600px;
         }
 
         .handle-edit-row > :global(* + *) {
@@ -1469,6 +1500,7 @@ export default function UserProfilePage() {
         .handle-status.error { color: #f87171; }
 
         .edit-tagline-input {
+          display: block;
           font-size: 0.95rem;
           color: var(--accent-cyan);
           background: var(--bg-tertiary);
@@ -1476,7 +1508,7 @@ export default function UserProfilePage() {
           border-radius: 8px;
           padding: 8px 12px;
           width: 100%;
-          max-width: 400px;
+          max-width: 600px;
           margin-bottom: 12px;
           font-style: italic;
           transition: border-color var(--transition-fast);
@@ -1488,6 +1520,7 @@ export default function UserProfilePage() {
         }
 
         .edit-bio-input {
+          display: block;
           font-size: 1rem;
           color: var(--text-secondary);
           background: var(--bg-tertiary);

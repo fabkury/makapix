@@ -363,6 +363,10 @@ export default function PlayerBar() {
 
           {displayText && <div className="display-text">{displayText}</div>}
 
+          {/* When there's no label to fill the row, this eats the free space
+              so the button cluster still stays flush right. */}
+          {!displayText && <div className="player-bar-spacer" />}
+
           {supportsPause && activePlayer && (
             <button
               className={`pause-btn ${displayedPaused ? 'paused' : ''}`}
@@ -440,12 +444,16 @@ export default function PlayerBar() {
           color: #ffffff;
           font-size: 0.95rem;
           font-weight: 500;
-          max-width: 240px;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
-          flex: 1;
+          /* Grow to fill all free space (pushing the buttons flush right);
+             min-width:0 lets it shrink and ellipsize when the title is wider
+             than the available room. */
+          flex: 1 1 auto;
+          min-width: 0;
         }
+        .player-bar-spacer { flex: 1 1 auto; min-width: 0; }
         .menu-wrap { position: relative; }
         .menu-btn {
           background: transparent;
