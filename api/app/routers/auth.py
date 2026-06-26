@@ -63,6 +63,16 @@ GITHUB_REDIRECT_URI = os.getenv(
     "GITHUB_REDIRECT_URI", "http://localhost/auth/github/callback"
 )
 
+# Allowlisted native redirect URIs (custom schemes) for the server-brokered
+# OAuth flow (§3.3). Confirmed with the app team; comma-separated, env-overridable.
+NATIVE_OAUTH_REDIRECT_URIS = frozenset(
+    u.strip()
+    for u in os.getenv(
+        "NATIVE_OAUTH_REDIRECT_URIS", "club.makapix.editor://oauth/github"
+    ).split(",")
+    if u.strip()
+)
+
 # OAuth state cookie configuration (CSRF/replay protection)
 OAUTH_STATE_COOKIE_NAME = "oauth_state"
 OAUTH_STATE_TTL_SECONDS = 10 * 60  # 10 minutes
@@ -519,13 +529,30 @@ def token(
         mark_refresh_token_rotated(payload.refresh_token, db, grace_seconds=60)
 
     elif grant_type == "authorization_code":
-        # The server-brokered GitHub flow (B3 / change-request §3.3) mints the
-        # short-lived Makapix code that is exchanged here. Wired up in B3.
-        raise AppError(
-            ErrorCode.bad_request,
-            "authorization_code grant is not enabled yet.",
-            status.HTTP_400_BAD_REQUEST,
-        )
+        # The server-brokered GitHub flow mints the short-lived Makapix code; the
+        # app exchanges it here with its PKCE code_verifier (§3.3).
+        if not payload.code or not payload.code_verifier:
+            raise AppError(
+                ErrorCode.validation_error,
+                "code and code_verifier are required for the authorization_code grant.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        from ..services.oauth_codes import consume_authorization_code
+
+        uid = consume_authorization_code(payload.code, payload.code_verifier)
+        if uid is None:
+            raise AppError(
+                ErrorCode.token_invalid,
+                "Invalid, expired, or already-used authorization code.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        user = db.query(models.User).filter(models.User.id == uid).first()
+        if not user:
+            raise AppError(
+                ErrorCode.token_invalid,
+                "Invalid authorization code.",
+                status.HTTP_400_BAD_REQUEST,
+            )
     else:  # pragma: no cover - guarded by the schema Literal
         raise AppError(
             ErrorCode.validation_error,
@@ -1258,16 +1285,50 @@ def unlink_provider(
 
 
 @router.get("/github/login")
-def github_login(request: Request, installation_id: int = Query(None)):
+def github_login(
+    request: Request,
+    installation_id: int = Query(None),
+    redirect_uri: str | None = Query(
+        None, description="Native custom-scheme redirect (server-brokered flow)"
+    ),
+    code_challenge: str | None = Query(None, description="PKCE S256 challenge"),
+    code_challenge_method: str | None = Query(None),
+    app_state: str | None = Query(None, alias="state", description="App CSRF state"),
+):
     """
     Redirect to GitHub OAuth authorization.
+
     If installation_id is provided, it will be preserved through the OAuth flow.
+
+    Native (server-brokered) flow: pass `redirect_uri` (an allowlisted custom
+    scheme) + a PKCE `code_challenge` (`code_challenge_method=S256`) + `state`.
+    The callback returns to that scheme with a short-lived Makapix `code` instead
+    of the HTML popup; the app exchanges it at POST /auth/token.
     """
     if not GITHUB_CLIENT_ID:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="GitHub OAuth not configured",
         )
+
+    # Validate the native flow inputs up front (open-redirect + PKCE guards).
+    native = None
+    if redirect_uri is not None:
+        if redirect_uri not in NATIVE_OAUTH_REDIRECT_URIS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unregistered redirect_uri.",
+            )
+        if (code_challenge_method or "").upper() != "S256" or not code_challenge:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A PKCE S256 code_challenge is required for the native flow.",
+            )
+        native = {
+            "redirect_uri": redirect_uri,
+            "code_challenge": code_challenge,
+            "app_state": app_state,
+        }
 
     # Create and persist a nonce to protect OAuth state (CSRF/replay protection)
     state_nonce = secrets.token_urlsafe(24)
@@ -1276,6 +1337,8 @@ def github_login(request: Request, installation_id: int = Query(None)):
     state_data = {"nonce": state_nonce}
     if installation_id:
         state_data["installation_id"] = installation_id
+    if native:
+        state_data["native"] = native
 
     import json
 
@@ -1317,6 +1380,12 @@ def github_callback(
             detail="GitHub OAuth not configured",
         )
 
+    # Native (server-brokered) flow params — set once state is decoded; pre-init
+    # so the error handler can redirect to the app scheme if anything fails.
+    native_redirect_uri: str | None = None
+    native_code_challenge: str | None = None
+    native_app_state: str | None = None
+
     try:
         # Validate and decode OAuth state BEFORE any outbound calls
         import json
@@ -1345,6 +1414,13 @@ def github_callback(
         state_installation_id = state_data.get("installation_id")
         if state_installation_id and not installation_id:
             installation_id = state_installation_id
+
+        # Extract native (server-brokered) flow params if present
+        native = state_data.get("native") or None
+        if native:
+            native_redirect_uri = native.get("redirect_uri")
+            native_code_challenge = native.get("code_challenge")
+            native_app_state = native.get("app_state")
 
         # Exchange code for GitHub access token
         token_data = {
@@ -1617,6 +1693,29 @@ def github_callback(
                 )
                 # Don't fail the auth flow if installation handling fails
 
+        # Native (server-brokered) flow: hand the app a short-lived Makapix code
+        # at its custom scheme instead of the HTML popup. The app exchanges it at
+        # POST /auth/token (grant_type=authorization_code) with its code_verifier.
+        if native_redirect_uri:
+            from fastapi.responses import RedirectResponse
+
+            from ..services.oauth_codes import mint_authorization_code
+
+            mpx_code = mint_authorization_code(user.id, native_code_challenge)
+            if not mpx_code:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Could not issue authorization code.",
+                )
+            params = {"code": mpx_code}
+            if native_app_state:
+                params["state"] = native_app_state
+            redirect = RedirectResponse(
+                url=f"{native_redirect_uri}?{urlencode(params)}", status_code=302
+            )
+            _clear_oauth_state_cookie(redirect, request)
+            return redirect
+
         # Generate JWT tokens
         logger.info(f"Generating JWT tokens for user: {user.id}")
         try:
@@ -1770,16 +1869,51 @@ def github_callback(
         _clear_oauth_state_cookie(html_response, request)
         return html_response
 
-    except HTTPException:
-        # Re-raise HTTP exceptions as-is
+    except HTTPException as he:
+        # For the native flow, report errors back to the app's custom scheme
+        # (error/error_description/state) instead of raising HTML/JSON.
+        if native_redirect_uri:
+            return _native_oauth_error_redirect(
+                request,
+                native_redirect_uri,
+                native_app_state,
+                "access_denied",
+                str(he.detail) if he.detail else "Authentication failed",
+            )
         raise
     except Exception as e:
         logger.error(f"Unexpected error in GitHub OAuth callback: {e}", exc_info=True)
         db.rollback()
+        if native_redirect_uri:
+            return _native_oauth_error_redirect(
+                request,
+                native_redirect_uri,
+                native_app_state,
+                "server_error",
+                "An unexpected error occurred during authentication.",
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred during authentication. Please try again.",
         )
+
+
+def _native_oauth_error_redirect(
+    request: Request,
+    redirect_uri: str,
+    app_state: str | None,
+    error: str,
+    description: str,
+):
+    """302 to the app's custom scheme carrying error/error_description/state."""
+    from fastapi.responses import RedirectResponse
+
+    params = {"error": error, "error_description": description}
+    if app_state:
+        params["state"] = app_state
+    resp = RedirectResponse(url=f"{redirect_uri}?{urlencode(params)}", status_code=302)
+    _clear_oauth_state_cookie(resp, request)
+    return resp
 
 
 def _github_primary_verified_email(

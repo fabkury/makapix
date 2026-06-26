@@ -13519,7 +13519,7 @@
     },
     "/v1/auth/github/login": {
       "get": {
-        "description": "Redirect to GitHub OAuth authorization.\nIf installation_id is provided, it will be preserved through the OAuth flow.",
+        "description": "Redirect to GitHub OAuth authorization.\n\nIf installation_id is provided, it will be preserved through the OAuth flow.\n\nNative (server-brokered) flow: pass `redirect_uri` (an allowlisted custom\nscheme) + a PKCE `code_challenge` (`code_challenge_method=S256`) + `state`.\nThe callback returns to that scheme with a short-lived Makapix `code` instead\nof the HTML popup; the app exchanges it at POST /auth/token.",
         "operationId": "github_login_v1_auth_github_login_get",
         "parameters": [
           {
@@ -13529,6 +13529,76 @@
             "schema": {
               "title": "Installation Id",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Native custom-scheme redirect (server-brokered flow)",
+            "in": "query",
+            "name": "redirect_uri",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Native custom-scheme redirect (server-brokered flow)",
+              "title": "Redirect Uri"
+            }
+          },
+          {
+            "description": "PKCE S256 challenge",
+            "in": "query",
+            "name": "code_challenge",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "PKCE S256 challenge",
+              "title": "Code Challenge"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code_challenge_method",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code Challenge Method"
+            }
+          },
+          {
+            "description": "App CSRF state",
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "App CSRF state",
+              "title": "State"
             }
           }
         ],
