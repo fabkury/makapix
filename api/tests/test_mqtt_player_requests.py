@@ -476,9 +476,7 @@ class TestReactionsChannel:
         db.flush()
         post.public_sqid = encode_id(post.id)
         db.add(
-            PostFile(
-                post_id=post.id, format="png", file_bytes=32000, is_native=True
-            )
+            PostFile(post_id=post.id, format="png", file_bytes=32000, is_native=True)
         )
         db.commit()
         db.refresh(post)
@@ -515,8 +513,7 @@ class TestReactionsChannel:
     ):
         """Reactor reacted to three public posts → all three returned."""
         posts = [
-            self._make_post(db, owner=other_user, title=f"public-{i}")
-            for i in range(3)
+            self._make_post(db, owner=other_user, title=f"public-{i}") for i in range(3)
         ]
         for p in posts:
             self._react(db, user=reactor, post=p, emoji="❤️")
@@ -652,9 +649,7 @@ class TestReactionsChannel:
 
         # Pages together cover all 10 posts, no duplicates
         all_ids = [
-            p["post_id"]
-            for page in (page1, page2, page3)
-            for p in page["posts"]
+            p["post_id"] for page in (page1, page2, page3) for p in page["posts"]
         ]
         assert len(all_ids) == 10
         assert len(set(all_ids)) == 10
@@ -735,9 +730,7 @@ class TestReactionsChannel:
         user_hidden = self._make_post(
             db, owner=other_user, title="user-hidden", hidden_by_user=True
         )
-        nc = self._make_post(
-            db, owner=other_user, title="nc", non_conformant=True
-        )
+        nc = self._make_post(db, owner=other_user, title="nc", non_conformant=True)
         for p in (good, deleted, mod_hidden, user_hidden, nc):
             self._react(db, user=reactor, post=p, emoji="❤️")
 

@@ -112,8 +112,8 @@ Always returns success to prevent email enumeration.
 
 **Notes:**
 
-- Refresh token is set as HttpOnly cookie
-- Access token expires in 15 minutes
+- Refresh token is set as HttpOnly cookie (web); native clients use `POST /api/v1/auth/token` and receive the refresh token in the body
+- Access token expires in 60 minutes by default (`JWT_ACCESS_TOKEN_EXPIRE_MINUTES`); rely on the `expires_in`/`expires_at` field, not a hardcoded value
 - Rate limited: 20 attempts/5 min/IP
 
 **Errors:**

@@ -39,6 +39,31 @@ MAX_FILE_SIZE_BYTES = MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES
 # Maximum canvas dimensions: 256x256
 MAX_CANVAS_SIZE = 256
 
+# Free-form band: from FREE_FORM_MIN_SIZE x FREE_FORM_MIN_SIZE up to
+# MAX_CANVAS_SIZE x MAX_CANVAS_SIZE (inclusive), any width/height is allowed.
+FREE_FORM_MIN_SIZE = 128
+
+# Allowed sizes for canvases below the free-form band (i.e. with at least one
+# dimension < 128). Both 90-degree orientations are listed explicitly. This is
+# the single source of truth: `validate_image_dimensions` and the public
+# `/config` upload block both read from it, so the rules can never drift.
+ALLOWED_SMALL_DIMENSIONS: list[tuple[int, int]] = [
+    (8, 8),
+    (8, 16),
+    (16, 8),
+    (8, 32),
+    (32, 8),
+    (16, 16),
+    (16, 32),
+    (32, 16),
+    (32, 32),
+    (32, 64),
+    (64, 32),
+    (64, 64),
+    (64, 128),
+    (128, 64),
+]
+
 # Temp-file suffix for atomic writes. The reshard tooling's `status` ignores
 # (but reports) these, and `clean-tmp` removes strays after a crash.
 TMP_SUFFIX = ".reshard-tmp"
@@ -397,27 +422,12 @@ def validate_image_dimensions(width: int, height: int) -> tuple[bool, str | None
             f"Image dimensions exceed maximum of 256x256. Got {width}x{height}",
         )
 
-    # Define allowed sizes for dimensions under 128x128
-    # Includes both orientations (e.g., 8x16 and 16x8 are both allowed)
-    allowed_sizes = [
-        (8, 8),
-        (8, 16),
-        (16, 8),
-        (8, 32),
-        (32, 8),
-        (16, 16),
-        (16, 32),
-        (32, 16),
-        (32, 32),
-        (32, 64),
-        (64, 32),
-        (64, 64),
-        (64, 128),
-        (128, 64),
-    ]
+    # Allowed sizes for dimensions under 128x128 (single source of truth,
+    # shared with the public /config upload block). Includes both orientations.
+    allowed_sizes = ALLOWED_SMALL_DIMENSIONS
 
     # If both dimensions are >= 128, any size is allowed (up to 256x256)
-    if width >= 128 and height >= 128:
+    if width >= FREE_FORM_MIN_SIZE and height >= FREE_FORM_MIN_SIZE:
         return True, None
 
     # Otherwise, check if the size is in the allowed list

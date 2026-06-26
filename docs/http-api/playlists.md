@@ -2,6 +2,12 @@
 
 Curated artwork collections.
 
+> **⚠️ Accuracy note (being reconciled with code; OpenAPI at `/api/v1/openapi.json` is authoritative).**
+> The item-level endpoints documented below (`POST/DELETE …/items`, `PUT …/items/reorder`,
+> `PATCH …/items/{item_id}`, `POST …/publish`) are **not implemented**. The only way to add/remove/reorder
+> items today is to **`PATCH /playlist/{id}`** with the full `post_ids[]` array (whole-list replace). A playlist is
+> already a feed-visible post, so there is no separate publish step.
+
 ## Overview
 
 Playlists are collections of artwork that can be played on physical devices or browsed on the web. Each playlist has metadata and an ordered list of artwork items.

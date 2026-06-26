@@ -77,9 +77,7 @@ def _make_post(
     db.add(post)
     db.flush()
     post.public_sqid = encode_id(post.id)
-    db.add(
-        PostFile(post_id=post.id, format="png", file_bytes=32000, is_native=True)
-    )
+    db.add(PostFile(post_id=post.id, format="png", file_bytes=32000, is_native=True))
     db.commit()
     db.refresh(post)
     return post
@@ -152,7 +150,7 @@ class TestReactedPostsPublic:
         _react(db, user=reactor, post=public_post)
         _react(db, user=reactor, post=viewer_private)
 
-        token = create_access_token(viewer.user_key)
+        token = create_access_token(viewer)
         response = client.get(
             f"/user/u/{reactor.public_sqid}/reacted-posts",
             headers={"Authorization": f"Bearer {token}"},
@@ -177,7 +175,7 @@ class TestReactedPostsPublic:
         _react(db, user=reactor, post=public_post)
         _react(db, user=reactor, post=private_post)
 
-        token = create_access_token(moderator.user_key)
+        token = create_access_token(moderator)
         response = client.get(
             f"/user/u/{reactor.public_sqid}/reacted-posts",
             headers={"Authorization": f"Bearer {token}"},
@@ -224,7 +222,7 @@ class TestPlayChannelReactions:
         reactor: User,
     ):
         """play_channel + channel_name=reactions + user_sqid → forwarded verbatim."""
-        token = create_access_token(player_owner.user_key)
+        token = create_access_token(player_owner)
         response = client.post(
             f"/u/{player_owner.public_sqid}/player/{player.id}/command",
             headers={"Authorization": f"Bearer {token}"},
@@ -247,7 +245,7 @@ class TestPlayChannelReactions:
         reactor: User,
     ):
         """Callers that only send user_sqid (no channel_name) still get by_user."""
-        token = create_access_token(player_owner.user_key)
+        token = create_access_token(player_owner)
         response = client.post(
             f"/u/{player_owner.public_sqid}/player/{player.id}/command",
             headers={"Authorization": f"Bearer {token}"},
@@ -268,7 +266,7 @@ class TestPlayChannelReactions:
         player: Player,
     ):
         """channel_name=reactions without user_sqid must be rejected."""
-        token = create_access_token(player_owner.user_key)
+        token = create_access_token(player_owner)
         response = client.post(
             f"/u/{player_owner.public_sqid}/player/{player.id}/command",
             headers={"Authorization": f"Bearer {token}"},
@@ -296,7 +294,7 @@ class TestPlayChannelReactions:
         reactor: User,
     ):
         """user_sqid + channel_name="all" is not a valid combination."""
-        token = create_access_token(player_owner.user_key)
+        token = create_access_token(player_owner)
         response = client.post(
             f"/u/{player_owner.public_sqid}/player/{player.id}/command",
             headers={"Authorization": f"Bearer {token}"},

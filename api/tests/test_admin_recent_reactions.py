@@ -91,7 +91,7 @@ def _react(
 
 
 def _auth(user: User) -> dict[str, str]:
-    return {"Authorization": f"Bearer {create_access_token(user.user_key)}"}
+    return {"Authorization": f"Bearer {create_access_token(user)}"}
 
 
 @pytest.fixture

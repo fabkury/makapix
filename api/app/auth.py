@@ -123,10 +123,19 @@ def check_user_can_authenticate(user: "models.User") -> None:
 
 
 def create_access_token(
-    user_id: uuid.UUID, expires_in_seconds: int | None = None
+    user: "models.User", expires_in_seconds: int | None = None
 ) -> str:
     """
     Create a JWT access token for a user.
+
+    Claims:
+      - ``sub``: the user's stable public id (``public_sqid``) — the standard
+        subject claim, resolvable via the public read endpoints.
+      - ``roles``: the user's roles, so a client can gate UI without a 2nd call.
+      - ``user_id``: the legacy claim (the ``user_key`` UUID). Still emitted
+        during the migration window so in-flight tokens and pre-cutover clients
+        keep resolving (``get_current_user`` reads ``sub`` first, then falls back
+        to ``user_id``). Drop it once all clients read ``sub``.
     """
     if expires_in_seconds is None:
         expires_in_seconds = JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60
@@ -134,12 +143,18 @@ def create_access_token(
     from datetime import timezone
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    payload = {
-        "user_id": str(user_id),
+    payload: dict = {
         "exp": now + timedelta(seconds=expires_in_seconds),
         "iat": now,
         "type": "access",
+        "roles": list(user.roles or ["user"]),
+        # Transitional legacy claim (see docstring).
+        "user_id": str(user.user_key),
     }
+    # public_sqid is assigned just after insert; it should always be present for
+    # real users (signup sets it; a backfill migration covers legacy rows).
+    if user.public_sqid:
+        payload["sub"] = user.public_sqid
 
     return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
@@ -293,18 +308,26 @@ async def get_current_user(
             credentials.credentials, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM]
         )
 
-        # Extract user_id from claims
-        user_id_str = payload.get("user_id")
-        if not user_id_str:
+        # Resolve the subject. Prefer the standard `sub` claim (public_sqid);
+        # fall back to the legacy `user_id` claim (user_key UUID) for tokens
+        # issued before the cutover. One of the two must be present.
+        sub = payload.get("sub")
+        legacy_user_id = payload.get("user_id")
+        if not sub and not legacy_user_id:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token: missing user_id",
+                detail="Invalid token: missing subject",
             )
 
-        user_key = uuid.UUID(user_id_str)
+        user = None
+        if sub:
+            user = db.query(models.User).filter(models.User.public_sqid == sub).first()
+        if user is None and legacy_user_id:
+            user_key = uuid.UUID(legacy_user_id)
+            user = (
+                db.query(models.User).filter(models.User.user_key == user_key).first()
+            )
 
-        # Query database for user by user_key (UUID stored in token)
-        user = db.query(models.User).filter(models.User.user_key == user_key).first()
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found"

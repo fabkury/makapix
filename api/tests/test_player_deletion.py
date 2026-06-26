@@ -288,15 +288,14 @@ def test_teardown_player_revokes_cert_and_removes_password(
         "MQTT_PASSWD_FILE": str(tmp_path / "passwords"),
     }
 
-    with patch.dict(os.environ, env), patch(
-        "app.services.player_teardown.subprocess.run"
-    ) as mock_run:
+    with (
+        patch.dict(os.environ, env),
+        patch("app.services.player_teardown.subprocess.run") as mock_run,
+    ):
         teardown_player(db, player, removed_by=user.id)
 
     # Player row gone
-    assert (
-        db.query(models.Player).filter(models.Player.id == player_id).first() is None
-    )
+    assert db.query(models.Player).filter(models.Player.id == player_id).first() is None
 
     # mosquitto_passwd -D was invoked with the right args
     mock_run.assert_called_once()
@@ -359,8 +358,9 @@ def test_teardown_player_idempotent_when_cert_already_revoked(
     def fake_run(cmd, **kwargs):
         raise _subprocess.CalledProcessError(returncode=1, cmd=cmd, stderr=b"missing")
 
-    with patch.dict(os.environ, env), patch(
-        "app.services.player_teardown.subprocess.run", side_effect=fake_run
+    with (
+        patch.dict(os.environ, env),
+        patch("app.services.player_teardown.subprocess.run", side_effect=fake_run),
     ):
         # Must not raise
         teardown_player(db, player, removed_by=user.id)

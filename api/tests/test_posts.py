@@ -155,7 +155,7 @@ def test_update_post_requires_ownership(test_user: User, db: Session):
 
     # Try to update with test_user's token
     client = TestClient(app)
-    token = create_access_token(test_user.user_key)
+    token = create_access_token(test_user)
 
     response = client.patch(
         f"/post/{post.id}",
@@ -169,7 +169,7 @@ def test_update_post_requires_ownership(test_user: User, db: Session):
 def test_update_post_success(test_user: User, test_post: Post):
     """Test successfully updating a post."""
     client = TestClient(app)
-    token = create_access_token(test_user.user_key)
+    token = create_access_token(test_user)
 
     response = client.patch(
         f"/post/{test_post.id}",
@@ -241,7 +241,7 @@ def test_delete_post_requires_ownership(test_user: User, db: Session):
 
     # Try to delete with test_user's token
     client = TestClient(app)
-    token = create_access_token(test_user.user_key)
+    token = create_access_token(test_user)
 
     response = client.delete(
         f"/post/{post.id}", headers={"Authorization": f"Bearer {token}"}
@@ -253,7 +253,7 @@ def test_delete_post_requires_ownership(test_user: User, db: Session):
 def test_delete_post_success(test_user: User, test_post: Post):
     """Test successfully deleting a post."""
     client = TestClient(app)
-    token = create_access_token(test_user.user_key)
+    token = create_access_token(test_user)
 
     response = client.delete(
         f"/post/{test_post.id}", headers={"Authorization": f"Bearer {token}"}

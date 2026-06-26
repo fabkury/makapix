@@ -17,6 +17,7 @@ from ..auth import (
     require_ownership,
 )
 from ..deps import get_db
+from ..errors import AppError, ErrorCode
 from ..services.social_notifications import SocialNotificationService
 from ..services.rate_limit import check_rate_limit
 from ..services.profanity import contains_profanity
@@ -189,16 +190,18 @@ def create_comment(
 
         # Validate parent depth is valid (< 2)
         if parent.depth >= 2:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot reply to comment at maximum depth",
+            raise AppError(
+                ErrorCode.comment_too_deep,
+                "Cannot reply to a comment at the maximum depth.",
+                status.HTTP_400_BAD_REQUEST,
             )
 
         depth = parent.depth + 1
         if depth > 2:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Maximum comment depth (2) exceeded",
+            raise AppError(
+                ErrorCode.comment_too_deep,
+                "Maximum comment depth (2) exceeded.",
+                status.HTTP_409_CONFLICT,
             )
 
     # Create comment with appropriate author identification

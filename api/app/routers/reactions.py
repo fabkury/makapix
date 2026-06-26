@@ -13,6 +13,7 @@ from uuid import UUID
 from .. import models, schemas
 from ..auth import AnonymousUser, get_current_user, get_current_user_or_anonymous
 from ..deps import get_db
+from ..errors import AppError, ErrorCode
 from ..services.social_notifications import SocialNotificationService
 from .comment_likes import annotate_comments_with_likes
 
@@ -211,9 +212,10 @@ def add_reaction(
 
     # Enforce max 5 reactions per user/IP per post
     if reaction_count >= 5:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Maximum reactions per user per post (5) exceeded",
+        raise AppError(
+            ErrorCode.reaction_cap_reached,
+            "Maximum reactions per user per post (5) reached.",
+            status.HTTP_409_CONFLICT,
         )
 
     # Create new reaction

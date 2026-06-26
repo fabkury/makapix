@@ -1,4 +1,4 @@
-.PHONY: help up down restart rebuild logs ps deploy sync deploy-to-prod test shell-api shell-db fmt clean
+.PHONY: help up down restart rebuild logs ps deploy sync deploy-to-prod test shell-api shell-db fmt openapi check install-hooks clean
 
 # Stack directory
 STACK_DIR := deploy/stack
@@ -137,6 +137,27 @@ shell-db db.shell:
 
 fmt:
 	@cd $(STACK_DIR) && $(COMPOSE) exec api black .
+
+# Regenerate the committed OpenAPI 3.1 contract from the running api container.
+openapi:
+	@cd $(STACK_DIR) && $(COMPOSE) exec -T api python scripts/export_openapi.py > ../../api/openapi.json
+	@echo "Wrote api/openapi.json"
+
+# Local contract gate (this repo has no cloud CI). Run by the pre-push hook.
+# Fails if the OpenAPI schema drifted, if tests fail, or if code isn't formatted.
+check:
+	@$(MAKE) openapi
+	@git diff --exit-code -- api/openapi.json \
+		|| { echo "ERROR: OpenAPI schema drifted. Commit the regenerated api/openapi.json."; exit 1; }
+	@echo "OpenAPI schema up to date."
+	@cd $(STACK_DIR) && $(COMPOSE) exec -T api pytest -q tests/
+	@cd $(STACK_DIR) && $(COMPOSE) exec -T api black --check app tests scripts
+
+# Symlink the pre-push hook into .git/hooks so `make check` runs before pushes.
+install-hooks:
+	@ln -sf ../../deploy/hooks/pre-push .git/hooks/pre-push
+	@chmod +x deploy/hooks/pre-push
+	@echo "Installed pre-push hook -> deploy/hooks/pre-push (runs 'make check')."
 
 e2e:
 	@cd web && set -a && [ -f .env.e2e ] && . ./.env.e2e; npx playwright test

@@ -54,6 +54,7 @@ from ..services.post_stats import annotate_posts_with_counts, get_user_liked_pos
 from ..services.storage_quota import check_storage_quota, format_quota_error
 from ..services.rate_limit import check_rate_limit
 from ..services.social_notifications import SocialNotificationService
+from ..errors import AppError, ErrorCode
 from ..vault import (
     ALLOWED_MIME_TYPES,
     MAX_FILE_SIZE_BYTES,
@@ -720,9 +721,11 @@ async def upload_artwork(
         .first()
     )
     if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Artwork already exists",
+        raise AppError(
+            ErrorCode.artwork_duplicate,
+            "This artwork already exists.",
+            status.HTTP_409_CONFLICT,
+            details={"post_id": existing.id, "sqid": existing.public_sqid},
         )
 
     # Insert first (flush) so the UNIQUE constraint prevents races *before* we
@@ -732,9 +735,20 @@ async def upload_artwork(
         db.flush()  # Get the post ID without committing
     except IntegrityError:
         db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Artwork already exists",
+        dup = (
+            db.query(models.Post)
+            .filter(
+                models.Post.kind == "artwork",
+                models.Post.hash == file_hash,
+                models.Post.deleted_by_user == False,
+            )
+            .first()
+        )
+        raise AppError(
+            ErrorCode.artwork_duplicate,
+            "This artwork already exists.",
+            status.HTTP_409_CONFLICT,
+            details=({"post_id": dup.id, "sqid": dup.public_sqid} if dup else None),
         )
 
     # Create native PostFile row

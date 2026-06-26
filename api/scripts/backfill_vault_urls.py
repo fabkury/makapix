@@ -50,16 +50,13 @@ logger = logging.getLogger("backfill_vault_urls")
 
 OLD_PREFIX = "/api/vault/"
 
-SCALAR_UPDATE_SQL = text(
-    """
+SCALAR_UPDATE_SQL = text("""
     UPDATE {table} SET {col} = :new_prefix || substring({col}, char_length(:old_prefix) + 1)
     WHERE id BETWEEN :lo AND :hi AND {col} LIKE :old_prefix || '%'
-    """
-)
+    """)
 
 # Array column (blog_posts.image_urls is text[])
-ARRAY_UPDATE_SQL = text(
-    """
+ARRAY_UPDATE_SQL = text("""
     UPDATE blog_posts
     SET image_urls = (
         SELECT array_agg(
@@ -72,36 +69,46 @@ ARRAY_UPDATE_SQL = text(
     )
     WHERE id BETWEEN :lo AND :hi
       AND EXISTS (SELECT 1 FROM unnest(image_urls) x WHERE x LIKE :old_prefix || '%')
-    """
-)
+    """)
 
 MAX_ID_SQL = text("SELECT COALESCE(MAX(id), 0) FROM {table}")
 COUNT_MATCHING_SCALAR_SQL = text(
     "SELECT COUNT(*) FROM {table} WHERE {col} LIKE :old_prefix || '%'"
 )
-COUNT_MATCHING_ARRAY_SQL = text(
-    """
+COUNT_MATCHING_ARRAY_SQL = text("""
     SELECT COUNT(*) FROM blog_posts
     WHERE EXISTS (SELECT 1 FROM unnest(image_urls) x WHERE x LIKE :old_prefix || '%')
-    """
-)
+    """)
 
 
 def backfill_scalar(
-    engine, table: str, col: str, old_prefix: str, new_prefix: str,
-    batch_size: int, dry_run: bool,
+    engine,
+    table: str,
+    col: str,
+    old_prefix: str,
+    new_prefix: str,
+    batch_size: int,
+    dry_run: bool,
 ) -> int:
     with engine.connect() as conn:
-        max_id = conn.execute(
-            text(f"SELECT COALESCE(MAX(id), 0) FROM {table}")
-        ).scalar() or 0
-        to_rewrite = conn.execute(
-            text(f"SELECT COUNT(*) FROM {table} WHERE {col} LIKE :p || '%'"),
-            {"p": old_prefix},
-        ).scalar() or 0
+        max_id = (
+            conn.execute(text(f"SELECT COALESCE(MAX(id), 0) FROM {table}")).scalar()
+            or 0
+        )
+        to_rewrite = (
+            conn.execute(
+                text(f"SELECT COUNT(*) FROM {table} WHERE {col} LIKE :p || '%'"),
+                {"p": old_prefix},
+            ).scalar()
+            or 0
+        )
     logger.info(
         "%s.%s: %s rows match prefix %r (max id %s)",
-        table, col, to_rewrite, old_prefix, max_id,
+        table,
+        col,
+        to_rewrite,
+        old_prefix,
+        max_id,
     )
     if to_rewrite == 0 or dry_run:
         return to_rewrite
@@ -119,14 +126,25 @@ def backfill_scalar(
         with engine.begin() as conn:
             result = conn.execute(
                 sql,
-                {"old_prefix": old_prefix, "new_prefix": new_prefix, "lo": lo, "hi": hi},
+                {
+                    "old_prefix": old_prefix,
+                    "new_prefix": new_prefix,
+                    "lo": lo,
+                    "hi": hi,
+                },
             )
             updated = result.rowcount or 0
         if updated:
             total_updated += updated
             logger.info(
                 "  %s.%s: rewrote %s rows in id range [%s, %s] (total %s/%s)",
-                table, col, updated, lo, hi, total_updated, to_rewrite,
+                table,
+                col,
+                updated,
+                lo,
+                hi,
+                total_updated,
+                to_rewrite,
             )
         lo = hi + 1
         time.sleep(0.05)  # gentle on the DB
@@ -134,20 +152,32 @@ def backfill_scalar(
 
 
 def backfill_blog_image_urls(
-    engine, old_prefix: str, new_prefix: str, batch_size: int, dry_run: bool,
+    engine,
+    old_prefix: str,
+    new_prefix: str,
+    batch_size: int,
+    dry_run: bool,
 ) -> int:
     with engine.connect() as conn:
-        max_id = conn.execute(text("SELECT COALESCE(MAX(id), 0) FROM blog_posts")).scalar() or 0
-        to_rewrite = conn.execute(
-            text(
-                "SELECT COUNT(*) FROM blog_posts "
-                "WHERE EXISTS (SELECT 1 FROM unnest(image_urls) x WHERE x LIKE :p || '%')"
-            ),
-            {"p": old_prefix},
-        ).scalar() or 0
+        max_id = (
+            conn.execute(text("SELECT COALESCE(MAX(id), 0) FROM blog_posts")).scalar()
+            or 0
+        )
+        to_rewrite = (
+            conn.execute(
+                text(
+                    "SELECT COUNT(*) FROM blog_posts "
+                    "WHERE EXISTS (SELECT 1 FROM unnest(image_urls) x WHERE x LIKE :p || '%')"
+                ),
+                {"p": old_prefix},
+            ).scalar()
+            or 0
+        )
     logger.info(
         "blog_posts.image_urls: %s rows have at least one element matching prefix %r (max id %s)",
-        to_rewrite, old_prefix, max_id,
+        to_rewrite,
+        old_prefix,
+        max_id,
     )
     if to_rewrite == 0 or dry_run:
         return to_rewrite
@@ -159,14 +189,23 @@ def backfill_blog_image_urls(
         with engine.begin() as conn:
             result = conn.execute(
                 ARRAY_UPDATE_SQL,
-                {"old_prefix": old_prefix, "new_prefix": new_prefix, "lo": lo, "hi": hi},
+                {
+                    "old_prefix": old_prefix,
+                    "new_prefix": new_prefix,
+                    "lo": lo,
+                    "hi": hi,
+                },
             )
             updated = result.rowcount or 0
         if updated:
             total_updated += updated
             logger.info(
                 "  blog_posts.image_urls: rewrote %s rows in id range [%s, %s] (total %s/%s)",
-                updated, lo, hi, total_updated, to_rewrite,
+                updated,
+                lo,
+                hi,
+                total_updated,
+                to_rewrite,
             )
         lo = hi + 1
         time.sleep(0.05)
@@ -174,19 +213,29 @@ def backfill_blog_image_urls(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument(
-        "--base-url", required=True,
+        "--base-url",
+        required=True,
         help="Absolute base URL of the public vault, e.g. https://vault.makapix.club",
     )
     parser.add_argument("--batch-size", type=int, default=5000)
-    parser.add_argument("--dry-run", action="store_true", help="Report counts without modifying any rows")
     parser.add_argument(
-        "--reverse", action="store_true",
+        "--dry-run",
+        action="store_true",
+        help="Report counts without modifying any rows",
+    )
+    parser.add_argument(
+        "--reverse",
+        action="store_true",
         help="Rewrite absolute base-url URLs back to /api/vault/ (rollback)",
     )
     parser.add_argument(
-        "--table", choices=["posts", "users", "blog_posts", "all"], default="all",
+        "--table",
+        choices=["posts", "users", "blog_posts", "all"],
+        default="all",
     )
     args = parser.parse_args()
 
@@ -208,15 +257,36 @@ def main() -> int:
     grand_total = 0
     for t in tables:
         if t == "posts":
-            n = backfill_scalar(engine, "posts", "art_url", old_prefix, new_prefix, args.batch_size, args.dry_run)
+            n = backfill_scalar(
+                engine,
+                "posts",
+                "art_url",
+                old_prefix,
+                new_prefix,
+                args.batch_size,
+                args.dry_run,
+            )
         elif t == "users":
-            n = backfill_scalar(engine, "users", "avatar_url", old_prefix, new_prefix, args.batch_size, args.dry_run)
+            n = backfill_scalar(
+                engine,
+                "users",
+                "avatar_url",
+                old_prefix,
+                new_prefix,
+                args.batch_size,
+                args.dry_run,
+            )
         elif t == "blog_posts":
-            n = backfill_blog_image_urls(engine, old_prefix, new_prefix, args.batch_size, args.dry_run)
+            n = backfill_blog_image_urls(
+                engine, old_prefix, new_prefix, args.batch_size, args.dry_run
+            )
         grand_total += n
 
     if args.dry_run:
-        logger.info("DRY-RUN complete: %s rows would be rewritten across selected tables", grand_total)
+        logger.info(
+            "DRY-RUN complete: %s rows would be rewritten across selected tables",
+            grand_total,
+        )
     else:
         logger.info("Done: %s rows rewritten across selected tables", grand_total)
     return 0

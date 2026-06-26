@@ -68,6 +68,11 @@ services:
     environment:
       MQTT_PUBLIC_HOST: development.makapix.club
       MQTT_PUBLIC_PORT: 8884
+      # Mobile push (FCM): in-container path to the Firebase service-account key.
+      FCM_CREDENTIALS_FILE: /run/secrets/fcm.json
+    volumes:
+      # Host path set in .env.dev (kept outside the repo). Read-only.
+      - ${FCM_CREDENTIALS_HOST_PATH:-/dev/null}:/run/secrets/fcm.json:ro
     deploy:
       resources:
         limits:
@@ -81,6 +86,11 @@ services:
     container_name: makapix-dev-worker
     env_file:
       - .env.dev
+    environment:
+      # Mobile push (FCM): the worker performs the actual sends.
+      FCM_CREDENTIALS_FILE: /run/secrets/fcm.json
+    volumes:
+      - ${FCM_CREDENTIALS_HOST_PATH:-/dev/null}:/run/secrets/fcm.json:ro
     deploy:
       resources:
         limits:

@@ -14,8 +14,7 @@ import re
 # Word-boundaries keep "discordbot" from matching inside otherwise innocent
 # substrings while still tolerating slash/space delimiters that follow.
 _BOT_PATTERN = re.compile(
-    r"\b("
-    r"bot|crawler|spider|scraper|"
+    r"\b(" r"bot|crawler|spider|scraper|"
     # Major search-engine and social embed crawlers
     r"googlebot|bingbot|yandex|baidu|slurp|duckduckbot|"
     r"facebookexternalhit|twitterbot|discordbot|telegrambot|"
@@ -23,8 +22,7 @@ _BOT_PATTERN = re.compile(
     # CLI / library user-agents
     r"curl|wget|python-requests|httpx|go-http-client|"
     # SEO / commercial crawlers
-    r"ahrefsbot|semrushbot|mj12bot|dotbot|petalbot|applebot"
-    r")\b",
+    r"ahrefsbot|semrushbot|mj12bot|dotbot|petalbot|applebot" r")\b",
     re.IGNORECASE,
 )
 

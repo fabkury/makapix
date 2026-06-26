@@ -26,6 +26,64 @@ def _init_resend() -> bool:
     return True
 
 
+def _otp_html(greeting: str, intro: str, code: str) -> str:
+    return (
+        f"<p>{greeting}</p><p>{intro}</p>"
+        f"<h2 style='letter-spacing:6px;font-family:monospace'>{code}</h2>"
+        f"<p>This code expires in 10 minutes. If you didn't request it, ignore this email.</p>"
+    )
+
+
+def send_verification_otp_email(
+    to_email: str, code: str, handle: str | None = None
+) -> dict[str, Any] | None:
+    """Send a short numeric email-verification OTP (native client flow, §3.4)."""
+    if not _init_resend():
+        logger.info(
+            f"Email sending disabled - would send verification OTP to {to_email}"
+        )
+        return None
+    greeting = f"Hi {handle}!" if handle else "Hi there!"
+    try:
+        return resend.Emails.send(
+            {
+                "from": RESEND_FROM_EMAIL,
+                "to": [to_email],
+                "subject": "Your Makapix verification code",
+                "html": _otp_html(greeting, "Your Makapix verification code is:", code),
+            }
+        )
+    except Exception as e:  # pragma: no cover - network
+        logger.error(f"Failed to send verification OTP email: {e}")
+        return None
+
+
+def send_password_reset_otp_email(
+    to_email: str, code: str, handle: str | None = None
+) -> dict[str, Any] | None:
+    """Send a short numeric password-reset OTP (native client flow, §3.4)."""
+    if not _init_resend():
+        logger.info(
+            f"Email sending disabled - would send password reset OTP to {to_email}"
+        )
+        return None
+    greeting = f"Hi {handle}!" if handle else "Hi there!"
+    try:
+        return resend.Emails.send(
+            {
+                "from": RESEND_FROM_EMAIL,
+                "to": [to_email],
+                "subject": "Your Makapix password reset code",
+                "html": _otp_html(
+                    greeting, "Your Makapix password reset code is:", code
+                ),
+            }
+        )
+    except Exception as e:  # pragma: no cover - network
+        logger.error(f"Failed to send password reset OTP email: {e}")
+        return None
+
+
 def send_verification_email(
     to_email: str,
     token: str,

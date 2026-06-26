@@ -26,6 +26,7 @@ from .routers import (
     comments,
     legacy,
     licenses,
+    me,
     mqtt,
     player,
     player_rpc,
@@ -34,6 +35,7 @@ from .routers import (
     posts,
     profiles,
     reactions,
+    realtime,
     relay,
     reports,
     reputation,
@@ -47,6 +49,7 @@ from .routers import (
     users,
 )
 from .seed import ensure_seed_data
+from .errors import register_exception_handlers
 from .middleware import RequestIdMiddleware, SecurityHeadersMiddleware
 from .vault_serving import LegacyShardFallbackStaticFiles
 
@@ -201,7 +204,19 @@ app = FastAPI(
     version="1.0.0",
     description="Lightweight pixel-art social network API",
     lifespan=lifespan,
+    # The app sits behind Caddy, which strips the public `/api` prefix
+    # (handle_path /api/*). Declaring `/api` as the OpenAPI server base means a
+    # generated client composes `/api` + `/v1/...` = `/api/v1/...` correctly.
+    servers=[{"url": "/api", "description": "Public API base (Caddy strips /api)"}],
+    # Publish the contract and docs under the versioned path.
+    openapi_url="/v1/openapi.json",
+    docs_url="/v1/docs",
+    redoc_url="/v1/redoc",
 )
+
+# Standardized v1 error envelope ({ "error": { code, message, details? } }).
+# Scoped to /v1/* paths; non-versioned surfaces keep FastAPI's default shape.
+register_exception_handlers(app)
 
 # CORS Configuration - restrict to specific origins
 # In production, set CORS_ORIGINS environment variable to comma-separated list of allowed origins
@@ -235,36 +250,51 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestIdMiddleware)
 
 
-# Include all routers
-app.include_router(system.router)
-app.include_router(auth.router)
-app.include_router(users.router)
-app.include_router(profiles.router)
-app.include_router(artwork.router)
-app.include_router(posts.router)
-app.include_router(blog_posts.router)
-app.include_router(playlists.router)
-app.include_router(comments.router)
-app.include_router(comment_likes.router)
-app.include_router(reactions.router)
-app.include_router(social_notifications.router)
-app.include_router(reports.router)
-app.include_router(badges.router)
-app.include_router(licenses.router)
-app.include_router(reputation.router)
+# --- App-facing JSON API (versioned) ---
+# Canonical mount is `/api/v1/...` (Caddy strips `/api`, so the app sees
+# `/v1/...`). Each router is ALSO mounted at the bare root with
+# include_in_schema=False as a one-release transition safety net while the web
+# client migrates to `/api/v1`; the bare-root copies are removed once web is
+# fully on v1. Only `/v1/*` paths get the new error envelope (see errors.py).
+_V1_ROUTERS = [
+    system.router,
+    auth.router,
+    users.router,
+    profiles.router,
+    artwork.router,
+    posts.router,
+    blog_posts.router,
+    playlists.router,
+    comments.router,
+    comment_likes.router,
+    reactions.router,
+    social_notifications.router,
+    reports.router,
+    badges.router,
+    licenses.router,
+    reputation.router,
+    categories.router,
+    admin.router,
+    search.router,
+    stats.router,
+    tracking.router,
+    realtime.router,
+    me.router,
+]
+for _router in _V1_ROUTERS:
+    app.include_router(_router, prefix="/v1")
+    app.include_router(_router, include_in_schema=False)  # legacy root (transition)
+
+# --- Hardware/player + web-infra surfaces (unversioned, separate contracts) ---
+# Physical players reach these via `/api/...` and must NOT move under `/v1`.
 app.include_router(player.router)
 app.include_router(player_rpc.router)
-app.include_router(categories.router)
-app.include_router(admin.router)
-app.include_router(search.router)
-app.include_router(sitemap.router)
-app.include_router(stats.router)
-app.include_router(tracking.router)
 app.include_router(relay.router)
 app.include_router(mqtt.router)
-app.include_router(legacy.router)
 app.include_router(pmd.router)
 app.include_router(umd.router)
+app.include_router(sitemap.router)
+app.include_router(legacy.router)
 
 
 # Register MIME types not present in all Docker base images.

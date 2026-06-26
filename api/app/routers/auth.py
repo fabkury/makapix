@@ -31,6 +31,7 @@ from ..auth import (
     verify_refresh_token,
 )
 from ..deps import get_db
+from ..errors import AppError, ErrorCode
 from ..github import verify_installation_belongs_to_app
 from ..services.auth_identities import (
     create_password_identity,
@@ -407,7 +408,7 @@ def login(
     check_user_can_authenticate(user)
 
     # Generate tokens
-    access_token = create_access_token(user.user_key)
+    access_token = create_access_token(user)
     refresh_token = create_refresh_token(user.user_key, db)
 
     # Set refresh token as HttpOnly cookie
@@ -431,6 +432,120 @@ def login(
         user_handle=user.handle,
         expires_at=expires_at,
         needs_welcome=not user.welcome_completed,
+    )
+
+
+@router.post("/token", response_model=schemas.TokenResponse)
+def token(
+    payload: schemas.TokenRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> schemas.TokenResponse:
+    """
+    OAuth2-style token endpoint for native (non-browser) clients.
+
+    Returns the refresh token in the **body** (not a cookie), so a native client
+    can keep it in secure storage and refresh without browser cookie semantics.
+    Uses the same rotation + 60s-grace + DB revocation engine as the cookie flow;
+    the web app's cookie-based /auth/login and /auth/refresh are unchanged.
+    """
+    grant_type = payload.grant_type
+
+    if grant_type == "password":
+        if not payload.email or not payload.password:
+            raise AppError(
+                ErrorCode.validation_error,
+                "email and password are required for the password grant.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        email = payload.email.lower().strip()
+
+        # Same per-IP throttle as /auth/login (shared key).
+        client_ip = get_client_ip(request)
+        allowed, _ = check_rate_limit(
+            f"ratelimit:login:{client_ip}", limit=20, window_seconds=300
+        )
+        if not allowed:
+            raise AppError(
+                ErrorCode.rate_limited,
+                "Too many login attempts. Please try again later.",
+                status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        existing = (
+            db.query(models.User)
+            .filter(
+                (models.User.email == email) | (models.User.email_normalized == email)
+            )
+            .first()
+        )
+        if existing and not existing.email_verified:
+            raise AppError(
+                ErrorCode.email_not_verified,
+                "Email not verified. Please verify your email before signing in.",
+                status.HTTP_403_FORBIDDEN,
+            )
+
+        identity = find_identity_by_password(db, email, payload.password)
+        if not identity:
+            raise AppError(
+                ErrorCode.unauthorized,
+                "Invalid email or password.",
+                status.HTTP_401_UNAUTHORIZED,
+            )
+        user = db.query(models.User).filter(models.User.id == identity.user_id).first()
+        if not user:
+            raise AppError(
+                ErrorCode.unauthorized,
+                "Invalid email or password.",
+                status.HTTP_401_UNAUTHORIZED,
+            )
+
+    elif grant_type == "refresh_token":
+        if not payload.refresh_token:
+            raise AppError(
+                ErrorCode.validation_error,
+                "refresh_token is required for the refresh_token grant.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        user = verify_refresh_token(payload.refresh_token, db)
+        if not user:
+            raise AppError(
+                ErrorCode.token_invalid,
+                "Invalid or expired refresh token.",
+                status.HTTP_401_UNAUTHORIZED,
+            )
+        # Rotate with the same 60s grace window as the cookie flow.
+        mark_refresh_token_rotated(payload.refresh_token, db, grace_seconds=60)
+
+    elif grant_type == "authorization_code":
+        # The server-brokered GitHub flow (B3 / change-request §3.3) mints the
+        # short-lived Makapix code that is exchanged here. Wired up in B3.
+        raise AppError(
+            ErrorCode.bad_request,
+            "authorization_code grant is not enabled yet.",
+            status.HTTP_400_BAD_REQUEST,
+        )
+    else:  # pragma: no cover - guarded by the schema Literal
+        raise AppError(
+            ErrorCode.validation_error,
+            f"Unsupported grant_type: {grant_type}",
+            status.HTTP_400_BAD_REQUEST,
+        )
+
+    check_user_can_authenticate(user)
+
+    from ..auth import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+
+    access_token = create_access_token(user)
+    refresh_token = create_refresh_token(user.user_key, db)
+
+    return schemas.TokenResponse(
+        access_token=access_token,
+        token_type="Bearer",
+        expires_in=JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        refresh_token=refresh_token,
+        user=schemas.UserFull.model_validate(user),
     )
 
 
@@ -937,6 +1052,161 @@ def reset_password(
     )
 
 
+# --- Numeric OTP flows for native clients (§3.4) ---------------------------------
+# Short 6-digit codes (10-min TTL) as an alternative to long URL tokens. Brute force
+# is bounded by per-email and per-IP verify throttles plus the short expiry.
+
+
+def _otp_request_throttle(request: Request) -> None:
+    # Per-IP cap (NAT-friendly); per-user caps live in the OTP services.
+    allowed, _ = check_rate_limit(
+        f"ratelimit:otp_req:{get_client_ip(request)}", limit=30, window_seconds=600
+    )
+    if not allowed:
+        raise AppError(
+            ErrorCode.rate_limited,
+            "Too many requests. Please try again later.",
+            status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
+
+def _otp_verify_throttle(request: Request, email: str) -> None:
+    ip = get_client_ip(request)
+    a1, _ = check_rate_limit(
+        f"ratelimit:otp_verify:{email}", limit=5, window_seconds=600
+    )
+    a2, _ = check_rate_limit(
+        f"ratelimit:otp_verify_ip:{ip}", limit=20, window_seconds=600
+    )
+    if not a1 or not a2:
+        raise AppError(
+            ErrorCode.rate_limited,
+            "Too many attempts. Please try again later.",
+            status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
+
+def _find_user_by_email(db: Session, email: str) -> models.User | None:
+    return (
+        db.query(models.User)
+        .filter((models.User.email == email) | (models.User.email_normalized == email))
+        .first()
+    )
+
+
+@router.post("/email-otp/request", response_model=schemas.OtpMessageResponse)
+def request_email_otp(
+    payload: schemas.EmailOtpRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> schemas.OtpMessageResponse:
+    """Send a numeric email-verification code (existence-neutral response)."""
+    from ..services.email import send_verification_otp_email
+    from ..services.email_verification import create_verification_otp
+
+    _otp_request_throttle(request)
+    email = payload.email.lower().strip()
+    user = _find_user_by_email(db, email)
+    if user and not user.email_verified:
+        try:
+            code = create_verification_otp(db, user.id, email)
+            send_verification_otp_email(email, code, user.handle)
+        except ValueError:
+            pass  # per-user hourly cap; keep the response generic
+    return schemas.OtpMessageResponse(
+        message="If that account exists and needs verification, a code has been sent."
+    )
+
+
+@router.post("/email-otp/verify", response_model=schemas.VerifyEmailResponse)
+def verify_email_otp_endpoint(
+    payload: schemas.EmailOtpVerify,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> schemas.VerifyEmailResponse:
+    """Verify an email with a numeric OTP."""
+    from ..services.email_verification import verify_email_otp
+
+    email = payload.email.lower().strip()
+    _otp_verify_throttle(request, email)
+    user = verify_email_otp(db, email, payload.code)
+    if not user:
+        raise AppError(
+            ErrorCode.token_invalid,
+            "Invalid or expired code.",
+            status.HTTP_400_BAD_REQUEST,
+        )
+    return schemas.VerifyEmailResponse(
+        message="Email verified successfully. You can now log in.",
+        verified=True,
+        handle=user.handle,
+        can_change_password=True,
+        can_change_handle=True,
+        needs_welcome=not user.welcome_completed,
+    )
+
+
+@router.post("/password-otp/request", response_model=schemas.OtpMessageResponse)
+def request_password_otp(
+    payload: schemas.PasswordOtpRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> schemas.OtpMessageResponse:
+    """Send a numeric password-reset code (existence-neutral response)."""
+    from ..services.email import send_password_reset_otp_email
+    from ..services.password_reset import create_reset_otp
+
+    _otp_request_throttle(request)
+    email = payload.email.lower().strip()
+    user = _find_user_by_email(db, email)
+    if user:
+        try:
+            code = create_reset_otp(db, user.id)
+            send_password_reset_otp_email(email, code, user.handle)
+        except ValueError:
+            pass
+    return schemas.OtpMessageResponse(
+        message="If that account exists, a password reset code has been sent."
+    )
+
+
+@router.post("/password-otp/confirm", response_model=schemas.ResetPasswordResponse)
+def confirm_password_otp(
+    payload: schemas.PasswordOtpConfirm,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> schemas.ResetPasswordResponse:
+    """Reset a password using a numeric OTP."""
+    from ..services.password_reset import mark_token_used, verify_reset_otp
+
+    email = payload.email.lower().strip()
+    _otp_verify_throttle(request, email)
+    user = _find_user_by_email(db, email)
+    row = verify_reset_otp(db, user.id, payload.code) if user else None
+    if not user or not row:
+        raise AppError(
+            ErrorCode.token_invalid,
+            "Invalid or expired code.",
+            status.HTTP_400_BAD_REQUEST,
+        )
+    check_user_can_authenticate(user)
+    is_valid, error_message = validate_password(payload.new_password)
+    if not is_valid:
+        raise AppError(
+            ErrorCode.validation_error, error_message, status.HTTP_400_BAD_REQUEST
+        )
+    if not update_password(db, user.id, payload.new_password):
+        raise AppError(
+            ErrorCode.bad_request,
+            "Failed to reset password. This account may not support password login.",
+            status.HTTP_400_BAD_REQUEST,
+        )
+    mark_token_used(db, row.id)
+    return schemas.ResetPasswordResponse(
+        message="Password reset successfully. You can now log in with your new password."
+    )
+
+
 @router.get(
     "/providers",
     response_model=schemas.AuthIdentitiesList,
@@ -1350,7 +1620,7 @@ def github_callback(
         # Generate JWT tokens
         logger.info(f"Generating JWT tokens for user: {user.id}")
         try:
-            makapix_access_token = create_access_token(user.user_key)
+            makapix_access_token = create_access_token(user)
             makapix_refresh_token = create_refresh_token(user.user_key, db)
             logger.info(f"Successfully generated tokens for user: {user.id}")
         except Exception as e:
@@ -1512,6 +1782,35 @@ def github_callback(
         )
 
 
+def _github_primary_verified_email(
+    client: "httpx.Client", access_token: str
+) -> str | None:
+    """Return the user's primary verified GitHub email (or any verified one).
+
+    Only verified emails are returned — account linking must never trust an
+    unverified address. Returns None if the call fails or nothing is verified.
+    """
+    try:
+        resp = client.get(
+            "https://api.github.com/user/emails",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/vnd.github.v3+json",
+            },
+        )
+        resp.raise_for_status()
+        emails = resp.json()
+    except httpx.HTTPError:
+        return None
+    for entry in emails:
+        if entry.get("primary") and entry.get("verified"):
+            return entry.get("email")
+    for entry in emails:
+        if entry.get("verified"):
+            return entry.get("email")
+    return None
+
+
 @router.post(
     "/github/exchange",
     response_model=schemas.OAuthTokens,
@@ -1569,6 +1868,9 @@ def exchange_github_code(
             user_response.raise_for_status()
             github_user = user_response.json()
 
+            # Use the verified email list, not the profile email (§3.3 hardening).
+            verified_email = _github_primary_verified_email(client, access_token)
+
     except httpx.HTTPError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1591,54 +1893,63 @@ def exchange_github_code(
                 detail="User account not found",
             )
     else:
-        # Create new user - OAuth users are automatically verified
-        handle = generate_default_handle(db)
-        email_to_use = github_user.get("email")
+        # Prefer the verified email; only a verified address may link/identify.
+        email_to_use = verified_email or github_user.get("email")
 
-        # Check if email already exists
-        if email_to_use:
+        # Link to an existing account when the GitHub email is VERIFIED and
+        # matches, instead of rejecting with a 409 (§3.3 identity linking).
+        existing_user = None
+        if verified_email:
             existing_user = (
                 db.query(models.User)
-                .filter(models.User.email == email_to_use.lower())
+                .filter(models.User.email == verified_email.lower())
                 .first()
             )
-            if existing_user:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="An account with this email already exists",
-                )
 
-        user = models.User(
-            handle=handle,
-            bio=github_user.get("bio"),
-            avatar_url=github_user.get("avatar_url"),
-            email=email_to_use.lower() if email_to_use else None,
-            email_verified=True,  # OAuth users are pre-verified by the provider
-            roles=["user"],
-        )
-        db.add(user)
-        db.flush()  # Get the user ID without committing
+        if existing_user:
+            link_oauth_identity(
+                db=db,
+                user_id=existing_user.id,
+                provider="github",
+                provider_user_id=github_user_id,
+                email=verified_email,
+                provider_metadata={
+                    "username": github_username,
+                    "avatar_url": github_user.get("avatar_url"),
+                },
+            )
+            user = existing_user
+        else:
+            # Create a new user — OAuth users are pre-verified by the provider.
+            handle = generate_default_handle(db)
+            user = models.User(
+                handle=handle,
+                bio=github_user.get("bio"),
+                avatar_url=github_user.get("avatar_url"),
+                email=email_to_use.lower() if email_to_use else None,
+                email_verified=True,
+                roles=["user"],
+            )
+            db.add(user)
+            db.flush()  # Get the user ID without committing
 
-        # Generate public_sqid from the assigned id
-        from ..sqids_config import encode_user_id
+            from ..sqids_config import encode_user_id
 
-        user.public_sqid = encode_user_id(user.id)
+            user.public_sqid = encode_user_id(user.id)
+            db.commit()
+            db.refresh(user)
 
-        db.commit()
-        db.refresh(user)
-
-        # Create GitHub identity
-        create_oauth_identity(
-            db=db,
-            user_id=user.id,
-            provider="github",
-            provider_user_id=github_user_id,
-            email=email_to_use,
-            provider_metadata={
-                "username": github_username,
-                "avatar_url": github_user.get("avatar_url"),
-            },
-        )
+            create_oauth_identity(
+                db=db,
+                user_id=user.id,
+                provider="github",
+                provider_user_id=github_user_id,
+                email=email_to_use,
+                provider_metadata={
+                    "username": github_username,
+                    "avatar_url": github_user.get("avatar_url"),
+                },
+            )
 
     # Check if installation_id is provided (from GitHub App installation)
     installation_id = payload.installation_id
@@ -1663,7 +1974,7 @@ def exchange_github_code(
             db.commit()
 
     # Generate JWT tokens
-    access_token = create_access_token(user.user_key)
+    access_token = create_access_token(user)
     refresh_token = create_refresh_token(user.user_key, db)
 
     # Set refresh token as HttpOnly cookie
@@ -1732,7 +2043,7 @@ def refresh_token_endpoint(
     mark_refresh_token_rotated(refresh_token, db, grace_seconds=60)
 
     # Generate new tokens
-    access_token = create_access_token(user.user_key)
+    access_token = create_access_token(user)
     new_refresh_token = create_refresh_token(user.user_key, db)
 
     # Set new refresh token as HttpOnly cookie
@@ -1799,15 +2110,76 @@ def logout(
 
 
 @router.get("/me", response_model=schemas.MeResponse)
-def get_me(current_user: models.User = Depends(get_current_user)) -> schemas.MeResponse:
+def get_me(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> schemas.MeResponse:
     """
-    Get current user profile and roles.
+    Get current user profile, roles, capabilities and quotas.
 
-    TODO: Include additional user metadata (followers count, posts count, etc.)
+    The capability/quota block lets the app gate UI ("Post publicly", remaining
+    upload/storage quota, ban state) without discovering limits via 4xx errors.
     """
+    from datetime import timedelta, timezone
+
+    from ..routers.player import MAX_PLAYERS_PER_USER
+    from ..services.rate_limit import (
+        get_rate_limit_remaining,
+        get_rate_limit_reset_seconds,
+    )
+    from ..services.storage_quota import (
+        get_user_storage_quota,
+        get_user_storage_used,
+    )
+    from .posts import get_upload_rate_limit
+
+    roles = current_user.roles or ["user"]
+
+    capabilities = schemas.MeCapabilities(
+        can_post_public=bool(current_user.auto_public_approval),
+        can_moderate=("moderator" in roles or "owner" in roles),
+        can_own_players=True,
+    )
+
+    # Upload rate limit (reputation-tiered); read remaining without consuming.
+    up_limit, up_window = get_upload_rate_limit(current_user)
+    up_key = f"ratelimit:upload:{current_user.id}"
+    up_ttl = get_rate_limit_reset_seconds(up_key)
+    reset_at = (
+        datetime.now(timezone.utc) + timedelta(seconds=up_ttl) if up_ttl else None
+    )
+    uploads = schemas.MeUploadsQuota(
+        window=f"{up_window // 3600}h" if up_window % 3600 == 0 else f"{up_window}s",
+        limit=up_limit,
+        remaining=get_rate_limit_remaining(up_key, up_limit),
+        reset_at=reset_at,
+    )
+
+    players_used = (
+        db.query(models.Player)
+        .filter(models.Player.owner_id == current_user.id)
+        .count()
+    )
+
+    quotas = schemas.MeQuotas(
+        storage=schemas.MeStorageQuota(
+            used_bytes=get_user_storage_used(db, current_user.id),
+            limit_bytes=get_user_storage_quota(current_user),
+        ),
+        uploads=uploads,
+        players=schemas.MePlayersQuota(used=players_used, limit=MAX_PLAYERS_PER_USER),
+    )
+
     return schemas.MeResponse(
         user=schemas.UserFull.model_validate(current_user),
-        roles=current_user.roles or ["user"],
+        roles=roles,
+        capabilities=capabilities,
+        quotas=quotas,
+        moderation=schemas.MeModeration(
+            banned_until=current_user.banned_until,
+            deactivated=bool(current_user.deactivated),
+        ),
+        needs_welcome=not bool(current_user.welcome_completed),
     )
 
 

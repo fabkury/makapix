@@ -41,7 +41,7 @@ def test_user(db: "Session"):
 
 
 def _auth(user) -> dict:
-    return {"Authorization": f"Bearer {create_access_token(user.user_key)}"}
+    return {"Authorization": f"Bearer {create_access_token(user)}"}
 
 
 def test_patch_ignores_avatar_url(client: "TestClient", db: "Session", test_user):

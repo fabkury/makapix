@@ -3982,3 +3982,25 @@ def rollup_download_stats(self, target_date_iso: str | None = None) -> dict[str,
     except Exception as e:
         logger.error(f"rollup_download_stats failed: {e}", exc_info=True)
         raise
+
+
+@celery_app.task(name="app.tasks.send_push_notification", bind=True)
+def send_push_notification(self, user_id, notification_type, data=None):
+    """Deliver a social notification as a mobile push (FCM). Best-effort.
+
+    No-ops cleanly when push is not configured (see services/push.py).
+    """
+    from .db import SessionLocal
+    from .services.push import send_push_to_user
+
+    db = SessionLocal()
+    try:
+        sent = send_push_to_user(db, user_id, notification_type, data or {})
+        if sent:
+            logger.info(f"Sent {sent} push(es) to user {user_id} ({notification_type})")
+        return sent
+    except Exception as e:
+        logger.error(f"send_push_notification failed: {e}", exc_info=True)
+        return 0
+    finally:
+        db.close()

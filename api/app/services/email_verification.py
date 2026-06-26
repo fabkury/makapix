@@ -19,11 +19,79 @@ logger = logging.getLogger(__name__)
 # Token configuration
 TOKEN_EXPIRY_HOURS = 24
 MAX_TOKENS_PER_HOUR = 6  # Rate limit: max verification emails per user per hour
+OTP_EXPIRY_MINUTES = 10  # Short-lived numeric code for the native flow (§3.4)
 
 
 def _hash_token(token: str) -> str:
     """Hash a token using SHA256 for secure storage."""
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def generate_otp_code() -> str:
+    """Return a zero-padded 6-digit numeric OTP."""
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def create_verification_otp(db: Session, user_id: UUID, email: str) -> str:
+    """Create a short-lived numeric verification OTP and return the plain code.
+
+    Reuses the per-hour rate limit. The row stores a random `token_hash` to
+    satisfy the unique/NOT-NULL constraint; verification is by (email, otp_code).
+    """
+    one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+    recent = (
+        db.query(models.EmailVerificationToken)
+        .filter(
+            models.EmailVerificationToken.user_id == user_id,
+            models.EmailVerificationToken.created_at >= one_hour_ago,
+        )
+        .count()
+    )
+    if recent >= MAX_TOKENS_PER_HOUR:
+        raise ValueError(
+            f"Rate limit exceeded. Maximum {MAX_TOKENS_PER_HOUR} verification emails per hour."
+        )
+
+    code = generate_otp_code()
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRY_MINUTES)
+    db.add(
+        models.EmailVerificationToken(
+            user_id=user_id,
+            token_hash=_hash_token(secrets.token_urlsafe(32)),
+            otp_code=code,
+            email=email,
+            expires_at=expires_at,
+        )
+    )
+    db.commit()
+    return code
+
+
+def verify_email_otp(db: Session, email: str, code: str) -> models.User | None:
+    """Verify a numeric OTP for `email` and mark the user's email verified."""
+    now = datetime.now(timezone.utc)
+    row = (
+        db.query(models.EmailVerificationToken)
+        .filter(
+            models.EmailVerificationToken.email == email,
+            models.EmailVerificationToken.otp_code == code,
+            models.EmailVerificationToken.used_at.is_(None),
+            models.EmailVerificationToken.expires_at > now,
+        )
+        .order_by(models.EmailVerificationToken.created_at.desc())
+        .first()
+    )
+    if not row:
+        return None
+    row.used_at = now
+    user = db.query(models.User).filter(models.User.id == row.user_id).first()
+    if not user:
+        return None
+    user.email = row.email
+    user.email_verified = True
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 def create_verification_token(db: Session, user_id: UUID, email: str) -> str:

@@ -165,7 +165,7 @@ def test_get_post_by_sqid_hidden_anonymous(test_hidden_post: Post):
 def test_get_post_by_sqid_hidden_owner(test_user: User, test_hidden_post: Post):
     """Test that post owner can access their hidden post."""
     client = TestClient(app)
-    token = create_access_token(test_user.user_key)
+    token = create_access_token(test_user)
 
     response = client.get(
         f"/p/{test_hidden_post.public_sqid}",
@@ -182,7 +182,7 @@ def test_get_post_by_sqid_hidden_moderator(
 ):
     """Test that moderators can access hidden posts."""
     client = TestClient(app)
-    token = create_access_token(test_moderator.user_key)
+    token = create_access_token(test_moderator)
 
     response = client.get(
         f"/p/{test_hidden_post.public_sqid}",
@@ -264,7 +264,7 @@ def test_download_hidden_post_anonymous(test_hidden_post: Post):
 def test_download_hidden_post_owner(test_user: User, test_hidden_post: Post):
     """Test that post owner can download their hidden post."""
     client = TestClient(app)
-    token = create_access_token(test_user.user_key)
+    token = create_access_token(test_user)
 
     response = client.get(
         f"/d/{test_hidden_post.public_sqid}",
