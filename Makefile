@@ -127,7 +127,7 @@ deploy-to-prod:
 		echo "Visit: https://github.com/fabkury/makapix/compare/main...develop"
 
 test:
-	@cd $(STACK_DIR) && $(COMPOSE) exec api pytest tests/
+	@cd $(STACK_DIR) && $(COMPOSE) exec -T api python scripts/run_tests.py
 
 shell-api:
 	@cd $(STACK_DIR) && $(COMPOSE) exec api bash
@@ -150,7 +150,7 @@ check:
 	@git diff --exit-code -- api/openapi.json \
 		|| { echo "ERROR: OpenAPI schema drifted. Commit the regenerated api/openapi.json."; exit 1; }
 	@echo "OpenAPI schema up to date."
-	@cd $(STACK_DIR) && $(COMPOSE) exec -T api pytest -q tests/
+	@cd $(STACK_DIR) && $(COMPOSE) exec -T api python scripts/run_tests.py
 	@cd $(STACK_DIR) && $(COMPOSE) exec -T api black --check app tests scripts
 
 # Symlink the pre-push hook into .git/hooks so `make check` runs before pushes.
