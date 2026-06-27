@@ -424,16 +424,18 @@ def create_post(
     # Validate dimensions using the same validation logic as image uploads
     is_valid, error = validate_image_dimensions(payload.width, payload.height)
     if not is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=error,
+        raise AppError(
+            ErrorCode.dimensions_invalid,
+            error or "Invalid image dimensions.",
+            status.HTTP_400_BAD_REQUEST,
         )
 
     # Validate file size (basic check)
     if payload.file_bytes > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File size {payload.file_bytes} bytes exceeds limit of {MAX_FILE_SIZE_BYTES} bytes",
+        raise AppError(
+            ErrorCode.file_too_large,
+            f"File size {payload.file_bytes} bytes exceeds limit of {MAX_FILE_SIZE_BYTES} bytes.",
+            413,
         )
 
     # Normalize hashtags (lowercase, strip whitespace)
@@ -1501,7 +1503,15 @@ async def replace_artwork(
 
     file_content = await image.read()
     file_size = len(file_content)
-    validate_file_size(file_size)
+    # NOTE: previously the return value was ignored, so oversize replacements
+    # slipped through. Enforce it with a typed error.
+    size_ok, size_err = validate_file_size(file_size)
+    if not size_ok:
+        raise AppError(
+            ErrorCode.file_too_large,
+            size_err or "File too large.",
+            413,
+        )
 
     # Save to temporary file for AMP inspection (preserve extension if possible)
     filename = image.filename or ""

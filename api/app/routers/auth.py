@@ -1468,6 +1468,7 @@ def github_callback(
 
                 # Fetch GitHub user emails (since we requested user:email scope)
                 github_email = None
+                github_verified_email = None  # strictly verified, for safe linking
                 try:
                     logger.info("Fetching GitHub user emails")
                     emails_response = client.get(
@@ -1496,6 +1497,19 @@ def github_callback(
                     # Fallback to first email if no verified email found
                     if not github_email and emails:
                         github_email = emails[0].get("email")
+
+                    # Strictly-verified email (None if nothing is verified); only
+                    # this may be used to link to an existing account.
+                    github_verified_email = next(
+                        (
+                            e.get("email")
+                            for e in emails
+                            if e.get("primary") and e.get("verified")
+                        ),
+                        None,
+                    ) or next(
+                        (e.get("email") for e in emails if e.get("verified")), None
+                    )
 
                     logger.info(
                         f"Found GitHub email: {github_email if github_email else 'None'}"
@@ -1563,88 +1577,119 @@ def github_callback(
             # Generate default handle
             handle = generate_default_handle(db)
 
-            # Check if email is already registered
-            email_to_use = github_email or github_user.get("email")
-            if email_to_use:
-                existing_user = (
+            # If the GitHub email is VERIFIED and matches an existing account,
+            # link this identity to it instead of erroring (§3.3 — parity with
+            # /github/exchange and the native flow).
+            user = None
+            if github_verified_email:
+                linked_user = (
                     db.query(models.User)
-                    .filter(models.User.email == email_to_use.lower())
+                    .filter(models.User.email == github_verified_email.lower())
                     .first()
                 )
-                if existing_user:
+                if linked_user:
+                    link_oauth_identity(
+                        db=db,
+                        user_id=linked_user.id,
+                        provider="github",
+                        provider_user_id=github_user_id,
+                        email=github_verified_email,
+                        provider_metadata={
+                            "username": github_username,
+                            "avatar_url": github_user.get("avatar_url"),
+                        },
+                    )
+                    user = linked_user
+                    logger.info(
+                        f"Linked GitHub identity to existing user {user.id} by verified email"
+                    )
+
+            if user is None:
+                # No verified match. Reject an UNVERIFIED-email collision (can't
+                # safely link to it); otherwise create a fresh account.
+                email_to_use = github_email or github_user.get("email")
+                if email_to_use:
+                    existing_user = (
+                        db.query(models.User)
+                        .filter(models.User.email == email_to_use.lower())
+                        .first()
+                    )
+                    if existing_user:
+                        logger.error(
+                            f"Email {email_to_use} already registered for user {existing_user.id}"
+                        )
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail="An account with this email already exists. Please log in with your existing account.",
+                        )
+
+                # Create user - OAuth users are pre-verified by the provider.
+                user = models.User(
+                    handle=handle,
+                    bio=github_user.get("bio"),
+                    avatar_url=github_user.get("avatar_url"),
+                    email=email_to_use.lower() if email_to_use else None,
+                    email_verified=True,
+                    roles=["user"],
+                )
+                db.add(user)
+                try:
+                    db.flush()  # Get the user ID without committing
+
+                    # Generate public_sqid from the assigned id
+                    from ..sqids_config import encode_user_id
+
+                    user.public_sqid = encode_user_id(user.id)
+
+                    db.commit()
+                    db.refresh(user)
+                    logger.info(f"Successfully created user: {user.id} ({user.handle})")
+                except IntegrityError as e:
+                    db.rollback()
+                    error_str = str(e.orig) if hasattr(e, "orig") else str(e)
                     logger.error(
-                        f"Email {email_to_use} already registered for user {existing_user.id}"
+                        f"Database integrity error creating user: {error_str}",
+                        exc_info=True,
                     )
                     raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail="An account with this email already exists. Please log in with your existing account.",
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Failed to create user account. Please try again.",
                     )
 
-            # Create user - OAuth users are automatically verified since GitHub already verified their email
-            user = models.User(
-                handle=handle,
-                bio=github_user.get("bio"),
-                avatar_url=github_user.get("avatar_url"),
-                email=email_to_use.lower() if email_to_use else None,
-                email_verified=True,  # OAuth users are pre-verified by the provider
-                roles=["user"],
-            )
-            db.add(user)
-            try:
-                db.flush()  # Get the user ID without committing
-
-                # Generate public_sqid from the assigned id
-                from ..sqids_config import encode_user_id
-
-                user.public_sqid = encode_user_id(user.id)
-
-                db.commit()
-                db.refresh(user)
-                logger.info(f"Successfully created user: {user.id} ({user.handle})")
-            except IntegrityError as e:
-                db.rollback()
-                error_str = str(e.orig) if hasattr(e, "orig") else str(e)
-                logger.error(
-                    f"Database integrity error creating user: {error_str}",
-                    exc_info=True,
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to create user account. Please try again.",
-                )
-
-            # Create GitHub identity
-            try:
-                create_oauth_identity(
-                    db=db,
-                    user_id=user.id,
-                    provider="github",
-                    provider_user_id=github_user_id,
-                    email=github_email or github_user.get("email"),
-                    provider_metadata={
-                        "username": github_username,
-                        "avatar_url": github_user.get("avatar_url"),
-                    },
-                )
-            except IntegrityError:
-                db.rollback()
-                # Clean up user if identity creation fails
-                db.delete(user)
-                db.commit()
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to create authentication identity. Please try again.",
-                )
-            except Exception as e:
-                db.rollback()
-                # Clean up user if identity creation fails
-                db.delete(user)
-                db.commit()
-                logger.error(f"Failed to create GitHub identity: {e}", exc_info=True)
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to create authentication identity. Please try again.",
-                )
+                # Create GitHub identity
+                try:
+                    create_oauth_identity(
+                        db=db,
+                        user_id=user.id,
+                        provider="github",
+                        provider_user_id=github_user_id,
+                        email=github_email or github_user.get("email"),
+                        provider_metadata={
+                            "username": github_username,
+                            "avatar_url": github_user.get("avatar_url"),
+                        },
+                    )
+                except IntegrityError:
+                    db.rollback()
+                    # Clean up user if identity creation fails
+                    db.delete(user)
+                    db.commit()
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Failed to create authentication identity. Please try again.",
+                    )
+                except Exception as e:
+                    db.rollback()
+                    # Clean up user if identity creation fails
+                    db.delete(user)
+                    db.commit()
+                    logger.error(
+                        f"Failed to create GitHub identity: {e}", exc_info=True
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Failed to create authentication identity. Please try again.",
+                    )
 
         # Handle GitHub App installation if installation_id is provided
         if installation_id and setup_action == "install":
