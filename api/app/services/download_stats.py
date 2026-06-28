@@ -211,9 +211,7 @@ def _iter_vault_hits(
                 # plain "http.log.access" in the shared default log, but
                 # "http.log.access.log0"/".log1"/... for sites with their
                 # own log directive (the vault subdomains). Prefix-match.
-                if not str(entry.get("logger") or "").startswith(
-                    "http.log.access"
-                ):
+                if not str(entry.get("logger") or "").startswith("http.log.access"):
                     continue
                 ts = entry.get("ts")
                 if not isinstance(ts, (int, float)):

@@ -6,7 +6,6 @@ import pytest
 
 from app.utils.bot_detection import is_bot
 
-
 # Real-world UA samples lifted from production access logs.
 HUMAN_UAS = [
     # Desktop Chrome

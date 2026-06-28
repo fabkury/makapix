@@ -1,0 +1,16 @@
+#!/bin/sh
+# Makapix pre-push hook — enforce the API contract + tests before pushing.
+#
+# Install with:  make install-hooks
+#
+# Requires the dev stack to be running (it execs into the api container), since
+# this repo has no cloud CI. Set SKIP_MAKE_CHECK=1 to bypass in a pinch.
+set -e
+
+if [ "$SKIP_MAKE_CHECK" = "1" ]; then
+    echo "[pre-push] SKIP_MAKE_CHECK=1 set — skipping 'make check'."
+    exit 0
+fi
+
+echo "[pre-push] running 'make check' (OpenAPI drift + tests + format)..."
+make check

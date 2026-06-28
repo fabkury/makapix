@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import time
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request, Response
 
-from .. import schemas
+from .. import schemas, vault
 
 router = APIRouter(prefix="", tags=["System"])
 
@@ -18,19 +19,45 @@ _STARTUP_TIME = time.time()
 def get_health() -> schemas.HealthResponse:
     """
     Liveness & minimal readiness check.
-
-    TODO: Add rate limiting headers (X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset)
     """
     uptime_s = time.time() - _STARTUP_TIME
     return schemas.HealthResponse(status="ok", uptime_s=uptime_s)
 
 
-@router.get("/config", response_model=schemas.Config)
-def get_public_config() -> schemas.Config:
-    """
-    Public configuration limits for the client.
+def _build_config() -> schemas.Config:
+    """Assemble the public client config from server-authoritative sources.
 
-    TODO: Load from environment variables or database
-    TODO: Add caching to avoid repeated queries
+    Upload/conformance rules come straight from `vault.py`, so the app, web, and
+    players read one source of truth and can never drift from what the server
+    actually enforces (see change-request §6.1).
     """
-    return schemas.Config()
+    return schemas.Config(
+        allowed_dimensions=list(vault.ALLOWED_SMALL_DIMENSIONS),
+        max_art_file_bytes_default=vault.MAX_FILE_SIZE_BYTES,
+        upload=schemas.UploadConfig(
+            formats=list(vault.FORMAT_TO_EXT.keys()),
+            max_file_bytes=vault.MAX_FILE_SIZE_BYTES,
+            free_form_min=vault.FREE_FORM_MIN_SIZE,
+            free_form_max=vault.MAX_CANVAS_SIZE,
+            small_whitelist=list(vault.ALLOWED_SMALL_DIMENSIONS),
+            rotations_allowed=True,
+        ),
+    )
+
+
+_CACHE_CONTROL = "public, max-age=300"
+
+
+@router.get("/config", response_model=schemas.Config)
+def get_public_config(request: Request, response: Response):
+    """Public, cacheable configuration limits + upload rules for clients."""
+    cfg = _build_config()
+    etag = '"' + hashlib.sha256(cfg.model_dump_json().encode()).hexdigest()[:16] + '"'
+    if request.headers.get("if-none-match") == etag:
+        return Response(
+            status_code=304,
+            headers={"ETag": etag, "Cache-Control": _CACHE_CONTROL},
+        )
+    response.headers["ETag"] = etag
+    response.headers["Cache-Control"] = _CACHE_CONTROL
+    return cfg

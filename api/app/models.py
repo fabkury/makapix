@@ -92,6 +92,9 @@ class User(Base):
         Boolean, nullable=False, default=False, index=True
     )  # Auto-approve public visibility for uploads
 
+    # Per-notification-type push preferences ({type: bool}); absent type => push on.
+    notification_prefs = Column(JSON, nullable=False, default=dict)
+
     # Content preferences
     approved_hashtags = Column(
         ARRAY(String(50)), nullable=False, default=list
@@ -221,6 +224,8 @@ class EmailVerificationToken(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     token_hash = Column(String(255), nullable=False, unique=True, index=True)
+    # Short numeric OTP for the native verify flow (§3.4); URL-token rows leave it NULL.
+    otp_code = Column(String(6), nullable=True, index=True)
     email = Column(String(255), nullable=False)  # Email being verified
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     used_at = Column(DateTime(timezone=True), nullable=True)
@@ -241,6 +246,8 @@ class PasswordResetToken(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     token_hash = Column(String(255), nullable=False, unique=True, index=True)
+    # Short numeric OTP for the native reset flow (§3.4); URL-token rows leave it NULL.
+    otp_code = Column(String(6), nullable=True, index=True)
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     used_at = Column(DateTime(timezone=True), nullable=True)
 
@@ -250,6 +257,28 @@ class PasswordResetToken(Base):
 
     # Relationships
     user = relationship("User", back_populates="password_reset_tokens")
+
+
+class PushToken(Base):
+    """A mobile push target (APNs/FCM) registered by a native app client.
+
+    Distinct from `Player`/`devices` (physical art players). One row per device
+    token; the token is unique so re-registering updates the same row.
+    """
+
+    __tablename__ = "push_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    platform = Column(String(8), nullable=False)  # "fcm" | "apns"
+    token = Column(String(512), nullable=False, unique=True, index=True)
+    device_label = Column(String(120), nullable=True)
+    failure_count = Column(Integer, nullable=False, default=0)
+    revoked = Column(Boolean, nullable=False, default=False, index=True)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class Post(Base):

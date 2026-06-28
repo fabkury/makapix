@@ -223,7 +223,7 @@ JWT-based authentication with refresh tokens stored in HTTP-only cookies.
 
 ```
 Login → API validates credentials
-      → Returns access token (15 min) + refresh token (7 days)
+      → Returns access token (60 min default) + refresh token (30 days)
       → Access token in response body
       → Refresh token in HTTP-only cookie
 ```

@@ -163,9 +163,7 @@ def test_verify_hashtag_excludes_hidden_and_private(
     assert response.status_code == 404
 
 
-def test_verify_hashtag_latest_is_by_created_at(
-    client: "TestClient", db: "Session"
-):
+def test_verify_hashtag_latest_is_by_created_at(client: "TestClient", db: "Session"):
     """Latest preview corresponds to the most recent visible post."""
     owner = _make_user(db)
     _make_post(db, owner=owner, hashtags=["trend"], title="older")
@@ -178,9 +176,7 @@ def test_verify_hashtag_latest_is_by_created_at(
     assert data["latest_artwork_sqid"] == newest.public_sqid
 
 
-def test_verify_hashtag_count_is_capped_at_100(
-    client: "TestClient", db: "Session"
-):
+def test_verify_hashtag_count_is_capped_at_100(client: "TestClient", db: "Session"):
     """More than 100 matching posts yields artwork_count=100, capped=True."""
     owner = _make_user(db)
     for _ in range(101):

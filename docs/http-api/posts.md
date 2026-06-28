@@ -49,7 +49,7 @@ Upload a new artwork image.
 
 **Image Requirements:**
 
-- Dimensions: 8x8 to 256x256 pixels (perfect squares)
+- Dimensions: 128×128–256×256 (any width/height, square **or rectangular**); below 128, only a fixed whitelist of sizes and their 90° rotations; either side > 256 is rejected. Authoritative rules are served at `GET /api/v1/config` (`upload` block).
 - Formats: PNG, GIF, WebP, BMP
 - Max file size: 5 MB
 
@@ -402,9 +402,9 @@ Redirects to vault URL.
 
 ### GET /d/{public_sqid}/upscaled
 
-Download 4x upscaled version (if available).
+Download the upscaled preview (if available). It is a nearest-neighbor **WebP** fit so the longest side is **≤ 768 px** (not a fixed "4×").
 
-Returns 404 if upscaled version doesn't exist.
+Returns 404 if the upscaled version doesn't exist yet.
 
 ## Moderator Actions
 

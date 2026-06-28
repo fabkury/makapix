@@ -64,13 +64,15 @@ def _make_post(db: Session, *, owner: User) -> Post:
 
 
 def _auth(user: User) -> dict[str, str]:
-    return {"Authorization": f"Bearer {create_access_token(user.user_key)}"}
+    return {"Authorization": f"Bearer {create_access_token(user)}"}
 
 
 def _full_day(db: Session, day, *, l2_human=5, l3_human=0):
     for cls in ("artwork", "avatar", "blog_image"):
-        for level, human in ((2, l2_human if cls == "artwork" else 0),
-                             (3, l3_human if cls == "artwork" else 0)):
+        for level, human in (
+            (2, l2_human if cls == "artwork" else 0),
+            (3, l3_human if cls == "artwork" else 0),
+        ):
             db.add(
                 VaultShardingStatsDaily(
                     date=day,
@@ -93,9 +95,7 @@ class TestVaultShardingStats:
     def test_requires_auth(self, client: TestClient):
         assert client.get(URL).status_code == 401
 
-    def test_returns_streak_daily_and_stragglers(
-        self, client: TestClient, db: Session
-    ):
+    def test_returns_streak_daily_and_stragglers(self, client: TestClient, db: Session):
         moderator = _make_user(db, roles=["user", "moderator"])
         post = _make_post(db, owner=moderator)
 

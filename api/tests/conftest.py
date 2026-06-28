@@ -171,3 +171,25 @@ def client(db: "Session") -> Generator["TestClient", None, None]:
 
     # Clean up override
     app.dependency_overrides.pop(get_session, None)
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limits() -> Generator[None, None, None]:
+    """Flush rate-limit counters before each test.
+
+    Rate limits live in the shared dev Redis, which is not reset between test
+    runs; without this, throttle counters accumulate across tests/reruns and
+    cause spurious 429s. Flushing only at test start preserves within-test
+    accumulation (so 429-asserting tests still work).
+    """
+    try:
+        from app.services.rate_limit import get_redis_client
+
+        r = get_redis_client()
+        if r:
+            keys = list(r.scan_iter("ratelimit:*"))
+            if keys:
+                r.delete(*keys)
+    except Exception:
+        pass
+    yield

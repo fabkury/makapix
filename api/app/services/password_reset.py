@@ -21,11 +21,66 @@ PASSWORD_RESET_TOKEN_EXPIRATION_HOURS = 1
 # Rate limiting: max 3 reset requests per hour per user
 RESET_RATE_LIMIT_HOURS = 1
 RESET_RATE_LIMIT_COUNT = 3
+OTP_EXPIRY_MINUTES = 10  # Short-lived numeric code for the native flow (§3.4)
 
 
 def _hash_token(token: str) -> str:
     """Hash a token using SHA256."""
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def create_reset_otp(db: Session, user_id: UUID) -> str:
+    """Create a short-lived numeric password-reset OTP and return the plain code."""
+    db.query(models.PasswordResetToken).filter(
+        models.PasswordResetToken.user_id == user_id,
+        models.PasswordResetToken.used_at.is_(None),
+        models.PasswordResetToken.expires_at < datetime.now(timezone.utc),
+    ).delete()
+    db.commit()
+
+    recent = (
+        db.query(models.PasswordResetToken)
+        .filter(
+            models.PasswordResetToken.user_id == user_id,
+            models.PasswordResetToken.created_at
+            >= datetime.now(timezone.utc) - timedelta(hours=RESET_RATE_LIMIT_HOURS),
+        )
+        .count()
+    )
+    if recent >= RESET_RATE_LIMIT_COUNT:
+        raise ValueError(
+            "Rate limit exceeded. Please wait before requesting another code."
+        )
+
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRY_MINUTES)
+    db.add(
+        models.PasswordResetToken(
+            user_id=user_id,
+            token_hash=_hash_token(secrets.token_urlsafe(32)),
+            otp_code=code,
+            expires_at=expires_at,
+        )
+    )
+    db.commit()
+    return code
+
+
+def verify_reset_otp(
+    db: Session, user_id: UUID, code: str
+) -> models.PasswordResetToken | None:
+    """Return the matching unused, unexpired reset-OTP row for the user, or None."""
+    return (
+        db.query(models.PasswordResetToken)
+        .filter(
+            models.PasswordResetToken.user_id == user_id,
+            models.PasswordResetToken.otp_code == code,
+            models.PasswordResetToken.used_at.is_(None),
+            models.PasswordResetToken.expires_at > datetime.now(timezone.utc),
+        )
+        .order_by(models.PasswordResetToken.created_at.desc())
+        .first()
+    )
 
 
 def create_reset_token(db: Session, user_id: UUID) -> str:

@@ -83,6 +83,23 @@ class HealthResponse(BaseModel):
     uptime_s: float | None = None
 
 
+class UploadConfig(BaseModel):
+    """Server-authoritative artwork upload & conformance rules.
+
+    Clients (web, native app, players) fetch this from `/config` and pre-validate
+    artwork against it instead of hardcoding the rules. Sourced from `vault.py`.
+    """
+
+    formats: list[str]
+    max_file_bytes: int
+    free_form_min: int
+    free_form_max: int
+    # Allowed sizes below the free-form band; both 90-degree orientations are
+    # listed explicitly, so a client can match against this list directly.
+    small_whitelist: list[tuple[int, int]]
+    rotations_allowed: bool = True
+
+
 class Config(BaseModel):
     """Public system configuration."""
 
@@ -90,6 +107,8 @@ class Config(BaseModel):
     max_comments_per_post: int = 1000
     max_emojis_per_user_per_post: int = 5
     max_hashtags_per_post: int = 64
+    # NOTE: populated from vault.ALLOWED_SMALL_DIMENSIONS by the /config endpoint
+    # (single source of truth). The default below mirrors it for constructibility.
     allowed_dimensions: list[tuple[int, int]] = [
         (8, 8),
         (8, 16),
@@ -110,6 +129,8 @@ class Config(BaseModel):
     # All 90-degree rotations of the listed sizes are allowed (e.g., 8x16 and 16x8 are both valid)
     # Artwork size limits are expressed in raw bytes (never KiB).
     max_art_file_bytes_default: int = MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES
+    # Machine-readable upload/conformance rules; populated by the /config endpoint.
+    upload: UploadConfig | None = None
 
 
 # ============================================================================
@@ -418,7 +439,9 @@ class Playlist(BaseModel):
 class PlaylistCreate(BaseModel):
     """Create playlist request."""
 
-    title: str = Field(..., min_length=1, max_length=200)
+    # 128 to match the Post.title column a playlist is stored in (a >128 title
+    # previously passed schema validation then failed at the DB).
+    title: str = Field(..., min_length=1, max_length=128)
     description: str | None = Field(None, max_length=1000)
     post_ids: list[int] = Field(
         default_factory=list, max_length=100
@@ -428,7 +451,7 @@ class PlaylistCreate(BaseModel):
 class PlaylistUpdate(BaseModel):
     """Update playlist request."""
 
-    title: str | None = Field(None, min_length=1, max_length=200)
+    title: str | None = Field(None, min_length=1, max_length=128)
     description: str | None = Field(None, max_length=1000)
     post_ids: list[int] | None = Field(None, max_length=100)  # Changed from UUID to int
     hidden_by_user: bool | None = None
@@ -1116,11 +1139,54 @@ class GitHubAppBindRequest(BaseModel):
     installation_id: int
 
 
+class MeCapabilities(BaseModel):
+    """What the current user is allowed to do (lets the app gate UI upfront)."""
+
+    can_post_public: bool
+    can_moderate: bool
+    can_own_players: bool
+
+
+class MeStorageQuota(BaseModel):
+    used_bytes: int
+    limit_bytes: int
+
+
+class MeUploadsQuota(BaseModel):
+    window: str  # human label, e.g. "1h"
+    limit: int
+    remaining: int
+    reset_at: datetime | None = None
+
+
+class MePlayersQuota(BaseModel):
+    used: int
+    limit: int
+
+
+class MeQuotas(BaseModel):
+    storage: MeStorageQuota
+    uploads: MeUploadsQuota
+    players: MePlayersQuota
+
+
+class MeModeration(BaseModel):
+    banned_until: datetime | None = None
+    deactivated: bool = False
+
+
 class MeResponse(BaseModel):
     """Current user response."""
 
     user: UserFull
     roles: list[Literal["user", "moderator", "owner"]]
+    # Capability/quota block so the app can enable/disable features and show
+    # remaining quota before hitting a 4xx (change-request §3.5). Optional for
+    # backward compatibility; always populated by GET /auth/me.
+    capabilities: MeCapabilities | None = None
+    quotas: MeQuotas | None = None
+    moderation: MeModeration | None = None
+    needs_welcome: bool = False
 
 
 class RegisterRequest(BaseModel):
@@ -1143,6 +1209,91 @@ class LoginRequest(BaseModel):
 
     email: str = Field(..., min_length=1, max_length=255)
     password: str = Field(..., min_length=1, max_length=100)
+
+
+class TokenRequest(BaseModel):
+    """OAuth2-style token request for non-browser (native) clients.
+
+    Unlike /auth/login (which puts the refresh token in an HttpOnly cookie), this
+    endpoint returns the refresh token in the body so a native client can store it
+    in secure storage. `grant_type` selects the flow:
+      - "password":           email + password
+      - "refresh_token":      refresh_token (rotates, same engine as the cookie flow)
+      - "authorization_code": code + code_verifier (server-brokered OAuth; B3)
+    """
+
+    grant_type: Literal["password", "refresh_token", "authorization_code"]
+    email: str | None = Field(None, max_length=255)
+    password: str | None = Field(None, max_length=100)
+    refresh_token: str | None = None
+    code: str | None = None
+    code_verifier: str | None = None
+
+
+class TokenResponse(BaseModel):
+    """OAuth2-style token response with the refresh token in the body."""
+
+    access_token: str
+    token_type: str = "Bearer"
+    expires_in: int  # access-token lifetime in seconds
+    refresh_token: str
+    user: UserFull
+
+
+class EmailOtpRequest(BaseModel):
+    """Request a numeric email-verification OTP."""
+
+    email: str = Field(..., max_length=255)
+
+
+class EmailOtpVerify(BaseModel):
+    """Verify an email-verification OTP."""
+
+    email: str = Field(..., max_length=255)
+    code: str = Field(..., min_length=6, max_length=6)
+
+
+class PasswordOtpRequest(BaseModel):
+    """Request a numeric password-reset OTP."""
+
+    email: str = Field(..., max_length=255)
+
+
+class PasswordOtpConfirm(BaseModel):
+    """Reset a password with a numeric OTP."""
+
+    email: str = Field(..., max_length=255)
+    code: str = Field(..., min_length=6, max_length=6)
+    new_password: str = Field(..., min_length=1, max_length=100)
+
+
+class OtpMessageResponse(BaseModel):
+    """Generic acknowledgement for OTP request endpoints (existence-neutral)."""
+
+    message: str
+
+
+class PushTokenRegister(BaseModel):
+    """Register (or refresh) a mobile push token (§4)."""
+
+    platform: Literal["fcm", "apns"]
+    token: str = Field(..., min_length=1, max_length=512)
+    device_label: str | None = Field(None, max_length=120)
+
+
+class PushTokenResponse(BaseModel):
+    id: UUID
+    platform: str
+    device_label: str | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NotificationPreferences(BaseModel):
+    """Per-notification-type push preferences ({type: bool}); absent => on."""
+
+    preferences: dict[str, bool] = Field(default_factory=dict)
 
 
 class AuthIdentityResponse(BaseModel):

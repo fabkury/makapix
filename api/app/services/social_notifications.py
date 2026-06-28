@@ -8,6 +8,7 @@ for reactions and comments on artwork.
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -418,3 +419,22 @@ class SocialNotificationService:
             logger.warning(
                 f"Failed to broadcast notification {notification.id} to MQTT"
             )
+
+        # Mobile push (best-effort, async). Only enqueue when push delivery is
+        # configured; the worker task also re-checks per-type preferences.
+        if os.getenv("FCM_CREDENTIALS_FILE"):
+            try:
+                from ..tasks import send_push_notification
+
+                send_push_notification.delay(
+                    notification.user_id,
+                    notification.notification_type,
+                    {
+                        "id": str(notification.id),
+                        "actor_handle": notification.actor_handle,
+                        "content_title": notification.content_title,
+                        "content_sqid": notification.content_sqid,
+                    },
+                )
+            except Exception as e:  # never let push break the notification path
+                logger.warning(f"Failed to enqueue push for {notification.id}: {e}")

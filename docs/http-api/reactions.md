@@ -2,6 +2,12 @@
 
 Emoji reactions and comments on posts.
 
+> **⚠️ Accuracy note (being reconciled with code; OpenAPI at `/api/v1/openapi.json` is authoritative).**
+> The real reaction semantics are: **`PUT /post/{id}/reactions/{emoji}` adds** a reaction (idempotent, `204`),
+> **`DELETE /post/{id}/reactions/{emoji}` removes** it (`204`). There is **no `POST` endpoint** and `PUT` is **not a toggle**.
+> A user may have at most **5 reactions per post** (`409` `reaction_cap_reached` beyond that). Blog-post reactions
+> live under the `/blog-post/...` prefix and the **blog feature is currently disabled** (`503`).
+
 ## Reactions
 
 ### Get Reactions

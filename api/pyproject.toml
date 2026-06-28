@@ -31,7 +31,8 @@ dependencies = [
     "uvicorn[standard]>=0.29.0",
     "resend>=2.0.0",
     "sqids>=0.4.1",
-    "better-profanity>=0.7.0"
+    "better-profanity>=0.7.0",
+    "firebase-admin>=6.5.0"  # Mobile push (FCM); imported lazily in services/push.py
 ]
 
 [project.optional-dependencies]

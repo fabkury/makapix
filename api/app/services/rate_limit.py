@@ -123,6 +123,26 @@ def check_rate_limit(
         return _check_fallback_rate_limit(key, limit, window_seconds)
 
 
+def get_rate_limit_reset_seconds(key: str) -> int | None:
+    """Seconds until the rate-limit window for `key` resets, or None if unknown.
+
+    Returns None when Redis is unavailable or the key has no expiry / does not
+    exist (e.g. the user hasn't consumed any of the window yet).
+    """
+    client = get_redis_client()
+    if not client:
+        return None
+    try:
+        ttl = client.ttl(key)
+        # redis TTL semantics: -2 = no key, -1 = key without expiry.
+        if ttl is None or ttl < 0:
+            return None
+        return int(ttl)
+    except Exception as e:  # pragma: no cover - defensive
+        logger.error(f"Rate limit ttl error for key '{key}': {e}")
+        return None
+
+
 def get_rate_limit_remaining(key: str, limit: int) -> int:
     """
     Get remaining requests without incrementing counter.

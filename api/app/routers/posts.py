@@ -54,6 +54,7 @@ from ..services.post_stats import annotate_posts_with_counts, get_user_liked_pos
 from ..services.storage_quota import check_storage_quota, format_quota_error
 from ..services.rate_limit import check_rate_limit
 from ..services.social_notifications import SocialNotificationService
+from ..errors import AppError, ErrorCode
 from ..vault import (
     ALLOWED_MIME_TYPES,
     MAX_FILE_SIZE_BYTES,
@@ -423,16 +424,18 @@ def create_post(
     # Validate dimensions using the same validation logic as image uploads
     is_valid, error = validate_image_dimensions(payload.width, payload.height)
     if not is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=error,
+        raise AppError(
+            ErrorCode.dimensions_invalid,
+            error or "Invalid image dimensions.",
+            status.HTTP_400_BAD_REQUEST,
         )
 
     # Validate file size (basic check)
     if payload.file_bytes > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File size {payload.file_bytes} bytes exceeds limit of {MAX_FILE_SIZE_BYTES} bytes",
+        raise AppError(
+            ErrorCode.file_too_large,
+            f"File size {payload.file_bytes} bytes exceeds limit of {MAX_FILE_SIZE_BYTES} bytes.",
+            413,
         )
 
     # Normalize hashtags (lowercase, strip whitespace)
@@ -720,9 +723,11 @@ async def upload_artwork(
         .first()
     )
     if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Artwork already exists",
+        raise AppError(
+            ErrorCode.artwork_duplicate,
+            "This artwork already exists.",
+            status.HTTP_409_CONFLICT,
+            details={"post_id": existing.id, "sqid": existing.public_sqid},
         )
 
     # Insert first (flush) so the UNIQUE constraint prevents races *before* we
@@ -732,9 +737,20 @@ async def upload_artwork(
         db.flush()  # Get the post ID without committing
     except IntegrityError:
         db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Artwork already exists",
+        dup = (
+            db.query(models.Post)
+            .filter(
+                models.Post.kind == "artwork",
+                models.Post.hash == file_hash,
+                models.Post.deleted_by_user == False,
+            )
+            .first()
+        )
+        raise AppError(
+            ErrorCode.artwork_duplicate,
+            "This artwork already exists.",
+            status.HTTP_409_CONFLICT,
+            details=({"post_id": dup.id, "sqid": dup.public_sqid} if dup else None),
         )
 
     # Create native PostFile row
@@ -1487,7 +1503,15 @@ async def replace_artwork(
 
     file_content = await image.read()
     file_size = len(file_content)
-    validate_file_size(file_size)
+    # NOTE: previously the return value was ignored, so oversize replacements
+    # slipped through. Enforce it with a typed error.
+    size_ok, size_err = validate_file_size(file_size)
+    if not size_ok:
+        raise AppError(
+            ErrorCode.file_too_large,
+            size_err or "File too large.",
+            413,
+        )
 
     # Save to temporary file for AMP inspection (preserve extension if possible)
     filename = image.filename or ""

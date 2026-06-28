@@ -11,6 +11,11 @@ mqtt/certs/
 .env.*
 docker-compose.override.yml
 
+# Service-account / push credentials (secrets - must be gitignored)
+*firebase-adminsdk*.json
+*-service-account*.json
+*serviceaccount*.json
+
 # Keep template files (these are safe to commit)
 !env.*.template
 !docker-compose.override.*.yml
@@ -54,6 +59,7 @@ yarn-debug.log*
 yarn-error.log*
 .next/
 out/
+*.tsbuildinfo
 
 # IDEs
 .vscode/
