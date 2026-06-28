@@ -120,3 +120,60 @@ def test_github_login_native_validation(client):
     )
     assert ok.status_code in (302, 307)
     assert "github.com" in ok.headers["location"]
+
+
+def test_oauth_state_cookie_is_samesite_none_secure(client):
+    # The oauth_state cookie must survive the cross-site return from GitHub.
+    auth_router.GITHUB_CLIENT_ID = "test_client_id"
+    auth_router.GITHUB_REDIRECT_URI = "http://localhost/auth/github/callback"
+    r = client.get(
+        "/v1/auth/github/login",
+        params={
+            "redirect_uri": REDIRECT,
+            "code_challenge": s256_challenge(VERIFIER),
+            "code_challenge_method": "S256",
+            "state": "csrf1",
+        },
+        follow_redirects=False,
+    )
+    assert r.status_code in (302, 307)
+    set_cookie = r.headers.get("set-cookie", "").lower()
+    assert "oauth_state=" in set_cookie
+    assert "samesite=none" in set_cookie
+    assert "secure" in set_cookie
+
+
+def test_callback_state_failure_redirects_to_app_scheme(client):
+    # On a state failure in the native flow, the callback must 302 to the app's
+    # custom scheme with ?error=… (not a dead-end JSON page).
+    import base64
+    import json as _json
+
+    auth_router.GITHUB_CLIENT_ID = "test_client_id"
+    auth_router.GITHUB_CLIENT_SECRET = "test_client_secret"
+    auth_router.GITHUB_REDIRECT_URI = "http://localhost/auth/github/callback"
+
+    state = (
+        base64.urlsafe_b64encode(
+            _json.dumps(
+                {
+                    "nonce": "abc",
+                    "native": {
+                        "redirect_uri": REDIRECT,
+                        "code_challenge": s256_challenge(VERIFIER),
+                        "app_state": "csrf2",
+                    },
+                }
+            ).encode()
+        )
+        .decode()
+        .rstrip("=")
+    )
+    client.cookies.set("oauth_state", "a-different-nonce")  # force mismatch
+    r = client.get(
+        f"/v1/auth/github/callback?code=x&state={state}", follow_redirects=False
+    )
+    assert r.status_code in (302, 307), r.text
+    loc = r.headers["location"]
+    assert loc.startswith("club.makapix.editor://oauth/github?")
+    assert "error=" in loc and "state=csrf2" in loc

@@ -96,6 +96,13 @@ def _b64url_decode(data: str) -> bytes:
 def _set_oauth_state_cookie(resp: Response, nonce: str, request: Request) -> None:
     cookie_config = get_cookie_config(request)
     cookie_config["max_age"] = OAUTH_STATE_TTL_SECONDS
+    # The callback is reached via a cross-site, top-level redirect from GitHub.
+    # SameSite=Lax proved unreliable in the app's in-app browser, so use
+    # SameSite=None, which is always returned cross-site. None REQUIRES Secure
+    # (browsers reject None without it); the OAuth flow is always HTTPS in real
+    # environments, so force it.
+    cookie_config["samesite"] = "none"
+    cookie_config["secure"] = True
     resp.set_cookie(
         key=OAUTH_STATE_COOKIE_NAME,
         value=nonce,
@@ -1400,6 +1407,17 @@ def github_callback(
                 detail="Invalid OAuth state. Please try again.",
             )
 
+        # Extract native (server-brokered) flow params BEFORE validating the
+        # nonce, so a state failure can still be reported to the app's custom
+        # scheme (see the error handler) instead of a dead-end JSON page. Only an
+        # allowlisted redirect_uri is honored (open-redirect protection — the
+        # state could be forged when the nonce check is about to fail).
+        native = state_data.get("native") or None
+        if native and native.get("redirect_uri") in NATIVE_OAUTH_REDIRECT_URIS:
+            native_redirect_uri = native.get("redirect_uri")
+            native_code_challenge = native.get("code_challenge")
+            native_app_state = native.get("app_state")
+
         received_nonce = state_data.get("nonce")
         if not expected_nonce or not received_nonce or expected_nonce != received_nonce:
             logger.warning(
@@ -1414,13 +1432,6 @@ def github_callback(
         state_installation_id = state_data.get("installation_id")
         if state_installation_id and not installation_id:
             installation_id = state_installation_id
-
-        # Extract native (server-brokered) flow params if present
-        native = state_data.get("native") or None
-        if native:
-            native_redirect_uri = native.get("redirect_uri")
-            native_code_challenge = native.get("code_challenge")
-            native_app_state = native.get("app_state")
 
         # Exchange code for GitHub access token
         token_data = {
