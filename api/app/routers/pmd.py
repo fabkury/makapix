@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session, joinedload
 from .. import models, schemas
 from ..auth import get_current_user
 from ..deps import get_db
+from ..services.post_stats import get_view_counts
 from ..sqids_config import decode_user_sqid
 
 logger = logging.getLogger(__name__)
@@ -78,45 +79,6 @@ def get_target_user(
         )
 
     return target_user
-
-
-def get_lightweight_view_counts(db: Session, post_ids: list[int]) -> dict[int, int]:
-    """
-    Get total view counts for posts using efficient queries.
-
-    Combines:
-    - Recent view events (last 7 days)
-    - Daily aggregated stats (older than 7 days)
-    """
-    if not post_ids:
-        return {}
-
-    # Recent views from view_events table
-    recent_counts = dict(
-        db.query(models.ViewEvent.post_id, func.count(models.ViewEvent.id))
-        .filter(models.ViewEvent.post_id.in_(post_ids))
-        .group_by(models.ViewEvent.post_id)
-        .all()
-    )
-
-    # Historical views from daily aggregates
-    daily_counts = dict(
-        db.query(
-            models.PostStatsDaily.post_id, func.sum(models.PostStatsDaily.total_views)
-        )
-        .filter(models.PostStatsDaily.post_id.in_(post_ids))
-        .group_by(models.PostStatsDaily.post_id)
-        .all()
-    )
-
-    # Combine counts
-    result = {}
-    for post_id in post_ids:
-        result[post_id] = recent_counts.get(post_id, 0) + int(
-            daily_counts.get(post_id, 0) or 0
-        )
-
-    return result
 
 
 @router.get("/posts", response_model=schemas.PMDPostsResponse)
@@ -200,7 +162,7 @@ def list_pmd_posts(
     )
 
     # View counts - combine recent events + daily aggregates
-    view_counts = get_lightweight_view_counts(db, post_ids)
+    view_counts = get_view_counts(db, post_ids)
 
     # Build response
     items = []

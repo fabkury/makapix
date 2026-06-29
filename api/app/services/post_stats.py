@@ -89,6 +89,50 @@ def annotate_posts_with_counts(
     return posts
 
 
+def get_view_counts(db: Session, post_ids: list[int]) -> dict[int, int]:
+    """
+    Get total view counts for posts, batched into two grouped queries.
+
+    Combines recent raw view events (``view_events``, retained ~7 days) with
+    historical daily aggregates (``post_stats_daily``). The two sources do not
+    overlap — events are deleted only after being rolled up — so summing them
+    gives the lifetime total without double counting.
+
+    Args:
+        db: Database session
+        post_ids: List of post IDs to count views for
+
+    Returns:
+        Dict mapping post_id -> total view count (every requested id is present,
+        defaulting to 0)
+    """
+    if not post_ids:
+        return {}
+
+    # Recent views from the raw view_events table
+    recent_counts = dict(
+        db.query(models.ViewEvent.post_id, func.count(models.ViewEvent.id))
+        .filter(models.ViewEvent.post_id.in_(post_ids))
+        .group_by(models.ViewEvent.post_id)
+        .all()
+    )
+
+    # Historical views from daily aggregates
+    daily_counts = dict(
+        db.query(
+            models.PostStatsDaily.post_id, func.sum(models.PostStatsDaily.total_views)
+        )
+        .filter(models.PostStatsDaily.post_id.in_(post_ids))
+        .group_by(models.PostStatsDaily.post_id)
+        .all()
+    )
+
+    return {
+        post_id: recent_counts.get(post_id, 0) + int(daily_counts.get(post_id, 0) or 0)
+        for post_id in post_ids
+    }
+
+
 def get_user_liked_post_ids(
     db: Session, post_ids: list[int], user_id: UUID
 ) -> set[int]:

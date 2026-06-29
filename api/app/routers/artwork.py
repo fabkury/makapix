@@ -101,9 +101,13 @@ def get_post_by_sqid(
         )
 
     # Add reaction and comment counts
-    from ..services.post_stats import annotate_posts_with_counts
+    from ..services.post_stats import annotate_posts_with_counts, get_view_counts
 
     annotate_posts_with_counts(db, [post], current_user.id if current_user else None)
+
+    # Public lifetime view count (recorded views are written async, so this
+    # reflects prior views and never the visitor's own in-flight request)
+    post.view_count = get_view_counts(db, [post.id]).get(post.id, 0)
 
     # Record site event for page view (sitewide stats)
     record_site_event(request, "page_view", user=current_user)

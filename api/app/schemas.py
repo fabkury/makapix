@@ -338,6 +338,7 @@ class Post(BaseModel):
     owner: UserPublic | None = None
     reaction_count: int = 0
     comment_count: int = 0
+    view_count: int = 0  # Public lifetime view count (excludes the owner's own views)
     user_has_liked: bool = False  # Whether the current user has liked (👍) this post
     files: list[PostFile] = []  # File variants (native + converted formats)
     license_id: int | None = None  # FK to licenses table
