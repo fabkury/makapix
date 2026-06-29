@@ -4988,6 +4988,11 @@
             "title": "User Has Liked",
             "type": "boolean"
           },
+          "view_count": {
+            "default": 0,
+            "title": "View Count",
+            "type": "integer"
+          },
           "visible": {
             "title": "Visible",
             "type": "boolean"

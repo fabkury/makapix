@@ -144,6 +144,36 @@ def test_get_post_by_sqid_anonymous(test_post: Post):
     assert data["public_sqid"] == test_post.public_sqid
     assert data["storage_key"] == str(test_post.storage_key)
     assert data["title"] == test_post.title
+    # Public view count is exposed (no prior views recorded yet)
+    assert data["view_count"] == 0
+
+
+def test_get_post_by_sqid_view_count(test_post: Post, db: Session):
+    """The public view count combines raw events + daily aggregates."""
+    from datetime import date
+
+    from app.models import PostStatsDaily, ViewEvent
+
+    # Two recent raw events ...
+    for _ in range(2):
+        db.add(
+            ViewEvent(
+                post_id=test_post.id,
+                viewer_ip_hash="0" * 64,
+                device_type="desktop",
+                view_source="web",
+                view_type="intentional",
+            )
+        )
+    # ... plus three already rolled into the daily aggregate.
+    db.add(PostStatsDaily(post_id=test_post.id, date=date(2026, 1, 1), total_views=3))
+    db.commit()
+
+    client = TestClient(app)
+    response = client.get(f"/p/{test_post.public_sqid}")
+
+    assert response.status_code == 200
+    assert response.json()["view_count"] == 5
 
 
 def test_get_post_by_sqid_not_found():

@@ -1,4 +1,4 @@
-.PHONY: help up down restart rebuild logs ps deploy sync deploy-to-prod test shell-api shell-db fmt openapi check install-hooks clean
+.PHONY: help up down restart rebuild logs ps deploy sync deploy-to-prod test shell-api shell-db fmt openapi check check-full install-hooks clean
 
 # Stack directory
 STACK_DIR := deploy/stack
@@ -143,15 +143,22 @@ openapi:
 	@cd $(STACK_DIR) && $(COMPOSE) exec -T api python scripts/export_openapi.py > ../../api/openapi.json
 	@echo "Wrote api/openapi.json"
 
-# Local contract gate (this repo has no cloud CI). Run by the pre-push hook.
-# Fails if the OpenAPI schema drifted, if tests fail, or if code isn't formatted.
+# Fast contract gate run by the pre-push hook (this repo has no cloud CI).
+# Deliberately cheap — OpenAPI drift + formatting only — so pushes return in
+# seconds, not minutes. The full test suite is NOT run here: it spins up a fresh
+# app per test (~300 tests, several minutes) and is too slow to gate every push.
+# Run `make check-full` before merging to main / deploying to prod.
 check:
 	@$(MAKE) openapi
 	@git diff --exit-code -- api/openapi.json \
 		|| { echo "ERROR: OpenAPI schema drifted. Commit the regenerated api/openapi.json."; exit 1; }
 	@echo "OpenAPI schema up to date."
-	@cd $(STACK_DIR) && $(COMPOSE) exec -T api python scripts/run_tests.py
 	@cd $(STACK_DIR) && $(COMPOSE) exec -T api black --check app tests scripts
+
+# Full gate: the fast contract gate above plus the complete test suite.
+# Run this before merging to main and deploying to production.
+check-full: check
+	@cd $(STACK_DIR) && $(COMPOSE) exec -T api python scripts/run_tests.py
 
 # Symlink the pre-push hook into .git/hooks so `make check` runs before pushes.
 install-hooks:
