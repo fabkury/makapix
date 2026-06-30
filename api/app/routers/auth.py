@@ -204,6 +204,39 @@ def generate_random_password(length: int = 12) -> str:
     return "".join(password_chars)
 
 
+def _require_strong_password(password: str) -> None:
+    """Validate a user-chosen password, raising a typed 400 on failure.
+
+    Uses the same rules as `validate_password`; surfaces a stable `weak_password`
+    code so native clients can branch without parsing the message.
+    """
+    is_valid, error_message = validate_password(password)
+    if not is_valid:
+        raise AppError(
+            ErrorCode.weak_password,
+            error_message or "Password does not meet requirements.",
+            status.HTTP_400_BAD_REQUEST,
+            details={"field": "password"},
+        )
+
+
+def _send_verification_otp(db: Session, user: models.User, email: str) -> None:
+    """Issue and email a 6-digit verification OTP (native flow, §3.4).
+
+    `email` is the address the client will submit on verify (the OTP row is keyed
+    by it). Bounded by the per-user hourly cap; a cap hit is swallowed because a
+    previously-issued code may still be valid.
+    """
+    from ..services.email import send_verification_otp_email
+    from ..services.email_verification import create_verification_otp
+
+    try:
+        code = create_verification_otp(db, user.id, email)
+        send_verification_otp_email(email, code, user.handle)
+    except ValueError:
+        logger.info("Verification OTP cap reached for user %s; not resending", user.id)
+
+
 @router.post(
     "/register",
     response_model=schemas.RegisterResponse,
@@ -212,26 +245,33 @@ def generate_random_password(length: int = 12) -> str:
 def register(
     payload: schemas.RegisterRequest,
     request: Request,
+    response: Response,
     db: Session = Depends(get_db),
 ) -> schemas.RegisterResponse:
     """
-    Register a new user with email only.
+    Register a new user. Two paths, selected by whether `password` is supplied:
 
-    - Generates a unique handle (makapix-user-X)
-    - Generates a random 8-character password
-    - Sends a verification email with the password
-    - User must verify email before logging in
-    - After verification, user can optionally change password/handle
+    - **Website (no password):** generate a unique handle + random password, email a
+      verification *link* (with that temp password). Returns 201. Unchanged.
+    - **Native app (chosen password):** use the supplied password for the password
+      identity and email a single 6-digit verification *OTP* — no link. Returns 201.
 
-    Rate limited to 30 registrations per hour per IP address.
+    If an *unverified* account already exists and a password is supplied, the sign-up
+    is *resumed*: the password is updated to the one just typed, a fresh OTP is sent,
+    and the response is **200** (vs. 201 for a brand-new account). This is safe — the
+    account cannot authenticate until the email owner enters the OTP.
+
+    Rate limited to 30 registrations per hour per IP (new registrations only).
 
     Args:
-        payload: Registration request with email
+        payload: Registration request (email, optional password)
         request: HTTP request (used for rate limiting IP extraction)
+        response: HTTP response (status overridden to 200 on resume)
         db: Database session
     """
     email = payload.email.lower().strip()
     email_norm = normalize_email(email)
+    chosen_password = payload.password
 
     # Check if email is already registered (check both original and normalized)
     # This check is done before rate limiting so users get a more helpful error message
@@ -244,14 +284,30 @@ def register(
     )
 
     if existing_user:
-        if not existing_user.email_verified:
+        # A verified account always 409s, regardless of path.
+        if existing_user.email_verified:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="pending_verification",
+                detail="An account with this email already exists",
             )
+        # Unverified + chosen password → resume sign-up (A2 §3A): update the password
+        # to the one just typed, (re)send a fresh OTP, return 200.
+        if chosen_password is not None:
+            _require_strong_password(chosen_password)
+            update_password(db, existing_user.id, chosen_password)
+            _send_verification_otp(db, existing_user, email)
+            response.status_code = status.HTTP_200_OK
+            return schemas.RegisterResponse(
+                message="Enter the 6-digit code we emailed to verify your account.",
+                user_id=existing_user.id,
+                email=email,
+                handle=existing_user.handle,
+                verification_method="otp",
+            )
+        # Unverified, no password → website path, unchanged 409.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="An account with this email already exists",
+            detail="pending_verification",
         )
 
     # Rate limiting: 30 registrations per hour per IP
@@ -266,11 +322,15 @@ def register(
             detail="Too many registration attempts. Please try again later.",
         )
 
+    # On the chosen-password path, reject a weak password before creating anything.
+    if chosen_password is not None:
+        _require_strong_password(chosen_password)
+
     # Generate default handle (makapix-user-X)
     default_handle = generate_default_handle(db)
 
-    # Generate random 8-character password
-    generated_password = generate_random_password(8)
+    # Password identity source: the chosen password, or a generated one (website).
+    identity_password = chosen_password or generate_random_password(8)
 
     # Create user with email_verified=False
     user = models.User(
@@ -311,7 +371,7 @@ def register(
             db=db,
             user_id=user.id,
             email=email,
-            password=generated_password,
+            password=identity_password,
         )
     except IntegrityError:
         db.rollback()
@@ -333,20 +393,30 @@ def register(
             detail="Failed to create authentication identity",
         )
 
-    # Send verification email with the generated password
-    email_sent = send_verification_email_for_user(db, user, password=generated_password)
-    if not email_sent:
-        logger.warning(f"Failed to send verification email to user {user.id}")
+    # Verification: a single OTP for the chosen-password path, a link otherwise.
+    if chosen_password is not None:
+        _send_verification_otp(db, user, email)
+        verification_method = "otp"
+        message = "Enter the 6-digit code we emailed to verify your account."
+    else:
+        email_sent = send_verification_email_for_user(
+            db, user, password=identity_password
+        )
+        if not email_sent:
+            logger.warning(f"Failed to send verification email to user {user.id}")
+        verification_method = "link"
+        message = "Please check your email to verify your account"
 
     # Record site event for signup
     record_site_event(request, "signup", user=user)
 
     # Return registration response (NO tokens - user must verify email first)
     return schemas.RegisterResponse(
-        message="Please check your email to verify your account",
+        message=message,
         user_id=user.id,
         email=email,
         handle=default_handle,
+        verification_method=verification_method,
     )
 
 

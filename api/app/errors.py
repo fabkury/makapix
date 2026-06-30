@@ -47,6 +47,7 @@ class ErrorCode(StrEnum):
 
     # --- Auth / account ---
     email_not_verified = "email_not_verified"
+    weak_password = "weak_password"
     token_expired = "token_expired"
     token_invalid = "token_invalid"
     account_banned = "account_banned"

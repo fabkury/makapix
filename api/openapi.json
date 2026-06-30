@@ -6050,12 +6050,24 @@
         "type": "object"
       },
       "RegisterRequest": {
-        "description": "User registration request - only email required.",
+        "description": "User registration request.\n\n`email` is required. `password` is optional:\n  - present (native app flow): the chosen password backs the password identity\n    and verification is a single 6-digit OTP email — no link/temp-password email.\n  - absent (website flow): the server generates a random password and emails a\n    verification link. Unchanged.",
         "properties": {
           "email": {
             "maxLength": 255,
             "title": "Email",
             "type": "string"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
           }
         },
         "required": [
@@ -6083,6 +6095,15 @@
           "user_id": {
             "title": "User Id",
             "type": "integer"
+          },
+          "verification_method": {
+            "default": "link",
+            "enum": [
+              "otp",
+              "link"
+            ],
+            "title": "Verification Method",
+            "type": "string"
           }
         },
         "required": [
@@ -13958,7 +13979,7 @@
     },
     "/v1/auth/register": {
       "post": {
-        "description": "Register a new user with email only.\n\n- Generates a unique handle (makapix-user-X)\n- Generates a random 8-character password\n- Sends a verification email with the password\n- User must verify email before logging in\n- After verification, user can optionally change password/handle\n\nRate limited to 30 registrations per hour per IP address.\n\nArgs:\n    payload: Registration request with email\n    request: HTTP request (used for rate limiting IP extraction)\n    db: Database session",
+        "description": "Register a new user. Two paths, selected by whether `password` is supplied:\n\n- **Website (no password):** generate a unique handle + random password, email a\n  verification *link* (with that temp password). Returns 201. Unchanged.\n- **Native app (chosen password):** use the supplied password for the password\n  identity and email a single 6-digit verification *OTP* — no link. Returns 201.\n\nIf an *unverified* account already exists and a password is supplied, the sign-up\nis *resumed*: the password is updated to the one just typed, a fresh OTP is sent,\nand the response is **200** (vs. 201 for a brand-new account). This is safe — the\naccount cannot authenticate until the email owner enters the OTP.\n\nRate limited to 30 registrations per hour per IP (new registrations only).\n\nArgs:\n    payload: Registration request (email, optional password)\n    request: HTTP request (used for rate limiting IP extraction)\n    response: HTTP response (status overridden to 200 on resume)\n    db: Database session",
         "operationId": "register_v1_auth_register_post",
         "requestBody": {
           "content": {
