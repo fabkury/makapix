@@ -236,12 +236,12 @@ export default function NewAccountWelcomePage() {
       await authenticatedFetch(`${API_BASE_URL}/api/auth/complete-welcome`, {
         method: 'POST',
       });
-      
-      router.push(`/u/${user.public_sqid}`);
+
+      router.push('/');
     } catch (err) {
       console.error('Error completing welcome:', err);
       // Still redirect even if marking complete fails
-      router.push(`/u/${user.public_sqid}`);
+      router.push('/');
     }
   };
 
@@ -302,8 +302,8 @@ export default function NewAccountWelcomePage() {
         method: 'POST',
       });
       
-      // Redirect to profile
-      router.push(`/u/${user.public_sqid}`);
+      // Redirect to the landing feed (Recent artworks)
+      router.push('/');
     } catch (err) {
       console.error('Error saving:', err);
       setSaveError(err instanceof Error ? err.message : 'Failed to save changes');
@@ -419,7 +419,7 @@ export default function NewAccountWelcomePage() {
       <div className="page-container">
         <div className="welcome-card">
           <div className="header">
-            <div className="icon">🎨</div>
+            <img className="logo" src="/android-chrome-512x512.png" alt="Makapix Club" />
             <h1>Welcome to Makapix!</h1>
             <p className="subtitle">Let&apos;s set up your profile. You can always change these later.</p>
           </div>
@@ -574,8 +574,11 @@ export default function NewAccountWelcomePage() {
           margin-bottom: 32px;
         }
 
-        .header .icon {
-          font-size: 4rem;
+        .header .logo {
+          width: 88px;
+          height: 88px;
+          border-radius: 50%;
+          object-fit: cover;
           margin-bottom: 16px;
         }
 
