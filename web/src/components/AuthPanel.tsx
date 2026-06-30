@@ -11,6 +11,7 @@ interface AuthTokens {
   public_sqid: string | null;
   user_handle: string | null;
   expires_at: string;
+  needs_welcome?: boolean; // First login of a new account → show the welcome wizard once
 }
 
 type ApiErrorBody = {
@@ -86,7 +87,10 @@ export default function AuthPanel({
     localStorage.setItem('user_handle', data.user_handle || '');
     // Dispatch custom event to trigger MQTT reconnection with new userId
     window.dispatchEvent(new Event('localStorageUpdated'));
-    router.push('/');
+    // First login of a new account → onboarding wizard (shown once; the page
+    // itself redirects away once welcome_completed). Mirrors the OAuth path in
+    // Layout.tsx and the native app.
+    router.push(data.needs_welcome ? '/new-account-welcome' : '/');
   };
 
   const requestOtp = async (forEmail: string) => {
