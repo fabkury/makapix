@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from logging.config import fileConfig
 
@@ -15,7 +16,13 @@ from app import models  # noqa: F401
 
 config = context.config
 
-if config.config_file_name:
+# Only let Alembic reconfigure logging when run STANDALONE (its CLI), where the
+# root logger has no handlers yet. When embedded in the app (run_migrations at
+# startup), the app has already configured logging — and fileConfig() would
+# disable_existing_loggers (killing uvicorn's access logger + every app request
+# logger) and drop the root level to WARN per alembic.ini. Skipping it there
+# keeps request/app logs flowing after an at-startup migration.
+if config.config_file_name and not logging.getLogger().handlers:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
