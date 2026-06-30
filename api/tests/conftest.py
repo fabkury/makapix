@@ -97,6 +97,11 @@ def setup_test_database() -> Generator[None, None, None]:
     # Create tables from models
     with admin_engine.begin() as conn:
         Base.metadata.create_all(conn)
+        # `handle_sequence` backs generate_default_handle() but is a raw migration
+        # artifact, not a model-declared Sequence, so create_all() skips it. Mirror
+        # the squashed migration so registration-path tests work. Created before the
+        # ALL SEQUENCES grant below so api_worker gets USAGE on it.
+        conn.execute(text("CREATE SEQUENCE IF NOT EXISTS handle_sequence START WITH 1"))
 
     # Grant permissions to api_worker on all tables and sequences
     with admin_engine.begin() as conn:

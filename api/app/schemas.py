@@ -1191,9 +1191,17 @@ class MeResponse(BaseModel):
 
 
 class RegisterRequest(BaseModel):
-    """User registration request - only email required."""
+    """User registration request.
+
+    `email` is required. `password` is optional:
+      - present (native app flow): the chosen password backs the password identity
+        and verification is a single 6-digit OTP email — no link/temp-password email.
+      - absent (website flow): the server generates a random password and emails a
+        verification link. Unchanged.
+    """
 
     email: str = Field(..., max_length=255)
+    password: str | None = Field(None, max_length=100)
 
 
 class RegisterResponse(BaseModel):
@@ -1203,6 +1211,10 @@ class RegisterResponse(BaseModel):
     user_id: int
     email: str
     handle: str  # User's generated handle
+    # How the client should verify: "otp" when a chosen password was supplied
+    # (native flow, single 6-digit email), else "link" (website flow). Defaults to
+    # "link" so existing callers that omit a password see no change.
+    verification_method: Literal["otp", "link"] = "link"
 
 
 class LoginRequest(BaseModel):

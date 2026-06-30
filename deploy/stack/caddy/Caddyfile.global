@@ -129,3 +129,46 @@ http://vault-dev.makapix.club, vault-dev.makapix.club {
 		level INFO
 	}
 }
+
+# -----------------------------------------------------------------------------
+# Native app — HTTPS App Link host for the GitHub OAuth return (inbox CR
+# oauth-app-links). MUST be a DISTINCT origin from the OAuth callback
+# (makapix.club / development.makapix.club): Android will not hand a verified App
+# Link to the app when the final 302's source origin equals the App Link origin,
+# so a same-host link silently stays in the browser. These app.* hosts cross that
+# boundary, so Android opens the app — no "open external app" chooser, no
+# lingering Custom Tab.
+#
+# Own site block => NO basic auth (unlike development.makapix.club), so
+# /.well-known/assetlinks.json is publicly reachable as Android requires. Both
+# dev + prod hosts serve the same file; the three SHA-256 fingerprints cover
+# every install type (Play app-signing, sideloaded upload key, local debug key).
+# -----------------------------------------------------------------------------
+app.makapix.club, app-dev.makapix.club {
+	handle /.well-known/assetlinks.json {
+		header Content-Type "application/json"
+		header Cache-Control "public, max-age=300"
+		respond `[{"relation":["delegate_permission/common.handle_all_urls"],"target":{"namespace":"android_app","package_name":"club.makapix.app","sha256_cert_fingerprints":["46:95:FB:DC:6E:E0:76:95:99:81:4E:9D:4D:12:0B:F9:42:A7:20:A5:64:57:AC:FF:34:40:31:56:C5:BE:25:7F","92:C8:2E:F3:28:70:13:62:2F:63:23:92:6D:B9:83:ED:07:45:DA:C5:9A:38:46:50:BE:E3:FF:FA:89:AB:C2:45","5C:C6:90:DB:14:00:1F:20:70:BC:17:D4:15:B4:EE:26:67:13:00:81:79:83:E7:58:D7:55:09:01:D5:95:A2:6D"]}}]` 200
+	}
+
+	# Fallback shown only if the App Link was not intercepted (app not installed,
+	# unverified, or opened on desktop). The app normally captures the URL first.
+	handle /oauth/github* {
+		header Content-Type "text/html; charset=utf-8"
+		respond `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Makapix</title><body style="margin:0;font-family:system-ui,-apple-system,sans-serif;background:#0b0b0f;color:#eaeaea;display:flex;min-height:100vh;align-items:center;justify-content:center;text-align:center"><div style="padding:2rem"><h1 style="font-size:1.2rem;margin:0 0 .5rem">Open the Makapix app</h1><p style="color:#9aa;margin:0">Finish signing in from the Makapix app — you can close this tab.</p></div></body></html>` 200
+	}
+
+	handle {
+		respond 404
+	}
+
+	log {
+		output file /var/log/caddy/app-links-access.log {
+			roll_size 20mb
+			roll_keep 5
+			roll_keep_for 30d
+		}
+		format json
+		level INFO
+	}
+}

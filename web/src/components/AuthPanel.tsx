@@ -11,13 +11,44 @@ interface AuthTokens {
   public_sqid: string | null;
   user_handle: string | null;
   expires_at: string;
+  needs_welcome?: boolean; // First login of a new account → show the welcome wizard once
 }
 
-interface RegisterResponse {
-  message: string;
-  user_id: string;
-  email: string;
-  handle: string;
+type ApiErrorBody = {
+  detail?: string | Array<{ msg?: string; loc?: (string | number)[] }>;
+  error?: { message?: string; code?: string };
+};
+
+// Read a human message out of either the v1 envelope ({ error: { message } })
+// or FastAPI's default ({ detail }), including the array-of-validation-errors form.
+function parseApiError(data: ApiErrorBody | null | undefined, fallback: string): string {
+  if (data && typeof data === 'object') {
+    if (data.error && typeof data.error.message === 'string') return data.error.message;
+    const detail = data.detail;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) {
+      return detail
+        .map((err) => {
+          const field = err.loc && err.loc.length > 1 ? err.loc[err.loc.length - 1] : '';
+          const msg = err.msg || 'Validation error';
+          if (msg.includes('String should have at least 1 character')) {
+            return field ? `${field} is required` : 'This field is required';
+          }
+          return field ? `${field}: ${msg}` : msg;
+        })
+        .join(', ');
+    }
+  }
+  return fallback;
+}
+
+// Mirrors the server rules (auth.validate_password): >=8 chars, >=1 letter, >=1 digit.
+// Client-side check is a fast backstop; the server stays authoritative (weak_password).
+function validatePasswordRules(pw: string): string | null {
+  if (pw.length < 8) return 'Password must be at least 8 characters long';
+  if (!/[a-zA-Z]/.test(pw)) return 'Password must contain at least one letter';
+  if (!/[0-9]/.test(pw)) return 'Password must contain at least one number';
+  return null;
 }
 
 export type AuthPanelVariant = 'standalone' | 'embedded';
@@ -35,23 +66,44 @@ export default function AuthPanel({
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [registrationSuccess, setRegistrationSuccess] = useState<RegisterResponse | null>(null);
-  const [emailNotVerified, setEmailNotVerified] = useState(false);
-  const [registrationPendingVerification, setRegistrationPendingVerification] = useState(false);
-  const [resendingVerification, setResendingVerification] = useState(false);
-  const [verificationResent, setVerificationResent] = useState(false);
+  // When set, we show the 6-digit code screen for this email (post-register, or
+  // an unverified login). The chosen/typed `password` is reused to auto sign in.
+  const [otpEmail, setOtpEmail] = useState<string | null>(null);
+  const [code, setCode] = useState('');
+  const [resendingCode, setResendingCode] = useState(false);
+  const [codeResent, setCodeResent] = useState(false);
 
   const API_BASE_URL =
     typeof window !== 'undefined'
       ? process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin
       : '';
 
+  const persistAuthAndRedirect = (data: AuthTokens) => {
+    localStorage.setItem('access_token', data.token);
+    clearLoggedOutMarker();
+    localStorage.setItem('user_id', String(data.user_id));
+    localStorage.setItem('user_key', data.user_key || '');
+    localStorage.setItem('public_sqid', data.public_sqid || '');
+    localStorage.setItem('user_handle', data.user_handle || '');
+    // Dispatch custom event to trigger MQTT reconnection with new userId
+    window.dispatchEvent(new Event('localStorageUpdated'));
+    // First login of a new account → onboarding wizard (shown once; the page
+    // itself redirects away once welcome_completed). Mirrors the OAuth path in
+    // Layout.tsx and the native app.
+    router.push(data.needs_welcome ? '/new-account-welcome' : '/');
+  };
+
+  const requestOtp = async (forEmail: string) => {
+    await fetch(`${API_BASE_URL}/api/auth/email-otp/request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: forEmail }),
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setEmailNotVerified(false);
-    setRegistrationPendingVerification(false);
-    setVerificationResent(false);
 
     const trimmedEmail = email.trim();
     const trimmedPassword = password.trim();
@@ -60,99 +112,67 @@ export default function AuthPanel({
       setError('Email is required');
       return;
     }
-
-    if (mode === 'login' && !trimmedPassword) {
+    if (!trimmedPassword) {
       setError('Password is required');
       return;
+    }
+    if (mode === 'register') {
+      const pwError = validatePasswordRules(trimmedPassword);
+      if (pwError) {
+        setError(pwError);
+        return;
+      }
     }
 
     setLoading(true);
 
     try {
       if (mode === 'register') {
+        // Chosen-password flow: the server emails a single 6-digit code and we
+        // verify in-page, matching the native app (no temp password, no link).
         const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ email: trimmedEmail }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-
-          // Check for pending verification (unverified account exists)
-          if (response.status === 409 && errorData.detail === 'pending_verification') {
-            setRegistrationPendingVerification(true);
-            throw new Error('An account with this email is pending confirmation.');
-          }
-
-          let errorMessage = 'Failed to register';
-
-          if (Array.isArray(errorData.detail)) {
-            const messages = errorData.detail.map((err: { msg?: string; loc?: (string | number)[] }) => {
-              const field = err.loc && err.loc.length > 1 ? err.loc[err.loc.length - 1] : '';
-              const msg = err.msg || 'Validation error';
-              if (msg.includes('String should have at least 1 character')) {
-                return field ? `${field} is required` : 'This field is required';
-              }
-              return field ? `${field}: ${msg}` : msg;
-            });
-            errorMessage = messages.join(', ');
-          } else if (typeof errorData.detail === 'string') {
-            errorMessage = errorData.detail;
-          }
-
-          throw new Error(errorMessage);
-        }
-
-        const data: RegisterResponse = await response.json();
-        setRegistrationSuccess(data);
-      } else {
-        const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
-          method: 'POST',
-          credentials: 'include', // CRITICAL: Include cookies to receive refresh token cookie
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: trimmedEmail, password: trimmedPassword }),
         });
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-          let errorMessage = 'Failed to login';
+          throw new Error(parseApiError(errorData, 'Failed to register'));
+        }
 
-          if (Array.isArray(errorData.detail)) {
-            const messages = errorData.detail.map((err: { msg?: string; loc?: (string | number)[] }) => {
-              const field = err.loc && err.loc.length > 1 ? err.loc[err.loc.length - 1] : '';
-              const msg = err.msg || 'Validation error';
-              if (msg.includes('String should have at least 1 character')) {
-                return field ? `${field} is required` : 'This field is required';
-              }
-              return field ? `${field}: ${msg}` : msg;
-            });
-            errorMessage = messages.join(', ');
-          } else if (typeof errorData.detail === 'string') {
-            errorMessage = errorData.detail;
+        // 201 (new) or 200 (resume) — either way a code was emailed.
+        setCode('');
+        setCodeResent(false);
+        setOtpEmail(trimmedEmail);
+      } else {
+        const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+          method: 'POST',
+          credentials: 'include', // CRITICAL: Include cookies to receive refresh token cookie
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: trimmedEmail, password: trimmedPassword }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+          const message = parseApiError(errorData, 'Failed to login');
+
+          // Unverified account: send a fresh code and move to the verify step,
+          // then we'll sign them in with the password they just entered.
+          if (response.status === 403 && message.toLowerCase().includes('email not verified')) {
+            await requestOtp(trimmedEmail).catch(() => {});
+            setCode('');
+            setCodeResent(false);
+            setOtpEmail(trimmedEmail);
+            setError(null);
+            return;
           }
 
-          if (response.status === 403 && errorMessage.toLowerCase().includes('email not verified')) {
-            setEmailNotVerified(true);
-          }
-
-          throw new Error(errorMessage);
+          throw new Error(message);
         }
 
         const data: AuthTokens = await response.json();
-        localStorage.setItem('access_token', data.token);
-        clearLoggedOutMarker();
-        localStorage.setItem('user_id', String(data.user_id));
-        localStorage.setItem('user_key', data.user_key || '');
-        localStorage.setItem('public_sqid', data.public_sqid || '');
-        localStorage.setItem('user_handle', data.user_handle || '');
-        // Dispatch custom event to trigger MQTT reconnection with new userId
-        window.dispatchEvent(new Event('localStorageUpdated'));
-        router.push('/');
+        persistAuthAndRedirect(data);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to ${mode}`);
@@ -161,64 +181,131 @@ export default function AuthPanel({
     }
   };
 
-  const handleResendVerification = async () => {
-    setResendingVerification(true);
-    setVerificationResent(false);
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!otpEmail) return;
+    if (code.length !== 6) {
+      setError('Enter the 6-digit code from your email');
+      return;
+    }
 
+    setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/request-verification`, {
+      const verifyResponse = await fetch(`${API_BASE_URL}/api/auth/email-otp/verify`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: otpEmail, code }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-        throw new Error(errorData.detail || 'Failed to resend verification email');
+      if (!verifyResponse.ok) {
+        const errorData = await verifyResponse.json().catch(() => ({ detail: verifyResponse.statusText }));
+        throw new Error(parseApiError(errorData, 'Invalid or expired code'));
       }
 
-      setVerificationResent(true);
-      setError(null);
-      setEmailNotVerified(false);
+      // Verified — sign in with the password the user just chose/typed.
+      const loginResponse = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: otpEmail, password }),
+      });
+
+      if (!loginResponse.ok) {
+        // Verified, but the auto sign-in failed — fall back to the login form.
+        setOtpEmail(null);
+        setMode('login');
+        setEmail(otpEmail);
+        setError('Email verified. Please sign in.');
+        return;
+      }
+
+      const data: AuthTokens = await loginResponse.json();
+      persistAuthAndRedirect(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to resend verification email');
+      setError(err instanceof Error ? err.message : 'Verification failed');
     } finally {
-      setResendingVerification(false);
+      setLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (!otpEmail) return;
+    setResendingCode(true);
+    setCodeResent(false);
+    try {
+      await requestOtp(otpEmail);
+      setCodeResent(true);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to resend the code');
+    } finally {
+      setResendingCode(false);
     }
   };
 
   return (
     <div className={`auth-container ${variant}`}>
-      {registrationSuccess ? (
-        <div className="success-card">
+      {otpEmail ? (
+        <div className="auth-card otp-card">
+          {showLogoSection && (
+            <div className="logo-section">
+              <img src="/android-chrome-512x512.png" alt="Makapix Club" className="auth-logo" />
+            </div>
+          )}
           <div className="success-icon">✉️</div>
-          <h2>Check Your Email</h2>
-          <p className="success-message">{registrationSuccess.message}</p>
-          <div className="credentials">
-            <div className="credential-item">
-              <span className="credential-label">Email</span>
-              <span className="credential-value">{registrationSuccess.email}</span>
-            </div>
-            <div className="credential-item">
-              <span className="credential-label">Handle</span>
-              <span className="credential-value">{registrationSuccess.handle}</span>
-            </div>
-          </div>
-          <p className="hint">
-            We&apos;ve sent you an email with your temporary password. After verification, you can change your password.
+          <h2 className="otp-title">Enter your code</h2>
+          <p className="otp-subtitle">
+            We emailed a 6-digit code to <strong>{otpEmail}</strong>. Enter it to verify your account and sign in.
           </p>
-          <button
-            onClick={() => {
-              setRegistrationSuccess(null);
-              setMode('login');
-              setEmail(registrationSuccess.email);
-            }}
-            className="primary-button"
-          >
-            Go to Login
-          </button>
+
+          <form onSubmit={handleVerifyOtp} className="form">
+            {codeResent && <div className="success-alert">A new code is on its way.</div>}
+            {error && <div className="error-alert">{error}</div>}
+
+            <div className="field">
+              <label htmlFor="otp">6-digit code</label>
+              <input
+                id="otp"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]*"
+                maxLength={6}
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="000000"
+                className="otp-input"
+              />
+            </div>
+
+            <button type="submit" disabled={loading || code.length !== 6} className="primary-button">
+              {loading ? 'Verifying...' : 'Verify and sign in'}
+            </button>
+          </form>
+
+          <div className="otp-actions">
+            <button
+              type="button"
+              onClick={handleResendOtp}
+              disabled={resendingCode}
+              className="resend-link-button"
+            >
+              {resendingCode ? 'Sending...' : 'Resend the code'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOtpEmail(null);
+                setCode('');
+                setError(null);
+                setCodeResent(false);
+              }}
+              className="resend-link-button"
+            >
+              Use a different email
+            </button>
+          </div>
         </div>
       ) : (
         <div className="auth-card">
@@ -234,8 +321,6 @@ export default function AuthPanel({
               onClick={() => {
                 setMode('login');
                 setError(null);
-                setEmailNotVerified(false);
-                setRegistrationPendingVerification(false);
               }}
             >
               Login
@@ -245,8 +330,6 @@ export default function AuthPanel({
               onClick={() => {
                 setMode('register');
                 setError(null);
-                setEmailNotVerified(false);
-                setRegistrationPendingVerification(false);
               }}
             >
               Register
@@ -254,21 +337,7 @@ export default function AuthPanel({
           </div>
 
           <form onSubmit={handleSubmit} className="form">
-            {verificationResent && <div className="success-alert">Verification email sent! Please check your inbox.</div>}
             {error && <div className="error-alert">{error}</div>}
-
-            {registrationPendingVerification && mode === 'register' && (
-              <div className="resend-section">
-                <button
-                  type="button"
-                  onClick={handleResendVerification}
-                  disabled={resendingVerification}
-                  className="resend-link-button"
-                >
-                  {resendingVerification ? 'Sending...' : 'Resend the confirmation email'}
-                </button>
-              </div>
-            )}
 
             <div className="field">
               <label htmlFor="email">Email</label>
@@ -282,39 +351,31 @@ export default function AuthPanel({
                 maxLength={255}
                 placeholder="your@email.com"
               />
-              {mode === 'register' && <span className="field-hint">A password will be sent to this email</span>}
             </div>
 
-            {mode === 'login' && (
-              <div className="field">
-                <label htmlFor="password">Password</label>
-                <input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={1}
-                  placeholder="Enter your password"
-                  autoComplete="current-password"
-                />
+            <div className="field">
+              <label htmlFor="password">Password</label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={mode === 'register' ? 8 : 1}
+                placeholder={mode === 'register' ? 'Choose a password' : 'Enter your password'}
+                autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+              />
+              {mode === 'register' && (
+                <span className="field-hint">At least 8 characters, including a letter and a number.</span>
+              )}
+              {mode === 'login' && (
                 <div className="help-links">
                   <Link href="/forgot-password" className="help-link">
                     Forgot your password?
                   </Link>
-                  {emailNotVerified && (
-                    <button
-                      type="button"
-                      onClick={handleResendVerification}
-                      disabled={resendingVerification}
-                      className="help-link resend-link"
-                    >
-                      {resendingVerification ? 'Sending...' : 'Resend the confirmation email'}
-                    </button>
-                  )}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             <button type="submit" disabled={loading} className="primary-button">
               {loading ? 'Please wait...' : mode === 'login' ? 'Login' : 'Create Account'}
@@ -463,25 +524,6 @@ export default function AuthPanel({
           text-align: right;
         }
 
-        .resend-link {
-          background: none;
-          border: none;
-          color: var(--accent-cyan);
-          font-size: 0.85rem;
-          cursor: pointer;
-          padding: 0;
-          text-align: right;
-        }
-
-        .resend-link:hover:not(:disabled) {
-          text-decoration: underline;
-        }
-
-        .resend-link:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-
         .error-alert {
           padding: 12px 16px;
           background: rgba(239, 68, 68, 0.15);
@@ -498,10 +540,6 @@ export default function AuthPanel({
           border-radius: 8px;
           color: #4ade80;
           font-size: 0.9rem;
-        }
-
-        .resend-section {
-          margin-top: 8px;
         }
 
         .resend-link-button {
@@ -589,8 +627,12 @@ export default function AuthPanel({
           background: #2f363d;
         }
 
-        .success-card {
+        .otp-card {
           text-align: center;
+        }
+
+        .otp-card .form {
+          text-align: left;
         }
 
         .success-icon {
@@ -598,53 +640,31 @@ export default function AuthPanel({
           margin-bottom: 16px;
         }
 
-        .success-card h2 {
+        .otp-title {
           font-size: 1.5rem;
           color: var(--text-primary);
           margin-bottom: 12px;
         }
 
-        .success-message {
+        .otp-subtitle {
           color: var(--text-secondary);
           margin-bottom: 20px;
+          font-size: 0.95rem;
         }
 
-        .credentials {
-          background: var(--bg-tertiary);
-          border-radius: 10px;
-          padding: 16px;
-          margin-bottom: 20px;
-          text-align: left;
+        .otp-input {
+          text-align: center;
+          letter-spacing: 0.4em;
+          font-size: 1.4rem;
+          font-variant-numeric: tabular-nums;
         }
 
-        .credential-item {
+        .otp-actions {
           display: flex;
           justify-content: space-between;
-          padding: 8px 0;
-        }
-
-        .credential-item:not(:last-child) {
-          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .credential-label {
-          color: var(--text-muted);
-          font-size: 0.9rem;
-        }
-
-        .credential-value {
-          color: var(--text-primary);
-          font-weight: 500;
-        }
-
-        .hint {
-          font-size: 0.85rem;
-          color: var(--text-muted);
-          margin-bottom: 20px;
+          margin-top: 16px;
         }
       `}</style>
     </div>
   );
 }
-
-

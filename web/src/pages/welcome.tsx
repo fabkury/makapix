@@ -255,7 +255,11 @@ export default function WelcomePage() {
           margin: 0 auto;
           padding: 36px 32px 32px;
           display: grid;
-          grid-template-columns: 1.2fr 1fr;
+          /* Fixed-width right track: the auth panel is exactly 460px in BOTH the
+             Login and Register tabs. A content-sized track (fr/auto) let the wider
+             register content change the column width when switching tabs. The
+             mobile breakpoint below collapses this to a single 1fr column. */
+          grid-template-columns: 1.2fr 460px;
           gap: 28px;
           align-items: start;
         }
@@ -412,10 +416,18 @@ export default function WelcomePage() {
           display: block;
         }
 
-        /* Make the embedded auth panel a bit wider on the landing page */
+        /* Same width in both the Login and Register tabs. The bug was the
+           flex-centered .welcome-right (at <=900px) shrink-wrapping the panel to
+           each tab's content. We keep .welcome-right as a block (see the media
+           query below) so the panel fills its column; width:100% + max-width:460px
+           is then content-independent AND shrinks responsively on phones, with
+           margin auto centering it when the column is wider than 460px. */
         .welcome-right :global(.auth-card),
         .welcome-right :global(.success-card) {
+          width: 100%;
           max-width: 460px;
+          margin-left: auto;
+          margin-right: auto;
         }
 
         /* Live sample grid */
@@ -549,8 +561,10 @@ export default function WelcomePage() {
 
           .welcome-right {
             padding-top: 0;
-            display: flex;
-            justify-content: center;
+            /* Block (not flex-center) so the panel fills the column and its
+               width:100% resolves against the available space, not its content.
+               The card centers itself via margin auto. */
+            display: block;
           }
 
           .logo-wrap {
