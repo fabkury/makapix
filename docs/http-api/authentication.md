@@ -303,10 +303,15 @@ Requires authentication.
 
 **Handle Rules:**
 
-- 3-32 characters
-- Alphanumeric plus hyphens and underscores
-- Cannot start/end with hyphen or underscore
-- Case-insensitive uniqueness
+- 3-32 characters (Unicode code points), after Unicode **NFC** normalization
+- Allowed: letters of **any script**, digits, combining marks, plus hyphen (`-`)
+  and underscore (`_`)
+- Must contain at least one letter or digit; cannot start or end with `-`/`_`
+- Not allowed: whitespace, emoji, symbols, or other punctuation
+- Uniqueness is **case-insensitive and confusable-folded** — visually identical
+  handles, including cross-script look-alikes (e.g. Latin `paypal` vs Cyrillic
+  `pаypаl`), are treated as the same handle. Original casing/script is preserved
+  for display; URLs use the `public_sqid`, not the handle.
 
 ### POST /auth/check-handle-availability
 

@@ -1,134 +1,44 @@
-"""Handle generation and validation utilities."""
+"""Handle generation and uniqueness utilities.
+
+Character/format validation and the confusable skeleton live in the pure,
+model-free :mod:`app.utils.handle_normalize`; this module adds the DB-backed
+pieces (uniqueness lookup + default-handle generation). ``validate_handle`` is
+re-exported here so existing imports (`from ..utils.handles import
+validate_handle`) keep working.
+"""
 
 from __future__ import annotations
 
-import unicodedata
-from sqlalchemy import func, text
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ..models import User
-
-
-def is_printable_char(char: str) -> bool:
-    """
-    Check if a character is printable (not a control character).
-
-    Allows:
-    - All printable Unicode characters (letters, digits, symbols, punctuation, emoji)
-
-    Rejects:
-    - Control characters (Cc category)
-    - Format characters (Cf category)
-    - Private use characters (Co category)
-    - Surrogate characters (Cs category)
-    - Unassigned characters (Cn category)
-    """
-    if not char:
-        return False
-
-    category = unicodedata.category(char)
-    # Reject control, format, private use, surrogate, and unassigned characters
-    if category in ("Cc", "Cf", "Co", "Cs", "Cn"):
-        return False
-
-    return True
-
-
-def is_valid_handle_content(handle: str) -> tuple[bool, str | None]:
-    """
-    Check if a handle contains only valid characters.
-
-    Allows any UTF-8 printable character including:
-    - All letters (Latin, Cyrillic, CJK, Arabic, etc.)
-    - All digits
-    - Emoji
-    - Punctuation and symbols
-
-    Rejects:
-    - Control characters
-    - Non-printable characters
-    - Whitespace-only handles (but whitespace within is allowed)
-
-    Returns:
-        (True, None) if valid
-        (False, error_message) if invalid
-    """
-    if not handle:
-        return False, "Handle cannot be empty"
-
-    # Check each character is printable
-    for i, char in enumerate(handle):
-        if not is_printable_char(char):
-            char_code = ord(char)
-            return (
-                False,
-                f"Handle contains invalid character at position {i + 1} (code: U+{char_code:04X})",
-            )
-
-    return True, None
-
-
-def validate_handle(
-    handle: str, min_length: int = 1, max_length: int = 32
-) -> tuple[bool, str | None]:
-    """
-    Validate a handle format and return (is_valid, error_message).
-
-    Requirements:
-    - Must be stripped of leading/trailing whitespace
-    - Must be 1-32 characters after stripping
-    - Must contain only printable UTF-8 characters (no control characters)
-
-    Returns:
-        (True, None) if valid
-        (False, error_message) if invalid
-    """
-    if handle is None:
-        return False, "Handle cannot be empty"
-
-    # Strip whitespace - this should already be done by caller, but ensure it here
-    stripped = handle.strip()
-
-    if not stripped:
-        return False, "Handle cannot be empty or whitespace-only"
-
-    if len(stripped) < min_length:
-        return (
-            False,
-            f"Handle must be at least {min_length} character{'s' if min_length > 1 else ''}",
-        )
-
-    if len(stripped) > max_length:
-        return False, f"Handle must be at most {max_length} characters"
-
-    # Check content is valid (printable UTF-8, no control characters)
-    is_valid, error_msg = is_valid_handle_content(stripped)
-    if not is_valid:
-        return False, error_msg
-
-    return True, None
+from .handle_normalize import (  # noqa: F401 - re-exported for existing imports
+    compute_handle_skeleton,
+    normalize_handle,
+    validate_handle,
+)
 
 
 def is_handle_taken(
     db: Session, handle: str, exclude_user_id: int | None = None
 ) -> bool:
-    """
-    Check if a handle is already taken (case-insensitive).
+    """Check whether a handle is already taken.
 
-    Uniqueness is case-insensitive: "User", "user", and "USER" are considered the same.
-    However, the original casing is preserved in the database for display.
+    Uniqueness is by the confusable skeleton (see
+    :func:`app.utils.handle_normalize.compute_handle_skeleton`): case-insensitive
+    AND confusable-folded, so visually identical handles across scripts collide.
+    The original casing/script is preserved on the row for display.
 
     Args:
         db: Database session
-        handle: Handle to check (will be compared case-insensitively)
-        exclude_user_id: Optional user ID to exclude from check (for updates)
+        handle: Handle to check
+        exclude_user_id: Optional user ID to exclude (for self-updates)
     """
-    # Use LOWER() for case-insensitive comparison
-    query = db.query(User).filter(func.lower(User.handle) == handle.lower())
-
+    skeleton = compute_handle_skeleton(handle)
+    query = db.query(User).filter(User.handle_normalized == skeleton)
     if exclude_user_id is not None:
         query = query.filter(User.id != exclude_user_id)
-
     return query.first() is not None
 
 
