@@ -19,9 +19,10 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
-from sqlalchemy.orm import relationship, backref
+from sqlalchemy.orm import relationship, backref, validates
 
 from .db import Base
+from .utils.handle_normalize import compute_handle_skeleton, normalize_handle
 
 # ============================================================================
 # CORE ENTITIES
@@ -58,6 +59,10 @@ class User(Base):
         String(16), unique=True, nullable=True, index=True
     )  # Sqids-encoded public ID (set after insert)
     handle = Column(String(50), unique=True, nullable=False, index=True)
+    # Confusable skeleton of `handle` (casefold(NFKC) + non-ASCII confusable fold);
+    # the uniqueness key that blocks visually-identical handles across scripts.
+    # Kept in sync automatically by the `handle` validator below.
+    handle_normalized = Column(String(128), unique=True, nullable=False, index=True)
     bio = Column(Text, nullable=True)
     tagline = Column(String(48), nullable=True)  # Short one-liner under username
     website = Column(String(500), nullable=True)
@@ -105,6 +110,20 @@ class User(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
     )
     updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
+
+    @validates("handle")
+    def _sync_handle_normalized(self, key, value):
+        """Store the NFC form of the handle and keep `handle_normalized` in sync.
+
+        Runs on every Python-side assignment (constructor + `user.handle = ...`),
+        so the uniqueness skeleton is maintained without touching each call site.
+        Does not run on load from the DB.
+        """
+        if value is None:
+            return value
+        normalized = normalize_handle(value)
+        self.handle_normalized = compute_handle_skeleton(normalized)
+        return normalized
 
     # Relationships
     posts = relationship("Post", back_populates="owner", foreign_keys="Post.owner_id")

@@ -224,18 +224,22 @@ def create_user(
     TODO: Validate handle format (alphanumeric + hyphen/underscore)
     TODO: Validate website URL format
     """
-    # Check if handle already exists
-    existing = (
-        db.query(models.User).filter(models.User.handle == payload.handle).first()
-    )
-    if existing:
+    # Validate handle format and uniqueness (confusable-aware)
+    new_handle = (payload.handle or "").strip()
+    is_valid, error_msg = validate_handle(new_handle)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid handle: {error_msg}",
+        )
+    if is_handle_taken(db, new_handle):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Handle already taken"
         )
 
     # PLACEHOLDER: Create user (in production this would be done during OAuth)
     user = models.User(
-        handle=payload.handle,
+        handle=new_handle,
         bio=payload.bio,
         website=payload.website,
         roles=["user"],

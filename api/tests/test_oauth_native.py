@@ -99,6 +99,18 @@ def test_github_login_native_validation(client):
     )
     assert bad.status_code == 400
 
+    # Legacy club.makapix.editor:// scheme is no longer allowlisted -> 400
+    legacy = client.get(
+        "/v1/auth/github/login",
+        params={
+            "redirect_uri": "club.makapix.editor://oauth/github",
+            "code_challenge": "abc",
+            "code_challenge_method": "S256",
+        },
+        follow_redirects=False,
+    )
+    assert legacy.status_code == 400
+
     # Missing code_challenge -> 400
     nochal = client.get(
         "/v1/auth/github/login",
