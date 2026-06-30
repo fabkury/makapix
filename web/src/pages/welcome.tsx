@@ -255,11 +255,11 @@ export default function WelcomePage() {
           margin: 0 auto;
           padding: 36px 32px 32px;
           display: grid;
-          /* minmax(0, 1fr) on the right track sizes it purely by free space, not
-             by its content's min-content. Without this, the wider register-mode
-             content (vs. login) expands the column and the auth panel jumps width
-             when switching tabs. */
-          grid-template-columns: 1.2fr minmax(0, 1fr);
+          /* Fixed-width right track: the auth panel is exactly 460px in BOTH the
+             Login and Register tabs. A content-sized track (fr/auto) let the wider
+             register content change the column width when switching tabs. The
+             mobile breakpoint below collapses this to a single 1fr column. */
+          grid-template-columns: 1.2fr 460px;
           gap: 28px;
           align-items: start;
         }
