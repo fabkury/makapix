@@ -16,7 +16,7 @@ from app.services.oauth_codes import mint_authorization_code, s256_challenge
 from app.sqids_config import encode_user_id
 
 VERIFIER = "x7Qm" * 16  # 64 chars, within RFC 7636's 43–128 range
-REDIRECT = "club.makapix.editor://oauth/github"
+REDIRECT = "club.makapix.app://oauth/github"
 
 
 def _user(db) -> User:
@@ -175,5 +175,5 @@ def test_callback_state_failure_redirects_to_app_scheme(client):
     )
     assert r.status_code in (302, 307), r.text
     loc = r.headers["location"]
-    assert loc.startswith("club.makapix.editor://oauth/github?")
+    assert loc.startswith("club.makapix.app://oauth/github?")
     assert "error=" in loc and "state=csrf2" in loc

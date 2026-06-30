@@ -63,12 +63,22 @@ GITHUB_REDIRECT_URI = os.getenv(
     "GITHUB_REDIRECT_URI", "http://localhost/auth/github/callback"
 )
 
-# Allowlisted native redirect URIs (custom schemes) for the server-brokered
-# OAuth flow (§3.3). Confirmed with the app team; comma-separated, env-overridable.
+# Allowlisted native redirect URIs for the server-brokered OAuth flow (§3.3).
+# Comma-separated, env-overridable. The default is the transition set:
+#   - club.makapix.app://oauth/github      new app-ID custom scheme
+#   - club.makapix.editor://oauth/github   legacy app-ID custom scheme (drop post-cutover)
+#   - https://app{,-dev}.makapix.club/oauth/github   verified HTTPS App Links
+#     (distinct host from the OAuth callback so Android opens the app — CR oauth-app-links).
+# Both app-host App Links are allowed in every environment; they're our own hosts,
+# so there's no open-redirect exposure.
 NATIVE_OAUTH_REDIRECT_URIS = frozenset(
     u.strip()
     for u in os.getenv(
-        "NATIVE_OAUTH_REDIRECT_URIS", "club.makapix.editor://oauth/github"
+        "NATIVE_OAUTH_REDIRECT_URIS",
+        "club.makapix.app://oauth/github,"
+        "club.makapix.editor://oauth/github,"
+        "https://app-dev.makapix.club/oauth/github,"
+        "https://app.makapix.club/oauth/github",
     ).split(",")
     if u.strip()
 )
