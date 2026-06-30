@@ -255,7 +255,11 @@ export default function WelcomePage() {
           margin: 0 auto;
           padding: 36px 32px 32px;
           display: grid;
-          grid-template-columns: 1.2fr 1fr;
+          /* minmax(0, 1fr) on the right track sizes it purely by free space, not
+             by its content's min-content. Without this, the wider register-mode
+             content (vs. login) expands the column and the auth panel jumps width
+             when switching tabs. */
+          grid-template-columns: 1.2fr minmax(0, 1fr);
           gap: 28px;
           align-items: start;
         }
