@@ -58,12 +58,17 @@ from ..errors import AppError, ErrorCode
 from ..vault import (
     ALLOWED_MIME_TYPES,
     MAX_FILE_SIZE_BYTES,
+    MKPX_SIZE_LIMIT_BYTES,
+    VaultFullError,
     compute_storage_shard,
     delete_artwork_from_vault,
+    delete_mkpx_from_vault,
     get_artwork_url,
     save_artwork_to_vault,
+    save_mkpx_to_vault,
     validate_file_size,
     validate_image_dimensions,
+    validate_mkpx_signature,
 )
 
 logger = logging.getLogger(__name__)
@@ -89,6 +94,37 @@ def get_upload_rate_limit(user: models.User) -> tuple[int, int]:
         return 16, 3600
     else:
         return 4, 3600
+
+
+def validate_mkpx_upload(mkpx: UploadFile) -> int:
+    """
+    Validate an uploaded .mkpx layers file: size cap + 8-byte profile
+    signature, nothing deeper (docs/mkpx-upload/ D2 — opaque blob). Works on
+    the multipart spool without buffering the payload; leaves the file
+    positioned at 0. Returns the size in bytes.
+
+    Raises:
+        AppError: 413 mkpx_too_large / 422 mkpx_invalid
+    """
+    f = mkpx.file
+    f.seek(0, os.SEEK_END)
+    size = f.tell()
+    f.seek(0)
+    if size > MKPX_SIZE_LIMIT_BYTES:
+        raise AppError(
+            ErrorCode.mkpx_too_large,
+            f"Layers file exceeds {MKPX_SIZE_LIMIT_BYTES} bytes.",
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        )
+    head = f.read(8)
+    f.seek(0)
+    if not validate_mkpx_signature(head):
+        raise AppError(
+            ErrorCode.mkpx_invalid,
+            "Not a valid .mkpx layers file (unrecognized signature).",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+    return size
 
 
 @router.get("", response_model=schemas.Page[schemas.Post])
@@ -519,6 +555,7 @@ def create_post(
 async def upload_artwork(
     request: Request,
     image: UploadFile = File(...),
+    mkpx: UploadFile | None = File(None),  # Optional .mkpx layers file
     title: str = Form(..., min_length=1, max_length=128),
     description: str | None = Form(None, max_length=5000),
     hashtags: str = Form(""),  # Comma-separated hashtags
@@ -555,8 +592,14 @@ async def upload_artwork(
     file_content = await image.read()
     file_size = len(file_content)
 
-    # Check storage quota
-    quota_allowed, used, quota = check_storage_quota(db, current_user, file_size)
+    # Optional .mkpx layers file: validate before any write so a bad
+    # attachment fails the whole upload atomically (docs/mkpx-upload/).
+    mkpx_size = validate_mkpx_upload(mkpx) if mkpx is not None else 0
+
+    # Check storage quota (artwork + layers file together)
+    quota_allowed, used, quota = check_storage_quota(
+        db, current_user, file_size + mkpx_size
+    )
     if not quota_allowed:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
@@ -768,11 +811,13 @@ async def upload_artwork(
     post.public_sqid = encode_id(post.id)
 
     # Save to vault using the storage_key
+    artwork_path = None
+    mkpx_saved = False
     try:
         from ..vault import FORMAT_TO_EXT
 
         extension = FORMAT_TO_EXT[file_format]
-        save_artwork_to_vault(
+        artwork_path = save_artwork_to_vault(
             post.storage_key,
             file_content,
             file_format,
@@ -785,10 +830,37 @@ async def upload_artwork(
         )
         post.art_url = art_url
 
+        # Optional .mkpx layers file (already validated above)
+        if mkpx is not None:
+            save_mkpx_to_vault(
+                post.storage_key,
+                mkpx.file,
+                mkpx_size,
+                storage_shard=post.storage_shard,
+            )
+            mkpx_saved = True
+            post.mkpx_file_bytes = mkpx_size
+            post.mkpx_attached_at = now
+
         db.commit()
         db.refresh(post)
     except Exception as e:
         db.rollback()
+        # Don't strand just-written files (the likely failure — a full
+        # disk — is exactly when orphans hurt most).
+        if artwork_path is not None:
+            try:
+                artwork_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        if mkpx is not None and mkpx_saved:
+            delete_mkpx_from_vault(post.storage_key, post.storage_shard)
+        if isinstance(e, VaultFullError):
+            logger.error(f"Vault below free-space floor during upload: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Storage temporarily unavailable. Please try again later.",
+            )
         logger.error(f"Failed to save artwork to vault: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1075,6 +1147,126 @@ def update_post(
     return schemas.Post.model_validate(post)
 
 
+def _get_mkpx_target_post(db: Session, id: int) -> models.Post:
+    """Fetch a post for mkpx attach/detach: artwork kind, not soft-deleted.
+
+    Soft-deleted posts are 404 even for the author; playlist posts can never
+    carry a layers file (docs/mkpx-upload/API-CONTRACT.md §7).
+    """
+    post = db.query(models.Post).filter(models.Post.id == id).first()
+    if not post or post.kind != "artwork" or post.deleted_by_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        )
+    return post
+
+
+@router.post("/{id}/mkpx", response_model=schemas.Post)
+async def attach_mkpx(
+    id: int,
+    mkpx: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.Post:
+    """
+    Attach an .mkpx layers file to an existing post, or silently replace the
+    one already attached (author only; docs/mkpx-upload/). Consumes an
+    upload rate-limit token; the file counts toward the owner's storage
+    quota (replacement counts only the delta).
+    """
+    post = _get_mkpx_target_post(db, id)
+    require_ownership(post.owner_id, current_user)
+
+    # Attach/replace shares the upload rate-limit bucket (D9)
+    limit, window = get_upload_rate_limit(current_user)
+    rate_limit_key = f"ratelimit:upload:{current_user.id}"
+    allowed, _ = check_rate_limit(rate_limit_key, limit=limit, window_seconds=window)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Upload rate limit exceeded. Please try again later.",
+        )
+
+    mkpx_size = validate_mkpx_upload(mkpx)
+
+    # Quota counts against the post owner (== current_user unless a
+    # moderator is acting); replacement counts only the delta.
+    delta = mkpx_size - (post.mkpx_file_bytes or 0)
+    if delta > 0:
+        owner = post.owner or current_user
+        quota_allowed, used, quota = check_storage_quota(db, owner, delta)
+        if not quota_allowed:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=format_quota_error(used, quota),
+            )
+
+    from datetime import datetime, timezone
+
+    try:
+        save_mkpx_to_vault(
+            post.storage_key,
+            mkpx.file,
+            mkpx_size,
+            storage_shard=post.storage_shard,
+        )
+    except VaultFullError as e:
+        logger.error(f"Vault below free-space floor during mkpx attach: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Storage temporarily unavailable. Please try again later.",
+        )
+    except (OSError, ValueError) as e:
+        logger.error(f"Failed to save mkpx for post {id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save layers file. Please try again.",
+        )
+
+    now = datetime.now(timezone.utc)
+    post.mkpx_file_bytes = mkpx_size
+    post.mkpx_attached_at = now
+    post.metadata_modified_at = now
+    db.commit()
+    db.refresh(post)
+
+    return schemas.Post.model_validate(post)
+
+
+@router.delete("/{id}/mkpx", response_model=schemas.Post)
+def detach_mkpx(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.Post:
+    """
+    Remove the attached .mkpx layers file (author only). 404 if the post has
+    none. Consumes no rate-limit token (docs/mkpx-upload/ D9).
+    """
+    post = _get_mkpx_target_post(db, id)
+    require_ownership(post.owner_id, current_user)
+
+    if post.mkpx_file_bytes is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Post has no layers file attached",
+        )
+
+    # Best-effort file removal; the DB columns are the source of truth and
+    # a stray file (guarded from public serving) beats a failed request.
+    delete_mkpx_from_vault(post.storage_key, post.storage_shard)
+
+    from datetime import datetime, timezone
+
+    post.mkpx_file_bytes = None
+    post.mkpx_attached_at = None
+    post.metadata_modified_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(post)
+
+    return schemas.Post.model_validate(post)
+
+
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_post(
     id: int,
@@ -1146,6 +1338,10 @@ def permanent_delete_post(
             )
         except Exception as e:
             logger.warning(f"Failed to delete artwork files for post {id}: {e}")
+
+        # Attached .mkpx layers file, if any (best-effort, like the above)
+        if post.mkpx_file_bytes is not None:
+            delete_mkpx_from_vault(post.storage_key, post.storage_shard)
 
     # Log to audit before deletion
     # Wrap in try-except to prevent audit logging failures from blocking deletion
@@ -1671,6 +1867,15 @@ async def replace_artwork(
     except Exception as e:
         logger.warning(f"Failed to delete old artwork file for post {post.id}: {e}")
 
+    # Replacing the artwork drops any attached .mkpx layers file — it would
+    # no longer match the rendered artwork (docs/mkpx-upload/ D4). Columns
+    # ride the commit; the file itself is unlinked only after the commit
+    # succeeds, so a rollback never leaves columns pointing at nothing.
+    had_mkpx = post.mkpx_file_bytes is not None
+    if had_mkpx:
+        post.mkpx_file_bytes = None
+        post.mkpx_attached_at = None
+
     # Overwrite vault file at storage_key
     try:
         save_artwork_to_vault(
@@ -1688,6 +1893,9 @@ async def replace_artwork(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to save artwork. Please try again.",
         )
+
+    if had_mkpx:
+        delete_mkpx_from_vault(post.storage_key, post.storage_shard)
 
     logger.info(
         "Artwork replaced for post %s by user %s",

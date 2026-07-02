@@ -48,10 +48,26 @@ def legacy_vault_path_to_v2(path: str) -> str | None:
     return f"{m['prefix'] or ''}{a:02x}/{b:02x}/{m['name']}"
 
 
+def _is_private_vault_path(path: str) -> bool:
+    """True for paths inside the private mkpx/ namespace.
+
+    Attached .mkpx layers files are download-restricted to logged-in users
+    (docs/mkpx-upload/ D3) and served only by the authenticated API endpoint
+    — never through this public mount. Normalize first so encoded or
+    dot-segment variants ("./mkpx/…") can't slip past. The Caddy vault
+    subdomains carry the same guard (respond /mkpx/* 404).
+    """
+    normalized = os.path.normpath(path.lstrip("/"))
+    return normalized == "mkpx" or normalized.startswith("mkpx" + os.sep)
+
+
 class LegacyShardFallbackStaticFiles(StaticFiles):
-    """StaticFiles that retries missing 3-level paths at the 2-level twin."""
+    """StaticFiles that retries missing 3-level paths at the 2-level twin,
+    and refuses the private mkpx/ namespace."""
 
     def lookup_path(self, path: str) -> tuple[str, os.stat_result | None]:
+        if _is_private_vault_path(path):
+            return "", None
         full_path, stat_result = super().lookup_path(path)
         if stat_result is None:
             v2_path = legacy_vault_path_to_v2(path)

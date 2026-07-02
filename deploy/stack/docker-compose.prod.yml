@@ -83,6 +83,9 @@ services:
       caddy.@api.path: /api/*
       caddy.handle_0: "@api"
       caddy.handle_0.handle_path: /api/*
+      # Bound request bodies at the edge (artwork <=5MB, mkpx <=50MB app-enforced;
+      # this stops larger bodies from ever spooling to the API container).
+      caddy.handle_0.handle_path.request_body.max_size: 64MB
       caddy.handle_0.handle_path.reverse_proxy: makapix-prod-api:8000
       # MQTT WebSocket proxy
       caddy.@mqtt.path: /mqtt

@@ -63,7 +63,18 @@ def get_user_storage_used(db: Session, user_id: int) -> int:
         )
         .scalar()
     )
-    return int(result)
+    # Attached .mkpx layers files count too. Separate aggregate: summing the
+    # column inside the PostFile join would multiply it by the number of
+    # format-variant rows per post.
+    mkpx_result = (
+        db.query(func.coalesce(func.sum(models.Post.mkpx_file_bytes), 0))
+        .filter(
+            models.Post.owner_id == user_id,
+            models.Post.deleted_by_user == False,
+        )
+        .scalar()
+    )
+    return int(result) + int(mkpx_result)
 
 
 def check_storage_quota(
