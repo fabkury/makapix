@@ -1,11 +1,14 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/router';
-import { setNavigationContext, NavigationSource } from '../lib/navigation-context';
-import { ensureCompatibleArtUrl } from '../utils/imageCompat';
-import SelectedPostOverlay from './SelectedPostOverlay';
-import { usePlayerBarOptional } from '../contexts/PlayerBarContext';
-import { authenticatedFetch } from '../lib/api';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/router";
+import {
+  setNavigationContext,
+  NavigationSource,
+} from "../lib/navigation-context";
+import { ensureCompatibleArtUrl } from "../utils/imageCompat";
+import SelectedPostOverlay from "./SelectedPostOverlay";
+import { usePlayerBarOptional } from "../contexts/PlayerBarContext";
+import { authenticatedFetch } from "../lib/api";
 
 interface PostOwner {
   id: string;
@@ -28,6 +31,7 @@ interface Post {
   owner?: PostOwner;
   frame_count?: number;
   files?: Array<{ format: string; file_bytes: number; is_native: boolean }>;
+  has_mkpx?: boolean;
 }
 
 interface CardGridProps {
@@ -72,8 +76,12 @@ export default function CardGrid({
   // Sync selected artwork with PlayerBarContext
   useEffect(() => {
     if (!playerBarContext) return;
-    
-    if (selectedIndex !== null && selectedIndex >= 0 && selectedIndex < posts.length) {
+
+    if (
+      selectedIndex !== null &&
+      selectedIndex >= 0 &&
+      selectedIndex < posts.length
+    ) {
       const post = posts[selectedIndex];
       playerBarContext.setSelectedArtwork({
         id: post.id,
@@ -96,30 +104,32 @@ export default function CardGrid({
       setSelectedIndex(null);
     };
 
-    router.events.on('routeChangeStart', handleRouteChange);
+    router.events.on("routeChangeStart", handleRouteChange);
     return () => {
-      router.events.off('routeChangeStart', handleRouteChange);
+      router.events.off("routeChangeStart", handleRouteChange);
     };
   }, [router.events]);
 
   // Fetch current user and moderator status
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const userId = localStorage.getItem('user_id');
+    if (typeof window === "undefined") return;
+    const userId = localStorage.getItem("user_id");
     setCurrentUserId(userId);
 
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
-    const token = localStorage.getItem('access_token');
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+    const token = localStorage.getItem("access_token");
     if (token) {
       authenticatedFetch(`${apiBaseUrl}/api/auth/me`)
-        .then(res => {
+        .then((res) => {
           if (!res.ok) return null;
           return res.json();
         })
-        .then(data => {
+        .then((data) => {
           if (data?.roles) {
             const roles = data.roles as string[];
-            setIsModerator(roles.includes('moderator') || roles.includes('owner'));
+            setIsModerator(
+              roles.includes("moderator") || roles.includes("owner"),
+            );
           }
         })
         .catch(() => {
@@ -157,18 +167,22 @@ export default function CardGrid({
         title: p.title,
         description: p.description,
         art_url: p.art_url,
-        owner: p.owner ? {
-          handle: p.owner.handle,
-          avatar_url: p.owner.avatar_url,
-          public_sqid: p.owner.public_sqid,
-        } : undefined,
+        owner: p.owner
+          ? {
+              handle: p.owner.handle,
+              avatar_url: p.owner.avatar_url,
+              public_sqid: p.owner.public_sqid,
+            }
+          : undefined,
         created_at: p.created_at,
         frame_count: p.frame_count ?? 1,
         width: p.width,
         height: p.height,
         files: p.files ?? [],
+        owner_id: p.owner_id != null ? Number(p.owner_id) : undefined,
+        has_mkpx: p.has_mkpx,
       })),
-    [posts]
+    [posts],
   );
 
   const getOriginRectForIndex = (idx: number) => {
@@ -189,16 +203,32 @@ export default function CardGrid({
       const grid = gridRef.current;
       if (!grid) return;
 
-      const images = grid.querySelectorAll('img.artwork-image');
+      const images = grid.querySelectorAll("img.artwork-image");
       images.forEach((imageEl) => {
         const image = imageEl as HTMLImageElement;
-        const card = image.closest('a.artwork-card') as HTMLAnchorElement | null;
-        const tileSize = card?.classList.contains('super-post') ? TILE_SIZE * 2 : TILE_SIZE;
+        const card = image.closest(
+          "a.artwork-card",
+        ) as HTMLAnchorElement | null;
+        const tileSize = card?.classList.contains("super-post")
+          ? TILE_SIZE * 2
+          : TILE_SIZE;
 
-        const nativeWidth = parseInt(image.getAttribute('data-width') || '', 10);
-        const nativeHeight = parseInt(image.getAttribute('data-height') || '', 10);
+        const nativeWidth = parseInt(
+          image.getAttribute("data-width") || "",
+          10,
+        );
+        const nativeHeight = parseInt(
+          image.getAttribute("data-height") || "",
+          10,
+        );
 
-        if (!nativeWidth || !nativeHeight || isNaN(nativeWidth) || isNaN(nativeHeight)) return;
+        if (
+          !nativeWidth ||
+          !nativeHeight ||
+          isNaN(nativeWidth) ||
+          isNaN(nativeHeight)
+        )
+          return;
 
         // Scale the artwork to "cover" the square artwork area (then crop via overflow hidden).
         // IMPORTANT: do NOT force integer upscales here; it can massively overscale near-tile images
@@ -209,8 +239,8 @@ export default function CardGrid({
 
         image.style.width = `${scaledW}px`;
         image.style.height = `${scaledH}px`;
-        image.style.maxWidth = 'none';
-        image.style.maxHeight = 'none';
+        image.style.maxWidth = "none";
+        image.style.maxHeight = "none";
       });
     };
 
@@ -225,15 +255,15 @@ export default function CardGrid({
 
       const nextColumnCount = Math.min(
         MAX_COLUMNS,
-        Math.max(1, Math.floor(containerWidth / TILE_SIZE))
+        Math.max(1, Math.floor(containerWidth / TILE_SIZE)),
       );
 
       if (nextColumnCount !== columnCount) setColumnCount(nextColumnCount);
 
       const gridWidth = nextColumnCount * TILE_SIZE;
-      grid.style.setProperty('--grid-columns', String(nextColumnCount));
-      grid.style.setProperty('--grid-width', `${gridWidth}px`);
-      pack.style.setProperty('--grid-width', `${gridWidth}px`);
+      grid.style.setProperty("--grid-columns", String(nextColumnCount));
+      grid.style.setProperty("--grid-width", `${gridWidth}px`);
+      pack.style.setProperty("--grid-width", `${gridWidth}px`);
     };
 
     const updateLayout = () => {
@@ -243,39 +273,43 @@ export default function CardGrid({
 
     updateLayout();
 
-    if (typeof ResizeObserver !== 'undefined') {
+    if (typeof ResizeObserver !== "undefined") {
       const resizeObserver = new ResizeObserver(() => {
         updateLayout();
       });
 
-      if (scrollContainerRef.current) resizeObserver.observe(scrollContainerRef.current);
+      if (scrollContainerRef.current)
+        resizeObserver.observe(scrollContainerRef.current);
 
       return () => {
         resizeObserver.disconnect();
       };
     } else {
       const handleResize = () => updateLayout();
-      window.addEventListener('resize', handleResize);
-      return () => window.removeEventListener('resize', handleResize);
+      window.addEventListener("resize", handleResize);
+      return () => window.removeEventListener("resize", handleResize);
     }
   }, [posts, columnCount, superPostId, occluded]);
 
   return (
     <div
-      className={`card-grid-scroll-container${occluded ? ' cg-occluded' : ''}`}
+      className={`card-grid-scroll-container${occluded ? " cg-occluded" : ""}`}
       ref={scrollContainerRef}
     >
       <div className="card-grid-pack" ref={packRef}>
         <div className="card-grid" ref={gridRef}>
           {posts.map((post, index) => {
             const postIndex = index;
-            const isSuper = columnCount >= 2 && superPostId !== null && post.id === superPostId;
+            const isSuper =
+              columnCount >= 2 &&
+              superPostId !== null &&
+              post.id === superPostId;
             const isSelected = selectedIndex === postIndex;
             return (
               <Link
                 key={post.id}
                 href={`/p/${post.public_sqid}`}
-                className={`artwork-card${isSuper ? ' super-post' : ''}${isSelected ? ' artwork-selected' : ''}`}
+                className={`artwork-card${isSuper ? " super-post" : ""}${isSelected ? " artwork-selected" : ""}`}
                 onClick={(e) => {
                   // First tap selects (no navigation). Second tap happens on overlay.
                   e.preventDefault();
@@ -297,7 +331,7 @@ export default function CardGrid({
                     data-width={post.width}
                     data-height={post.height}
                     loading="lazy"
-                    style={{ visibility: isSelected ? 'hidden' : 'visible' }}
+                    style={{ visibility: isSelected ? "hidden" : "visible" }}
                   />
                 </div>
               </Link>
@@ -305,111 +339,114 @@ export default function CardGrid({
           })}
         </div>
 
-        {!occluded && selectedIndex !== null && selectedIndex >= 0 && selectedIndex < posts.length && (
-          <SelectedPostOverlay
-            posts={selectedOverlayPosts}
-            selectedIndex={selectedIndex}
-            setSelectedIndex={setSelectedIndex}
-            getOriginRectForIndex={getOriginRectForIndex}
-            onClose={() => setSelectedIndex(null)}
-            onNavigateToPost={(idx) => {
-              const post = posts[idx];
-              if (!post) return;
+        {!occluded &&
+          selectedIndex !== null &&
+          selectedIndex >= 0 &&
+          selectedIndex < posts.length && (
+            <SelectedPostOverlay
+              posts={selectedOverlayPosts}
+              selectedIndex={selectedIndex}
+              setSelectedIndex={setSelectedIndex}
+              getOriginRectForIndex={getOriginRectForIndex}
+              onClose={() => setSelectedIndex(null)}
+              onNavigateToPost={(idx) => {
+                const post = posts[idx];
+                if (!post) return;
 
-              // Store navigation context for swipe navigation on post page
-              handlePostClick(idx);
-              router.push(`/p/${post.public_sqid}`);
-            }}
-            currentUserId={currentUserId}
-            isModerator={isModerator}
-          />
-        )}
+                // Store navigation context for swipe navigation on post page
+                handlePostClick(idx);
+                router.push(`/p/${post.public_sqid}`);
+              }}
+              currentUserId={currentUserId}
+              isModerator={isModerator}
+            />
+          )}
 
-      <style jsx>{`
-        .card-grid-scroll-container {
-          width: 100%;
-          overflow-x: auto;
-          overflow-y: visible;
-          -webkit-overflow-scrolling: touch;
-          display: block;
-          padding: 0;
-        }
+        <style jsx>{`
+          .card-grid-scroll-container {
+            width: 100%;
+            overflow-x: auto;
+            overflow-y: visible;
+            -webkit-overflow-scrolling: touch;
+            display: block;
+            padding: 0;
+          }
 
-        /* When occluded (e.g. WebPlayer overlay is open), hide the grid so
+          /* When occluded (e.g. WebPlayer overlay is open), hide the grid so
            the browser can skip painting, compositing, and GIF decoding. */
-        .card-grid-scroll-container.cg-occluded {
-          visibility: hidden;
-        }
+          .card-grid-scroll-container.cg-occluded {
+            visibility: hidden;
+          }
 
-        .card-grid-pack {
-          position: relative;
-          width: var(--grid-width, 128px);
-          margin-left: auto;
-          margin-right: auto;
-        }
+          .card-grid-pack {
+            position: relative;
+            width: var(--grid-width, 128px);
+            margin-left: auto;
+            margin-right: auto;
+          }
 
-        .card-grid {
-          display: grid;
-          grid-template-columns: repeat(var(--grid-columns, 1), 128px);
-          grid-auto-rows: 128px;
-          grid-auto-flow: dense;
-          gap: 0;
-          padding: 0;
-          margin: 0;
-          width: var(--grid-width, 128px);
-        }
+          .card-grid {
+            display: grid;
+            grid-template-columns: repeat(var(--grid-columns, 1), 128px);
+            grid-auto-rows: 128px;
+            grid-auto-flow: dense;
+            gap: 0;
+            padding: 0;
+            margin: 0;
+            width: var(--grid-width, 128px);
+          }
 
-        .artwork-area {
-          width: 128px;
-          height: 128px;
-          position: relative;
-          overflow: hidden;
-        }
+          .artwork-area {
+            width: 128px;
+            height: 128px;
+            position: relative;
+            overflow: hidden;
+          }
 
-        :global(a.artwork-card) {
-          display: block;
-          width: 128px;
-          height: 128px;
-          line-height: 0;
-          position: relative;
-          overflow: visible;
-          -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
-          tap-highlight-color: rgba(0, 0, 0, 0);
-          background: transparent;
-          content-visibility: auto;
-          contain-intrinsic-size: 128px 128px;
-        }
+          :global(a.artwork-card) {
+            display: block;
+            width: 128px;
+            height: 128px;
+            line-height: 0;
+            position: relative;
+            overflow: visible;
+            -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+            tap-highlight-color: rgba(0, 0, 0, 0);
+            background: transparent;
+            content-visibility: auto;
+            contain-intrinsic-size: 128px 128px;
+          }
 
-        /* Prevent brief mobile "selected"/highlight flash on tap */
-        :global(a.artwork-card:active) {
-          background: transparent;
-        }
+          /* Prevent brief mobile "selected"/highlight flash on tap */
+          :global(a.artwork-card:active) {
+            background: transparent;
+          }
 
-        :global(a.artwork-card.super-post) {
-          width: 256px;
-          height: 256px;
-          grid-column: span 2;
-          grid-row: span 2;
-          contain-intrinsic-size: 256px 256px;
-        }
+          :global(a.artwork-card.super-post) {
+            width: 256px;
+            height: 256px;
+            grid-column: span 2;
+            grid-row: span 2;
+            contain-intrinsic-size: 256px 256px;
+          }
 
-        :global(a.artwork-card.super-post) .artwork-area {
-          width: 256px;
-          height: 256px;
-        }
+          :global(a.artwork-card.super-post) .artwork-area {
+            width: 256px;
+            height: 256px;
+          }
 
-        :global(a.artwork-card:focus-visible) {
-          outline: none;
-        }
+          :global(a.artwork-card:focus-visible) {
+            outline: none;
+          }
 
-        .artwork-image {
-          position: absolute;
-          left: 50%;
-          top: 50%;
-          transform: translate(-50%, -50%);
-          display: block;
-        }
-      `}</style>
+          .artwork-image {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            display: block;
+          }
+        `}</style>
       </div>
     </div>
   );
