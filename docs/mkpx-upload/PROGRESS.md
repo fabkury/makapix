@@ -2,7 +2,7 @@
 
 Update this file as work lands. One line per event, newest last.
 
-## Status: LIVE ON DEV — awaiting app-team E2E + Caddy guard deploy (PR #206)
+## Status: LIVE ON DEV, guards fully deployed — awaiting app-team E2E (message #4)
 
 - [x] 2026-07-02 — Recon (API upload flow, web menus, .mkpx format in reference/app/)
 - [x] 2026-07-02 — Owner decisions D1–D10 collected (PLAN.md §2)
@@ -34,11 +34,11 @@ Update this file as work lands. One line per event, newest last.
 - [x] schemas.py + system.py: post fields + config advertisement
 - [x] Compose overlays: request_body max_size 64MB on /api/* labels (dev + prod)
 - [x] Tests green: 25 in api/tests/test_mkpx.py; full suite 372 passed (2026-07-02)
-- [ ] **Caddy guard: PR #206 open (cherry-pick efbf80c onto main). NEEDS: merge + prod
-      `git pull` + `docker restart caddy` (low traffic) + canary re-check.**
-      Canary on disk: /mnt/vault-dev/mkpx/06/0b/57e48b27-….mkpx (dev post 3428 "CXRi",
-      user mkpx_smoke) — currently returns 200 on vault-dev (leak window, throwaway data);
-      must return 404 after restart, artwork positive control must stay 200.
+- [x] 2026-07-02 — **Caddy guard DEPLOYED**: PR #206 merged to main, prod checkout
+      pulled (fast-forward, Caddyfile only), `docker restart caddy`. Canary-verified:
+      vault-dev/mkpx/06/0b/57e48b27-….mkpx → 404 while on disk; dev + prod artwork
+      positive controls 200; prod /mkpx/ probe 404; makapix.club + both API healths 200;
+      dev basic auth intact. The leak window is closed.
 
 ## Phase 2 — Web UI (develop)
 
@@ -55,7 +55,7 @@ Update this file as work lands. One line per event, newest last.
 - [x] 2026-07-02 server smoke (curl, public dev URL): config advertises mkpx; upload+mkpx
       201; authed download 200 byte-identical (application/x-mkpx, no-store); unauth 401;
       detach/re-attach OK; bad magic → 422 mkpx_invalid; /api/vault/mkpx/* → 404
-- [ ] vault-dev.makapix.club/mkpx/* → 404 (blocked on Caddy guard deploy, see Phase 1)
+- [x] 2026-07-02 — vault-dev.makapix.club/mkpx/* → 404 (Caddy guard live, see Phase 1)
 - [x] 2026-07-02 — Concurrency/memory test: 4 parallel ~45 MB uploads, all 201 in 2.5 s
       wall; api peak 161 MiB / 768 MiB cap (streaming path holds). Test posts detached
       (files removed) + soft-deleted; vault mkpx/ back to 48 K (CXRi canary only)
