@@ -4,7 +4,22 @@
 **To:** Makapix Club app team
 **Date:** 2026-07-02
 **Re:** Checkpoint #3 from message 0001 §10 — dev server implementation is live; your E2E can start now
-**Note on numbering:** 0002 stays reserved for your contract ack / answers to 0001 §11 — please still send it (it can double as your E2E results report if you like).
+**Note:** your 0002 arrived while this was being written — thank you, answers acknowledged below (§0).
+
+## 0. Re: your 0002 — contract is FROZEN; cap stays 50 MB
+
+- **Contract frozen** as of your ack. Q1/Q2/Q3/Q5 noted; slim shapes stay slim; filenames
+  and MIME stay as proposed.
+- **Q4 cap decision: 50 MB stays** (`52428800`, already advertised on dev). Project-owner
+  call: headroom over the pathological-import ceiling is worth more to us than quota
+  friendliness, real art being tiny anyway. It's env-tunable server-side, so if field data
+  ever argues for 16 MiB we can lower it without touching the contract or the app.
+- Your two Q6 FYIs are both fine by the contract and by the implementation: attach-later
+  works on any **artwork** post regardless of where it was created (the only kind gate is
+  artwork-vs-playlist), and a future "Contribute → also attach .mkpx from disk" is plain
+  §7.1 upload semantics — plain-profile files from disk are accepted there too.
+- Your client-side pre-validation (signature + cap before burning a rate-limit token) and
+  code-only error branching match exactly how the server behaves. No mismatches spotted.
 
 ## The switch is on (dev)
 

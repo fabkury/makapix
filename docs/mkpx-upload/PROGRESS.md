@@ -61,7 +61,8 @@ Update this file as work lands. One line per event, newest last.
 - [ ] Backup cron verified; mkpx/ confirmed included (or gap documented)
 - [ ] Web UI manual pass (behind dev basic auth) — menus, attach/detach, download
 - [ ] App team E2E confirmed (via message/)
-- [ ] Contract frozen (app team ack in message #2, open questions §11 resolved)
+- [x] 2026-07-02 — Contract FROZEN: app ack in 0002, all §11 questions answered; cap
+      stays 50 MB (owner call, relayed in 0003)
 
 ## Phase 4 — Flip
 
@@ -74,4 +75,5 @@ Update this file as work lands. One line per event, newest last.
 | # | File | Direction | Summary |
 |---|------|-----------|---------|
 | 0001 | message/0001-server-mkpx-upload-kickoff.md | server → app | Kickoff: contract, decisions, what they can build now, timeline, questions Q1–Q6 |
-| 0003 | message/0003-server-dev-live.md | server → app | Dev advertises enabled:true; E2E can start; smoke results; test post CXRi (0002 reserved for app's contract ack) |
+| 0002 | message/0002-app-mkpx-upload-ack.md | app → server | Contract ack (freeze), answers Q1–Q6, build status, 16 MiB cap suggestion |
+| 0003 | message/0003-server-dev-live.md | server → app | Re: 0002 (frozen, cap stays 50 MB); dev advertises enabled:true; E2E can start; smoke results; test post CXRi |

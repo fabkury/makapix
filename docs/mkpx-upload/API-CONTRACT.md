@@ -1,6 +1,10 @@
-# mkpx-upload — API Contract (v2, reviewed)
+# mkpx-upload — API Contract (v2, FROZEN)
 
-**Status:** v2 — post-review; becomes frozen once the app team acknowledges (message #2).
+**Status:** FROZEN 2026-07-02 — acked unchanged by the app team in message 0002.
+Open questions §11 all answered (0002): MIME + filename as proposed; slim shapes stay
+slim; cap stays 50 MB (owner decision, relayed in 0003); app uploads compact profile
+(plain accepted for attach-from-disk); attach-later on web-created artwork posts is
+in-contract. Any future change requires a new message-numbered amendment.
 Source of truth for both teams. Server = development.makapix.club (then makapix.club at flip).
 All paths below are under the canonical prefix the app already uses: `https://{host}/api/v1`.
 Note the **singular `/post`** prefix throughout — it matches the server's router; there is no `/posts`.
