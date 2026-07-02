@@ -56,9 +56,14 @@ Update this file as work lands. One line per event, newest last.
       201; authed download 200 byte-identical (application/x-mkpx, no-store); unauth 401;
       detach/re-attach OK; bad magic → 422 mkpx_invalid; /api/vault/mkpx/* → 404
 - [ ] vault-dev.makapix.club/mkpx/* → 404 (blocked on Caddy guard deploy, see Phase 1)
-- [ ] Concurrency/memory test: scripted parallel 50 MB uploads, watch docker stats
-      (dev api 768 MB cap = canary)
-- [ ] Backup cron verified; mkpx/ confirmed included (or gap documented)
+- [x] 2026-07-02 — Concurrency/memory test: 4 parallel ~45 MB uploads, all 201 in 2.5 s
+      wall; api peak 161 MiB / 768 MiB cap (streaming path holds). Test posts detached
+      (files removed) + soft-deleted; vault mkpx/ back to 48 K (CXRi canary only)
+- [x] 2026-07-02 — Backup check: **NO backup cron installed on the host** (crontab empty,
+      /etc/cron.d has none) — docs/deployment.md's suggested vault backup was never set
+      up. mkpx/ rides under the vault root, so any future whole-vault backup includes it
+      automatically. GAP: users' irreplaceable layer sources currently have no backup;
+      flagged to owner 2026-07-02
 - [ ] Web UI manual pass (behind dev basic auth) — menus, attach/detach, download
 - [ ] App team E2E confirmed (via message/)
 - [x] 2026-07-02 — Contract FROZEN: app ack in 0002, all §11 questions answered; cap
