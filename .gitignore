@@ -110,3 +110,6 @@ AGENTS.md
 # Local-only marketing/outreach strategy — the GitHub repo is public,
 # so keep the strategy docs (budget, tactics, copy) out of it.
 docs/outreach/
+
+# Read-only reference clones of other repos (e.g. makapix-app) — never commit
+reference/
