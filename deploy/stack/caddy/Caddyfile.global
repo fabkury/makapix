@@ -85,6 +85,11 @@
 }
 
 http://vault.makapix.club, vault.makapix.club {
+	# The mkpx/ namespace holds attached .mkpx layers files, which are
+	# download-restricted to logged-in users and served only by the
+	# authenticated API endpoint (docs/mkpx-upload/ D3). Never file_server
+	# them. `respond` sorts before file_server in Caddy's directive order.
+	respond /mkpx/* 404
 	import legacy_shard_remap
 	root * /srv/vault-prod
 	file_server
@@ -108,6 +113,11 @@ http://vault.makapix.club, vault.makapix.club {
 }
 
 http://vault-dev.makapix.club, vault-dev.makapix.club {
+	# The mkpx/ namespace holds attached .mkpx layers files, which are
+	# download-restricted to logged-in users and served only by the
+	# authenticated API endpoint (docs/mkpx-upload/ D3). Never file_server
+	# them. `respond` sorts before file_server in Caddy's directive order.
+	respond /mkpx/* 404
 	import legacy_shard_remap
 	root * /srv/vault-dev
 	file_server
