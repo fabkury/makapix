@@ -13,24 +13,25 @@ Revises: e4c5d6a7b8c9
 Create Date: 2026-07-02 22:39:53.399401
 
 """
+
 from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision = '2ca55835e75a'
-down_revision = 'e4c5d6a7b8c9'
+revision = "2ca55835e75a"
+down_revision = "e4c5d6a7b8c9"
 branch_labels = None
 depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column('posts', sa.Column('mkpx_file_bytes', sa.Integer(), nullable=True))
+    op.add_column("posts", sa.Column("mkpx_file_bytes", sa.Integer(), nullable=True))
     op.add_column(
-        'posts',
-        sa.Column('mkpx_attached_at', sa.DateTime(timezone=True), nullable=True),
+        "posts",
+        sa.Column("mkpx_attached_at", sa.DateTime(timezone=True), nullable=True),
     )
 
 
 def downgrade() -> None:
-    op.drop_column('posts', 'mkpx_attached_at')
-    op.drop_column('posts', 'mkpx_file_bytes')
+    op.drop_column("posts", "mkpx_attached_at")
+    op.drop_column("posts", "mkpx_file_bytes")

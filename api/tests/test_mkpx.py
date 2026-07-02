@@ -28,7 +28,6 @@ from app.vault import (
 )
 from app.vault_serving import LegacyShardFallbackStaticFiles
 
-
 # --- helpers -----------------------------------------------------------------
 
 
@@ -48,9 +47,7 @@ def make_png_bytes(color=(200, 30, 90, 255)) -> bytes:
 
 def _make_user(db: Session, roles=None) -> User:
     uid = str(uuid.uuid4())[:8]
-    u = User(
-        handle=f"mk_{uid}", email=f"mk_{uid}@example.com", roles=roles or ["user"]
-    )
+    u = User(handle=f"mk_{uid}", email=f"mk_{uid}@example.com", roles=roles or ["user"])
     db.add(u)
     db.commit()
     db.refresh(u)
@@ -88,9 +85,7 @@ def _make_post(db: Session, owner: User, *, kind="artwork", shard=None) -> Post:
     db.add(post)
     db.flush()
     post.public_sqid = encode_id(post.id)
-    db.add(
-        PostFile(post_id=post.id, format="png", file_bytes=1024, is_native=True)
-    )
+    db.add(PostFile(post_id=post.id, format="png", file_bytes=1024, is_native=True))
     db.commit()
     db.refresh(post)
     return post
@@ -430,9 +425,7 @@ def test_storage_used_counts_mkpx_once(db):
     owner = _make_user(db)
     post = _make_post(db, owner)  # has one PostFile of 1024 bytes
     # A second format-variant row — the mkpx sum must NOT be multiplied by it
-    db.add(
-        PostFile(post_id=post.id, format="webp", file_bytes=512, is_native=False)
-    )
+    db.add(PostFile(post_id=post.id, format="webp", file_bytes=512, is_native=False))
     post.mkpx_file_bytes = 10_000
     post.mkpx_attached_at = datetime.now(timezone.utc)
     db.commit()

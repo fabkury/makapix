@@ -60,6 +60,7 @@ MKPX_MAGIC_COMPACT = b"\x89MKPZ\x0d\x0a\x1a"
 class VaultFullError(OSError):
     """Vault volume is below the configured free-space floor."""
 
+
 # Maximum canvas dimensions: 256x256
 MAX_CANVAS_SIZE = 256
 
@@ -315,8 +316,11 @@ def write_stream_atomic(file_path: Path, source, expected_bytes: int) -> int:
 def get_mkpx_file_path(storage_key: UUID, storage_shard: str) -> Path:
     """Canonical path of a post's attached .mkpx layers file."""
     shard = _require_shard(storage_shard)
-    return get_vault_location() / MKPX_SUBDIR / Path(shard) / (
-        f"{storage_key}{MKPX_EXTENSION}"
+    return (
+        get_vault_location()
+        / MKPX_SUBDIR
+        / Path(shard)
+        / (f"{storage_key}{MKPX_EXTENSION}")
     )
 
 
@@ -325,8 +329,9 @@ def validate_mkpx_signature(head: bytes) -> bool:
     return head.startswith(MKPX_MAGIC_PLAIN) or head.startswith(MKPX_MAGIC_COMPACT)
 
 
-def save_mkpx_to_vault(storage_key: UUID, source, size_bytes: int,
-                       storage_shard: str) -> Path:
+def save_mkpx_to_vault(
+    storage_key: UUID, source, size_bytes: int, storage_shard: str
+) -> Path:
     """
     Save an .mkpx layers file (streamed from ``source``, a binary file
     object positioned at 0) to the vault. No twin mirroring — the mkpx/

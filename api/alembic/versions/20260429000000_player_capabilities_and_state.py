@@ -25,9 +25,7 @@ def upgrade() -> None:
     )
     op.add_column(
         "players",
-        sa.Column(
-            "capabilities_updated_at", sa.DateTime(timezone=True), nullable=True
-        ),
+        sa.Column("capabilities_updated_at", sa.DateTime(timezone=True), nullable=True),
     )
     op.add_column("players", sa.Column("is_paused", sa.Boolean(), nullable=True))
     op.add_column("players", sa.Column("brightness", sa.SmallInteger(), nullable=True))
