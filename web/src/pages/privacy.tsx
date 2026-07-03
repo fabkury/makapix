@@ -145,7 +145,10 @@ export default function PrivacyPage() {
 
           <p>
             You can delete individual artworks and comments at any time. You can also delete
-            your entire account from your profile page. Account deletion removes your
+            your entire account from your profile page — see{' '}
+            <Link href="/delete-account">Delete Your Account</Link> for step-by-step
+            instructions and an email fallback if you can no longer log in. Account
+            deletion removes your
             artwork and its files (including layers files), your reactions, playlists,
             follows, notifications, sign-in identities, and avatar, and then the account
             itself. One exception: if a comment of yours has replies from other people, the
