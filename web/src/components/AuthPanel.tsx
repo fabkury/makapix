@@ -380,6 +380,16 @@ export default function AuthPanel({
             <button type="submit" disabled={loading} className="primary-button">
               {loading ? 'Please wait...' : mode === 'login' ? 'Login' : 'Create Account'}
             </button>
+
+            {mode === 'register' && (
+              <p className="consent-note">
+                By creating an account you agree to our{' '}
+                <Link href="/privacy" className="consent-link">
+                  Privacy Policy
+                </Link>
+                .
+              </p>
+            )}
           </form>
 
           <div className="divider">
@@ -522,6 +532,22 @@ export default function AuthPanel({
           font-size: 0.85rem;
           color: var(--accent-cyan);
           text-align: right;
+        }
+
+        .consent-note {
+          margin: 12px 0 0 0;
+          font-size: 0.8rem;
+          color: var(--text-muted);
+          text-align: center;
+        }
+
+        .consent-note :global(.consent-link) {
+          color: var(--accent-cyan);
+          text-decoration: none;
+        }
+
+        .consent-note :global(.consent-link:hover) {
+          text-decoration: underline;
         }
 
         .error-alert {
