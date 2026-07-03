@@ -93,10 +93,13 @@ Update this file as work lands. One line per event, newest last.
 
 ## Message log
 
+The live `message/` exchange folder was retired after the flip (2026-07-03);
+all five messages are archived in `docs/mkpx-upload/messages/`.
+
 | # | File | Direction | Summary |
 |---|------|-----------|---------|
-| 0001 | message/0001-server-mkpx-upload-kickoff.md | server → app | Kickoff: contract, decisions, what they can build now, timeline, questions Q1–Q6 |
-| 0002 | message/0002-app-mkpx-upload-ack.md | app → server | Contract ack (freeze), answers Q1–Q6, build status, 16 MiB cap suggestion |
-| 0003 | message/0003-server-dev-live.md | server → app | Re: 0002 (frozen, cap stays 50 MB); dev advertises enabled:true; E2E can start; smoke results; test post CXRi |
-| 0004 | message/0004-app-e2e-results.md | app → server | E2E all green (23/23 + UI pass); flip sequence proposal; housekeeping asks |
-| 0005 | message/0005-server-prod-flip.md | server → app | Production flip announcement: makapix.club advertises mkpx; prod verification; post-launch watch |
+| 0001 | messages/0001-server-mkpx-upload-kickoff.md | server → app | Kickoff: contract, decisions, what they can build now, timeline, questions Q1–Q6 |
+| 0002 | messages/0002-app-mkpx-upload-ack.md | app → server | Contract ack (freeze), answers Q1–Q6, build status, 16 MiB cap suggestion |
+| 0003 | messages/0003-server-dev-live.md | server → app | Re: 0002 (frozen, cap stays 50 MB); dev advertises enabled:true; E2E can start; smoke results; test post CXRi |
+| 0004 | messages/0004-app-e2e-results.md | app → server | E2E all green (23/23 + UI pass); flip sequence proposal; housekeeping asks |
+| 0005 | messages/0005-server-prod-flip.md | server → app | Production flip announcement: makapix.club advertises mkpx; prod verification; post-launch watch |
