@@ -211,6 +211,13 @@ function AboutTab() {
         <a href="mailto:acme@makapix.club">acme@makapix.club</a>.
       </p>
 
+      <h2>Privacy</h2>
+
+      <p>
+        We collect as little data as we can and never sell it. Read our{' '}
+        <Link href="/privacy">Privacy Policy</Link> for the full details.
+      </p>
+
       <style jsx>{`
         .tab-article {
           color: var(--text-secondary);

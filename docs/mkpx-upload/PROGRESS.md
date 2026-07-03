@@ -2,7 +2,7 @@
 
 Update this file as work lands. One line per event, newest last.
 
-## Status: LIVE ON DEV, guards fully deployed — awaiting app-team E2E (message #4)
+## Status: 🚀 LIVE IN PRODUCTION (flipped 2026-07-03) — post-launch watch
 
 - [x] 2026-07-02 — Recon (API upload flow, web menus, .mkpx format in reference/app/)
 - [x] 2026-07-02 — Owner decisions D1–D10 collected (PLAN.md §2)
@@ -65,20 +65,41 @@ Update this file as work lands. One line per event, newest last.
       automatically. GAP: users' irreplaceable layer sources currently have no backup;
       flagged to owner 2026-07-02
 - [ ] Web UI manual pass (behind dev basic auth) — menus, attach/detach, download
-- [ ] App team E2E confirmed (via message/)
+- [x] 2026-07-02 — App team E2E confirmed (0004): 23/23 API checks + manual UI pass, no
+      deviations; their app update released to Play dormant (config-gated). Dev test
+      account makapix-user-53 bumped to rep 1000; their specimen post yrpg (3433) kept
 - [x] 2026-07-02 — Contract FROZEN: app ack in 0002, all §11 questions answered; cap
       stays 50 MB (owner call, relayed in 0003)
 
 ## Phase 4 — Flip
 
-- [ ] PR develop → main; prod deploy; prod Caddy guard canary re-check
-- [ ] Prod config advertises mkpx; prod smoke test; app confirms against prod
-- [ ] Announce in message/
+- [x] 2026-07-03 — PR #207 (develop → main) merged; `make deploy` on prod; api restarted
+      after broker (publisher note) — all MQTT subscribers reconnected
+- [x] 2026-07-03 — Prod smoke: config advertises mkpx (launch signal live); hidden test
+      post round trip (upload 201 / owner download byte-identical / unauth 401); leak
+      canaries 404 with the real file on disk (vault subdomain + /api/vault); has_mkpx
+      present in prod feed payloads; test post detached + deleted
+- [x] 2026-07-03 — Message 0005 (flip announcement) written; app builds light up via
+      config gate on their next fetch
+
+## Post-launch
+
+- [ ] Watch: check_vault_free_space warnings, API memory under large uploads, new-endpoint
+      error rates; app team to report mobile large-file field data (0006 if any)
+- [ ] OPEN INFRA GAP (pre-existing): no vault backup cron on the host — layers files are
+      users' irreplaceable sources; owner to schedule independently
+- [ ] Optional future work (PLAN §12): quota-count soft-deleted posts, stream artwork
+      uploads, weekly orphan sweep, mkpx download stats
 
 ## Message log
 
+The live `message/` exchange folder was retired after the flip (2026-07-03);
+all five messages are archived in `docs/mkpx-upload/messages/`.
+
 | # | File | Direction | Summary |
 |---|------|-----------|---------|
-| 0001 | message/0001-server-mkpx-upload-kickoff.md | server → app | Kickoff: contract, decisions, what they can build now, timeline, questions Q1–Q6 |
-| 0002 | message/0002-app-mkpx-upload-ack.md | app → server | Contract ack (freeze), answers Q1–Q6, build status, 16 MiB cap suggestion |
-| 0003 | message/0003-server-dev-live.md | server → app | Re: 0002 (frozen, cap stays 50 MB); dev advertises enabled:true; E2E can start; smoke results; test post CXRi |
+| 0001 | messages/0001-server-mkpx-upload-kickoff.md | server → app | Kickoff: contract, decisions, what they can build now, timeline, questions Q1–Q6 |
+| 0002 | messages/0002-app-mkpx-upload-ack.md | app → server | Contract ack (freeze), answers Q1–Q6, build status, 16 MiB cap suggestion |
+| 0003 | messages/0003-server-dev-live.md | server → app | Re: 0002 (frozen, cap stays 50 MB); dev advertises enabled:true; E2E can start; smoke results; test post CXRi |
+| 0004 | messages/0004-app-e2e-results.md | app → server | E2E all green (23/23 + UI pass); flip sequence proposal; housekeeping asks |
+| 0005 | messages/0005-server-prod-flip.md | server → app | Production flip announcement: makapix.club advertises mkpx; prod verification; post-launch watch |
