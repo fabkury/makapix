@@ -407,6 +407,11 @@ class Post(Base):
     # Display timing (milliseconds)
     dwell_time_ms = Column(Integer, nullable=False, default=30000)
 
+    # Optional attached .mkpx layers file (docs/mkpx-upload/). Stored at
+    # {vault}/mkpx/{storage_shard}/{storage_key}.mkpx; both NULL when absent.
+    mkpx_file_bytes = Column(Integer, nullable=True)
+    mkpx_attached_at = Column(DateTime(timezone=True), nullable=True)
+
     # License (Creative Commons)
     license_id = Column(
         Integer,
@@ -439,6 +444,11 @@ class Post(Base):
         Index("ix_posts_owner_created", owner_id, created_at.desc()),
         Index("ix_posts_non_conformant_created", non_conformant, created_at.desc()),
     )
+
+    @property
+    def has_mkpx(self) -> bool:
+        """Whether an .mkpx layers file is attached (schemas.Post reads this)."""
+        return self.mkpx_file_bytes is not None
 
 
 class PostFile(Base):

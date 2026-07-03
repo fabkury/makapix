@@ -7,7 +7,9 @@ function normalizeBaseUrl(url: string): string {
 
 const publicBaseUrl = normalizeBaseUrl(
   process.env.NEXT_PUBLIC_API_BASE_URL ??
-    (typeof window !== "undefined" ? window.location.origin : "http://localhost")
+    (typeof window !== "undefined"
+      ? window.location.origin
+      : "http://localhost"),
 );
 
 const LOGOUT_MARKER_KEY = "makapix_logged_out_at_ms";
@@ -52,7 +54,9 @@ let lastRefreshFailureKind: "auth" | "transient" | null = null;
 /**
  * Decode a JWT token and extract its payload
  */
-function decodeJwtPayload(token: string): { exp?: number; iat?: number } | null {
+function decodeJwtPayload(
+  token: string,
+): { exp?: number; iat?: number } | null {
   try {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
@@ -69,7 +73,7 @@ function decodeJwtPayload(token: string): { exp?: number; iat?: number } | null 
 export function isTokenExpired(token: string, bufferSeconds = 60): boolean {
   const payload = decodeJwtPayload(token);
   if (!payload?.exp) return true;
-  
+
   const now = Math.floor(Date.now() / 1000);
   return payload.exp <= now + bufferSeconds;
 }
@@ -84,7 +88,7 @@ export function getAccessToken(): string | null {
 
 /**
  * Get the stored refresh token from localStorage
- * 
+ *
  * NOTE: Refresh tokens are now stored in HttpOnly cookies and not accessible to JavaScript.
  * This function returns null as refresh tokens are handled server-side via cookies.
  */
@@ -99,7 +103,10 @@ export function getRefreshToken(): string | null {
  * NOTE: Refresh tokens are now stored in HttpOnly cookies and should not be stored in localStorage.
  * Only the access token is stored in localStorage (short-lived).
  */
-export function storeTokens(accessToken: string, refreshToken?: string | null): void {
+export function storeTokens(
+  accessToken: string,
+  refreshToken?: string | null,
+): void {
   if (typeof window === "undefined") return;
   localStorage.setItem("access_token", accessToken);
   // Successful token storage should re-enable refresh attempts immediately.
@@ -126,7 +133,7 @@ export function clearTokens(): void {
 /**
  * Attempt to refresh the access token using the refresh token
  * Returns true if successful, false otherwise
- * 
+ *
  * IMPORTANT: This function is conservative about clearing tokens.
  * We only clear tokens on definitive auth failures (401/403), not on
  * transient errors like network issues or server errors (5xx).
@@ -163,8 +170,10 @@ export async function refreshAccessToken(): Promise<boolean> {
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => "Unknown error");
-        console.error(`[Auth] Refresh failed (${response.status}): ${errorText}`);
-        
+        console.error(
+          `[Auth] Refresh failed (${response.status}): ${errorText}`,
+        );
+
         // Only clear tokens on definitive auth failures
         // 401 = Invalid/expired token (server confirmed it's bad)
         // 403 = User banned/deactivated
@@ -185,20 +194,20 @@ export async function refreshAccessToken(): Promise<boolean> {
       }
 
       const data = await response.json();
-      
+
       // Validate the response has required fields
       if (!data.token) {
         console.error("[Auth] Refresh response missing access token");
-        // This is a server bug, but we shouldn't clear tokens - 
+        // This is a server bug, but we shouldn't clear tokens -
         // the old refresh token might still work (grace period)
         return false;
       }
-      
+
       // Store the new access token (refresh token is automatically updated in cookie by server)
       storeTokens(data.token);
       lastRefreshFailureKind = null;
       console.log("[Auth] Tokens refreshed successfully");
-      
+
       // Update all user data from response
       if (data.user_id) {
         localStorage.setItem("user_id", String(data.user_id));
@@ -218,8 +227,13 @@ export async function refreshAccessToken(): Promise<boolean> {
       // Network errors, timeouts, etc. - don't clear tokens!
       // The refresh token might still be valid, and the server has a grace period
       lastRefreshFailureKind = "transient";
-      console.error("[Auth] Failed to refresh token (network/transient error):", error);
-      console.log("[Auth] Keeping tokens - error may be transient, will retry later");
+      console.error(
+        "[Auth] Failed to refresh token (network/transient error):",
+        error,
+      );
+      console.log(
+        "[Auth] Keeping tokens - error may be transient, will retry later",
+      );
       refreshDisabledUntilMs = Date.now() + 10 * 1000; // 10 seconds
       return false;
     } finally {
@@ -238,7 +252,7 @@ export async function refreshAccessToken(): Promise<boolean> {
  */
 export async function authenticatedFetch(
   url: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<Response> {
   let accessToken = getAccessToken();
 
@@ -259,7 +273,10 @@ export async function authenticatedFetch(
           statusText: "Auth refresh temporarily unavailable",
         });
       }
-      return new Response(null, { status: 401, statusText: "Token refresh failed" });
+      return new Response(null, {
+        status: 401,
+        statusText: "Token refresh failed",
+      });
     }
   }
 
@@ -304,10 +321,10 @@ export async function authenticatedFetch(
 export async function authenticatedRequestJson<TResponse>(
   path: string,
   options: RequestInit = {},
-  method: HttpMethod = "GET"
+  method: HttpMethod = "GET",
 ): Promise<TResponse> {
   const url = path.startsWith("http") ? path : `${publicBaseUrl}${path}`;
-  
+
   const response = await authenticatedFetch(url, {
     method,
     headers: {
@@ -330,19 +347,19 @@ export async function authenticatedRequestJson<TResponse>(
  */
 export async function authenticatedPostJson<TResponse>(
   path: string,
-  payload: unknown
+  payload: unknown,
 ): Promise<TResponse> {
   return authenticatedRequestJson<TResponse>(
     path,
     { body: JSON.stringify(payload) },
-    "POST"
+    "POST",
   );
 }
 
 /**
  * Logout the current user by calling the logout endpoint.
  * This revokes the refresh token in the database and clears the cookie.
- * 
+ *
  * Note: The logout endpoint requires authentication, but we handle failures gracefully.
  * Even if the API call fails (e.g., expired access token), we still clear local storage.
  */
@@ -352,18 +369,23 @@ export async function logout(): Promise<void> {
   try {
     // Try to call logout API with authentication
     // This will revoke the refresh token in the database and clear the cookie
-    const response = await authenticatedFetch(`${publicBaseUrl}/api/auth/logout`, {
-      method: "POST",
-      credentials: "include", // CRITICAL: Include cookies
-      headers: {
-        "Content-Type": "application/json",
+    const response = await authenticatedFetch(
+      `${publicBaseUrl}/api/auth/logout`,
+      {
+        method: "POST",
+        credentials: "include", // CRITICAL: Include cookies
+        headers: {
+          "Content-Type": "application/json",
+        },
       },
-    });
-    
+    );
+
     // Logout endpoint returns 204 on success, but we don't need to check
     // If it fails (401, etc.), we'll still clear local storage
     if (!response.ok && response.status !== 401) {
-      console.warn(`[Auth] Logout API returned ${response.status}, but continuing with cleanup`);
+      console.warn(
+        `[Auth] Logout API returned ${response.status}, but continuing with cleanup`,
+      );
     }
   } catch (error) {
     console.error("[Auth] Logout API call failed:", error);
@@ -406,7 +428,11 @@ export async function postJson<TResponse>(
   path: string,
   payload: unknown,
 ): Promise<TResponse> {
-  return requestJson<TResponse>(path, { body: JSON.stringify(payload) }, "POST");
+  return requestJson<TResponse>(
+    path,
+    { body: JSON.stringify(payload) },
+    "POST",
+  );
 }
 
 // ============================================================================
@@ -456,10 +482,10 @@ export interface PlayerCommandRequest {
   command_type: "swap_next" | "swap_back" | "show_artwork" | "play_channel";
   post_id?: number;
   // Channel identification (for play_channel)
-  channel_name?: string;  // 'promoted', 'all', or 'by_user'
-  hashtag?: string;       // hashtag without #
-  user_sqid?: string;     // user's sqid for profile channels
-  user_handle?: string;   // user's handle (for by_user channel)
+  channel_name?: string; // 'promoted', 'all', or 'by_user'
+  hashtag?: string; // hashtag without #
+  user_sqid?: string; // user's sqid for profile channels
+  user_handle?: string; // user's handle (for by_user channel)
 }
 
 export interface PlayerCommandResponse {
@@ -494,14 +520,19 @@ export async function listPlayers(sqid: string): Promise<{ items: Player[] }> {
 /**
  * Get a single player
  */
-export async function getPlayer(sqid: string, playerId: string): Promise<Player> {
+export async function getPlayer(
+  sqid: string,
+  playerId: string,
+): Promise<Player> {
   return authenticatedRequestJson<Player>(`/api/u/${sqid}/player/${playerId}`);
 }
 
 /**
  * Register a player using registration code
  */
-export async function registerPlayer(payload: PlayerRegisterRequest): Promise<Player> {
+export async function registerPlayer(
+  payload: PlayerRegisterRequest,
+): Promise<Player> {
   return authenticatedPostJson<Player>("/api/player/register", payload);
 }
 
@@ -511,19 +542,22 @@ export async function registerPlayer(payload: PlayerRegisterRequest): Promise<Pl
 export async function updatePlayer(
   sqid: string,
   playerId: string,
-  name: string
+  name: string,
 ): Promise<Player> {
   return authenticatedRequestJson<Player>(
     `/api/u/${sqid}/player/${playerId}`,
     { body: JSON.stringify({ name }) },
-    "PATCH"
+    "PATCH",
   );
 }
 
 /**
  * Delete a player
  */
-export async function deletePlayer(sqid: string, playerId: string): Promise<void> {
+export async function deletePlayer(
+  sqid: string,
+  playerId: string,
+): Promise<void> {
   const url = `/api/u/${sqid}/player/${playerId}`;
   const response = await authenticatedFetch(`${publicBaseUrl}${url}`, {
     method: "DELETE",
@@ -540,44 +574,44 @@ export async function deletePlayer(sqid: string, playerId: string): Promise<void
 export async function setPlayerPause(
   sqid: string,
   playerId: string,
-  paused: boolean
+  paused: boolean,
 ): Promise<PlayerCommandResponse> {
   return authenticatedPostJson<PlayerCommandResponse>(
     `/api/u/${sqid}/player/${playerId}/pause`,
-    { paused }
+    { paused },
   );
 }
 
 export async function setPlayerBrightness(
   sqid: string,
   playerId: string,
-  value: number
+  value: number,
 ): Promise<PlayerCommandResponse> {
   return authenticatedPostJson<PlayerCommandResponse>(
     `/api/u/${sqid}/player/${playerId}/brightness`,
-    { value }
+    { value },
   );
 }
 
 export async function setPlayerRotation(
   sqid: string,
   playerId: string,
-  value: number
+  value: number,
 ): Promise<PlayerCommandResponse> {
   return authenticatedPostJson<PlayerCommandResponse>(
     `/api/u/${sqid}/player/${playerId}/rotation`,
-    { value }
+    { value },
   );
 }
 
 export async function setPlayerMirror(
   sqid: string,
   playerId: string,
-  value: string
+  value: string,
 ): Promise<PlayerCommandResponse> {
   return authenticatedPostJson<PlayerCommandResponse>(
     `/api/u/${sqid}/player/${playerId}/mirror`,
-    { value }
+    { value },
   );
 }
 
@@ -587,11 +621,11 @@ export async function setPlayerMirror(
 export async function sendPlayerCommand(
   sqid: string,
   playerId: string,
-  command: PlayerCommandRequest
+  command: PlayerCommandRequest,
 ): Promise<PlayerCommandResponse> {
   return authenticatedPostJson<PlayerCommandResponse>(
     `/api/u/${sqid}/player/${playerId}/command`,
-    command
+    command,
   );
 }
 
@@ -600,11 +634,11 @@ export async function sendPlayerCommand(
  */
 export async function sendCommandToAllPlayers(
   sqid: string,
-  command: PlayerCommandRequest
+  command: PlayerCommandRequest,
 ): Promise<PlayerCommandAllResponse> {
   return authenticatedPostJson<PlayerCommandAllResponse>(
     `/api/u/${sqid}/player/command/all`,
-    command
+    command,
   );
 }
 
@@ -613,11 +647,11 @@ export async function sendCommandToAllPlayers(
  */
 export async function renewPlayerCert(
   sqid: string,
-  playerId: string
+  playerId: string,
 ): Promise<PlayerRenewCertResponse> {
   return authenticatedPostJson<PlayerRenewCertResponse>(
     `/api/u/${sqid}/player/${playerId}/renew-cert`,
-    {}
+    {},
   );
 }
 
@@ -626,9 +660,87 @@ export async function renewPlayerCert(
  */
 export async function downloadPlayerCerts(
   sqid: string,
-  playerId: string
+  playerId: string,
 ): Promise<TLSCertBundle> {
   return authenticatedRequestJson<TLSCertBundle>(
-    `/api/u/${sqid}/player/${playerId}/certs`
+    `/api/u/${sqid}/player/${playerId}/certs`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// .mkpx layers-file attachments (docs/mkpx-upload/)
+// ---------------------------------------------------------------------------
+
+export interface MkpxConfig {
+  enabled: boolean;
+  max_file_bytes: number;
+}
+
+let mkpxConfigPromise: Promise<MkpxConfig | null> | null = null;
+
+/**
+ * Capability discovery: the server advertises mkpx support via
+ * GET /api/config -> upload.mkpx. Absent or disabled means every mkpx
+ * menu item must stay hidden (also protects against a web deploy running
+ * against a rolled-back API). Cached for the page lifetime; the endpoint
+ * itself is ETag/300s-cached server-side.
+ */
+export function getMkpxConfig(): Promise<MkpxConfig | null> {
+  if (!mkpxConfigPromise) {
+    mkpxConfigPromise = fetch(`${publicBaseUrl}/api/config`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((cfg) => {
+        const mkpx = cfg?.upload?.mkpx;
+        return mkpx && mkpx.enabled ? (mkpx as MkpxConfig) : null;
+      })
+      .catch(() => null);
+  }
+  return mkpxConfigPromise;
+}
+
+/** Download a post's layers file. Requires login (401 otherwise). */
+export async function downloadMkpx(publicSqid: string): Promise<Blob> {
+  const resp = await authenticatedFetch(
+    `${publicBaseUrl}/api/d/${publicSqid}.mkpx`,
+  );
+  if (!resp.ok) {
+    throw new Error(`Layers file download failed (${resp.status})`);
+  }
+  return resp.blob();
+}
+
+/**
+ * Attach a layers file to an existing post, or replace the current one
+ * (author only). Returns the updated post payload.
+ */
+export async function attachMkpx<TPost = unknown>(
+  postId: number,
+  file: File,
+): Promise<TPost> {
+  const formData = new FormData();
+  formData.append("mkpx", file);
+  const resp = await authenticatedFetch(
+    `${publicBaseUrl}/api/post/${postId}/mkpx`,
+    { method: "POST", body: formData },
+  );
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`Attach failed (${resp.status}): ${body}`);
+  }
+  return resp.json() as Promise<TPost>;
+}
+
+/** Remove a post's layers file (author only). Returns the updated post. */
+export async function detachMkpx<TPost = unknown>(
+  postId: number,
+): Promise<TPost> {
+  const resp = await authenticatedFetch(
+    `${publicBaseUrl}/api/post/${postId}/mkpx`,
+    { method: "DELETE" },
+  );
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`Remove failed (${resp.status}): ${body}`);
+  }
+  return resp.json() as Promise<TPost>;
 }

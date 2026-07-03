@@ -369,6 +369,11 @@ celery_app.conf.update(
             "schedule": 43200.0,  # Every 12 hours
             "options": {"queue": "default"},
         },
+        "check-vault-free-space": {
+            "task": "app.tasks.check_vault_free_space",
+            "schedule": 21600.0,  # Every 6 hours
+            "options": {"queue": "default"},
+        },
         # --- Daily jobs: fixed wall-clock times -------------------------------
         # crontab() schedules fire at a fixed local time in the beat timezone
         # (America/New_York), so these all run at the stated US Eastern time
@@ -2468,6 +2473,35 @@ def cleanup_unverified_accounts(self) -> dict[str, Any]:
         db.close()
 
 
+@celery_app.task(bind=True, name="app.tasks.check_vault_free_space")
+def check_vault_free_space(self) -> dict[str, Any]:
+    """
+    Watchdog for vault disk headroom (docs/mkpx-upload/): logs the free
+    space every run, warns below 4x the write floor, errors below the floor
+    itself (at which point uploads are already being refused cleanly by
+    ensure_vault_headroom). Runs every 6 hours.
+    """
+    from .settings import MAKAPIX_VAULT_MIN_FREE_BYTES
+    from .vault import get_vault_free_bytes
+
+    free = get_vault_free_bytes()
+    floor = MAKAPIX_VAULT_MIN_FREE_BYTES
+    free_mb = free / 1024 / 1024
+    if free < floor:
+        logger.error(
+            f"Vault BELOW free-space floor: {free_mb:.0f} MB free "
+            f"(floor {floor / 1024 / 1024:.0f} MB) — uploads are being refused"
+        )
+        level = "critical"
+    elif free < floor * 4:
+        logger.warning(f"Vault free space low: {free_mb:.0f} MB free")
+        level = "warning"
+    else:
+        logger.info(f"Vault free space OK: {free_mb:.0f} MB free")
+        level = "ok"
+    return {"status": "success", "free_bytes": free, "level": level}
+
+
 @celery_app.task(bind=True, name="app.tasks.cleanup_deleted_posts")
 def cleanup_deleted_posts(self) -> dict[str, Any]:
     """
@@ -2528,6 +2562,12 @@ def cleanup_deleted_posts(self) -> dict[str, Any]:
                     except Exception as e:
                         logger.warning(
                             f"Failed to delete vault files for post {post.id}: {e}"
+                        )
+
+                    # Attached .mkpx layers file, if any (best-effort)
+                    if post.mkpx_file_bytes is not None:
+                        vault.delete_mkpx_from_vault(
+                            post.storage_key, post.storage_shard
                         )
 
                 # Delete the post (cascades to comments, reactions, admin_notes, etc.)
@@ -3606,6 +3646,13 @@ def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
                     )
             except Exception as e:
                 logger.warning(f"Failed to delete vault files for post {post.id}: {e}")
+
+            # Attached .mkpx layers file, if any — independent of the
+            # formats gate above, or account deletion would orphan it
+            if post.storage_key and post.mkpx_file_bytes is not None:
+                from .vault import delete_mkpx_from_vault
+
+                delete_mkpx_from_vault(post.storage_key, post.storage_shard)
 
             # Delete the post (cascades to comments, reactions, admin_notes)
             db.delete(post)

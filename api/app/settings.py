@@ -24,6 +24,19 @@ MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES: int = _int_env(
     "MAKAPIX_ARTWORK_SIZE_LIMIT", 5 * 1024 * 1024
 )
 
+# Maximum size for an attached .mkpx layers file (bytes); advertised to
+# clients via /config upload.mkpx (docs/mkpx-upload/). Default 50 MiB.
+MAKAPIX_MKPX_SIZE_LIMIT_BYTES: int = _int_env(
+    "MAKAPIX_MKPX_SIZE_LIMIT", 50 * 1024 * 1024
+)
+
+# Vault free-space floor (bytes): writes are refused when the vault volume
+# has less free space than this, so uploads fail cleanly instead of via
+# ENOSPC mid-write. Default 500 MiB.
+MAKAPIX_VAULT_MIN_FREE_BYTES: int = _int_env(
+    "MAKAPIX_VAULT_MIN_FREE_BYTES", 500 * 1024 * 1024
+)
+
 
 def vault_public_base_url() -> str:
     """Return the public base URL for vault assets, or "" if unset.

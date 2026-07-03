@@ -1,13 +1,25 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { motion, useAnimationControls, useReducedMotion, AnimatePresence } from 'framer-motion';
-import { useRouter } from 'next/router';
-import { authenticatedFetch, getAccessToken } from '../lib/api';
-import { PLAYER_BAR_HEIGHT } from './PlayerBarDynamic';
-import SPOCommentsOverlay from './SPOCommentsOverlay';
-import SPOReactionUsersOverlay from './SPOReactionUsersOverlay';
-import { EMOJI_OPTIONS } from './CommentsAndReactions';
-import { ensureCompatibleArtUrl } from '../utils/imageCompat';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import {
+  motion,
+  useAnimationControls,
+  useReducedMotion,
+  AnimatePresence,
+} from "framer-motion";
+import { useRouter } from "next/router";
+import {
+  attachMkpx,
+  authenticatedFetch,
+  detachMkpx,
+  downloadMkpx,
+  getAccessToken,
+  getMkpxConfig,
+} from "../lib/api";
+import { PLAYER_BAR_HEIGHT } from "./PlayerBarDynamic";
+import SPOCommentsOverlay from "./SPOCommentsOverlay";
+import SPOReactionUsersOverlay from "./SPOReactionUsersOverlay";
+import { EMOJI_OPTIONS } from "./CommentsAndReactions";
+import { ensureCompatibleArtUrl } from "../utils/imageCompat";
 
 type Rect = { left: number; top: number; width: number; height: number };
 
@@ -17,6 +29,7 @@ export interface SelectedPostOverlayPost {
   title: string;
   description?: string;
   art_url: string;
+  owner_id?: number;
   owner?: {
     handle: string;
     avatar_url?: string | null;
@@ -27,6 +40,7 @@ export interface SelectedPostOverlayPost {
   width: number;
   height: number;
   files: Array<{ format: string; file_bytes: number; is_native: boolean }>;
+  has_mkpx?: boolean;
 }
 
 export interface SelectedPostOverlayProps {
@@ -70,10 +84,16 @@ interface WidgetData {
   views_count: number;
 }
 
-function getVisualViewportBox(): { x: number; y: number; width: number; height: number } {
-  if (typeof window === 'undefined') return { x: 0, y: 0, width: 0, height: 0 };
+function getVisualViewportBox(): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  if (typeof window === "undefined") return { x: 0, y: 0, width: 0, height: 0 };
   const vv = window.visualViewport;
-  if (!vv) return { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight };
+  if (!vv)
+    return { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight };
   return {
     x: vv.offsetLeft ?? 0,
     y: vv.offsetTop ?? 0,
@@ -85,7 +105,12 @@ function getVisualViewportBox(): { x: number; y: number; width: number; height: 
 const POST_HEADER_HEIGHT = 32;
 const META_AREA_WIDTH = 384;
 
-function computeSelectedTargetRect(): { x: number; y: number; width: number; height: number } {
+function computeSelectedTargetRect(): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
   const vv = getVisualViewportBox();
   const size = 384;
   return {
@@ -113,8 +138,10 @@ async function fetchWidgetData(postId: number): Promise<WidgetData | null> {
   const hasToken = !!getAccessToken();
   try {
     const resp = hasToken
-      ? await authenticatedFetch(url.startsWith('http') ? url : `${window.location.origin}${url}`)
-      : await fetch(url, { credentials: 'include' });
+      ? await authenticatedFetch(
+          url.startsWith("http") ? url : `${window.location.origin}${url}`,
+        )
+      : await fetch(url, { credentials: "include" });
     if (!resp.ok) return null;
     const data = await resp.json();
     return data;
@@ -123,23 +150,32 @@ async function fetchWidgetData(postId: number): Promise<WidgetData | null> {
   }
 }
 
-async function toggleReaction(postId: number, emoji: string, shouldAdd: boolean): Promise<void> {
+async function toggleReaction(
+  postId: number,
+  emoji: string,
+  shouldAdd: boolean,
+): Promise<void> {
   const encoded = encodeURIComponent(emoji);
   const url = `/api/post/${postId}/reactions/${encoded}`;
-  const method = shouldAdd ? 'PUT' : 'DELETE';
+  const method = shouldAdd ? "PUT" : "DELETE";
   const hasToken = !!getAccessToken();
   const resp = hasToken
-    ? await authenticatedFetch(url.startsWith('http') ? url : `${window.location.origin}${url}`, { method })
-    : await fetch(url, { method, credentials: 'include' });
+    ? await authenticatedFetch(
+        url.startsWith("http") ? url : `${window.location.origin}${url}`,
+        { method },
+      )
+    : await fetch(url, { method, credentials: "include" });
   if (!resp.ok) {
-    const txt = await resp.text().catch(() => '');
-    throw new Error(`Failed to ${shouldAdd ? 'add' : 'remove'} reaction: ${resp.status} ${txt}`.trim());
+    const txt = await resp.text().catch(() => "");
+    throw new Error(
+      `Failed to ${shouldAdd ? "add" : "remove"} reaction: ${resp.status} ${txt}`.trim(),
+    );
   }
 }
 
 function formatFileSizeCompact(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
   const k = 1000;
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   const value = bytes / Math.pow(k, i);
@@ -153,78 +189,78 @@ function formatDateTime(isoString: string): string {
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
   const day = date.getDate();
-  const hours = date.getHours().toString().padStart(2, '0');
-  const minutes = date.getMinutes().toString().padStart(2, '0');
+  const hours = date.getHours().toString().padStart(2, "0");
+  const minutes = date.getMinutes().toString().padStart(2, "0");
   return `${year}/${month}/${day} ${hours}:${minutes}`;
 }
 
 // Inline styles to ensure they work inside the portal
 // NOTE: overlayStyles is used as a base; bottom is dynamically adjusted to exclude PlayerBar
 const overlayStyles: React.CSSProperties = {
-  position: 'fixed',
+  position: "fixed",
   top: 0,
   left: 0,
   right: 0,
   bottom: 0, // Dynamically adjusted in JSX when PlayerBar is present
   // Must sit above the site top-header and any other fixed UI.
   zIndex: 20000,
-  pointerEvents: 'auto',
+  pointerEvents: "auto",
   // Prevent touch gestures from causing page scroll when dragging inside the overlay
-  touchAction: 'none',
+  touchAction: "none",
 };
 
 const backdropStyles: React.CSSProperties = {
-  position: 'fixed',
+  position: "fixed",
   top: 0,
   left: 0,
   right: 0,
   bottom: 0,
-  background: 'rgba(0, 0, 0, 0.85)',
-  backdropFilter: 'blur(16px)',
-  WebkitBackdropFilter: 'blur(16px)',
+  background: "rgba(0, 0, 0, 0.85)",
+  backdropFilter: "blur(16px)",
+  WebkitBackdropFilter: "blur(16px)",
 };
 
 const artworkShellStyles: React.CSSProperties = {
-  position: 'fixed',
-  // CRITICAL: Must set left/top to 0 so Framer Motion's x/y transforms 
+  position: "fixed",
+  // CRITICAL: Must set left/top to 0 so Framer Motion's x/y transforms
   // become actual viewport coordinates. Without this, x/y offset from
   // an unpredictable "static" position in the document flow.
   left: 0,
   top: 0,
-  overflow: 'visible',
-  touchAction: 'none',
-  willChange: 'transform, width, height',
-  background: 'rgba(0, 0, 0, 0.18)',
-  cursor: 'pointer',
+  overflow: "visible",
+  touchAction: "none",
+  willChange: "transform, width, height",
+  background: "rgba(0, 0, 0, 0.18)",
+  cursor: "pointer",
 };
 
 const artworkClipStyles: React.CSSProperties = {
-  width: '100%',
-  height: '100%',
-  position: 'relative',
-  overflow: 'hidden',
+  width: "100%",
+  height: "100%",
+  position: "relative",
+  overflow: "hidden",
 };
 
 const artworkImageStyles: React.CSSProperties = {
-  display: 'block',
-  width: '100%',
-  height: '100%',
-  objectFit: 'contain',
-  objectPosition: 'center',
-  userSelect: 'none',
-  WebkitUserSelect: 'none',
-  imageRendering: 'pixelated',
+  display: "block",
+  width: "100%",
+  height: "100%",
+  objectFit: "contain",
+  objectPosition: "center",
+  userSelect: "none",
+  WebkitUserSelect: "none",
+  imageRendering: "pixelated",
 };
 
 const likeBurstStyles: React.CSSProperties = {
-  position: 'absolute',
-  left: '50%',
-  top: '50%',
-  marginLeft: '-28px',
-  marginTop: '-28px',
-  fontSize: '56px',
-  textShadow: '0 10px 24px rgba(0, 0, 0, 0.45)',
-  pointerEvents: 'none',
+  position: "absolute",
+  left: "50%",
+  top: "50%",
+  marginLeft: "-28px",
+  marginTop: "-28px",
+  fontSize: "56px",
+  textShadow: "0 10px 24px rgba(0, 0, 0, 0.45)",
+  pointerEvents: "none",
 };
 
 function computePostHeaderPosition(): { x: number; y: number } {
@@ -238,175 +274,180 @@ function computePostHeaderPosition(): { x: number; y: number } {
 }
 
 const postHeaderLeftStyles: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '8px',
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
 };
 
 const postHeaderRightStyles: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '12px',
+  display: "flex",
+  alignItems: "center",
+  gap: "12px",
 };
 
 const postAuthorAvatarStyles: React.CSSProperties = {
   width: 32,
   height: 32,
   borderRadius: 0,
-  objectFit: 'cover',
-  imageRendering: 'pixelated',
+  objectFit: "cover",
+  imageRendering: "pixelated",
 };
 
 const postAuthorHandleStyles: React.CSSProperties = {
-  fontFamily: "'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-  fontSize: '14px',
+  fontFamily:
+    "'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  fontSize: "14px",
   fontWeight: 500,
-  color: '#e8e8f0',
+  color: "#e8e8f0",
 };
 
 const postReactionCountStyles: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '2px',
-  fontFamily: "'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-  fontSize: '14px',
+  display: "flex",
+  alignItems: "center",
+  gap: "2px",
+  fontFamily:
+    "'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  fontSize: "14px",
   fontWeight: 500,
-  color: '#e8e8f0',
+  color: "#e8e8f0",
 };
 
 const postCommentCountStyles: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '2px',
-  fontFamily: "'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-  fontSize: '14px',
+  display: "flex",
+  alignItems: "center",
+  gap: "2px",
+  fontFamily:
+    "'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  fontSize: "14px",
   fontWeight: 500,
-  color: '#e8e8f0',
+  color: "#e8e8f0",
 };
 
 const postViewCountStyles: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '2px',
-  fontFamily: "'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-  fontSize: '14px',
+  display: "flex",
+  alignItems: "center",
+  gap: "2px",
+  fontFamily:
+    "'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  fontSize: "14px",
   fontWeight: 500,
-  color: '#e8e8f0',
+  color: "#e8e8f0",
 };
 
 const metaAreaStyles: React.CSSProperties = {
-  position: 'fixed',
+  position: "fixed",
   left: 0,
   top: 0,
   width: META_AREA_WIDTH,
-  background: '#000',
-  fontFamily: "'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-  pointerEvents: 'auto',
+  background: "#000",
+  fontFamily:
+    "'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  pointerEvents: "auto",
   zIndex: 20001,
 };
 
 const titleRowStyles: React.CSSProperties = {
   height: 32,
-  display: 'flex',
-  alignItems: 'center',
+  display: "flex",
+  alignItems: "center",
   paddingLeft: 16,
   paddingRight: 16,
-  fontSize: '14px',
+  fontSize: "14px",
   fontWeight: 600,
-  color: '#e8e8f0',
-  whiteSpace: 'nowrap',
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
+  color: "#e8e8f0",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
 };
 
 const reactionsRowStyles: React.CSSProperties = {
   height: 32,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
   gap: 12,
-  padding: '0 8px',
+  padding: "0 8px",
 };
 
 const reactionButtonStyles: React.CSSProperties = {
-  position: 'relative',
-  padding: '4px 8px',
-  fontSize: '18px',
-  background: 'transparent',
-  border: '2px solid transparent',
-  borderRadius: '8px',
-  cursor: 'pointer',
-  transition: 'all 0.15s ease',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
+  position: "relative",
+  padding: "4px 8px",
+  fontSize: "18px",
+  background: "transparent",
+  border: "2px solid transparent",
+  borderRadius: "8px",
+  cursor: "pointer",
+  transition: "all 0.15s ease",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
 };
 
 const reactionBadgeStyles: React.CSSProperties = {
-  position: 'absolute',
+  position: "absolute",
   bottom: -2,
   right: -2,
-  background: '#00d4ff',
-  color: '#1a1a24',
-  fontSize: '10px',
+  background: "#00d4ff",
+  color: "#1a1a24",
+  fontSize: "10px",
   fontWeight: 700,
-  padding: '1px 4px',
-  borderRadius: '8px',
+  padding: "1px 4px",
+  borderRadius: "8px",
   minWidth: 16,
-  textAlign: 'center',
-  lineHeight: '1.2',
-  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.3)',
+  textAlign: "center",
+  lineHeight: "1.2",
+  boxShadow: "0 2px 4px rgba(0, 0, 0, 0.3)",
 };
 
 const commentButtonStyles: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
+  display: "flex",
+  alignItems: "center",
   gap: 4,
-  padding: '4px 8px',
-  fontSize: '18px',
-  background: 'transparent',
-  border: '2px solid transparent',
-  borderRadius: '8px',
-  cursor: 'pointer',
-  transition: 'all 0.15s ease',
-  color: '#e8e8f0',
+  padding: "4px 8px",
+  fontSize: "18px",
+  background: "transparent",
+  border: "2px solid transparent",
+  borderRadius: "8px",
+  cursor: "pointer",
+  transition: "all 0.15s ease",
+  color: "#e8e8f0",
 };
 
 const descriptionAreaStyles: React.CSSProperties = {
   maxHeight: 200,
-  overflowY: 'auto',
+  overflowY: "auto",
   padding: 12,
-  fontSize: '13px',
+  fontSize: "13px",
   lineHeight: 1.5,
-  color: '#a0a0b8',
+  color: "#a0a0b8",
   // Allow vertical scrolling within description only, without propagating to page
-  touchAction: 'pan-y',
-  overscrollBehavior: 'contain',
+  touchAction: "pan-y",
+  overscrollBehavior: "contain",
 };
 
 const technicalInfoRowStyles: React.CSSProperties = {
   height: 24,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontSize: '12px',
-  color: '#a0a0b8',
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: "12px",
+  color: "#a0a0b8",
 };
 
 const moreButtonStyles: React.CSSProperties = {
-  background: 'transparent',
-  border: 'none',
-  color: '#e8e8f0',
-  fontSize: '18px',
-  cursor: 'pointer',
-  padding: '4px 8px',
-  marginLeft: '8px',
-  borderRadius: '4px',
+  background: "transparent",
+  border: "none",
+  color: "#e8e8f0",
+  fontSize: "18px",
+  cursor: "pointer",
+  padding: "4px 8px",
+  marginLeft: "8px",
+  borderRadius: "4px",
   lineHeight: 1,
 };
 
 const moreMenuOverlayStyles: React.CSSProperties = {
-  position: 'fixed',
+  position: "fixed",
   top: 0,
   left: 0,
   right: 0,
@@ -415,39 +456,41 @@ const moreMenuOverlayStyles: React.CSSProperties = {
 };
 
 const moreMenuStyles: React.CSSProperties = {
-  position: 'absolute',
-  background: '#1a1a24',
-  border: '1px solid rgba(255, 255, 255, 0.15)',
-  borderRadius: '8px',
-  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
-  minWidth: '200px',
-  overflow: 'visible',
+  position: "absolute",
+  background: "#1a1a24",
+  border: "1px solid rgba(255, 255, 255, 0.15)",
+  borderRadius: "8px",
+  boxShadow: "0 8px 32px rgba(0, 0, 0, 0.5)",
+  minWidth: "200px",
+  overflow: "visible",
 };
 
 const menuItemStyles: React.CSSProperties = {
-  display: 'block',
-  width: '100%',
-  padding: '10px 16px',
-  fontSize: '14px',
-  color: '#e8e8f0',
-  background: 'transparent',
-  border: 'none',
-  textAlign: 'left',
-  cursor: 'pointer',
-  fontFamily: "'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  display: "block",
+  width: "100%",
+  padding: "10px 16px",
+  fontSize: "14px",
+  color: "#e8e8f0",
+  background: "transparent",
+  border: "none",
+  textAlign: "left",
+  cursor: "pointer",
+  fontFamily:
+    "'Noto Sans', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
 };
 
 const menuItemDisabledStyles: React.CSSProperties = {
   ...menuItemStyles,
-  color: '#6a6a80',
-  cursor: 'not-allowed',
+  color: "#6a6a80",
+  cursor: "not-allowed",
 };
 
 const subPanelStyles: React.CSSProperties = {
-  paddingLeft: '12px',
+  paddingLeft: "12px",
 };
 
-type AnimationPhase = 'mounting' | 'flying-in' | 'selected' | 'flying-out' | 'swiping';
+type AnimationPhase =
+  "mounting" | "flying-in" | "selected" | "flying-out" | "swiping";
 
 export default function SelectedPostOverlay({
   posts,
@@ -468,7 +511,7 @@ export default function SelectedPostOverlay({
   const headerControls = useAnimationControls();
   const metaAreaControls = useAnimationControls();
   const [portalEl, setPortalEl] = useState<HTMLElement | null>(null);
-  const [phase, setPhase] = useState<AnimationPhase>('mounting');
+  const [phase, setPhase] = useState<AnimationPhase>("mounting");
   const [hasPlayerBar, setHasPlayerBar] = useState(false);
   const [pressing, setPressing] = useState(false);
   const [likeBurstKey, setLikeBurstKey] = useState(0);
@@ -482,17 +525,27 @@ export default function SelectedPostOverlay({
     return () => clearTimeout(timer);
   }, [likeBurstKey]);
 
-  const [targetRect, setTargetRect] = useState(() => computeSelectedTargetRect());
-  const [headerPosition, setHeaderPosition] = useState(() => computePostHeaderPosition());
-  const [metaAreaPosition, setMetaAreaPosition] = useState(() => computeMetaAreaPosition());
+  const [targetRect, setTargetRect] = useState(() =>
+    computeSelectedTargetRect(),
+  );
+  const [headerPosition, setHeaderPosition] = useState(() =>
+    computePostHeaderPosition(),
+  );
+  const [metaAreaPosition, setMetaAreaPosition] = useState(() =>
+    computeMetaAreaPosition(),
+  );
   const [headerContentKey, setHeaderContentKey] = useState(0);
   const [metaContentKey, setMetaContentKey] = useState(0);
   const [showCommentsOverlay, setShowCommentsOverlay] = useState(false);
-  const [showReactionUsersOverlay, setShowReactionUsersOverlay] = useState(false);
+  const [showReactionUsersOverlay, setShowReactionUsersOverlay] =
+    useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [activeSubMenu, setActiveSubMenu] = useState<string | null>(null);
   const [showFormatSubPanel, setShowFormatSubPanel] = useState(false);
-  const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{
+    top: number;
+    right: number;
+  } | null>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const moreButtonRef = useRef<HTMLButtonElement>(null);
   const subPanelCloseTimeoutRef = useRef<number | null>(null);
@@ -503,7 +556,7 @@ export default function SelectedPostOverlay({
       subPanelCloseTimeoutRef.current = null;
     }
     setActiveSubMenu(menu);
-    if (menu !== 'download') setShowFormatSubPanel(false);
+    if (menu !== "download") setShowFormatSubPanel(false);
   }, []);
 
   const closeSubMenuDelayed = useCallback((delay: number = 300) => {
@@ -554,28 +607,30 @@ export default function SelectedPostOverlay({
 
   // Track which posts have been viewed in this SPO session (to avoid duplicate view calls)
   const viewedPostsRef = useRef<Set<number>>(new Set());
-  
+
   // Store the initial origin rect SYNCHRONOUSLY on first render to avoid timing issues
   // Using a ref to capture it immediately, then a state for re-renders
   const initialOriginRectRef = useRef<Rect | null>(null);
   if (initialOriginRectRef.current === null) {
     initialOriginRectRef.current = getOriginRectForIndex(selectedIndex);
   }
-  const [initialOriginRect] = useState<Rect | null>(() => initialOriginRectRef.current);
-  
+  const [initialOriginRect] = useState<Rect | null>(
+    () => initialOriginRectRef.current,
+  );
+
   // Track outgoing artwork during swipe transitions
-  const [outgoingPost, setOutgoingPost] = useState<{ 
-    post: SelectedPostOverlayPost; 
+  const [outgoingPost, setOutgoingPost] = useState<{
+    post: SelectedPostOverlayPost;
     rect: Rect;
     startX: number;
     startY: number;
     startWidth: number;
     startHeight: number;
   } | null>(null);
-  
+
   // Track incoming artwork during swipe transitions (separate from main to avoid React re-render issues)
-  const [incomingPost, setIncomingPost] = useState<{ 
-    post: SelectedPostOverlayPost; 
+  const [incomingPost, setIncomingPost] = useState<{
+    post: SelectedPostOverlayPost;
     rect: Rect;
     startX: number;
     startY: number;
@@ -584,15 +639,22 @@ export default function SelectedPostOverlay({
   } | null>(null);
 
   const pressTimerRef = useRef<number | null>(null);
-  const pressStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const pressStartRef = useRef<{ x: number; y: number; time: number } | null>(
+    null,
+  );
   const reactionInFlightRef = useRef(false);
 
-  const dismissToOriginAndCloseRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const dismissToOriginAndCloseRef = useRef<() => Promise<void>>(() =>
+    Promise.resolve(),
+  );
 
   const post = posts[selectedIndex];
 
   // Get current origin rect fresh from DOM (can change when scrolling/resizing)
-  const getCurrentOriginRect = useCallback(() => getOriginRectForIndex(selectedIndex), [getOriginRectForIndex, selectedIndex]);
+  const getCurrentOriginRect = useCallback(
+    () => getOriginRectForIndex(selectedIndex),
+    [getOriginRectForIndex, selectedIndex],
+  );
 
   const clearPressTimer = useCallback(() => {
     if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current);
@@ -612,9 +674,9 @@ export default function SelectedPostOverlay({
 
   // Create portal root
   useEffect(() => {
-    if (typeof document === 'undefined') return;
-    const el = document.createElement('div');
-    el.setAttribute('data-selected-post-overlay', 'true');
+    if (typeof document === "undefined") return;
+    const el = document.createElement("div");
+    el.setAttribute("data-selected-post-overlay", "true");
     document.body.appendChild(el);
     setPortalEl(el);
 
@@ -626,8 +688,9 @@ export default function SelectedPostOverlay({
   // The selection overlay should NOT darken the PlayerBar. We enforce this by
   // cutting the backdrop short by PLAYER_BAR_HEIGHT when the PlayerBar exists.
   useEffect(() => {
-    if (typeof document === 'undefined') return;
-    const check = () => setHasPlayerBar(!!document.querySelector('.player-bar'));
+    if (typeof document === "undefined") return;
+    const check = () =>
+      setHasPlayerBar(!!document.querySelector(".player-bar"));
     check();
     const obs = new MutationObserver(check);
     obs.observe(document.body, { childList: true, subtree: true });
@@ -636,7 +699,7 @@ export default function SelectedPostOverlay({
 
   // Keep target position aligned to the visual viewport (browser bar show/hide)
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     const vv = window.visualViewport;
     const handler = () => {
       const next = computeSelectedTargetRect();
@@ -645,32 +708,36 @@ export default function SelectedPostOverlay({
       setTargetRect(next);
       setHeaderPosition(nextHeaderPos);
       setMetaAreaPosition(nextMetaPos);
-      if (phase !== 'selected') return;
+      if (phase !== "selected") return;
       controls.start({
         x: next.x,
         y: next.y,
-        transition: reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 520, damping: 44 },
+        transition: reduceMotion
+          ? { duration: 0 }
+          : { type: "spring", stiffness: 520, damping: 44 },
       });
       metaAreaControls.start({
         x: nextMetaPos.x,
         y: nextMetaPos.y,
-        transition: reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 520, damping: 44 },
+        transition: reduceMotion
+          ? { duration: 0 }
+          : { type: "spring", stiffness: 520, damping: 44 },
       });
     };
 
     handler();
 
     if (vv) {
-      vv.addEventListener('resize', handler);
-      vv.addEventListener('scroll', handler);
+      vv.addEventListener("resize", handler);
+      vv.addEventListener("scroll", handler);
       return () => {
-        vv.removeEventListener('resize', handler);
-        vv.removeEventListener('scroll', handler);
+        vv.removeEventListener("resize", handler);
+        vv.removeEventListener("scroll", handler);
       };
     }
 
-    window.addEventListener('resize', handler);
-    return () => window.removeEventListener('resize', handler);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
   }, [controls, metaAreaControls, phase, reduceMotion]);
 
   // Fetch widget data (reactions + comments)
@@ -723,12 +790,12 @@ export default function SelectedPostOverlay({
       const hasToken = !!getAccessToken();
       try {
         const res = hasToken
-          ? await authenticatedFetch(url, { method: 'POST' })
-          : await fetch(url, { method: 'POST', credentials: 'include' });
+          ? await authenticatedFetch(url, { method: "POST" })
+          : await fetch(url, { method: "POST", credentials: "include" });
         // Optimistically increment view count on success (204)
         if (res.ok) {
           setWidgetData((prev) =>
-            prev ? { ...prev, views_count: prev.views_count + 1 } : prev
+            prev ? { ...prev, views_count: prev.views_count + 1 } : prev,
           );
           // Also update the cache so swiping away and back shows the updated count
           const cached = widgetCacheRef.current.get(postId);
@@ -749,16 +816,18 @@ export default function SelectedPostOverlay({
 
   // Animate in: wait for portal, then animate from grid position to center
   useEffect(() => {
-    if (!portalEl || !post || phase !== 'mounting') return;
-    
+    if (!portalEl || !post || phase !== "mounting") return;
+
     // Use a small delay to ensure the initial position is rendered
     const timer = requestAnimationFrame(() => {
-      setPhase('flying-in');
+      setPhase("flying-in");
 
       // Fade backdrop in concurrently with fly-in
       void backdropControls.start({
         opacity: 0.62,
-        transition: reduceMotion ? { duration: 0 } : { duration: 0.38, ease: [0.22, 1, 0.36, 1] },
+        transition: reduceMotion
+          ? { duration: 0 }
+          : { duration: 0.38, ease: [0.22, 1, 0.36, 1] },
       });
 
       // Animate header sliding in from top
@@ -792,7 +861,7 @@ export default function SelectedPostOverlay({
           ? { duration: 0 }
           : { duration: 0.3, ease: [0.22, 1, 0.36, 1] },
       });
-      
+
       const origin = initialOriginRect;
       if (!origin) {
         // Fallback: appear directly in selected position
@@ -803,7 +872,7 @@ export default function SelectedPostOverlay({
           height: targetRect.height,
           scale: 1,
         });
-        setPhase('selected');
+        setPhase("selected");
         return;
       }
 
@@ -826,61 +895,160 @@ export default function SelectedPostOverlay({
           height: targetRect.height,
           transition: reduceMotion
             ? { duration: 0 }
-            : { type: 'spring', stiffness: 400, damping: 35, mass: 0.8 },
+            : { type: "spring", stiffness: 400, damping: 35, mass: 0.8 },
         })
-        .then(() => setPhase('selected'));
+        .then(() => setPhase("selected"));
     });
 
     return () => cancelAnimationFrame(timer);
-  }, [backdropControls, controls, headerControls, metaAreaControls, portalEl, post, phase, initialOriginRect, reduceMotion, targetRect]);
+  }, [
+    backdropControls,
+    controls,
+    headerControls,
+    metaAreaControls,
+    portalEl,
+    post,
+    phase,
+    initialOriginRect,
+    reduceMotion,
+    targetRect,
+  ]);
 
-  const handleReactionClick = useCallback(async (emoji: string) => {
-    if (!post || reactionInFlightRef.current) return;
-    reactionInFlightRef.current = true;
+  const handleReactionClick = useCallback(
+    async (emoji: string) => {
+      if (!post || reactionInFlightRef.current) return;
+      reactionInFlightRef.current = true;
+      try {
+        const isActive = widgetData?.reactions.mine.includes(emoji) || false;
+        const next = !isActive;
+
+        // Optimistic update
+        if (widgetData) {
+          const newMine = next
+            ? [...widgetData.reactions.mine, emoji]
+            : widgetData.reactions.mine.filter((e) => e !== emoji);
+          const newTotals = { ...widgetData.reactions.totals };
+          newTotals[emoji] = Math.max(
+            0,
+            (newTotals[emoji] || 0) + (next ? 1 : -1),
+          );
+
+          const updated: WidgetData = {
+            ...widgetData,
+            reactions: {
+              ...widgetData.reactions,
+              mine: newMine,
+              totals: newTotals,
+            },
+          };
+          setWidgetData(updated);
+          widgetCacheRef.current.set(post.id, updated);
+        }
+
+        await toggleReaction(post.id, emoji, next);
+
+        // Re-fetch to sync
+        const data = await fetchWidgetData(post.id);
+        if (data) {
+          setWidgetData(data);
+          widgetCacheRef.current.set(post.id, data);
+        }
+      } catch (err) {
+        console.error("Failed to toggle reaction:", err);
+        // Revert on error
+        const data = await fetchWidgetData(post.id);
+        if (data) {
+          setWidgetData(data);
+          widgetCacheRef.current.set(post.id, data);
+        }
+      } finally {
+        reactionInFlightRef.current = false;
+      }
+    },
+    [post, widgetData],
+  );
+
+  // --- .mkpx layers file (docs/mkpx-upload/) ---
+  // All mkpx UI is gated on the server's config advertisement; attach/detach
+  // results are tracked in a per-post override map because the posts array
+  // belongs to the parent grid.
+  const [mkpxEnabled, setMkpxEnabled] = useState(false);
+  const [mkpxOverrides, setMkpxOverrides] = useState<Record<number, boolean>>(
+    {},
+  );
+  const mkpxFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getMkpxConfig().then((cfg) => {
+      if (!cancelled) setMkpxEnabled(!!cfg);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const postHasMkpx = post
+    ? (mkpxOverrides[post.id] ?? !!post.has_mkpx)
+    : false;
+  const isPostOwner =
+    !!post &&
+    !!currentUserId &&
+    post.owner_id != null &&
+    String(post.owner_id) === String(currentUserId);
+
+  const handleDownloadMkpx = useCallback(async () => {
+    if (!post) return;
+    setShowMoreMenu(false);
     try {
-      const isActive = widgetData?.reactions.mine.includes(emoji) || false;
-      const next = !isActive;
-      
-      // Optimistic update
-      if (widgetData) {
-        const newMine = next
-          ? [...widgetData.reactions.mine, emoji]
-          : widgetData.reactions.mine.filter(e => e !== emoji);
-        const newTotals = { ...widgetData.reactions.totals };
-        newTotals[emoji] = Math.max(0, (newTotals[emoji] || 0) + (next ? 1 : -1));
-        
-        const updated: WidgetData = {
-          ...widgetData,
-          reactions: {
-            ...widgetData.reactions,
-            mine: newMine,
-            totals: newTotals,
-          },
-        };
-        setWidgetData(updated);
-        widgetCacheRef.current.set(post.id, updated);
-      }
-
-      await toggleReaction(post.id, emoji, next);
-
-      // Re-fetch to sync
-      const data = await fetchWidgetData(post.id);
-      if (data) {
-        setWidgetData(data);
-        widgetCacheRef.current.set(post.id, data);
-      }
+      const blob = await downloadMkpx(post.public_sqid);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `makapix-${post.public_sqid}.mkpx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Failed to toggle reaction:', err);
-      // Revert on error
-      const data = await fetchWidgetData(post.id);
-      if (data) {
-        setWidgetData(data);
-        widgetCacheRef.current.set(post.id, data);
-      }
-    } finally {
-      reactionInFlightRef.current = false;
+      console.error("Layers file download failed:", err);
     }
-  }, [post, widgetData]);
+  }, [post]);
+
+  const handleAttachMkpxClick = useCallback(() => {
+    mkpxFileInputRef.current?.click();
+  }, []);
+
+  const handleMkpxFileSelected = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = ""; // allow re-selecting the same file later
+      if (!file || !post) return;
+      setShowMoreMenu(false);
+      try {
+        await attachMkpx(post.id, file);
+        setMkpxOverrides((prev) => ({ ...prev, [post.id]: true }));
+      } catch (err) {
+        console.error("Layers file attach failed:", err);
+        alert("Could not attach the layers file. Please try again.");
+      }
+    },
+    [post],
+  );
+
+  const handleDetachMkpx = useCallback(async () => {
+    if (!post) return;
+    setShowMoreMenu(false);
+    if (!window.confirm("Remove the layers (.mkpx) file from this post?"))
+      return;
+    try {
+      await detachMkpx(post.id);
+      setMkpxOverrides((prev) => ({ ...prev, [post.id]: false }));
+    } catch (err) {
+      console.error("Layers file removal failed:", err);
+      alert("Could not remove the layers file. Please try again.");
+    }
+  }, [post]);
 
   const handleEditInPiskel = useCallback(() => {
     if (!post) return;
@@ -899,12 +1067,13 @@ export default function SelectedPostOverlay({
     setShowMoreMenu(false);
     try {
       const resp = await fetch(`/api/d/${post.public_sqid}`);
-      if (!resp.ok) throw new Error('Download failed');
+      if (!resp.ok) throw new Error("Download failed");
       const blob = await resp.blob();
-      const nativeFile = post.files?.find(f => f.is_native) || post.files?.[0];
-      const ext = nativeFile?.format || 'png';
+      const nativeFile =
+        post.files?.find((f) => f.is_native) || post.files?.[0];
+      const ext = nativeFile?.format || "png";
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
       a.download = `${post.title || post.public_sqid}.${ext}`;
       document.body.appendChild(a);
@@ -912,7 +1081,7 @@ export default function SelectedPostOverlay({
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Download failed:', err);
+      console.error("Download failed:", err);
     }
   }, [post]);
 
@@ -921,10 +1090,10 @@ export default function SelectedPostOverlay({
     setShowMoreMenu(false);
     try {
       const resp = await fetch(`/api/d/${post.public_sqid}/upscaled`);
-      if (!resp.ok) throw new Error('Download failed');
+      if (!resp.ok) throw new Error("Download failed");
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
       a.download = `${post.title || post.public_sqid}_upscaled.webp`;
       document.body.appendChild(a);
@@ -932,39 +1101,46 @@ export default function SelectedPostOverlay({
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Download failed:', err);
+      console.error("Download failed:", err);
     }
   }, [post]);
 
-  const handleDownloadFormat = useCallback(async (format: string) => {
-    if (!post) return;
-    setShowMoreMenu(false);
-    setShowFormatSubPanel(false);
-    try {
-      const resp = await fetch(`/api/d/${post.public_sqid}.${format}`);
-      if (!resp.ok) throw new Error('Download failed');
-      const blob = await resp.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${post.title || post.public_sqid}.${format}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Download failed:', err);
-    }
-  }, [post]);
+  const handleDownloadFormat = useCallback(
+    async (format: string) => {
+      if (!post) return;
+      setShowMoreMenu(false);
+      setShowFormatSubPanel(false);
+      try {
+        const resp = await fetch(`/api/d/${post.public_sqid}.${format}`);
+        if (!resp.ok) throw new Error("Download failed");
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${post.title || post.public_sqid}.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error("Download failed:", err);
+      }
+    },
+    [post],
+  );
 
   const handleShareUpscaled = useCallback(async () => {
     if (!post) return;
     setShowMoreMenu(false);
     try {
       const resp = await fetch(`/api/d/${post.public_sqid}/upscaled`);
-      if (!resp.ok) throw new Error('Fetch failed');
+      if (!resp.ok) throw new Error("Fetch failed");
       const blob = await resp.blob();
-      const file = new File([blob], `${post.title || post.public_sqid}_upscaled.webp`, { type: 'image/webp' });
+      const file = new File(
+        [blob],
+        `${post.title || post.public_sqid}_upscaled.webp`,
+        { type: "image/webp" },
+      );
 
       if (navigator.share && navigator.canShare?.({ files: [file] })) {
         await navigator.share({
@@ -977,20 +1153,20 @@ export default function SelectedPostOverlay({
         if (navigator.clipboard && navigator.clipboard.writeText) {
           await navigator.clipboard.writeText(postUrl);
         } else {
-          const ta = document.createElement('textarea');
+          const ta = document.createElement("textarea");
           ta.value = postUrl;
-          ta.style.position = 'fixed';
-          ta.style.opacity = '0';
+          ta.style.position = "fixed";
+          ta.style.opacity = "0";
           document.body.appendChild(ta);
           ta.select();
-          document.execCommand('copy');
+          document.execCommand("copy");
           document.body.removeChild(ta);
         }
-        alert('Link copied to clipboard');
+        alert("Link copied to clipboard");
       }
     } catch (err) {
-      if ((err as Error).name !== 'AbortError') {
-        console.error('Share failed:', err);
+      if ((err as Error).name !== "AbortError") {
+        console.error("Share failed:", err);
       }
     }
   }, [post]);
@@ -1000,12 +1176,22 @@ export default function SelectedPostOverlay({
     setShowMoreMenu(false);
     try {
       const resp = await fetch(`/api/d/${post.public_sqid}`);
-      if (!resp.ok) throw new Error('Fetch failed');
+      if (!resp.ok) throw new Error("Fetch failed");
       const blob = await resp.blob();
-      const nativeFile2 = post.files?.find(f => f.is_native) || post.files?.[0];
-      const ext = nativeFile2?.format || 'png';
-      const mimeType = ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/png';
-      const file = new File([blob], `${post.title || post.public_sqid}.${ext}`, { type: mimeType });
+      const nativeFile2 =
+        post.files?.find((f) => f.is_native) || post.files?.[0];
+      const ext = nativeFile2?.format || "png";
+      const mimeType =
+        ext === "webp"
+          ? "image/webp"
+          : ext === "gif"
+            ? "image/gif"
+            : "image/png";
+      const file = new File(
+        [blob],
+        `${post.title || post.public_sqid}.${ext}`,
+        { type: mimeType },
+      );
 
       if (navigator.share && navigator.canShare?.({ files: [file] })) {
         await navigator.share({
@@ -1018,20 +1204,20 @@ export default function SelectedPostOverlay({
         if (navigator.clipboard && navigator.clipboard.writeText) {
           await navigator.clipboard.writeText(postUrl);
         } else {
-          const ta = document.createElement('textarea');
+          const ta = document.createElement("textarea");
           ta.value = postUrl;
-          ta.style.position = 'fixed';
-          ta.style.opacity = '0';
+          ta.style.position = "fixed";
+          ta.style.opacity = "0";
           document.body.appendChild(ta);
           ta.select();
-          document.execCommand('copy');
+          document.execCommand("copy");
           document.body.removeChild(ta);
         }
-        alert('Link copied to clipboard');
+        alert("Link copied to clipboard");
       }
     } catch (err) {
-      if ((err as Error).name !== 'AbortError') {
-        console.error('Share failed:', err);
+      if ((err as Error).name !== "AbortError") {
+        console.error("Share failed:", err);
       }
     }
   }, [post]);
@@ -1045,22 +1231,28 @@ export default function SelectedPostOverlay({
       await Promise.all([
         backdropControls.start({
           opacity: 0,
-          transition: reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.4, 0, 1, 1] },
+          transition: reduceMotion
+            ? { duration: 0 }
+            : { duration: 0.32, ease: [0.4, 0, 1, 1] },
         }),
         headerControls.start({
           y: headerPos.y - POST_HEADER_HEIGHT,
           opacity: 0,
-          transition: reduceMotion ? { duration: 0 } : { duration: 0.3, ease: [0.42, 0, 0.58, 1] },
+          transition: reduceMotion
+            ? { duration: 0 }
+            : { duration: 0.3, ease: [0.42, 0, 0.58, 1] },
         }),
         metaAreaControls.start({
           opacity: 0,
-          transition: reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.4, 0, 1, 1] },
+          transition: reduceMotion
+            ? { duration: 0 }
+            : { duration: 0.32, ease: [0.4, 0, 1, 1] },
         }),
       ]);
       onClose();
       return;
     }
-    setPhase('flying-out');
+    setPhase("flying-out");
     clearPressTimer();
     const headerPos = computePostHeaderPosition();
     const flyBack = controls.start({
@@ -1070,24 +1262,40 @@ export default function SelectedPostOverlay({
       height: origin.height,
       transition: reduceMotion
         ? { duration: 0 }
-        : { type: 'spring', stiffness: 500, damping: 40, mass: 0.8 },
+        : { type: "spring", stiffness: 500, damping: 40, mass: 0.8 },
     });
     const fadeOut = backdropControls.start({
       opacity: 0,
-      transition: reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.4, 0, 1, 1] },
+      transition: reduceMotion
+        ? { duration: 0 }
+        : { duration: 0.32, ease: [0.4, 0, 1, 1] },
     });
     const headerFadeOut = headerControls.start({
       y: headerPos.y - POST_HEADER_HEIGHT,
       opacity: 0,
-      transition: reduceMotion ? { duration: 0 } : { duration: 0.3, ease: [0.42, 0, 0.58, 1] },
+      transition: reduceMotion
+        ? { duration: 0 }
+        : { duration: 0.3, ease: [0.42, 0, 0.58, 1] },
     });
     const metaFadeOut = metaAreaControls.start({
       opacity: 0,
-      transition: reduceMotion ? { duration: 0 } : { duration: 0.32, ease: [0.4, 0, 1, 1] },
+      transition: reduceMotion
+        ? { duration: 0 }
+        : { duration: 0.32, ease: [0.4, 0, 1, 1] },
     });
     await Promise.all([flyBack, fadeOut, headerFadeOut, metaFadeOut]);
     onClose();
-  }, [backdropControls, clearPressTimer, controls, headerControls, metaAreaControls, getCurrentOriginRect, initialOriginRect, onClose, reduceMotion]);
+  }, [
+    backdropControls,
+    clearPressTimer,
+    controls,
+    headerControls,
+    metaAreaControls,
+    getCurrentOriginRect,
+    initialOriginRect,
+    onClose,
+    reduceMotion,
+  ]);
 
   // Keep ref updated with latest dismissToOriginAndClose
   useEffect(() => {
@@ -1095,7 +1303,7 @@ export default function SelectedPostOverlay({
   }, [dismissToOriginAndClose]);
 
   const snapBackToTarget = useCallback(async () => {
-    setPhase('flying-in');
+    setPhase("flying-in");
     clearPressTimer();
     await controls.start({
       x: targetRect.x,
@@ -1105,27 +1313,31 @@ export default function SelectedPostOverlay({
       scale: 1,
       transition: reduceMotion
         ? { duration: 0 }
-        : { type: 'spring', stiffness: 650, damping: 48, mass: 0.7 },
+        : { type: "spring", stiffness: 650, damping: 48, mass: 0.7 },
     });
-    setPhase('selected');
+    setPhase("selected");
   }, [clearPressTimer, controls, reduceMotion, targetRect]);
 
   const bounceX = useCallback(
-    async (dir: 'left' | 'right') => {
-      setPhase('swiping');
+    async (dir: "left" | "right") => {
+      setPhase("swiping");
       clearPressTimer();
-      const dx = dir === 'left' ? -24 : 24;
+      const dx = dir === "left" ? -24 : 24;
       await controls.start({
         x: targetRect.x + dx,
-        transition: reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 700, damping: 24, mass: 0.35 },
+        transition: reduceMotion
+          ? { duration: 0 }
+          : { type: "spring", stiffness: 700, damping: 24, mass: 0.35 },
       });
       await controls.start({
         x: targetRect.x,
-        transition: reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 650, damping: 36, mass: 0.45 },
+        transition: reduceMotion
+          ? { duration: 0 }
+          : { type: "spring", stiffness: 650, damping: 36, mass: 0.45 },
       });
-      setPhase('selected');
+      setPhase("selected");
     },
-    [clearPressTimer, controls, reduceMotion, targetRect.x]
+    [clearPressTimer, controls, reduceMotion, targetRect.x],
   );
 
   const swipeToIndex = useCallback(
@@ -1141,7 +1353,7 @@ export default function SelectedPostOverlay({
         return;
       }
 
-      setPhase('swiping');
+      setPhase("swiping");
       clearPressTimer();
 
       // Capture both posts for the transition
@@ -1149,8 +1361,8 @@ export default function SelectedPostOverlay({
       const nextPost = posts[nextIndex];
 
       // Set up the OUTGOING element at center (where it currently is)
-      setOutgoingPost({ 
-        post: currentPost, 
+      setOutgoingPost({
+        post: currentPost,
         rect: outRect,
         startX: targetRect.x,
         startY: targetRect.y,
@@ -1195,7 +1407,7 @@ export default function SelectedPostOverlay({
           height: outRect.height,
           transition: reduceMotion
             ? { duration: 0 }
-            : { type: 'spring', stiffness: 450, damping: 38, mass: 0.7 },
+            : { type: "spring", stiffness: 450, damping: 38, mass: 0.7 },
         }),
         incomingControls.start({
           x: targetRect.x,
@@ -1204,7 +1416,7 @@ export default function SelectedPostOverlay({
           height: targetRect.height,
           transition: reduceMotion
             ? { duration: 0 }
-            : { type: 'spring', stiffness: 450, damping: 38, mass: 0.7 },
+            : { type: "spring", stiffness: 450, damping: 38, mass: 0.7 },
         }),
       ]);
 
@@ -1217,15 +1429,15 @@ export default function SelectedPostOverlay({
         height: targetRect.height,
         scale: 1,
       });
-      
+
       // Trigger content crossfade by updating keys
       setHeaderContentKey((k) => k + 1);
       setMetaContentKey((k) => k + 1);
-      
+
       // Clear transition elements
       setOutgoingPost(null);
       setIncomingPost(null);
-      setPhase('selected');
+      setPhase("selected");
     },
     [
       clearPressTimer,
@@ -1241,13 +1453,13 @@ export default function SelectedPostOverlay({
       setSelectedIndex,
       snapBackToTarget,
       targetRect,
-    ]
+    ],
   );
 
   // ESC to close, arrow keys to navigate
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         if (showMoreMenu) {
           setShowMoreMenu(false);
           closeSubPanelImmediate();
@@ -1257,26 +1469,31 @@ export default function SelectedPostOverlay({
       }
 
       // Arrow key navigation (only when interactive and no overlays open)
-      if (phase === 'selected' && !showMoreMenu && !showCommentsOverlay && !showReactionUsersOverlay) {
-        if (e.key === 'ArrowRight') {
+      if (
+        phase === "selected" &&
+        !showMoreMenu &&
+        !showCommentsOverlay &&
+        !showReactionUsersOverlay
+      ) {
+        if (e.key === "ArrowRight") {
           e.preventDefault();
           if (selectedIndex < posts.length - 1) {
             void swipeToIndex(selectedIndex + 1);
           } else {
-            void bounceX('left');
+            void bounceX("left");
           }
-        } else if (e.key === 'ArrowLeft') {
+        } else if (e.key === "ArrowLeft") {
           e.preventDefault();
           if (selectedIndex > 0) {
             void swipeToIndex(selectedIndex - 1);
           } else {
-            void bounceX('right');
+            void bounceX("right");
           }
         }
       }
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, [
     closeSubPanelImmediate,
     dismissToOriginAndClose,
@@ -1295,18 +1512,22 @@ export default function SelectedPostOverlay({
     if (!showMoreMenu) return;
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as Node;
-      if (moreMenuRef.current && !moreMenuRef.current.contains(target) &&
-          moreButtonRef.current && !moreButtonRef.current.contains(target)) {
+      if (
+        moreMenuRef.current &&
+        !moreMenuRef.current.contains(target) &&
+        moreButtonRef.current &&
+        !moreButtonRef.current.contains(target)
+      ) {
         setShowMoreMenu(false);
         closeSubPanelImmediate();
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [closeSubPanelImmediate, showMoreMenu]);
 
   if (!portalEl || !post) return null;
-  
+
   // Compute initial position for the motion.div
   const origin = initialOriginRect;
   const initialX = origin?.left ?? targetRect.x;
@@ -1314,12 +1535,21 @@ export default function SelectedPostOverlay({
   const initialW = origin?.width ?? targetRect.width;
   const initialH = origin?.height ?? targetRect.height;
 
-  const isInteractive = phase === 'selected';
-  const totalReactions = widgetData ? Object.values(widgetData.reactions.totals).reduce((sum, count) => sum + count, 0) : 0;
+  const isInteractive = phase === "selected";
+  const totalReactions = widgetData
+    ? Object.values(widgetData.reactions.totals).reduce(
+        (sum, count) => sum + count,
+        0,
+      )
+    : 0;
   const totalComments = widgetData?.comments.length || 0;
 
   return createPortal(
-    <div style={{ ...overlayStyles, bottom: hasPlayerBar ? PLAYER_BAR_HEIGHT : 0 }} role="dialog" aria-modal="true">
+    <div
+      style={{ ...overlayStyles, bottom: hasPlayerBar ? PLAYER_BAR_HEIGHT : 0 }}
+      role="dialog"
+      aria-modal="true"
+    >
       <motion.div
         style={{
           ...backdropStyles,
@@ -1344,26 +1574,30 @@ export default function SelectedPostOverlay({
         aria-label="post-header"
         role="banner"
         style={{
-          position: 'fixed',
+          position: "fixed",
           left: 0,
           top: 0,
           width: 384,
           height: POST_HEADER_HEIGHT,
-          background: '#000',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 16px',
+          background: "#000",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 16px",
           zIndex: 20001,
-          pointerEvents: 'auto',
+          pointerEvents: "auto",
         }}
-        initial={{ x: headerPosition.x, y: headerPosition.y - POST_HEADER_HEIGHT, opacity: 0 }}
+        initial={{
+          x: headerPosition.x,
+          y: headerPosition.y - POST_HEADER_HEIGHT,
+          opacity: 0,
+        }}
         animate={headerControls}
       >
         <AnimatePresence mode="wait">
           <motion.div
             key={headerContentKey}
-            style={{ ...postHeaderLeftStyles, pointerEvents: 'auto' }}
+            style={{ ...postHeaderLeftStyles, pointerEvents: "auto" }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -1373,7 +1607,13 @@ export default function SelectedPostOverlay({
               <div
                 role="button"
                 tabIndex={0}
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', pointerEvents: 'auto' }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  cursor: "pointer",
+                  pointerEvents: "auto",
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
@@ -1382,7 +1622,7 @@ export default function SelectedPostOverlay({
                   }
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
+                  if (e.key === "Enter" || e.key === " ") {
                     e.stopPropagation();
                     e.preventDefault();
                     if (post.owner?.public_sqid) {
@@ -1393,38 +1633,78 @@ export default function SelectedPostOverlay({
               >
                 {post.owner?.avatar_url ? (
                   <img
-                    src={post.owner.avatar_url.startsWith('http') ? post.owner.avatar_url : `${typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin) : ''}${post.owner.avatar_url}`}
-                    alt={post.owner.handle || 'Author'}
+                    src={
+                      post.owner.avatar_url.startsWith("http")
+                        ? post.owner.avatar_url
+                        : `${typeof window !== "undefined" ? process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin : ""}${post.owner.avatar_url}`
+                    }
+                    alt={post.owner.handle || "Author"}
                     style={postAuthorAvatarStyles}
                   />
                 ) : (
-                  <div style={{ ...postAuthorAvatarStyles, background: '#1a1a24', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style={{ color: '#6a6a80' }}>
-                      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                  <div
+                    style={{
+                      ...postAuthorAvatarStyles,
+                      background: "#1a1a24",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      style={{ color: "#6a6a80" }}
+                    >
+                      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
                     </svg>
                   </div>
                 )}
                 {post.owner?.handle && (
-                  <span style={postAuthorHandleStyles}>{post.owner.handle}</span>
+                  <span style={postAuthorHandleStyles}>
+                    {post.owner.handle}
+                  </span>
                 )}
               </div>
             ) : (
               <>
                 {post.owner?.avatar_url ? (
                   <img
-                    src={post.owner.avatar_url.startsWith('http') ? post.owner.avatar_url : `${typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin) : ''}${post.owner.avatar_url}`}
-                    alt={post.owner.handle || 'Author'}
+                    src={
+                      post.owner.avatar_url.startsWith("http")
+                        ? post.owner.avatar_url
+                        : `${typeof window !== "undefined" ? process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin : ""}${post.owner.avatar_url}`
+                    }
+                    alt={post.owner.handle || "Author"}
                     style={postAuthorAvatarStyles}
                   />
                 ) : (
-                  <div style={{ ...postAuthorAvatarStyles, background: '#1a1a24', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style={{ color: '#6a6a80' }}>
-                      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                  <div
+                    style={{
+                      ...postAuthorAvatarStyles,
+                      background: "#1a1a24",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      style={{ color: "#6a6a80" }}
+                    >
+                      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
                     </svg>
                   </div>
                 )}
                 {post.owner?.handle && (
-                  <span style={postAuthorHandleStyles}>{post.owner.handle}</span>
+                  <span style={postAuthorHandleStyles}>
+                    {post.owner.handle}
+                  </span>
                 )}
               </>
             )}
@@ -1444,30 +1724,36 @@ export default function SelectedPostOverlay({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: reduceMotion ? 0 : 0.2 }}
-                style={{ display: 'flex', alignItems: 'center', gap: '12px' }}
+                style={{ display: "flex", alignItems: "center", gap: "12px" }}
               >
                 <div
-                  style={{ ...postReactionCountStyles, cursor: 'pointer' }}
+                  style={{ ...postReactionCountStyles, cursor: "pointer" }}
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowReactionUsersOverlay(true);
                   }}
                 >
-                  <span style={{ fontSize: '16px', marginRight: '-2px' }}>⚡</span>
+                  <span style={{ fontSize: "16px", marginRight: "-2px" }}>
+                    ⚡
+                  </span>
                   <span>{totalReactions}</span>
                 </div>
                 <div
-                  style={{ ...postCommentCountStyles, cursor: 'pointer' }}
+                  style={{ ...postCommentCountStyles, cursor: "pointer" }}
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowCommentsOverlay(true);
                   }}
                 >
-                  <span style={{ fontSize: '16px', marginRight: '-2px' }}>💬</span>
+                  <span style={{ fontSize: "16px", marginRight: "-2px" }}>
+                    💬
+                  </span>
                   <span>{totalComments}</span>
                 </div>
                 <div style={postViewCountStyles}>
-                  <span style={{ fontSize: '16px', marginRight: '-2px' }}>👁</span>
+                  <span style={{ fontSize: "16px", marginRight: "-2px" }}>
+                    👁
+                  </span>
                   <span>{widgetData?.views_count ?? 0}</span>
                 </div>
                 <button
@@ -1476,7 +1762,8 @@ export default function SelectedPostOverlay({
                   onClick={(e) => {
                     e.stopPropagation();
                     if (!showMoreMenu && moreButtonRef.current) {
-                      const rect = moreButtonRef.current.getBoundingClientRect();
+                      const rect =
+                        moreButtonRef.current.getBoundingClientRect();
                       const viewportWidth = window.innerWidth;
                       const menuWidth = 200; // minWidth from moreMenuStyles
                       const margin = 8;
@@ -1521,7 +1808,7 @@ export default function SelectedPostOverlay({
             style={{
               ...moreMenuStyles,
               right: menuPosition?.right ?? 16,
-              top: menuPosition?.top ?? (POST_HEADER_HEIGHT + 4),
+              top: menuPosition?.top ?? POST_HEADER_HEIGHT + 4,
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -1533,38 +1820,74 @@ export default function SelectedPostOverlay({
               Add to my favorites
             </button>
 
-            <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '4px 0' }} />
+            <div
+              style={{
+                height: 1,
+                background: "rgba(255,255,255,0.1)",
+                margin: "4px 0",
+              }}
+            />
 
             {/* Edit submenu */}
             <div
-              onMouseEnter={() => openSubMenu('edit')}
+              onMouseEnter={() => openSubMenu("edit")}
               onMouseLeave={() => closeSubMenuDelayed()}
             >
               <button
-                style={{ ...menuItemStyles, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                onClick={(e) => { e.stopPropagation(); activeSubMenu === 'edit' ? setActiveSubMenu(null) : openSubMenu('edit'); }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                style={{
+                  ...menuItemStyles,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  activeSubMenu === "edit"
+                    ? setActiveSubMenu(null)
+                    : openSubMenu("edit");
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = "rgba(255,255,255,0.08)")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = "transparent")
+                }
               >
                 <span>Edit</span>
-                <span style={{ marginLeft: '8px' }}>{activeSubMenu === 'edit' ? '▼' : '▶'}</span>
+                <span style={{ marginLeft: "8px" }}>
+                  {activeSubMenu === "edit" ? "▼" : "▶"}
+                </span>
               </button>
-              {activeSubMenu === 'edit' && (
+              {activeSubMenu === "edit" && (
                 <div style={subPanelStyles}>
                   <button
                     style={menuItemStyles}
                     onClick={handleEditInPiskel}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background =
+                        "rgba(255,255,255,0.08)")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background = "transparent")
+                    }
                   >
                     In Piskel
                   </button>
-                  {['png', 'webp', 'gif', 'bmp'].includes((post.files?.find(f => f.is_native)?.format || '').toLowerCase()) ? (
+                  {["png", "webp", "gif", "bmp"].includes(
+                    (
+                      post.files?.find((f) => f.is_native)?.format || ""
+                    ).toLowerCase(),
+                  ) ? (
                     <button
                       style={menuItemStyles}
                       onClick={handleEditInPixelc}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background =
+                          "rgba(255,255,255,0.08)")
+                      }
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.background = "transparent")
+                      }
                     >
                       In Pixelc
                     </button>
@@ -1579,33 +1902,59 @@ export default function SelectedPostOverlay({
 
             {/* Share submenu */}
             <div
-              onMouseEnter={() => openSubMenu('share')}
+              onMouseEnter={() => openSubMenu("share")}
               onMouseLeave={() => closeSubMenuDelayed()}
             >
               <button
-                style={{ ...menuItemStyles, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                onClick={(e) => { e.stopPropagation(); activeSubMenu === 'share' ? setActiveSubMenu(null) : openSubMenu('share'); }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                style={{
+                  ...menuItemStyles,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  activeSubMenu === "share"
+                    ? setActiveSubMenu(null)
+                    : openSubMenu("share");
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = "rgba(255,255,255,0.08)")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = "transparent")
+                }
               >
                 <span>Share</span>
-                <span style={{ marginLeft: '8px' }}>{activeSubMenu === 'share' ? '▼' : '▶'}</span>
+                <span style={{ marginLeft: "8px" }}>
+                  {activeSubMenu === "share" ? "▼" : "▶"}
+                </span>
               </button>
-              {activeSubMenu === 'share' && (
+              {activeSubMenu === "share" && (
                 <div style={subPanelStyles}>
                   <button
                     style={menuItemStyles}
                     onClick={handleShareUpscaled}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background =
+                        "rgba(255,255,255,0.08)")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background = "transparent")
+                    }
                   >
                     Upscaled
                   </button>
                   <button
                     style={menuItemStyles}
                     onClick={handleShareNative}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background =
+                        "rgba(255,255,255,0.08)")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background = "transparent")
+                    }
                   >
                     Native size
                   </button>
@@ -1615,33 +1964,59 @@ export default function SelectedPostOverlay({
 
             {/* Download submenu */}
             <div
-              onMouseEnter={() => openSubMenu('download')}
+              onMouseEnter={() => openSubMenu("download")}
               onMouseLeave={() => closeSubMenuDelayed()}
             >
               <button
-                style={{ ...menuItemStyles, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                onClick={(e) => { e.stopPropagation(); activeSubMenu === 'download' ? setActiveSubMenu(null) : openSubMenu('download'); }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                style={{
+                  ...menuItemStyles,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  activeSubMenu === "download"
+                    ? setActiveSubMenu(null)
+                    : openSubMenu("download");
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = "rgba(255,255,255,0.08)")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = "transparent")
+                }
               >
                 <span>Download</span>
-                <span style={{ marginLeft: '8px' }}>{activeSubMenu === 'download' ? '▼' : '▶'}</span>
+                <span style={{ marginLeft: "8px" }}>
+                  {activeSubMenu === "download" ? "▼" : "▶"}
+                </span>
               </button>
-              {activeSubMenu === 'download' && (
+              {activeSubMenu === "download" && (
                 <div style={subPanelStyles}>
                   <button
                     style={menuItemStyles}
                     onClick={handleDownloadUpscaled}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background =
+                        "rgba(255,255,255,0.08)")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background = "transparent")
+                    }
                   >
                     Upscaled
                   </button>
                   <button
                     style={menuItemStyles}
                     onClick={handleDownloadNative}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background =
+                        "rgba(255,255,255,0.08)")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background = "transparent")
+                    }
                   >
                     Native format
                   </button>
@@ -1651,55 +2026,150 @@ export default function SelectedPostOverlay({
                     onMouseLeave={() => closeFormatSubPanelDelayed()}
                   >
                     <button
-                      style={{ ...menuItemStyles, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                      onClick={(e) => { e.stopPropagation(); showFormatSubPanel ? setShowFormatSubPanel(false) : openFormatSub(); }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      style={{
+                        ...menuItemStyles,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        showFormatSubPanel
+                          ? setShowFormatSubPanel(false)
+                          : openFormatSub();
+                      }}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background =
+                          "rgba(255,255,255,0.08)")
+                      }
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.background = "transparent")
+                      }
                     >
                       <span>Alternative format</span>
-                      <span style={{ marginLeft: '8px' }}>{showFormatSubPanel ? '▼' : '▶'}</span>
+                      <span style={{ marginLeft: "8px" }}>
+                        {showFormatSubPanel ? "▼" : "▶"}
+                      </span>
                     </button>
-                    {showFormatSubPanel && (() => {
-                      const alternativeFormats = (post.files || [])
-                        .filter(f => !f.is_native)
-                        .map(f => f.format);
-                      return (
-                        <div style={subPanelStyles}>
-                          {alternativeFormats.length > 0 ? (
-                            alternativeFormats.map(format => (
-                              <button
-                                key={format}
-                                style={menuItemStyles}
-                                onClick={() => handleDownloadFormat(format)}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-                                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    {showFormatSubPanel &&
+                      (() => {
+                        const alternativeFormats = (post.files || [])
+                          .filter((f) => !f.is_native)
+                          .map((f) => f.format);
+                        return (
+                          <div style={subPanelStyles}>
+                            {alternativeFormats.length > 0 ? (
+                              alternativeFormats.map((format) => (
+                                <button
+                                  key={format}
+                                  style={menuItemStyles}
+                                  onClick={() => handleDownloadFormat(format)}
+                                  onMouseEnter={(e) =>
+                                    (e.currentTarget.style.background =
+                                      "rgba(255,255,255,0.08)")
+                                  }
+                                  onMouseLeave={(e) =>
+                                    (e.currentTarget.style.background =
+                                      "transparent")
+                                  }
+                                >
+                                  {format.toUpperCase()}
+                                </button>
+                              ))
+                            ) : (
+                              <div
+                                style={{
+                                  ...menuItemStyles,
+                                  color: "#6a6a80",
+                                  cursor: "default",
+                                }}
                               >
-                                {format.toUpperCase()}
-                              </button>
-                            ))
-                          ) : (
-                            <div style={{ ...menuItemStyles, color: '#6a6a80', cursor: 'default' }}>
-                              No alternatives
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
+                                No alternatives
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                   </div>
+                  {mkpxEnabled && postHasMkpx && !!currentUserId && (
+                    <button
+                      style={menuItemStyles}
+                      onClick={handleDownloadMkpx}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background =
+                          "rgba(255,255,255,0.08)")
+                      }
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.background = "transparent")
+                      }
+                    >
+                      Layers file (.mkpx)
+                    </button>
+                  )}
                 </div>
               )}
             </div>
+
+            {/* Owner-only: layers file management (docs/mkpx-upload/) */}
+            {mkpxEnabled && isPostOwner && (
+              <>
+                <div
+                  style={{
+                    height: 1,
+                    background: "rgba(255,255,255,0.1)",
+                    margin: "4px 0",
+                  }}
+                />
+                <button
+                  style={menuItemStyles}
+                  onClick={handleAttachMkpxClick}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.background =
+                      "rgba(255,255,255,0.08)")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.background = "transparent")
+                  }
+                >
+                  {postHasMkpx ? "Replace layers file…" : "Attach layers file…"}
+                </button>
+                {postHasMkpx && (
+                  <button
+                    style={menuItemStyles}
+                    onClick={handleDetachMkpx}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background =
+                        "rgba(255,255,255,0.08)")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background = "transparent")
+                    }
+                  >
+                    Remove layers file
+                  </button>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}
+
+      {/* Hidden picker for attaching/replacing a layers file */}
+      <input
+        ref={mkpxFileInputRef}
+        type="file"
+        accept=".mkpx"
+        style={{ display: "none" }}
+        onChange={handleMkpxFileSelected}
+      />
 
       {/* Outgoing artwork during swipe transition (flies back to grid) */}
       {outgoingPost && (
         <motion.div
           style={{
             ...artworkShellStyles,
-            boxShadow: '0 18px 48px rgba(0,0,0,0.35)',
-            pointerEvents: 'none',
+            boxShadow: "0 18px 48px rgba(0,0,0,0.35)",
+            pointerEvents: "none",
           }}
           initial={{
             x: outgoingPost.startX,
@@ -1713,7 +2183,10 @@ export default function SelectedPostOverlay({
         >
           <div style={artworkClipStyles}>
             <img
-              src={ensureCompatibleArtUrl(outgoingPost.post.art_url, outgoingPost.post.frame_count)}
+              src={ensureCompatibleArtUrl(
+                outgoingPost.post.art_url,
+                outgoingPost.post.frame_count,
+              )}
               alt={outgoingPost.post.title}
               draggable={false}
               style={artworkImageStyles}
@@ -1727,8 +2200,8 @@ export default function SelectedPostOverlay({
         <motion.div
           style={{
             ...artworkShellStyles,
-            boxShadow: '0 18px 48px rgba(0,0,0,0.35)',
-            pointerEvents: 'none',
+            boxShadow: "0 18px 48px rgba(0,0,0,0.35)",
+            pointerEvents: "none",
           }}
           initial={{
             x: incomingPost.startX,
@@ -1742,7 +2215,10 @@ export default function SelectedPostOverlay({
         >
           <div style={artworkClipStyles}>
             <img
-              src={ensureCompatibleArtUrl(incomingPost.post.art_url, incomingPost.post.frame_count)}
+              src={ensureCompatibleArtUrl(
+                incomingPost.post.art_url,
+                incomingPost.post.frame_count,
+              )}
               alt={incomingPost.post.title}
               draggable={false}
               style={artworkImageStyles}
@@ -1756,10 +2232,10 @@ export default function SelectedPostOverlay({
         style={{
           ...artworkShellStyles,
           scale: pressing ? 0.985 : 1,
-          boxShadow: '0 18px 48px rgba(0,0,0,0.35)',
+          boxShadow: "0 18px 48px rgba(0,0,0,0.35)",
           // Hide during swipe transitions when outgoing/incoming are visible
-          opacity: (outgoingPost || incomingPost) ? 0 : 1,
-          pointerEvents: (outgoingPost || incomingPost) ? 'none' : 'auto',
+          opacity: outgoingPost || incomingPost ? 0 : 1,
+          pointerEvents: outgoingPost || incomingPost ? "none" : "auto",
         }}
         initial={{
           x: initialX,
@@ -1774,14 +2250,18 @@ export default function SelectedPostOverlay({
         dragElastic={0.12}
         onPointerDown={(e) => {
           if (!isInteractive) return;
-          pressStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
+          pressStartRef.current = {
+            x: e.clientX,
+            y: e.clientY,
+            time: Date.now(),
+          };
           setPressing(true);
           pressTimerRef.current = window.setTimeout(() => {
             pressTimerRef.current = null;
             setLikeBurstKey((k) => k + 1);
             if (navigator?.vibrate) navigator.vibrate(18);
             // Long press on artwork shows like animation
-            void handleReactionClick('👍');
+            void handleReactionClick("👍");
           }, 420);
         }}
         onPointerMove={(e) => {
@@ -1828,14 +2308,14 @@ export default function SelectedPostOverlay({
           if (isHorizontal) {
             if (dx < 0) {
               if (selectedIndex >= posts.length - 1) {
-                await bounceX('left');
+                await bounceX("left");
               } else {
                 await swipeToIndex(selectedIndex + 1);
               }
               return;
             }
             if (selectedIndex <= 0) {
-              await bounceX('right');
+              await bounceX("right");
             } else {
               await swipeToIndex(selectedIndex - 1);
             }
@@ -1860,7 +2340,7 @@ export default function SelectedPostOverlay({
             href={`/p/${post.public_sqid}`}
             draggable={false}
             onClick={(e) => e.preventDefault()}
-            style={{ display: 'block', width: '100%', height: '100%' }}
+            style={{ display: "block", width: "100%", height: "100%" }}
           >
             <img
               src={ensureCompatibleArtUrl(post.art_url, post.frame_count)}
@@ -1881,7 +2361,7 @@ export default function SelectedPostOverlay({
                 y: 0,
                 transition: reduceMotion
                   ? { duration: 0 }
-                  : { type: 'spring', stiffness: 640, damping: 32, mass: 0.35 },
+                  : { type: "spring", stiffness: 640, damping: 32, mass: 0.35 },
               }}
               exit={{ opacity: 0 }}
             >
@@ -1911,27 +2391,39 @@ export default function SelectedPostOverlay({
             {/* Technical Info Row */}
             <div style={technicalInfoRowStyles}>
               {formatDateTime(post.created_at)}
-              <span style={{ margin: '0 8px', opacity: 0.5 }}>&bull;</span>
-              <span style={post.frame_count > 256 ? { color: '#ff8080' } : undefined}>
+              <span style={{ margin: "0 8px", opacity: 0.5 }}>&bull;</span>
+              <span
+                style={
+                  post.frame_count > 256 ? { color: "#ff8080" } : undefined
+                }
+              >
                 {post.frame_count}
               </span>
               &times;({post.width}&times;{post.height})
-              <span style={{ margin: '0 8px', opacity: 0.5 }}>&bull;</span>
-              {formatFileSizeCompact(post.files?.find(f => f.is_native)?.file_bytes || 0)} {(post.files?.find(f => f.is_native)?.format || 'png').toUpperCase()}
+              <span style={{ margin: "0 8px", opacity: 0.5 }}>&bull;</span>
+              {formatFileSizeCompact(
+                post.files?.find((f) => f.is_native)?.file_bytes || 0,
+              )}{" "}
+              {(
+                post.files?.find((f) => f.is_native)?.format || "png"
+              ).toUpperCase()}
             </div>
 
             {/* Reactions Row */}
             <div style={reactionsRowStyles}>
-              {EMOJI_OPTIONS.map(emoji => {
+              {EMOJI_OPTIONS.map((emoji) => {
                 const count = widgetData?.reactions.totals[emoji] || 0;
-                const isActive = widgetData?.reactions.mine.includes(emoji) || false;
+                const isActive =
+                  widgetData?.reactions.mine.includes(emoji) || false;
                 return (
                   <button
                     key={emoji}
                     style={{
                       ...reactionButtonStyles,
-                      borderColor: isActive ? '#00d4ff' : 'transparent',
-                      background: isActive ? 'rgba(0, 212, 255, 0.15)' : 'transparent',
+                      borderColor: isActive ? "#00d4ff" : "transparent",
+                      background: isActive
+                        ? "rgba(0, 212, 255, 0.15)"
+                        : "transparent",
                     }}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1940,7 +2432,9 @@ export default function SelectedPostOverlay({
                     disabled={loadingWidget}
                   >
                     {emoji}
-                    {count > 0 && <span style={reactionBadgeStyles}>{count}</span>}
+                    {count > 0 && (
+                      <span style={reactionBadgeStyles}>{count}</span>
+                    )}
                   </button>
                 );
               })}
@@ -1952,15 +2446,23 @@ export default function SelectedPostOverlay({
                 }}
               >
                 <span>💬</span>
-                {totalComments > 0 && <span style={{ fontSize: '12px', color: '#00d4ff' }}>{totalComments}</span>}
+                {totalComments > 0 && (
+                  <span style={{ fontSize: "12px", color: "#00d4ff" }}>
+                    {totalComments}
+                  </span>
+                )}
               </button>
             </div>
 
             {/* Description Area */}
-            <div style={{
-              ...descriptionAreaStyles,
-              ...(!post.description ? { minHeight: Math.ceil(13 * 1.5 / 2), padding: 0 } : {}),
-            }}>
+            <div
+              style={{
+                ...descriptionAreaStyles,
+                ...(!post.description
+                  ? { minHeight: Math.ceil((13 * 1.5) / 2), padding: 0 }
+                  : {}),
+              }}
+            >
               {post.description || null}
             </div>
           </motion.div>
@@ -1984,6 +2486,6 @@ export default function SelectedPostOverlay({
         onClose={() => setShowReactionUsersOverlay(false)}
       />
     </div>,
-    portalEl
+    portalEl,
   );
 }

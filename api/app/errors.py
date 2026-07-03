@@ -62,6 +62,9 @@ class ErrorCode(StrEnum):
     quota_exceeded = "quota_exceeded"
     reaction_cap_reached = "reaction_cap_reached"
     comment_too_deep = "comment_too_deep"
+    # .mkpx layers-file attachments (docs/mkpx-upload/API-CONTRACT.md §3)
+    mkpx_invalid = "mkpx_invalid"
+    mkpx_too_large = "mkpx_too_large"
 
 
 # Fallback: HTTP status -> generic ErrorCode for plain HTTPExceptions raised

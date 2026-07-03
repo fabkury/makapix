@@ -1458,6 +1458,20 @@
         "title": "BlogPostUpdate",
         "type": "object"
       },
+      "Body_attach_mkpx_v1_post__id__mkpx_post": {
+        "properties": {
+          "mkpx": {
+            "contentMediaType": "application/octet-stream",
+            "title": "Mkpx",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mkpx"
+        ],
+        "title": "Body_attach_mkpx_v1_post__id__mkpx_post",
+        "type": "object"
+      },
       "Body_relay_upload_relay_pages_upload_post": {
         "properties": {
           "bundle": {
@@ -1534,6 +1548,18 @@
               }
             ],
             "title": "License Id"
+          },
+          "mkpx": {
+            "anyOf": [
+              {
+                "contentMediaType": "application/octet-stream",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mkpx"
           },
           "title": {
             "maxLength": 128,
@@ -3315,6 +3341,25 @@
         "title": "MeUploadsQuota",
         "type": "object"
       },
+      "MkpxUploadConfig": {
+        "description": "Capability advertisement for .mkpx layers-file attachments.\n\nAbsent from the config (or enabled=False) means the feature is off and\nclients must hide all mkpx UI (docs/mkpx-upload/API-CONTRACT.md §1).",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "max_file_bytes": {
+            "title": "Max File Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "max_file_bytes"
+        ],
+        "title": "MkpxUploadConfig",
+        "type": "object"
+      },
       "NotificationPreferences": {
         "description": "Per-notification-type push preferences ({type: bool}); absent => on.",
         "properties": {
@@ -4817,6 +4862,11 @@
             "title": "Frame Count",
             "type": "integer"
           },
+          "has_mkpx": {
+            "default": false,
+            "title": "Has Mkpx",
+            "type": "boolean"
+          },
           "hashtags": {
             "default": [],
             "items": {
@@ -4893,6 +4943,29 @@
               }
             ],
             "title": "Min Frame Duration Ms"
+          },
+          "mkpx_attached_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mkpx Attached At"
+          },
+          "mkpx_file_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mkpx File Bytes"
           },
           "non_conformant": {
             "title": "Non Conformant",
@@ -7655,6 +7728,16 @@
           "max_file_bytes": {
             "title": "Max File Bytes",
             "type": "integer"
+          },
+          "mkpx": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MkpxUploadConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "rotations_allowed": {
             "default": true,
@@ -15631,6 +15714,52 @@
         ]
       }
     },
+    "/v1/d/{public_sqid}.mkpx": {
+      "get": {
+        "description": "Download a post's attached .mkpx layers file.\n\nAuthentication required (docs/mkpx-upload/ D3) — this and the\nvault-serving guards are why layers files never ride the public static\nmounts. Declared before the generic `.{extension}` route so the literal\nsuffix wins; same visibility rules as the other /d/ downloads.",
+        "operationId": "download_mkpx_by_sqid_v1_d__public_sqid__mkpx_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_sqid",
+            "required": true,
+            "schema": {
+              "title": "Public Sqid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Mkpx By Sqid",
+        "tags": [
+          "Artwork"
+        ]
+      }
+    },
     "/v1/d/{public_sqid}.{extension}": {
       "get": {
         "description": "Download artwork file in a specific format by public Sqids ID.\n\nAvailable formats depend on the post's formats_available field\n(populated by SSAFPP processing).\n\nSupported extensions: gif, png, bmp, webp",
@@ -18652,6 +18781,110 @@
           }
         ],
         "summary": "Hide Post",
+        "tags": [
+          "Posts"
+        ]
+      }
+    },
+    "/v1/post/{id}/mkpx": {
+      "delete": {
+        "description": "Remove the attached .mkpx layers file (author only). 404 if the post has\nnone. Consumes no rate-limit token (docs/mkpx-upload/ D9).",
+        "operationId": "detach_mkpx_v1_post__id__mkpx_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Detach Mkpx",
+        "tags": [
+          "Posts"
+        ]
+      },
+      "post": {
+        "description": "Attach an .mkpx layers file to an existing post, or silently replace the\none already attached (author only; docs/mkpx-upload/). Consumes an\nupload rate-limit token; the file counts toward the owner's storage\nquota (replacement counts only the delta).",
+        "operationId": "attach_mkpx_v1_post__id__mkpx_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_attach_mkpx_v1_post__id__mkpx_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Attach Mkpx",
         "tags": [
           "Posts"
         ]

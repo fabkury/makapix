@@ -11,17 +11,19 @@ from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
-from ..auth import get_current_user_optional
+from ..auth import get_current_user, get_current_user_optional
 from ..deps import get_db
 from ..utils.visibility import can_access_post
 from ..utils.site_tracking import record_site_event
 from ..utils.view_tracking import record_view, ViewType, ViewSource
 from ..vault import (
     get_artwork_file_path,
+    get_mkpx_file_path,
     get_upscaled_file_path,
     ALLOWED_MIME_TYPES,
     FORMAT_TO_EXT,
     FORMAT_TO_MIME,
+    MKPX_MIME,
 )
 
 logger = logging.getLogger(__name__)
@@ -124,6 +126,66 @@ def get_post_by_sqid(
     )
 
     return schemas.Post.model_validate(post)
+
+
+@router.get("/d/{public_sqid}.mkpx")
+def download_mkpx_by_sqid(
+    public_sqid: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> FileResponse:
+    """
+    Download a post's attached .mkpx layers file.
+
+    Authentication required (docs/mkpx-upload/ D3) — this and the
+    vault-serving guards are why layers files never ride the public static
+    mounts. Declared before the generic `.{extension}` route so the literal
+    suffix wins; same visibility rules as the other /d/ downloads.
+    """
+    from ..sqids_config import decode_sqid
+
+    post_id = decode_sqid(public_sqid)
+    if post_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        )
+
+    post = db.query(models.Post).filter(models.Post.id == post_id).first()
+    if not post or post.public_sqid != public_sqid:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        )
+
+    if not can_access_post(post, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        )
+
+    if post.mkpx_file_bytes is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Post has no layers file attached",
+        )
+
+    file_path = get_mkpx_file_path(post.storage_key, post.storage_shard)
+    if not file_path.exists():
+        logger.error(
+            "mkpx file missing for post %s (columns set, file absent)", post.id
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Layers file not found"
+        )
+
+    filename = f"makapix-{public_sqid}.mkpx"
+    return FileResponse(
+        path=str(file_path),
+        media_type=MKPX_MIME,
+        filename=filename,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.get("/d/{public_sqid}.{extension}")

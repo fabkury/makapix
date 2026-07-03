@@ -83,6 +83,17 @@ class HealthResponse(BaseModel):
     uptime_s: float | None = None
 
 
+class MkpxUploadConfig(BaseModel):
+    """Capability advertisement for .mkpx layers-file attachments.
+
+    Absent from the config (or enabled=False) means the feature is off and
+    clients must hide all mkpx UI (docs/mkpx-upload/API-CONTRACT.md §1).
+    """
+
+    enabled: bool
+    max_file_bytes: int
+
+
 class UploadConfig(BaseModel):
     """Server-authoritative artwork upload & conformance rules.
 
@@ -98,6 +109,7 @@ class UploadConfig(BaseModel):
     # listed explicitly, so a client can match against this list directly.
     small_whitelist: list[tuple[int, int]]
     rotations_allowed: bool = True
+    mkpx: MkpxUploadConfig | None = None
 
 
 class Config(BaseModel):
@@ -343,6 +355,11 @@ class Post(BaseModel):
     files: list[PostFile] = []  # File variants (native + converted formats)
     license_id: int | None = None  # FK to licenses table
     license: License | None = None  # Creative Commons license info
+    # Attached .mkpx layers file (docs/mkpx-upload/). mkpx_attached_at changes on
+    # every attach/replace and doubles as the client cache-invalidation stamp.
+    has_mkpx: bool = False
+    mkpx_file_bytes: int | None = None
+    mkpx_attached_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

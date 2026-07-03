@@ -29,12 +29,37 @@ import os
 from pathlib import Path
 from uuid import UUID
 
-from .settings import MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES, vault_public_base_url
+from .settings import (
+    MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES,
+    MAKAPIX_MKPX_SIZE_LIMIT_BYTES,
+    MAKAPIX_VAULT_MIN_FREE_BYTES,
+    vault_public_base_url,
+)
 
 logger = logging.getLogger(__name__)
 
 # Maximum file size for artwork assets (bytes)
 MAX_FILE_SIZE_BYTES = MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES
+
+# --- .mkpx layers-file attachments (docs/mkpx-upload/) -----------------------
+# Stored under a sibling namespace {vault}/mkpx/{storage_shard}/{key}.mkpx,
+# outside the artwork/avatar trees (no resharding dual-write involvement).
+# The mkpx/ prefix must never be publicly served: vault_serving.py guards the
+# /api/vault mount and Caddyfile.global 404s /mkpx/* on the vault subdomains.
+MKPX_SUBDIR = "mkpx"
+MKPX_EXTENSION = ".mkpx"
+MKPX_MIME = "application/x-mkpx"
+MKPX_SIZE_LIMIT_BYTES = MAKAPIX_MKPX_SIZE_LIMIT_BYTES
+# 8-byte signatures (mkpx format spec): plain "‰MKPX\r\n\x1a" and the
+# DEFLATE-compressed compact profile "‰MKPZ\r\n\x1a". Both accepted; the
+# server never inspects past these bytes (opaque blob).
+MKPX_MAGIC_PLAIN = b"\x89MKPX\x0d\x0a\x1a"
+MKPX_MAGIC_COMPACT = b"\x89MKPZ\x0d\x0a\x1a"
+
+
+class VaultFullError(OSError):
+    """Vault volume is below the configured free-space floor."""
+
 
 # Maximum canvas dimensions: 256x256
 MAX_CANVAS_SIZE = 256
@@ -226,6 +251,126 @@ def write_file_atomic(file_path: Path, content: bytes) -> None:
         raise
 
 
+def get_vault_free_bytes() -> int:
+    """Free bytes on the vault volume (statvfs)."""
+    st = os.statvfs(get_vault_location())
+    return st.f_bavail * st.f_frsize
+
+
+def ensure_vault_headroom(incoming_bytes: int = 0) -> None:
+    """
+    Refuse writes that would drop the vault volume below the configured
+    free-space floor (MAKAPIX_VAULT_MIN_FREE_BYTES). A clean, observable
+    refusal beats ENOSPC halfway through a write.
+
+    Raises:
+        VaultFullError: if free space minus the incoming payload is below
+            the floor.
+    """
+    free = get_vault_free_bytes()
+    if free - incoming_bytes < MAKAPIX_VAULT_MIN_FREE_BYTES:
+        raise VaultFullError(
+            f"Vault below free-space floor: {free} bytes free, "
+            f"{incoming_bytes} incoming, floor {MAKAPIX_VAULT_MIN_FREE_BYTES}"
+        )
+
+
+def write_stream_atomic(file_path: Path, source, expected_bytes: int) -> int:
+    """
+    Stream-copy ``source`` (a binary file object positioned at 0) to
+    ``file_path`` atomically in 1 MiB chunks — never holds the payload in
+    memory. Returns the byte count written; raises ValueError if it differs
+    from ``expected_bytes`` (truncated/oversized stream).
+    """
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = file_path.with_name(f"{file_path.name}.{os.getpid()}{TMP_SUFFIX}")
+    written = 0
+    try:
+        with open(tmp_path, "wb") as f:
+            while True:
+                chunk = source.read(1024 * 1024)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > expected_bytes:
+                    raise ValueError(
+                        f"Stream exceeded expected size ({expected_bytes} bytes)"
+                    )
+                f.write(chunk)
+            f.flush()
+            os.fsync(f.fileno())
+        if written != expected_bytes:
+            raise ValueError(
+                f"Stream ended at {written} bytes, expected {expected_bytes}"
+            )
+        os.replace(tmp_path, file_path)
+    except (OSError, ValueError):
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+    return written
+
+
+def get_mkpx_file_path(storage_key: UUID, storage_shard: str) -> Path:
+    """Canonical path of a post's attached .mkpx layers file."""
+    shard = _require_shard(storage_shard)
+    return (
+        get_vault_location()
+        / MKPX_SUBDIR
+        / Path(shard)
+        / (f"{storage_key}{MKPX_EXTENSION}")
+    )
+
+
+def validate_mkpx_signature(head: bytes) -> bool:
+    """True if ``head`` starts with either .mkpx profile signature."""
+    return head.startswith(MKPX_MAGIC_PLAIN) or head.startswith(MKPX_MAGIC_COMPACT)
+
+
+def save_mkpx_to_vault(
+    storage_key: UUID, source, size_bytes: int, storage_shard: str
+) -> Path:
+    """
+    Save an .mkpx layers file (streamed from ``source``, a binary file
+    object positioned at 0) to the vault. No twin mirroring — the mkpx/
+    namespace exists only in the v2-era tree, keyed by the stored shard
+    verbatim.
+
+    Raises:
+        VaultFullError: vault below the free-space floor
+        OSError / ValueError: write failure / size mismatch
+    """
+    ensure_vault_headroom(size_bytes)
+    file_path = get_mkpx_file_path(storage_key, storage_shard)
+    write_stream_atomic(file_path, source, size_bytes)
+    logger.info(f"Saved mkpx for {storage_key} to {file_path}")
+    return file_path
+
+
+def delete_mkpx_from_vault(storage_key: UUID, storage_shard: str) -> bool:
+    """
+    Best-effort delete of a post's .mkpx file. Returns True if a file was
+    removed; failures are logged, not raised (same posture as artwork
+    deletes — orphans are acceptable, broken requests are not).
+    """
+    try:
+        file_path = get_mkpx_file_path(storage_key, storage_shard)
+    except ValueError as e:
+        logger.error(f"delete_mkpx_from_vault({storage_key}): {e}")
+        return False
+    try:
+        file_path.unlink()
+        logger.info(f"Deleted mkpx for {storage_key} at {file_path}")
+        return True
+    except FileNotFoundError:
+        return False
+    except OSError as e:
+        logger.warning(f"Failed to delete mkpx for {storage_key}: {e}")
+        return False
+
+
 def should_mirror_to_twin(
     item_id: UUID, canonical_shard: str, twin_folder: Path
 ) -> bool:
@@ -298,6 +443,7 @@ def save_artwork_to_vault(
     extension = FORMAT_TO_EXT[file_format]
     file_path = get_artwork_file_path(artwork_id, extension, shard)
 
+    ensure_vault_headroom(len(file_content))
     try:
         write_file_atomic(file_path, file_content)
         logger.info(f"Saved artwork {artwork_id} to {file_path}")

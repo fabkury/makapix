@@ -41,6 +41,13 @@ def _build_config() -> schemas.Config:
             free_form_max=vault.MAX_CANVAS_SIZE,
             small_whitelist=list(vault.ALLOWED_SMALL_DIMENSIONS),
             rotations_allowed=True,
+            # Capability advertisement for .mkpx layers-file attachments
+            # (docs/mkpx-upload/): clients gate all mkpx UI on this block,
+            # and its appearance on prod is the launch signal (deploy=flip).
+            mkpx=schemas.MkpxUploadConfig(
+                enabled=True,
+                max_file_bytes=vault.MKPX_SIZE_LIMIT_BYTES,
+            ),
         ),
     )
 

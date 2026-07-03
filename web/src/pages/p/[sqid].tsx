@@ -1,24 +1,33 @@
-import { useState, useEffect, useRef } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/router';
-import Layout from '../../components/Layout';
-import CommentsAndReactions from '../../components/CommentsAndReactions';
-import SPOReactionUsersOverlay from '../../components/SPOReactionUsersOverlay';
-import StatsPanel from '../../components/StatsPanel';
-import PlayerBar from '../../components/PlayerBarDynamic';
-import { authenticatedFetch, authenticatedRequestJson, authenticatedPostJson, clearTokens } from '../../lib/api';
-import { ensureCompatibleArtUrl } from '../../utils/imageCompat';
-import { 
-  getNavigationContext, 
-  setNavigationContext, 
-  updateContextIndex, 
-  extendContext, 
+import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
+import { useRouter } from "next/router";
+import Layout from "../../components/Layout";
+import CommentsAndReactions from "../../components/CommentsAndReactions";
+import SPOReactionUsersOverlay from "../../components/SPOReactionUsersOverlay";
+import StatsPanel from "../../components/StatsPanel";
+import PlayerBar from "../../components/PlayerBarDynamic";
+import {
+  authenticatedFetch,
+  authenticatedRequestJson,
+  authenticatedPostJson,
+  clearTokens,
+  attachMkpx,
+  detachMkpx,
+  downloadMkpx,
+  getMkpxConfig,
+} from "../../lib/api";
+import { ensureCompatibleArtUrl } from "../../utils/imageCompat";
+import {
+  getNavigationContext,
+  setNavigationContext,
+  updateContextIndex,
+  extendContext,
   findPostIndex,
   NavigationContext,
-  NavigationContextPost 
-} from '../../lib/navigation-context';
-import { useSwipeNavigation } from '../../hooks/useSwipeNavigation';
-import { usePlayerBarOptional } from '../../contexts/PlayerBarContext';
+  NavigationContextPost,
+} from "../../lib/navigation-context";
+import { useSwipeNavigation } from "../../hooks/useSwipeNavigation";
+import { usePlayerBarOptional } from "../../contexts/PlayerBarContext";
 
 interface License {
   id: number;
@@ -50,6 +59,9 @@ interface Post {
   license_id?: number | null;
   license?: License | null;
   files?: Array<{ format: string; file_bytes: number; is_native: boolean }>;
+  has_mkpx?: boolean;
+  mkpx_file_bytes?: number | null;
+  mkpx_attached_at?: string | null;
   owner?: {
     id: string;
     handle: string;
@@ -73,8 +85,8 @@ interface WidgetData {
 }
 
 function formatFileSizeCompact(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
   const k = 1000;
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   const value = bytes / Math.pow(k, i);
@@ -88,8 +100,8 @@ function formatDateTime(isoString: string): string {
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
   const day = date.getDate();
-  const hours = date.getHours().toString().padStart(2, '0');
-  const minutes = date.getMinutes().toString().padStart(2, '0');
+  const hours = date.getHours().toString().padStart(2, "0");
+  const minutes = date.getMinutes().toString().padStart(2, "0");
   return `${year}/${month}/${day} ${hours}:${minutes}`;
 }
 
@@ -99,18 +111,21 @@ export default function PostPage() {
   const [post, setPost] = useState<Post | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentUser, setCurrentUser] = useState<{ id: string; public_sqid: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{
+    id: string;
+    public_sqid: string;
+  } | null>(null);
   const [isOwner, setIsOwner] = useState(false);
   const [isModerator, setIsModerator] = useState(false);
-  
+
   // Edit mode state
   const [isEditing, setIsEditing] = useState(false);
-  const [editTitle, setEditTitle] = useState('');
-  const [editDescription, setEditDescription] = useState('');
-  const [editHashtags, setEditHashtags] = useState('');
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editHashtags, setEditHashtags] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  
+
   // Stats panel state
   const [showStats, setShowStats] = useState(false);
 
@@ -118,30 +133,48 @@ export default function PostPage() {
   const [widgetData, setWidgetData] = useState<WidgetData | null>(null);
 
   // Reaction users overlay (opened via ⚡ stat click)
-  const [showReactionUsersOverlay, setShowReactionUsersOverlay] = useState(false);
+  const [showReactionUsersOverlay, setShowReactionUsersOverlay] =
+    useState(false);
 
   // Kebab menu state
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [activeSubMenu, setActiveSubMenu] = useState<string | null>(null);
   const [showFormatSubPanel, setShowFormatSubPanel] = useState(false);
-  const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{
+    top: number;
+    right: number;
+  } | null>(null);
+
+  // .mkpx layers file: gated on the server's config advertisement
+  const [mkpxEnabled, setMkpxEnabled] = useState(false);
+  const mkpxFileInputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getMkpxConfig().then((cfg) => {
+      if (!cancelled) setMkpxEnabled(!!cfg);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const moreButtonRef = useRef<HTMLButtonElement>(null);
   const subPanelCloseTimeoutRef = useRef<number | null>(null);
 
   // Image error state
   const [imageError, setImageError] = useState(false);
-  
+
   // Navigation context state
   const [navContext, setNavContext] = useState<NavigationContext | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const extendingRef = useRef(false);
-  
+
   const playerBarContext = usePlayerBarOptional();
 
-  const API_BASE_URL = typeof window !== 'undefined' 
-    ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
-    : '';
+  const API_BASE_URL =
+    typeof window !== "undefined"
+      ? process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin
+      : "";
 
   // Set selected artwork in PlayerBar when post loads
   useEffect(() => {
@@ -162,39 +195,43 @@ export default function PostPage() {
   }, [post?.id]);
 
   useEffect(() => {
-    if (!sqid || typeof sqid !== 'string') return;
+    if (!sqid || typeof sqid !== "string") return;
 
     const fetchPost = async () => {
       setLoading(true);
       setError(null);
-      
+
       try {
         // Fetch post by public_sqid using the new canonical endpoint
-        const response = await authenticatedFetch(`${API_BASE_URL}/api/p/${sqid}`);
-        
+        const response = await authenticatedFetch(
+          `${API_BASE_URL}/api/p/${sqid}`,
+        );
+
         if (response.status === 401) {
           // Token refresh failed - treat as unauthenticated
           setCurrentUser(null);
           setIsOwner(false);
           setIsModerator(false);
         }
-        
+
         if (!response.ok) {
           if (response.status === 404) {
-            setError('Post not found');
+            setError("Post not found");
           } else {
             setError(`Failed to load post: ${response.statusText}`);
           }
           setLoading(false);
           return;
         }
-        
+
         const data = await response.json();
         setPost(data);
-        
+
         // Try to get current user info if authenticated
         try {
-          const userResponse = await authenticatedFetch(`${API_BASE_URL}/api/auth/me`);
+          const userResponse = await authenticatedFetch(
+            `${API_BASE_URL}/api/auth/me`,
+          );
           if (userResponse.status === 401) {
             // Not authenticated or token refresh failed
             setCurrentUser(null);
@@ -202,11 +239,15 @@ export default function PostPage() {
             setIsModerator(false);
           } else if (userResponse.ok) {
             const userData = await userResponse.json();
-            setCurrentUser({ id: userData.user.id, public_sqid: userData.user.public_sqid });
+            setCurrentUser({
+              id: userData.user.id,
+              public_sqid: userData.user.public_sqid,
+            });
             setIsOwner(userData.user.id === data.owner_id);
             const roles = userData.user.roles || userData.roles || [];
-            setIsModerator(roles.includes('moderator') || roles.includes('owner'));
-            
+            setIsModerator(
+              roles.includes("moderator") || roles.includes("owner"),
+            );
           }
         } catch (err) {
           setCurrentUser(null);
@@ -214,8 +255,8 @@ export default function PostPage() {
           setIsModerator(false);
         }
       } catch (err) {
-        setError('Failed to load post');
-        console.error('Error fetching post:', err);
+        setError("Failed to load post");
+        console.error("Error fetching post:", err);
       } finally {
         setLoading(false);
       }
@@ -224,30 +265,29 @@ export default function PostPage() {
     fetchPost();
   }, [sqid, API_BASE_URL]);
 
-
   // Check if device is mobile
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    
+    if (typeof window === "undefined") return;
+
     const checkMobile = () => {
-      const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      const hasTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
       const isSmallScreen = window.innerWidth <= 768;
       setIsMobile(hasTouch && isSmallScreen);
     };
-    
+
     checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
   // Load or create navigation context
   useEffect(() => {
-    if (!sqid || typeof sqid !== 'string' || !post) return;
+    if (!sqid || typeof sqid !== "string" || !post) return;
 
     const loadContext = async () => {
       // Try to get existing context
       let context = getNavigationContext();
-      
+
       // Validate context matches current post
       if (context) {
         const index = findPostIndex(context, sqid);
@@ -275,22 +315,22 @@ export default function PostPage() {
     try {
       const url = `${API_BASE_URL}/api/post?owner_id=${ownerId}&limit=100&sort=created_at&order=desc`;
       const response = await authenticatedFetch(url);
-      
+
       if (!response.ok) return;
-      
+
       const data = await response.json();
       const posts: NavigationContextPost[] = data.items.map((p: any) => ({
         public_sqid: p.public_sqid,
         id: p.id,
         owner_id: p.owner_id,
       }));
-      
+
       const index = posts.findIndex((p) => p.public_sqid === currentSqid);
       if (index >= 0) {
         const context: NavigationContext = {
           posts,
           currentIndex: index,
-          source: { type: 'profile', id: ownerId },
+          source: { type: "profile", id: ownerId },
           cursor: data.next_cursor,
           timestamp: Date.now(),
         };
@@ -298,30 +338,30 @@ export default function PostPage() {
         setNavContext(context);
       }
     } catch (err) {
-      console.error('Failed to fetch default context:', err);
+      console.error("Failed to fetch default context:", err);
     }
   };
 
   // Navigate with View Transition API
-  const navigateWithTransition = (url: string, direction: 'left' | 'right') => {
-    if (typeof document === 'undefined') {
+  const navigateWithTransition = (url: string, direction: "left" | "right") => {
+    if (typeof document === "undefined") {
       router.push(url);
       return;
     }
 
     // Use View Transitions API if available
-    if ('startViewTransition' in document) {
+    if ("startViewTransition" in document) {
       // Inject dynamic CSS for the transition direction
-      const styleId = 'swipe-transition-style';
+      const styleId = "swipe-transition-style";
       let styleEl = document.getElementById(styleId) as HTMLStyleElement | null;
       if (!styleEl) {
-        styleEl = document.createElement('style');
+        styleEl = document.createElement("style");
         styleEl.id = styleId;
         document.head.appendChild(styleEl);
       }
-      
+
       // Set animations based on swipe direction (targeting main-content to keep header static)
-      if (direction === 'left') {
+      if (direction === "left") {
         // Swiping left = going to next post
         // Old page slides out to the left, new page slides in from right
         styleEl.textContent = `
@@ -348,11 +388,11 @@ export default function PostPage() {
       const transition = (document as any).startViewTransition(() => {
         router.push(url);
       });
-      
+
       // Clean up style after transition
       transition.finished.finally(() => {
         if (styleEl) {
-          styleEl.textContent = '';
+          styleEl.textContent = "";
         }
       });
     } else {
@@ -362,48 +402,52 @@ export default function PostPage() {
   };
 
   // Extend context at boundaries
-  const extendContextAtBoundary = async (direction: 'forward' | 'backward'): Promise<NavigationContext | null> => {
+  const extendContextAtBoundary = async (
+    direction: "forward" | "backward",
+  ): Promise<NavigationContext | null> => {
     if (extendingRef.current || !navContext) return null;
-    
+
     extendingRef.current = true;
-    
+
     try {
-      let url = '';
-      if (direction === 'forward') {
+      let url = "";
+      if (direction === "forward") {
         if (!navContext.cursor) return null;
         url = buildApiUrl(navContext.source, navContext.cursor);
       } else {
         // For backward, we'd need prevCursor - simplified for now
         return null;
       }
-      
+
       const response = await authenticatedFetch(url);
       if (!response.ok) return null;
-      
+
       const data = await response.json();
       const newPosts: NavigationContextPost[] = data.items.map((p: any) => ({
         public_sqid: p.public_sqid,
         id: p.id,
         owner_id: p.owner_id,
       }));
-      
+
       if (newPosts.length > 0) {
         extendContext(newPosts, direction, data.next_cursor);
         const updatedContext: NavigationContext = {
           ...navContext,
-          posts: direction === 'forward' 
-            ? [...navContext.posts, ...newPosts]
-            : [...newPosts, ...navContext.posts],
-          cursor: direction === 'forward' ? data.next_cursor : navContext.cursor,
+          posts:
+            direction === "forward"
+              ? [...navContext.posts, ...newPosts]
+              : [...newPosts, ...navContext.posts],
+          cursor:
+            direction === "forward" ? data.next_cursor : navContext.cursor,
           timestamp: Date.now(),
         };
         setNavContext(updatedContext);
         return updatedContext;
       }
-      
+
       return null;
     } catch (err) {
-      console.error('Failed to extend context:', err);
+      console.error("Failed to extend context:", err);
       return null;
     } finally {
       extendingRef.current = false;
@@ -411,47 +455,50 @@ export default function PostPage() {
   };
 
   // Build API URL based on source type
-  const buildApiUrl = (source: NavigationContext['source'], cursor: string | null): string => {
+  const buildApiUrl = (
+    source: NavigationContext["source"],
+    cursor: string | null,
+  ): string => {
     const base = `${API_BASE_URL}/api/post`;
     const params = new URLSearchParams();
-    params.append('limit', '20');
-    params.append('sort', 'created_at');
-    params.append('order', 'desc');
-    
+    params.append("limit", "20");
+    params.append("sort", "created_at");
+    params.append("order", "desc");
+
     if (cursor) {
-      params.append('cursor', cursor);
+      params.append("cursor", cursor);
     }
-    
+
     switch (source.type) {
-      case 'recent':
+      case "recent":
         // No additional params needed
         break;
-      case 'recommended':
-        return `${API_BASE_URL}/api/feed/promoted?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
-      case 'profile':
+      case "recommended":
+        return `${API_BASE_URL}/api/feed/promoted?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+      case "profile":
         if (source.id) {
-          params.append('owner_id', source.id);
+          params.append("owner_id", source.id);
         }
         break;
-      case 'hashtag':
+      case "hashtag":
         if (source.id) {
-          params.append('hashtag', source.id);
+          params.append("hashtag", source.id);
         }
         break;
     }
-    
+
     return `${base}?${params.toString()}`;
   };
 
   // Swipe handlers
   const handleSwipeLeft = async () => {
     if (!navContext || !isMobile) return;
-    
+
     const nextIndex = navContext.currentIndex + 1;
-    
+
     // Check if we need to extend context
     if (nextIndex >= navContext.posts.length) {
-      const updatedContext = await extendContextAtBoundary('forward');
+      const updatedContext = await extendContextAtBoundary("forward");
       if (!updatedContext || nextIndex >= updatedContext.posts.length) {
         // Reached true end - ignore swipe
         return;
@@ -459,30 +506,30 @@ export default function PostPage() {
       // Context was extended, navigate to next post
       const nextPost = updatedContext.posts[nextIndex];
       updateContextIndex(nextIndex);
-      navigateWithTransition(`/p/${nextPost.public_sqid}`, 'left');
+      navigateWithTransition(`/p/${nextPost.public_sqid}`, "left");
       return;
     }
-    
+
     // Navigate to next post
     const nextPost = navContext.posts[nextIndex];
     updateContextIndex(nextIndex);
-    navigateWithTransition(`/p/${nextPost.public_sqid}`, 'left');
+    navigateWithTransition(`/p/${nextPost.public_sqid}`, "left");
   };
 
   const handleSwipeRight = async () => {
     if (!navContext || !isMobile) return;
-    
+
     const prevIndex = navContext.currentIndex - 1;
-    
+
     if (prevIndex < 0) {
       // Reached true beginning - ignore swipe
       return;
     }
-    
+
     // Navigate to previous post
     const prevPost = navContext.posts[prevIndex];
     updateContextIndex(prevIndex);
-    navigateWithTransition(`/p/${prevPost.public_sqid}`, 'right');
+    navigateWithTransition(`/p/${prevPost.public_sqid}`, "right");
   };
 
   // Enable swipe navigation on mobile
@@ -491,13 +538,13 @@ export default function PostPage() {
       onSwipeLeft: handleSwipeLeft,
       onSwipeRight: handleSwipeRight,
     },
-    isMobile && !!navContext
+    isMobile && !!navContext,
   );
 
   // Set API URL for widget
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    
+    if (typeof window === "undefined") return;
+
     if ((window as any).MAKAPIX_API_URL === undefined) {
       (window as any).MAKAPIX_API_URL = `${API_BASE_URL}/api`;
     }
@@ -510,15 +557,17 @@ export default function PostPage() {
 
   // Initialize widget
   useEffect(() => {
-    if (!post || !sqid || typeof sqid !== 'string') return;
+    if (!post || !sqid || typeof sqid !== "string") return;
 
     const initializeWidget = () => {
-      if (typeof (window as any).MakapixWidget === 'undefined') {
+      if (typeof (window as any).MakapixWidget === "undefined") {
         setTimeout(initializeWidget, 100);
         return;
       }
 
-      const container = document.getElementById(`makapix-widget-${post.public_sqid}`);
+      const container = document.getElementById(
+        `makapix-widget-${post.public_sqid}`,
+      );
       if (!container) {
         setTimeout(initializeWidget, 100);
         return;
@@ -532,7 +581,7 @@ export default function PostPage() {
         new (window as any).MakapixWidget(container);
         (container as any).__makapix_initialized = true;
       } catch (error) {
-        console.error('Failed to initialize Makapix widget:', error);
+        console.error("Failed to initialize Makapix widget:", error);
       }
     };
 
@@ -558,7 +607,7 @@ export default function PostPage() {
           setWidgetData(data);
         }
       } catch (err) {
-        console.error('Failed to load widget data:', err);
+        console.error("Failed to load widget data:", err);
       }
     })();
     return () => {
@@ -573,7 +622,7 @@ export default function PostPage() {
       subPanelCloseTimeoutRef.current = null;
     }
     setActiveSubMenu(menu);
-    if (menu !== 'download') setShowFormatSubPanel(false);
+    if (menu !== "download") setShowFormatSubPanel(false);
   };
 
   const closeSubMenuDelayed = (delay: number = 300) => {
@@ -632,24 +681,26 @@ export default function PostPage() {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as Node;
       if (
-        moreMenuRef.current && !moreMenuRef.current.contains(target) &&
-        moreButtonRef.current && !moreButtonRef.current.contains(target)
+        moreMenuRef.current &&
+        !moreMenuRef.current.contains(target) &&
+        moreButtonRef.current &&
+        !moreButtonRef.current.contains(target)
       ) {
         closeMoreMenu();
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showMoreMenu]);
 
   // Close kebab menu on Escape
   useEffect(() => {
     if (!showMoreMenu) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeMoreMenu();
+      if (e.key === "Escape") closeMoreMenu();
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, [showMoreMenu]);
 
   // Open the kebab menu, positioning it just below the button
@@ -663,7 +714,10 @@ export default function PostPage() {
       if (rect.right - menuWidth < margin) {
         rightPos = viewportWidth - menuWidth - margin;
       }
-      setMenuPosition({ top: rect.bottom + 4, right: Math.max(margin, rightPos) });
+      setMenuPosition({
+        top: rect.bottom + 4,
+        right: Math.max(margin, rightPos),
+      });
       setShowMoreMenu(true);
     } else {
       closeMoreMenu();
@@ -688,12 +742,13 @@ export default function PostPage() {
     closeMoreMenu();
     try {
       const resp = await fetch(`${API_BASE_URL}/api/d/${post.public_sqid}`);
-      if (!resp.ok) throw new Error('Download failed');
+      if (!resp.ok) throw new Error("Download failed");
       const blob = await resp.blob();
-      const nativeFile = post.files?.find(f => f.is_native) || post.files?.[0];
-      const ext = nativeFile?.format || 'png';
+      const nativeFile =
+        post.files?.find((f) => f.is_native) || post.files?.[0];
+      const ext = nativeFile?.format || "png";
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
       a.download = `${post.title || post.public_sqid}.${ext}`;
       document.body.appendChild(a);
@@ -701,7 +756,7 @@ export default function PostPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Download failed:', err);
+      console.error("Download failed:", err);
     }
   };
 
@@ -709,11 +764,13 @@ export default function PostPage() {
     if (!post) return;
     closeMoreMenu();
     try {
-      const resp = await fetch(`${API_BASE_URL}/api/d/${post.public_sqid}/upscaled`);
-      if (!resp.ok) throw new Error('Download failed');
+      const resp = await fetch(
+        `${API_BASE_URL}/api/d/${post.public_sqid}/upscaled`,
+      );
+      if (!resp.ok) throw new Error("Download failed");
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
       a.download = `${post.title || post.public_sqid}_upscaled.webp`;
       document.body.appendChild(a);
@@ -721,7 +778,7 @@ export default function PostPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Download failed:', err);
+      console.error("Download failed:", err);
     }
   };
 
@@ -729,11 +786,13 @@ export default function PostPage() {
     if (!post) return;
     closeMoreMenu();
     try {
-      const resp = await fetch(`${API_BASE_URL}/api/d/${post.public_sqid}.${format}`);
-      if (!resp.ok) throw new Error('Download failed');
+      const resp = await fetch(
+        `${API_BASE_URL}/api/d/${post.public_sqid}.${format}`,
+      );
+      if (!resp.ok) throw new Error("Download failed");
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
       a.download = `${post.title || post.public_sqid}.${format}`;
       document.body.appendChild(a);
@@ -741,11 +800,68 @@ export default function PostPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Download failed:', err);
+      console.error("Download failed:", err);
     }
   };
 
-  const shareOrCopy = async (blob: Blob, filename: string, mimeType: string) => {
+  // --- .mkpx layers file (docs/mkpx-upload/) ---
+  const handleDownloadMkpx = async () => {
+    if (!post) return;
+    closeMoreMenu();
+    try {
+      const blob = await downloadMkpx(post.public_sqid);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `makapix-${post.public_sqid}.mkpx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Layers file download failed:", err);
+    }
+  };
+
+  const handleAttachMkpxClick = () => {
+    mkpxFileInputRef.current?.click();
+  };
+
+  const handleMkpxFileSelected = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file later
+    if (!file || !post) return;
+    closeMoreMenu();
+    try {
+      const updated = await attachMkpx<Partial<Post>>(post.id, file);
+      setPost((prev) => (prev ? { ...prev, ...updated } : prev));
+    } catch (err) {
+      console.error("Layers file attach failed:", err);
+      alert("Could not attach the layers file. Please try again.");
+    }
+  };
+
+  const handleDetachMkpx = async () => {
+    if (!post) return;
+    closeMoreMenu();
+    if (!window.confirm("Remove the layers (.mkpx) file from this post?"))
+      return;
+    try {
+      const updated = await detachMkpx<Partial<Post>>(post.id);
+      setPost((prev) => (prev ? { ...prev, ...updated } : prev));
+    } catch (err) {
+      console.error("Layers file removal failed:", err);
+      alert("Could not remove the layers file. Please try again.");
+    }
+  };
+
+  const shareOrCopy = async (
+    blob: Blob,
+    filename: string,
+    mimeType: string,
+  ) => {
     if (!post) return;
     const file = new File([blob], filename, { type: mimeType });
     if (navigator.share && navigator.canShare?.({ files: [file] })) {
@@ -756,28 +872,35 @@ export default function PostPage() {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(postUrl);
     } else {
-      const ta = document.createElement('textarea');
+      const ta = document.createElement("textarea");
       ta.value = postUrl;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
       document.body.appendChild(ta);
       ta.select();
-      document.execCommand('copy');
+      document.execCommand("copy");
       document.body.removeChild(ta);
     }
-    alert('Link copied to clipboard');
+    alert("Link copied to clipboard");
   };
 
   const handleShareUpscaled = async () => {
     if (!post) return;
     closeMoreMenu();
     try {
-      const resp = await fetch(`${API_BASE_URL}/api/d/${post.public_sqid}/upscaled`);
-      if (!resp.ok) throw new Error('Fetch failed');
+      const resp = await fetch(
+        `${API_BASE_URL}/api/d/${post.public_sqid}/upscaled`,
+      );
+      if (!resp.ok) throw new Error("Fetch failed");
       const blob = await resp.blob();
-      await shareOrCopy(blob, `${post.title || post.public_sqid}_upscaled.webp`, 'image/webp');
+      await shareOrCopy(
+        blob,
+        `${post.title || post.public_sqid}_upscaled.webp`,
+        "image/webp",
+      );
     } catch (err) {
-      if ((err as Error).name !== 'AbortError') console.error('Share failed:', err);
+      if ((err as Error).name !== "AbortError")
+        console.error("Share failed:", err);
     }
   };
 
@@ -786,82 +909,102 @@ export default function PostPage() {
     closeMoreMenu();
     try {
       const resp = await fetch(`${API_BASE_URL}/api/d/${post.public_sqid}`);
-      if (!resp.ok) throw new Error('Fetch failed');
+      if (!resp.ok) throw new Error("Fetch failed");
       const blob = await resp.blob();
-      const nativeFile = post.files?.find(f => f.is_native) || post.files?.[0];
-      const ext = nativeFile?.format || 'png';
-      const mimeType = ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/png';
-      await shareOrCopy(blob, `${post.title || post.public_sqid}.${ext}`, mimeType);
+      const nativeFile =
+        post.files?.find((f) => f.is_native) || post.files?.[0];
+      const ext = nativeFile?.format || "png";
+      const mimeType =
+        ext === "webp"
+          ? "image/webp"
+          : ext === "gif"
+            ? "image/gif"
+            : "image/png";
+      await shareOrCopy(
+        blob,
+        `${post.title || post.public_sqid}.${ext}`,
+        mimeType,
+      );
     } catch (err) {
-      if ((err as Error).name !== 'AbortError') console.error('Share failed:', err);
+      if ((err as Error).name !== "AbortError")
+        console.error("Share failed:", err);
     }
   };
 
   const handleDelete = async () => {
     if (!post) return;
-    
+
     const confirmed = confirm(
-      'Are you sure you want to delete this post?\n\n' +
-      'This action cannot be undone.'
+      "Are you sure you want to delete this post?\n\n" +
+        "This action cannot be undone.",
     );
-    
+
     if (!confirmed) return;
-    
+
     try {
       // Use the integer ID for API operations
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/post/${post.id}`, {
-        method: 'DELETE',
-      });
-      
+      const response = await authenticatedFetch(
+        `${API_BASE_URL}/api/post/${post.id}`,
+        {
+          method: "DELETE",
+        },
+      );
+
       if (response.status === 401) {
         clearTokens();
-        router.push('/auth');
+        router.push("/auth");
         return;
       }
-      
+
       if (response.ok || response.status === 204) {
-        router.push('/');
+        router.push("/");
       } else {
-        const errorData = await response.json().catch(() => ({ detail: 'Failed to delete post' }));
-        alert(errorData.detail || 'Failed to delete post.');
+        const errorData = await response
+          .json()
+          .catch(() => ({ detail: "Failed to delete post" }));
+        alert(errorData.detail || "Failed to delete post.");
       }
     } catch (err) {
-      console.error('Error deleting post:', err);
-      alert('Failed to delete post.');
+      console.error("Error deleting post:", err);
+      alert("Failed to delete post.");
     }
   };
 
   const handleHide = async () => {
     if (!post) return;
-    
+
     const isHidden = post.hidden_by_user;
-    const action = isHidden ? 'unhide' : 'hide';
-    
+    const action = isHidden ? "unhide" : "hide";
+
     try {
       const url = `${API_BASE_URL}/api/post/${post.id}/hide`;
-      const method = isHidden ? 'DELETE' : 'POST';
-      
+      const method = isHidden ? "DELETE" : "POST";
+
       const response = await authenticatedFetch(url, {
         method: method,
         headers: {
-          'Content-Type': 'application/json'
-        }
+          "Content-Type": "application/json",
+        },
       });
-      
+
       if (response.status === 401) {
         clearTokens();
-        router.push('/auth');
+        router.push("/auth");
         return;
       }
-      
+
       if (response.ok || response.status === 201 || response.status === 204) {
-        const refreshResponse = await authenticatedFetch(`${API_BASE_URL}/api/p/${post.public_sqid}`);
+        const refreshResponse = await authenticatedFetch(
+          `${API_BASE_URL}/api/p/${post.public_sqid}`,
+        );
         if (refreshResponse.ok) {
           const updatedPost = await refreshResponse.json();
           setPost(updatedPost);
         }
       } else {
-        const errorData = await response.json().catch(() => ({ detail: `Failed to ${action} post` }));
+        const errorData = await response
+          .json()
+          .catch(() => ({ detail: `Failed to ${action} post` }));
         alert(errorData.detail || `Failed to ${action} post.`);
       }
     } catch (err) {
@@ -873,9 +1016,9 @@ export default function PostPage() {
   // Owner: Edit title, description and hashtags
   const handleEditClick = () => {
     if (!post) return;
-    setEditTitle(post.title || '');
-    setEditDescription(post.description || '');
-    setEditHashtags(post.hashtags?.join(', ') || '');
+    setEditTitle(post.title || "");
+    setEditDescription(post.description || "");
+    setEditHashtags(post.hashtags?.join(", ") || "");
     setSaveError(null);
     setIsEditing(true);
   };
@@ -887,16 +1030,16 @@ export default function PostPage() {
 
   const handleSaveEdit = async () => {
     if (!post) return;
-    
+
     setIsSaving(true);
     setSaveError(null);
-    
+
     // Parse hashtags from comma-separated string
     const hashtagsArray = editHashtags
-      .split(',')
-      .map(tag => tag.trim().toLowerCase().replace(/^#/, ''))
-      .filter(tag => tag.length > 0);
-    
+      .split(",")
+      .map((tag) => tag.trim().toLowerCase().replace(/^#/, ""))
+      .filter((tag) => tag.length > 0);
+
     try {
       const updatedPost = await authenticatedRequestJson<Post>(
         `/api/post/${post.id}`,
@@ -904,22 +1047,22 @@ export default function PostPage() {
           body: JSON.stringify({
             title: editTitle.trim(),
             description: editDescription,
-            hashtags: hashtagsArray
-          })
+            hashtags: hashtagsArray,
+          }),
         },
-        'PATCH'
+        "PATCH",
       );
-      
+
       setPost(updatedPost);
       setIsEditing(false);
     } catch (err) {
-      console.error('Error saving post:', err);
-      if (err instanceof Error && err.message.includes('401')) {
+      console.error("Error saving post:", err);
+      if (err instanceof Error && err.message.includes("401")) {
         clearTokens();
-        router.push('/auth');
+        router.push("/auth");
         return;
       }
-      setSaveError('Failed to save changes.');
+      setSaveError("Failed to save changes.");
     } finally {
       setIsSaving(false);
     }
@@ -928,30 +1071,32 @@ export default function PostPage() {
   // Moderator: Hide/Unhide as moderator
   const handleModHide = async () => {
     if (!post) return;
-    
+
     const isHidden = post.hidden_by_mod;
-    const action = isHidden ? 'unhide' : 'hide';
-    
+    const action = isHidden ? "unhide" : "hide";
+
     try {
       const url = `${API_BASE_URL}/api/post/${post.id}/hide`;
-      const method = isHidden ? 'DELETE' : 'POST';
-      
+      const method = isHidden ? "DELETE" : "POST";
+
       const response = await authenticatedFetch(url, {
         method: method,
         headers: {
-          'Content-Type': 'application/json'
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify({ by: 'mod' })
+        body: JSON.stringify({ by: "mod" }),
       });
-      
+
       if (response.status === 401) {
         clearTokens();
-        router.push('/auth');
+        router.push("/auth");
         return;
       }
-      
+
       if (response.ok || response.status === 201 || response.status === 204) {
-        const refreshResponse = await authenticatedFetch(`${API_BASE_URL}/api/p/${post.public_sqid}`);
+        const refreshResponse = await authenticatedFetch(
+          `${API_BASE_URL}/api/p/${post.public_sqid}`,
+        );
         if (refreshResponse.ok) {
           setPost(await refreshResponse.json());
         }
@@ -967,30 +1112,34 @@ export default function PostPage() {
   // Moderator: Promote/Demote
   const handlePromote = async () => {
     if (!post) return;
-    
+
     const isPromoted = post.promoted;
-    const action = isPromoted ? 'demote' : 'promote';
-    
+    const action = isPromoted ? "demote" : "promote";
+
     try {
       const url = `${API_BASE_URL}/api/post/${post.id}/promote`;
-      const method = isPromoted ? 'DELETE' : 'POST';
-      
+      const method = isPromoted ? "DELETE" : "POST";
+
       const response = await authenticatedFetch(url, {
         method: method,
         headers: {
-          'Content-Type': 'application/json'
+          "Content-Type": "application/json",
         },
-        body: isPromoted ? undefined : JSON.stringify({ category: 'frontpage' })
+        body: isPromoted
+          ? undefined
+          : JSON.stringify({ category: "frontpage" }),
       });
-      
+
       if (response.status === 401) {
         clearTokens();
-        router.push('/auth');
+        router.push("/auth");
         return;
       }
-      
+
       if (response.ok || response.status === 201 || response.status === 204) {
-        const refreshResponse = await authenticatedFetch(`${API_BASE_URL}/api/p/${post.public_sqid}`);
+        const refreshResponse = await authenticatedFetch(
+          `${API_BASE_URL}/api/p/${post.public_sqid}`,
+        );
         if (refreshResponse.ok) {
           setPost(await refreshResponse.json());
         }
@@ -1006,90 +1155,98 @@ export default function PostPage() {
   // Moderator: Approve public visibility (one-time action, cannot be revoked)
   const handleApprovePublicVisibility = async () => {
     if (!post) return;
-    
+
     // Only allow approving, not revoking
     if (post.public_visibility) return;
-    
+
     const confirmed = confirm(
-      'Approve public visibility? This artwork will appear in Recent Artworks and search results.\n\n' +
-      'Note: This is a one-time action. To hide the artwork later, use the "Hide (Mod)" action instead.'
+      "Approve public visibility? This artwork will appear in Recent Artworks and search results.\n\n" +
+        'Note: This is a one-time action. To hide the artwork later, use the "Hide (Mod)" action instead.',
     );
-    
+
     if (!confirmed) return;
-    
+
     try {
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/post/${post.id}/approve-public`, {
-        method: 'POST',
-      });
-      
+      const response = await authenticatedFetch(
+        `${API_BASE_URL}/api/post/${post.id}/approve-public`,
+        {
+          method: "POST",
+        },
+      );
+
       if (response.status === 401) {
         clearTokens();
-        router.push('/auth');
+        router.push("/auth");
         return;
       }
-      
+
       if (response.ok || response.status === 201) {
-        const refreshResponse = await authenticatedFetch(`${API_BASE_URL}/api/p/${post.public_sqid}`);
+        const refreshResponse = await authenticatedFetch(
+          `${API_BASE_URL}/api/p/${post.public_sqid}`,
+        );
         if (refreshResponse.ok) {
           setPost(await refreshResponse.json());
         }
       } else {
         const errorData = await response.json().catch(() => ({}));
-        alert(errorData.detail || 'Failed to approve public visibility.');
+        alert(errorData.detail || "Failed to approve public visibility.");
       }
     } catch (err) {
-      console.error('Error approving public visibility:', err);
+      console.error("Error approving public visibility:", err);
     }
   };
 
   // Moderator: Permanent delete (only for hidden posts)
   const handlePermanentDelete = async () => {
     if (!post) return;
-    
+
     // Only allow deletion of hidden posts
     if (!post.hidden_by_mod && !post.hidden_by_user) {
-      alert('Post must be hidden before it can be permanently deleted.');
+      alert("Post must be hidden before it can be permanently deleted.");
       return;
     }
-    
+
     const confirmed = confirm(
-      '⚠️ PERMANENT DELETE ⚠️\n\n' +
-      'This will permanently delete this artwork and cannot be undone.\n\n' +
-      'Are you absolutely sure you want to proceed?'
+      "⚠️ PERMANENT DELETE ⚠️\n\n" +
+        "This will permanently delete this artwork and cannot be undone.\n\n" +
+        "Are you absolutely sure you want to proceed?",
     );
-    
+
     if (!confirmed) return;
-    
+
     // Double confirmation for safety
     const doubleConfirmed = confirm(
-      'This is your final warning.\n\n' +
-      'Click OK to permanently delete this artwork.'
+      "This is your final warning.\n\n" +
+        "Click OK to permanently delete this artwork.",
     );
-    
+
     if (!doubleConfirmed) return;
-    
+
     try {
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/post/${post.id}/permanent`, {
-        method: 'DELETE',
-      });
-      
+      const response = await authenticatedFetch(
+        `${API_BASE_URL}/api/post/${post.id}/permanent`,
+        {
+          method: "DELETE",
+        },
+      );
+
       if (response.status === 401) {
         clearTokens();
-        router.push('/auth');
+        router.push("/auth");
         return;
       }
-      
+
       if (response.ok || response.status === 204) {
-        alert('Artwork has been permanently deleted.');
+        alert("Artwork has been permanently deleted.");
         // Redirect to home page
-        window.location.href = '/';
+        window.location.href = "/";
       } else {
         const errorData = await response.json().catch(() => ({}));
-        alert(errorData.detail || 'Failed to delete artwork.');
+        alert(errorData.detail || "Failed to delete artwork.");
       }
     } catch (err) {
-      console.error('Error deleting artwork:', err);
-      alert('Failed to delete artwork.');
+      console.error("Error deleting artwork:", err);
+      alert("Failed to delete artwork.");
     }
   };
 
@@ -1115,7 +1272,9 @@ export default function PostPage() {
             animation: spin 0.8s linear infinite;
           }
           @keyframes spin {
-            to { transform: rotate(360deg); }
+            to {
+              transform: rotate(360deg);
+            }
           }
         `}</style>
       </Layout>
@@ -1127,8 +1286,10 @@ export default function PostPage() {
       <Layout title="Not Found">
         <div className="error-container">
           <span className="error-icon">😢</span>
-          <h1>{error || 'Post not found'}</h1>
-          <Link href="/" className="back-link">← Back to Home</Link>
+          <h1>{error || "Post not found"}</h1>
+          <Link href="/" className="back-link">
+            ← Back to Home
+          </Link>
         </div>
         <style jsx>{`
           .error-container {
@@ -1200,29 +1361,47 @@ export default function PostPage() {
             <div className="post-tech-info">
               {formatDateTime(post.created_at)}
               <span className="tech-separator">•</span>
-              <span className={(post.frame_count ?? 1) > 256 ? 'frame-count-warn' : undefined}>
+              <span
+                className={
+                  (post.frame_count ?? 1) > 256 ? "frame-count-warn" : undefined
+                }
+              >
                 {post.frame_count ?? 1}
               </span>
               ×({post.width}×{post.height})
               <span className="tech-separator">•</span>
-              {formatFileSizeCompact(post.files?.find(f => f.is_native)?.file_bytes || 0)}{' '}
-              {(post.files?.find(f => f.is_native)?.format || 'png').toUpperCase()}
+              {formatFileSizeCompact(
+                post.files?.find((f) => f.is_native)?.file_bytes || 0,
+              )}{" "}
+              {(
+                post.files?.find((f) => f.is_native)?.format || "png"
+              ).toUpperCase()}
             </div>
 
             <div className="post-info-header">
               {post.owner ? (
-                <Link href={`/u/${post.owner.public_sqid}`} className="post-info-author">
+                <Link
+                  href={`/u/${post.owner.public_sqid}`}
+                  className="post-info-author"
+                >
                   {post.owner.avatar_url ? (
                     <img
-                      src={post.owner.avatar_url.startsWith('http')
-                        ? post.owner.avatar_url
-                        : `${API_BASE_URL}${post.owner.avatar_url}`}
-                      alt={post.owner.handle || 'Author'}
+                      src={
+                        post.owner.avatar_url.startsWith("http")
+                          ? post.owner.avatar_url
+                          : `${API_BASE_URL}${post.owner.avatar_url}`
+                      }
+                      alt={post.owner.handle || "Author"}
                       className="post-info-avatar"
                     />
                   ) : (
                     <div className="post-info-avatar post-info-avatar-placeholder">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                      >
                         <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
                       </svg>
                     </div>
@@ -1246,17 +1425,24 @@ export default function PostPage() {
                   <span className="stat-icon">⚡</span>
                   <span className="stat-count">
                     {widgetData
-                      ? Object.values(widgetData.reactions.totals).reduce((s, n) => s + n, 0)
+                      ? Object.values(widgetData.reactions.totals).reduce(
+                          (s, n) => s + n,
+                          0,
+                        )
                       : 0}
                   </span>
                 </button>
                 <div className="stat-item">
                   <span className="stat-icon">💬</span>
-                  <span className="stat-count">{widgetData?.comments.length ?? 0}</span>
+                  <span className="stat-count">
+                    {widgetData?.comments.length ?? 0}
+                  </span>
                 </div>
                 <div className="stat-item">
                   <span className="stat-icon">👁</span>
-                  <span className="stat-count">{widgetData?.views_count ?? 0}</span>
+                  <span className="stat-count">
+                    {widgetData?.views_count ?? 0}
+                  </span>
                 </div>
                 <button
                   ref={moreButtonRef}
@@ -1272,7 +1458,7 @@ export default function PostPage() {
 
             {post.description && (
               <div className="post-description">
-                {post.description.split('\n').map((line, i) => (
+                {post.description.split("\n").map((line, i) => (
                   <p key={i}>{line}</p>
                 ))}
               </div>
@@ -1313,13 +1499,24 @@ export default function PostPage() {
               )}
             </div>
 
-            {isModerator && (post.hidden_by_mod || post.promoted || !post.public_visibility) && (
-              <div className="mod-status-badges">
-                {post.hidden_by_mod && <span className="status-badge hidden">Hidden by mod</span>}
-                {post.promoted && <span className="status-badge promoted">Promoted</span>}
-                {!post.public_visibility && <span className="status-badge pending">Pending approval</span>}
-              </div>
-            )}
+            {isModerator &&
+              (post.hidden_by_mod ||
+                post.promoted ||
+                !post.public_visibility) && (
+                <div className="mod-status-badges">
+                  {post.hidden_by_mod && (
+                    <span className="status-badge hidden">Hidden by mod</span>
+                  )}
+                  {post.promoted && (
+                    <span className="status-badge promoted">Promoted</span>
+                  )}
+                  {!post.public_visibility && (
+                    <span className="status-badge pending">
+                      Pending approval
+                    </span>
+                  )}
+                </div>
+              )}
 
             {isOwner && isEditing && (
               <div className="edit-section">
@@ -1348,12 +1545,12 @@ export default function PostPage() {
                     placeholder="art, pixel, game (comma-separated)"
                     disabled={isSaving}
                   />
-                  <span className="field-hint">Separate hashtags with commas</span>
+                  <span className="field-hint">
+                    Separate hashtags with commas
+                  </span>
                 </div>
 
-                {saveError && (
-                  <p className="save-error">{saveError}</p>
-                )}
+                {saveError && <p className="save-error">{saveError}</p>}
 
                 <div className="edit-actions">
                   <button
@@ -1361,7 +1558,7 @@ export default function PostPage() {
                     className="action-button save"
                     disabled={isSaving}
                   >
-                    {isSaving ? 'Saving...' : '💾 Save Changes'}
+                    {isSaving ? "Saving..." : "💾 Save Changes"}
                   </button>
                   <button
                     onClick={handleCancelEdit}
@@ -1410,23 +1607,31 @@ export default function PostPage() {
 
             {/* Edit submenu */}
             <div
-              onMouseEnter={() => openSubMenu('edit')}
+              onMouseEnter={() => openSubMenu("edit")}
               onMouseLeave={() => closeSubMenuDelayed()}
             >
               <button
                 className="menu-item submenu-trigger"
-                onClick={() => (activeSubMenu === 'edit' ? setActiveSubMenu(null) : openSubMenu('edit'))}
+                onClick={() =>
+                  activeSubMenu === "edit"
+                    ? setActiveSubMenu(null)
+                    : openSubMenu("edit")
+                }
               >
                 <span>Edit</span>
-                <span className="submenu-arrow">{activeSubMenu === 'edit' ? '▼' : '▶'}</span>
+                <span className="submenu-arrow">
+                  {activeSubMenu === "edit" ? "▼" : "▶"}
+                </span>
               </button>
-              {activeSubMenu === 'edit' && (
+              {activeSubMenu === "edit" && (
                 <div className="submenu">
                   <button className="menu-item" onClick={handleEditInPiskel}>
                     In Piskel
                   </button>
-                  {['png', 'webp', 'gif', 'bmp'].includes(
-                    (post.files?.find(f => f.is_native)?.format || '').toLowerCase()
+                  {["png", "webp", "gif", "bmp"].includes(
+                    (
+                      post.files?.find((f) => f.is_native)?.format || ""
+                    ).toLowerCase(),
                   ) ? (
                     <button className="menu-item" onClick={handleEditInPixelc}>
                       In Pixelc
@@ -1442,17 +1647,23 @@ export default function PostPage() {
 
             {/* Share submenu */}
             <div
-              onMouseEnter={() => openSubMenu('share')}
+              onMouseEnter={() => openSubMenu("share")}
               onMouseLeave={() => closeSubMenuDelayed()}
             >
               <button
                 className="menu-item submenu-trigger"
-                onClick={() => (activeSubMenu === 'share' ? setActiveSubMenu(null) : openSubMenu('share'))}
+                onClick={() =>
+                  activeSubMenu === "share"
+                    ? setActiveSubMenu(null)
+                    : openSubMenu("share")
+                }
               >
                 <span>Share</span>
-                <span className="submenu-arrow">{activeSubMenu === 'share' ? '▼' : '▶'}</span>
+                <span className="submenu-arrow">
+                  {activeSubMenu === "share" ? "▼" : "▶"}
+                </span>
               </button>
-              {activeSubMenu === 'share' && (
+              {activeSubMenu === "share" && (
                 <div className="submenu">
                   <button className="menu-item" onClick={handleShareUpscaled}>
                     Upscaled
@@ -1466,19 +1677,28 @@ export default function PostPage() {
 
             {/* Download submenu */}
             <div
-              onMouseEnter={() => openSubMenu('download')}
+              onMouseEnter={() => openSubMenu("download")}
               onMouseLeave={() => closeSubMenuDelayed()}
             >
               <button
                 className="menu-item submenu-trigger"
-                onClick={() => (activeSubMenu === 'download' ? setActiveSubMenu(null) : openSubMenu('download'))}
+                onClick={() =>
+                  activeSubMenu === "download"
+                    ? setActiveSubMenu(null)
+                    : openSubMenu("download")
+                }
               >
                 <span>Download</span>
-                <span className="submenu-arrow">{activeSubMenu === 'download' ? '▼' : '▶'}</span>
+                <span className="submenu-arrow">
+                  {activeSubMenu === "download" ? "▼" : "▶"}
+                </span>
               </button>
-              {activeSubMenu === 'download' && (
+              {activeSubMenu === "download" && (
                 <div className="submenu">
-                  <button className="menu-item" onClick={handleDownloadUpscaled}>
+                  <button
+                    className="menu-item"
+                    onClick={handleDownloadUpscaled}
+                  >
                     Upscaled
                   </button>
                   <button className="menu-item" onClick={handleDownloadNative}>
@@ -1490,34 +1710,48 @@ export default function PostPage() {
                   >
                     <button
                       className="menu-item submenu-trigger"
-                      onClick={() => (showFormatSubPanel ? setShowFormatSubPanel(false) : openFormatSub())}
+                      onClick={() =>
+                        showFormatSubPanel
+                          ? setShowFormatSubPanel(false)
+                          : openFormatSub()
+                      }
                     >
                       <span>Alternative format</span>
-                      <span className="submenu-arrow">{showFormatSubPanel ? '▼' : '▶'}</span>
+                      <span className="submenu-arrow">
+                        {showFormatSubPanel ? "▼" : "▶"}
+                      </span>
                     </button>
-                    {showFormatSubPanel && (() => {
-                      const alternativeFormats = (post.files || [])
-                        .filter(f => !f.is_native)
-                        .map(f => f.format);
-                      return (
-                        <div className="submenu">
-                          {alternativeFormats.length > 0 ? (
-                            alternativeFormats.map(format => (
-                              <button
-                                key={format}
-                                className="menu-item"
-                                onClick={() => handleDownloadFormat(format)}
-                              >
-                                {format.toUpperCase()}
-                              </button>
-                            ))
-                          ) : (
-                            <div className="menu-item disabled-text">No alternatives</div>
-                          )}
-                        </div>
-                      );
-                    })()}
+                    {showFormatSubPanel &&
+                      (() => {
+                        const alternativeFormats = (post.files || [])
+                          .filter((f) => !f.is_native)
+                          .map((f) => f.format);
+                        return (
+                          <div className="submenu">
+                            {alternativeFormats.length > 0 ? (
+                              alternativeFormats.map((format) => (
+                                <button
+                                  key={format}
+                                  className="menu-item"
+                                  onClick={() => handleDownloadFormat(format)}
+                                >
+                                  {format.toUpperCase()}
+                                </button>
+                              ))
+                            ) : (
+                              <div className="menu-item disabled-text">
+                                No alternatives
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                   </div>
+                  {mkpxEnabled && post.has_mkpx && !!currentUser && (
+                    <button className="menu-item" onClick={handleDownloadMkpx}>
+                      Layers file (.mkpx)
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -1528,25 +1762,53 @@ export default function PostPage() {
                 <div className="menu-divider" />
                 <button
                   className="menu-item"
-                  onClick={() => { closeMoreMenu(); handleEditClick(); }}
+                  onClick={() => {
+                    closeMoreMenu();
+                    handleEditClick();
+                  }}
                 >
                   ✏️ Edit details
                 </button>
+                {mkpxEnabled && (
+                  <button className="menu-item" onClick={handleAttachMkpxClick}>
+                    📎{" "}
+                    {post.has_mkpx
+                      ? "Replace layers file…"
+                      : "Attach layers file…"}
+                  </button>
+                )}
+                {mkpxEnabled && post.has_mkpx && (
+                  <button
+                    className="menu-item"
+                    onClick={() => void handleDetachMkpx()}
+                  >
+                    📎 Remove layers file
+                  </button>
+                )}
                 <button
                   className="menu-item"
-                  onClick={() => { closeMoreMenu(); setShowStats(true); }}
+                  onClick={() => {
+                    closeMoreMenu();
+                    setShowStats(true);
+                  }}
                 >
                   📈 Statistics
                 </button>
                 <button
                   className="menu-item"
-                  onClick={() => { closeMoreMenu(); void handleHide(); }}
+                  onClick={() => {
+                    closeMoreMenu();
+                    void handleHide();
+                  }}
                 >
-                  {post.hidden_by_user ? '👁️ Unhide' : '🙈 Hide'}
+                  {post.hidden_by_user ? "👁️ Unhide" : "🙈 Hide"}
                 </button>
                 <button
                   className="menu-item danger"
-                  onClick={() => { closeMoreMenu(); void handleDelete(); }}
+                  onClick={() => {
+                    closeMoreMenu();
+                    void handleDelete();
+                  }}
                 >
                   🗑️ Delete
                 </button>
@@ -1560,27 +1822,39 @@ export default function PostPage() {
                 {!isOwner && (
                   <button
                     className="menu-item"
-                    onClick={() => { closeMoreMenu(); setShowStats(true); }}
+                    onClick={() => {
+                      closeMoreMenu();
+                      setShowStats(true);
+                    }}
                   >
                     📈 Statistics
                   </button>
                 )}
                 <button
                   className="menu-item"
-                  onClick={() => { closeMoreMenu(); void handleModHide(); }}
+                  onClick={() => {
+                    closeMoreMenu();
+                    void handleModHide();
+                  }}
                 >
-                  {post.hidden_by_mod ? '👁️ Unhide (Mod)' : '🙈 Hide (Mod)'}
+                  {post.hidden_by_mod ? "👁️ Unhide (Mod)" : "🙈 Hide (Mod)"}
                 </button>
                 <button
                   className="menu-item"
-                  onClick={() => { closeMoreMenu(); void handlePromote(); }}
+                  onClick={() => {
+                    closeMoreMenu();
+                    void handlePromote();
+                  }}
                 >
-                  {post.promoted ? '⬇️ Demote' : '⭐ Promote'}
+                  {post.promoted ? "⬇️ Demote" : "⭐ Promote"}
                 </button>
                 {!post.public_visibility && (
                   <button
                     className="menu-item"
-                    onClick={() => { closeMoreMenu(); void handleApprovePublicVisibility(); }}
+                    onClick={() => {
+                      closeMoreMenu();
+                      void handleApprovePublicVisibility();
+                    }}
                   >
                     ✅ Approve public visibility
                   </button>
@@ -1588,7 +1862,10 @@ export default function PostPage() {
                 {(post.hidden_by_mod || post.hidden_by_user) && (
                   <button
                     className="menu-item danger"
-                    onClick={() => { closeMoreMenu(); void handlePermanentDelete(); }}
+                    onClick={() => {
+                      closeMoreMenu();
+                      void handlePermanentDelete();
+                    }}
                   >
                     🗑️ Delete permanently
                   </button>
@@ -1598,6 +1875,15 @@ export default function PostPage() {
           </div>
         </div>
       )}
+
+      {/* Hidden picker for attaching/replacing a layers file */}
+      <input
+        ref={mkpxFileInputRef}
+        type="file"
+        accept=".mkpx"
+        style={{ display: "none" }}
+        onChange={handleMkpxFileSelected}
+      />
 
       {/* Reaction users overlay (opened by ⚡ stat) */}
       <SPOReactionUsersOverlay
@@ -1612,8 +1898,6 @@ export default function PostPage() {
         isOpen={showStats}
         onClose={() => setShowStats(false)}
       />
-
-
 
       <style jsx>{`
         .post-page {
@@ -1823,7 +2107,11 @@ export default function PostPage() {
         }
 
         .hashtag {
-          background: linear-gradient(135deg, rgba(180, 78, 255, 0.2), rgba(78, 159, 255, 0.2));
+          background: linear-gradient(
+            135deg,
+            rgba(180, 78, 255, 0.2),
+            rgba(78, 159, 255, 0.2)
+          );
           color: var(--accent-purple);
           padding: 6px 14px;
           border-radius: 20px;
@@ -1833,7 +2121,11 @@ export default function PostPage() {
         }
 
         .hashtag:hover {
-          background: linear-gradient(135deg, rgba(180, 78, 255, 0.4), rgba(78, 159, 255, 0.4));
+          background: linear-gradient(
+            135deg,
+            rgba(180, 78, 255, 0.4),
+            rgba(78, 159, 255, 0.4)
+          );
           box-shadow: var(--glow-purple);
         }
 
@@ -1880,7 +2172,11 @@ export default function PostPage() {
         }
 
         .action-button.save {
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          background: linear-gradient(
+            135deg,
+            var(--accent-pink),
+            var(--accent-purple)
+          );
           color: white;
         }
 
@@ -2123,5 +2419,3 @@ export default function PostPage() {
     </Layout>
   );
 }
-
-
