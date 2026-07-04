@@ -19,6 +19,31 @@ export default function BetaPage() {
             Makapix players.
           </p>
 
+          <div className="screenshots">
+            <figure>
+              <img src="/beta/feed.png" alt="Club feed in the app" width={480} height={960} />
+              <figcaption>The Club feeds, in your pocket</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="/beta/artwork.png"
+                alt="Artwork view with reactions in the app"
+                width={480}
+                height={960}
+              />
+              <figcaption>React, comment &amp; send to players</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="/beta/editor.png"
+                alt="Pixel art editor in the app"
+                width={480}
+                height={960}
+              />
+              <figcaption>The full animated editor</figcaption>
+            </figure>
+          </div>
+
           <p>
             We need <strong>at least 12 beta testers who stay enrolled for 14 days</strong>{' '}
             to unlock the public Play Store release — Google&apos;s rule, not ours. Every
@@ -115,7 +140,7 @@ export default function BetaPage() {
           </p>
 
           <p className="thanks">
-            Thank you for helping bring Makapix Club to everyone&apos;s pocket. 🎨
+            Thank you for helping bring Makapix Club to everyone&apos;s pocket.
           </p>
 
           <p className="see-also">
@@ -165,6 +190,35 @@ export default function BetaPage() {
 
         .beta-article strong {
           color: var(--text-primary);
+        }
+
+        .screenshots {
+          display: flex;
+          gap: 16px;
+          justify-content: center;
+          margin: 0 0 24px 0;
+        }
+
+        .screenshots figure {
+          margin: 0;
+          flex: 1 1 0;
+          min-width: 0;
+          max-width: 200px;
+          text-align: center;
+        }
+
+        .screenshots img {
+          width: 100%;
+          height: auto;
+          border: 1px solid rgba(255, 255, 255, 0.25);
+          border-radius: 12px;
+          display: block;
+        }
+
+        .screenshots figcaption {
+          margin-top: 8px;
+          font-size: 0.8rem;
+          color: var(--text-secondary);
         }
 
         .order-note {
@@ -222,6 +276,14 @@ export default function BetaPage() {
 
           .beta-article h2 {
             font-size: 1.1rem;
+          }
+
+          .screenshots {
+            gap: 8px;
+          }
+
+          .screenshots figcaption {
+            font-size: 0.7rem;
           }
         }
       `}</style>
