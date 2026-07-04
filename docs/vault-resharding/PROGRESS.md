@@ -33,6 +33,27 @@ window; their caches serve repeats).
 
 ## Log
 
+### 2026-07-04 — replace-artwork now rotates storage keys (heads-up for `status` readers)
+
+Not a resharding change, but it touches vault invariants this effort watches:
+
+- `POST /post/{id}/replace-artwork` now mints a fresh `storage_key` (v2-born,
+  single-copy — the legacy tree does not grow) instead of overwriting bytes in
+  place, so the vault's `immutable` cache header is honest (message/0002 from
+  the app team; fix chosen by owner).
+- The old key's files stay on disk for a **7-day grace period** (laggard
+  players / cached URLs), tracked in the new `retired_artworks` table. During
+  that window they are DB-unreferenced, so they show up as **orphans** in
+  `scripts/reshard_vault.py status` — expected and transient, not a
+  copy/verify defect. They also appear as unattributed downloads in the
+  sharding stats if fetched (old key no longer maps to a post).
+- The new `cleanup_retired_artwork` beat task (daily 03:45 ET) deletes them
+  after the grace period. This is a **deliberate, documented exception to D4**
+  ("no automation deletes vault files"): it only ever touches keys recorded in
+  `retired_artworks` — never a live post's — and uses
+  `delete_all_artwork_formats`, which clears both canonical and twin trees
+  per D10.
+
 ### 2026-06-10 — Planning session (Claude + fab)
 
 - Studied the codebase and both databases; recorded scale numbers in PLAN.md §1.

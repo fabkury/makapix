@@ -424,6 +424,14 @@ celery_app.conf.update(
             "schedule": crontab(minute=30, hour=3),  # 03:30 ET
             "options": {"queue": "default"},
         },
+        # No ordering dependency on cleanup-deleted-posts: it sweeps the
+        # keys retired by replace-artwork, which are disjoint from any live
+        # post's current storage_key.
+        "cleanup-retired-artwork": {
+            "task": "app.tasks.cleanup_retired_artwork",
+            "schedule": crontab(minute=45, hour=3),  # 03:45 ET
+            "options": {"queue": "default"},
+        },
         "cleanup-expired-auth-tokens": {
             "task": "app.tasks.cleanup_expired_auth_tokens",
             "schedule": crontab(minute=0, hour=4),  # 04:00 ET
@@ -2612,6 +2620,111 @@ def cleanup_deleted_posts(self) -> dict[str, Any]:
         db.close()
 
 
+@celery_app.task(bind=True, name="app.tasks.cleanup_retired_artwork")
+def cleanup_retired_artwork(self) -> dict[str, Any]:
+    """
+    Daily task: delete vault files retired by replace-artwork once their
+    7-day grace period (RetiredArtwork.delete_after) has passed.
+
+    replace-artwork rotates the post's storage_key, leaving the old key's
+    files on disk so cached URLs and laggard player devices keep working for
+    7 days. This sweep removes them: every format variant plus the upscaled
+    preview from BOTH the canonical and legacy-twin trees (resharding D10 —
+    skipping the twin would keep serving "deleted" bytes), and the old
+    .mkpx layers file if one was attached.
+
+    This is a deliberate, documented exception to the resharding rule that
+    no automation deletes vault files (docs/vault-resharding/ D4): it only
+    ever touches keys recorded in retired_artworks, never a live post's.
+
+    Runs daily at 03:45 US Eastern (configured in beat_schedule).
+    """
+    from datetime import datetime, timezone
+    from . import models, vault
+    from .db import get_session
+
+    db = next(get_session())
+    try:
+        logger.info("Starting retired artwork cleanup task")
+
+        # Tz-aware compare: delete_after is DateTime(timezone=True)
+        now = datetime.now(timezone.utc)
+
+        due_rows = (
+            db.query(models.RetiredArtwork)
+            .filter(models.RetiredArtwork.delete_after < now)
+            .all()
+        )
+
+        if not due_rows:
+            logger.info("No retired artwork past its grace period")
+            return {"status": "success", "swept": 0}
+
+        logger.info(f"Found {len(due_rows)} retired artwork entries to sweep")
+
+        swept_count = 0
+        errors = []
+
+        for row in due_rows:
+            try:
+                # Union the snapshot with all currently-supported formats:
+                # missing files are harmless no-ops, and this also catches
+                # files a stale in-flight SSAFPP wrote at the old key after
+                # the snapshot was taken.
+                formats_to_delete = sorted(
+                    set(row.formats or []) | set(vault.FORMAT_TO_EXT.keys())
+                )
+                try:
+                    vault.delete_all_artwork_formats(
+                        row.storage_key,
+                        formats_to_delete,
+                        storage_shard=row.storage_shard,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to delete retired vault files for "
+                        f"storage_key {row.storage_key}: {e}"
+                    )
+
+                if row.had_mkpx:
+                    vault.delete_mkpx_from_vault(row.storage_key, row.storage_shard)
+
+                db.delete(row)
+                swept_count += 1
+
+                # Commit in batches of 100 to avoid large transactions
+                if swept_count % 100 == 0:
+                    db.commit()
+                    logger.info(f"Swept {swept_count} retired artworks so far...")
+
+            except Exception as e:
+                logger.error(
+                    f"Error sweeping retired artwork {row.id} "
+                    f"(storage_key {row.storage_key}): {e}"
+                )
+                errors.append({"retired_artwork_id": row.id, "error": str(e)})
+                db.rollback()
+                continue
+
+        # Final commit
+        db.commit()
+
+        logger.info(f"Swept {swept_count} retired artwork entries")
+
+        return {
+            "status": "success",
+            "swept": swept_count,
+            "errors": errors if errors else None,
+        }
+
+    except Exception as e:
+        logger.error(f"Error in cleanup_retired_artwork task: {e}", exc_info=True)
+        db.rollback()
+        return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
+
+
 # ============================================================================
 # SERVER-SIDE ARTWORK FILE POST-PROCESSING (SSAFPP) TASKS
 # ============================================================================
@@ -2709,6 +2822,9 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
         if not post.storage_key or not native_pf:
             logger.error(f"Post {post_id} missing storage_key or native file")
             return {"status": "error", "message": "Missing storage info"}
+
+        # Remembered for the pre-commit rotation guard below
+        task_storage_key = post.storage_key
 
         # Get source file path
         native_format = native_pf.format.lower()
@@ -2991,6 +3107,23 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
         except Exception as e:
             logger.error(f"Failed to create upscaled version for post {post_id}: {e}")
             upscaled_result = f"error: {e}"
+
+        # Guard against replace-artwork committing mid-task: it rotates the
+        # storage_key, so everything above targeted the retired key. The
+        # vault files land there harmlessly (the retirement sweep deletes
+        # every supported format), but the PostFile rows would describe
+        # files that don't exist at the new key — and collide with the rows
+        # the replace-enqueued SSAFPP run will create. Abort instead.
+        current_key = (
+            db.query(models.Post.storage_key).filter(models.Post.id == post_id).scalar()
+        )
+        if current_key != task_storage_key:
+            db.rollback()
+            logger.info(
+                f"SSAFPP for post {post_id} aborted: storage_key rotated "
+                f"mid-task ({task_storage_key} -> {current_key})"
+            )
+            return {"status": "skipped", "message": "storage_key rotated mid-task"}
 
         # Commit PostFile rows created during conversion
         db.commit()
