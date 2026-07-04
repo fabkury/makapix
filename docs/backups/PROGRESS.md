@@ -1,12 +1,12 @@
 # Progress Log — Backups
 
-**Current phase: B1 + B2 (owner provisioning) — plan committed, waiting on
-owner actions.**
-**Next action (fab): store the secrets bundle + a freshly generated restic
-password in the password manager (B1); create the B2 account/bucket/key,
-enable the Hetzner backup add-on, create the healthchecks.io check (B2).
-Exact click-path steps were given in the 2026-07-04 session; also summarized
-below in the log entry.**
+**Current phase: B3 nearly closed (first manual run green 2026-07-04),
+B4 drill pending.**
+**Next action: (a) fab runs `sudo bash deploy/backup/restore-drill.sh` →
+closes B4 on PASS; (b) confirm tomorrow's 10:30 UTC cron run pings
+healthchecks.io green → fully closes B3; (c) after develop→main merge,
+re-run `sudo bash /opt/makapix/deploy/backup/install-backup.sh` from the
+prod checkout to re-point cron (D11).**
 
 Newest entries first in the log; the gate table mirrors PLAN.md §5.
 Update this file at the end of every working session on this effort.
@@ -16,16 +16,40 @@ Update this file at the end of every working session on this effort.
 | Gate | Description | Status |
 |---|---|---|
 | B0 | Decisions D1–D12 recorded | ✅ 2026-07-04 |
-| B1 | Secrets bundle + restic password in password manager | ☐ (fab) |
-| B2a | B2 account, `makapix-backups` bucket (EU), 30-day lifecycle, scoped app key | ☐ (fab) |
-| B2b | Credentials landed in `/etc/makapix-backup/env` (root:root 0600) | ☐ (fab) |
-| B2c | Hetzner server backup add-on enabled | ☐ (fab) |
-| B2d | healthchecks.io check created, ping URL in env file | ☐ (fab) |
-| B3 | restic repo init; script + cron installed; first nightly run green end-to-end incl. healthcheck ping | ☐ |
-| B4 | Restore drill passed (artwork sha256 match + DB into scratch); RESTORE.md written | ☐ |
+| B1 | Secrets bundle + restic password in password manager | ✅ 2026-07-04 |
+| B2a | B2 account, `makapix-backups` bucket (EU), 30-day lifecycle, scoped app key | ✅ 2026-07-04 |
+| B2b | Credentials landed in `/etc/makapix-backup/env` (root:root 0600) | ✅ 2026-07-04 |
+| B2c | Hetzner server backup add-on enabled | ✅ 2026-07-04 |
+| B2d | healthchecks.io check created, ping URL in env file | ✅ 2026-07-04 |
+| B3 | restic repo init; script + cron installed; first nightly run green end-to-end incl. healthcheck ping | ◐ first manual run green 2026-07-04; awaiting first unattended cron run (10:30 UTC) + hc green |
+| B4 | Restore drill passed (artwork byte-compare + DB into scratch); RESTORE.md written | ◐ runbook + drill script written; drill run pending |
 | B5 | Privacy page updated & deployed; quarterly drill reminder; first-month B2 spend ≈ $0 confirmed | ☐ |
 
 ## Log
+
+### 2026-07-04 (later) — Implementation session (Claude + fab)
+
+- fab closed B1 + B2: secrets bundle + restic password in password manager;
+  B2 bucket `makapix-backups` (EU, 30-day hidden-version lifecycle, scoped
+  app key); Hetzner backup add-on enabled; healthchecks.io check created;
+  creds landed in `/etc/makapix-backup/env`.
+- Wrote `deploy/backup/`: `backup-makapix.sh` (nightly job),
+  `install-backup.sh` (idempotent installer), `restore-drill.sh` (B4 +
+  quarterly), plus `docs/backups/RESTORE.md` runbook.
+- Installer ran clean: restic 0.16.4 from apt; repo `f9c79259` initialized
+  at `b2:makapix-backups:restic`; cron at `/etc/cron.d/makapix-backup`
+  (10:30 UTC → journald tag `makapix-backup`); root-only wrapper
+  `/usr/local/sbin/makapix-restic`.
+- **First backup: snapshot `b9b5c5cd`** — 22,748 files, 1.902 GiB processed
+  in 21 s; dedup collapsed the resharding twin copies to ~1 GiB unique,
+  compression stored **710 MiB** in B2 (well inside the 10 GB free tier).
+- Cron currently points at the `/opt/makapix-dev` checkout (D11 interim) —
+  re-run the installer from `/opt/makapix` after the develop→main merge.
+- Host observations (not backup-related, for the record): Caddy apt repo
+  GPG key expired (EXPKEYSIG on apt update; harmless — Caddy runs from a
+  Docker image, the host package repo is vestigial); pending kernel
+  6.8.0-117 → -134, reboot at leisure (a reboot restarts the MQTT broker —
+  see the broker-restart/publisher gotcha in memory).
 
 ### 2026-07-04 — Planning session (Claude + fab)
 
