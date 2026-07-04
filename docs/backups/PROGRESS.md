@@ -1,12 +1,13 @@
 # Progress Log — Backups
 
-**Current phase: B3 nearly closed (first manual run green 2026-07-04),
-B4 drill pending.**
-**Next action: (a) fab runs `sudo bash deploy/backup/restore-drill.sh` →
-closes B4 on PASS; (b) confirm tomorrow's 10:30 UTC cron run pings
-healthchecks.io green → fully closes B3; (c) after develop→main merge,
+**Current phase: B4 CLOSED (drill PASS 2026-07-04); B3 closes after the
+first unattended cron run; B5 (steady state) in progress.**
+**Next action: (a) confirm the 2026-07-05 10:30 UTC cron run pinged
+healthchecks.io green → fully closes B3; (b) after develop→main merge,
 re-run `sudo bash /opt/makapix/deploy/backup/install-backup.sh` from the
-prod checkout to re-point cron (D11).**
+prod checkout to re-point cron (D11); (c) B5 leftovers: quarterly drill
+reminder (next drill due ~2026-10-04) and first-month B2 spend check
+(~2026-08-04).**
 
 Newest entries first in the log; the gate table mirrors PLAN.md §5.
 Update this file at the end of every working session on this effort.
@@ -21,9 +22,9 @@ Update this file at the end of every working session on this effort.
 | B2b | Credentials landed in `/etc/makapix-backup/env` (root:root 0600) | ✅ 2026-07-04 |
 | B2c | Hetzner server backup add-on enabled | ✅ 2026-07-04 |
 | B2d | healthchecks.io check created, ping URL in env file | ✅ 2026-07-04 |
-| B3 | restic repo init; script + cron installed; first nightly run green end-to-end incl. healthcheck ping | ◐ first manual run green 2026-07-04; awaiting first unattended cron run (10:30 UTC) + hc green |
-| B4 | Restore drill passed (artwork byte-compare + DB into scratch); RESTORE.md written | ◐ runbook + drill script written; drill run pending |
-| B5 | Privacy page updated & deployed; quarterly drill reminder; first-month B2 spend ≈ $0 confirmed | ☐ |
+| B3 | restic repo init; script + cron installed; first nightly run green end-to-end incl. healthcheck ping | ◐ manual run green + hc ping confirmed green by fab 2026-07-04; awaiting first unattended cron run 2026-07-05 10:30 UTC |
+| B4 | Restore drill passed (artwork byte-compare + DB into scratch); RESTORE.md written | ✅ 2026-07-04 DRILL PASS |
+| B5 | Privacy page updated & deployed; quarterly drill reminder; first-month B2 spend ≈ $0 confirmed | ◐ privacy line written on develop 2026-07-04 (deploys with next merge); drill due ~2026-10-04; spend check ~2026-08-04 |
 
 ## Log
 
@@ -45,6 +46,12 @@ Update this file at the end of every working session on this effort.
   compression stored **710 MiB** in B2 (well inside the 10 GB free tier).
 - Cron currently points at the `/opt/makapix-dev` checkout (D11 interim) —
   re-run the installer from `/opt/makapix` after the develop→main merge.
+- **Restore drill PASS (2026-07-04T20:56:58Z, closes B4):** 3 random
+  artwork files restored from B2 byte-identical (spanning both legacy
+  3-level and v2 2-level shard paths — twin copies verified); latest DB
+  dump (B2 copy) restored into scratch `makapix_drill`; row counts matched
+  live exactly (users 101, posts 2894, comments 19). fab confirmed
+  healthchecks.io green. Next quarterly drill due ~2026-10-04.
 - Host observations (not backup-related, for the record): Caddy apt repo
   GPG key expired (EXPKEYSIG on apt update; harmless — Caddy runs from a
   Docker image, the host package repo is vestigial); pending kernel

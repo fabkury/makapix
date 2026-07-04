@@ -8,7 +8,7 @@ export default function PrivacyPage() {
         <article className="policy-article">
           <h1>Privacy Policy</h1>
 
-          <p className="effective-date">Effective date: July 3, 2026</p>
+          <p className="effective-date">Effective date: July 4, 2026</p>
 
           <p className="lead">
             Makapix Club is a small, community-run social network for pixel artists and DIY
@@ -137,8 +137,12 @@ export default function PrivacyPage() {
             Your account information and content are kept until you delete them. Raw usage
             events are deleted after about 7 days, leaving only anonymous daily aggregates.
             Transactional email records and security tokens expire on their own schedules.
-            Routine copies of data made for operational reasons (such as server maintenance)
-            may persist briefly after deletion before being cycled out.
+            We also keep encrypted backups of the service so that a server failure cannot
+            destroy the community&apos;s work. Backups are cycled out on a fixed schedule:
+            most are deleted within weeks, and the longest-lived monthly copies are deleted
+            after about a year. Content you delete disappears from the live site right away,
+            but can persist inside these encrypted backups until the copies containing it
+            cycle out.
           </p>
 
           <h2>Deleting your data</h2>
