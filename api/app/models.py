@@ -1830,3 +1830,39 @@ class BatchDownloadRequest(Base):
         Index("ix_bdr_user_created", user_id, created_at.desc()),
         Index("ix_bdr_status_expires", status, expires_at),
     )
+
+
+class RetiredArtwork(Base):
+    """
+    Old vault files retired by replace-artwork, swept after a 7-day grace.
+
+    replace-artwork rotates the post's storage_key (new UUID, new shard, new
+    URL) so the vault's `immutable` cache header stays honest. The old key's
+    files (all format variants, the upscaled preview, and any attached .mkpx)
+    stay servable at their old URL for 7 days — catering to laggard player
+    devices and cached URLs — then cleanup_retired_artwork deletes them.
+
+    The sweep works purely off the fields stored here; post_id is kept for
+    audit/debugging only and is nulled if the post is hard-deleted first.
+    """
+
+    __tablename__ = "retired_artworks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    post_id = Column(
+        Integer, ForeignKey("posts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    # The retired identity (pre-rotation storage_key + its stored shard)
+    storage_key = Column(UUID(as_uuid=True), nullable=False, index=True)
+    storage_shard = Column(String(8), nullable=False)
+
+    # Snapshot of PostFile formats at replace time (e.g. ['png', 'webp'])
+    formats = Column(ARRAY(String), nullable=False, default=list)
+    # Whether a .mkpx layers file existed at the old key
+    had_mkpx = Column(Boolean, nullable=False, default=False)
+
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    delete_after = Column(DateTime(timezone=True), nullable=False, index=True)

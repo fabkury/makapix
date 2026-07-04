@@ -61,7 +61,6 @@ from ..vault import (
     MKPX_SIZE_LIMIT_BYTES,
     VaultFullError,
     compute_storage_shard,
-    delete_artwork_from_vault,
     delete_mkpx_from_vault,
     get_artwork_url,
     save_artwork_to_vault,
@@ -1805,20 +1804,33 @@ async def replace_artwork(
         except Exception as e:
             logger.warning(f"Failed to delete temp file {tmp_path}: {e}")
 
-    # Compute new art_url (may change extension if format changes)
     from ..vault import FORMAT_TO_EXT
 
+    # Snapshot the old identity before any mutation. The old files stay on
+    # disk (servable at the old URL) for a 7-day grace period — laggard
+    # player devices and cached URLs — tracked by a RetiredArtwork row and
+    # swept by cleanup_retired_artwork.
+    old_storage_key = post.storage_key
+    old_storage_shard = post.storage_shard
+    old_formats = [pf.format for pf in post.files]
+    had_mkpx = post.mkpx_file_bytes is not None
+
+    # Rotate the storage key: the vault serves with `immutable` caching, so
+    # replaced bytes must live at a new URL or every HTTP-correct cache keeps
+    # showing the old artwork (message/0002).
+    new_storage_key = uuid.uuid4()
+    new_storage_shard = compute_storage_shard(new_storage_key)
     new_extension = FORMAT_TO_EXT[file_format]
     new_art_url = get_artwork_url(
-        post.storage_key, new_extension, storage_shard=post.storage_shard
+        new_storage_key, new_extension, storage_shard=new_storage_shard
     )
 
     # Update post first (flush) so UNIQUE constraint blocks races before vault write
-    from datetime import datetime, timezone
+    from datetime import datetime, timedelta, timezone
 
     now = datetime.now(timezone.utc)
-    # Capture old formats before replacing
-    old_formats = [pf.format for pf in post.files]
+    post.storage_key = new_storage_key
+    post.storage_shard = new_storage_shard
     post.art_url = new_art_url
     post.width = width
     post.height = height
@@ -1855,47 +1867,82 @@ async def replace_artwork(
     )
     db.add(native_file)
 
-    # Delete old vault files (best-effort) after flush but before overwrite
-    try:
-        for old_fmt in old_formats:
-            if old_fmt != file_format:
-                old_ext = FORMAT_TO_EXT.get(old_fmt)
-                if old_ext:
-                    delete_artwork_from_vault(
-                        post.storage_key, old_ext, storage_shard=post.storage_shard
-                    )
-    except Exception as e:
-        logger.warning(f"Failed to delete old artwork file for post {post.id}: {e}")
-
     # Replacing the artwork drops any attached .mkpx layers file — it would
     # no longer match the rendered artwork (docs/mkpx-upload/ D4). Columns
-    # ride the commit; the file itself is unlinked only after the commit
-    # succeeds, so a rollback never leaves columns pointing at nothing.
-    had_mkpx = post.mkpx_file_bytes is not None
+    # ride the commit (has_mkpx flips false and downloads 404 immediately,
+    # per the frozen contract §10.1); the physical file belongs to the old
+    # artwork version and is unlinked with it by the retirement sweep.
     if had_mkpx:
         post.mkpx_file_bytes = None
         post.mkpx_attached_at = None
 
-    # Overwrite vault file at storage_key
+    # Record the old identity for the 7-day deferred sweep. Rides the same
+    # transaction as the key rotation, so a rollback leaves no stray row.
+    # No shard means no vault files at the old key (e.g. an imported post
+    # whose art_url was external) — nothing to retire.
+    if old_storage_shard:
+        db.add(
+            models.RetiredArtwork(
+                post_id=post.id,
+                storage_key=old_storage_key,
+                storage_shard=old_storage_shard,
+                formats=old_formats,
+                had_mkpx=had_mkpx,
+                delete_after=now + timedelta(days=7),
+            )
+        )
+
+    # Re-point persisted notification thumbnails at the new URL — the old
+    # one 404s once the grace period ends.
+    db.query(models.SocialNotification).filter(
+        models.SocialNotification.post_id == post.id,
+        models.SocialNotification.content_art_url.isnot(None),
+    ).update({"content_art_url": new_art_url}, synchronize_session=False)
+
+    # Write the new vault file, then commit. The old file is never touched
+    # here, so any failure leaves the post fully consistent on the old key;
+    # the only stranding risk is the just-written new file, unlinked below.
+    artwork_path = None
     try:
-        save_artwork_to_vault(
-            post.storage_key,
+        artwork_path = save_artwork_to_vault(
+            new_storage_key,
             file_content,
             file_format,
-            storage_shard=post.storage_shard,
+            storage_shard=new_storage_shard,
         )
         db.commit()
         db.refresh(post)
     except Exception as e:
         db.rollback()
+        if artwork_path is not None:
+            try:
+                artwork_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        if isinstance(e, VaultFullError):
+            logger.error(f"Vault below free-space floor during replace: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Storage temporarily unavailable. Please try again later.",
+            )
         logger.error(f"Failed to replace artwork in vault: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to save artwork. Please try again.",
         )
 
-    if had_mkpx:
-        delete_mkpx_from_vault(post.storage_key, post.storage_shard)
+    # Queue SSAFPP for format conversion and upscaling — mandatory after
+    # rotation (the new key has no derived files yet).
+    try:
+        from ..tasks import process_ssafpp
+
+        process_ssafpp.delay(post.id)
+    except Exception as e:
+        logger.error(f"Failed to queue SSAFPP task for post {post.id}: {e}")
+
+    # Cached feed payloads embed art_url, which just changed
+    cache_invalidate("feed:recent:*")
+    cache_invalidate("feed:promoted:*")
 
     logger.info(
         "Artwork replaced for post %s by user %s",

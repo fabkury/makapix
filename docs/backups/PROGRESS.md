@@ -2,12 +2,13 @@
 
 **Current phase: B4 CLOSED (drill PASS 2026-07-04); B3 closes after the
 first unattended cron run; B5 (steady state) in progress.**
-**Next action: (a) confirm the 2026-07-05 10:30 UTC cron run pinged
-healthchecks.io green → fully closes B3; (b) after develop→main merge,
-re-run `sudo bash /opt/makapix/deploy/backup/install-backup.sh` from the
-prod checkout to re-point cron (D11); (c) B5 leftovers: quarterly drill
-reminder (next drill due ~2026-10-04) and first-month B2 spend check
-(~2026-08-04).**
+**All active work done (2026-07-04). Remaining items are passive:
+(a) confirm the 2026-07-05 10:30 UTC cron run pinged healthchecks.io green
+→ fully closes B3 (healthchecks emails on failure, so silence = success);
+(b) B5 leftovers: quarterly restore drill (next ~2026-10-04,
+`sudo bash deploy/backup/restore-drill.sh`) and first-month B2 spend check
+(~2026-08-04). Privacy disclosure is LIVE on makapix.club/privacy; cron
+runs from the prod checkout (D11 closed).**
 
 Newest entries first in the log; the gate table mirrors PLAN.md §5.
 Update this file at the end of every working session on this effort.
@@ -27,6 +28,14 @@ Update this file at the end of every working session on this effort.
 | B5 | Privacy page updated & deployed; quarterly drill reminder; first-month B2 spend ≈ $0 confirmed | ◐ privacy line written on develop 2026-07-04 (deploys with next merge); drill due ~2026-10-04; spend check ~2026-08-04 |
 
 ## Log
+
+### 2026-07-04 (evening) — Prod deploy + D11 closed (Claude + fab)
+
+- PR #213 (develop→main) merged; `make deploy` on prod clean; site 200,
+  MQTT publisher healthy post-restart, privacy disclosure live.
+- fab re-ran the installer from `/opt/makapix` → cron re-pointed at the
+  prod checkout (**D11 closed**). Second snapshot `6319b338`: 9 changed
+  files, 2.327 MiB added in 3 s — nominal incremental behavior.
 
 ### 2026-07-04 (later) — Implementation session (Claude + fab)
 

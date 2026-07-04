@@ -21,9 +21,12 @@
 # so it can serve files natively via file_server. The standalone `vault`
 # alpine containers in compose are unused no-ops.
 #
-# Cache-Control is `immutable` because vault filenames are content-addressed
-# UUIDs — they never change in place. CORP `cross-origin` keeps the divoom-
-# import page (which sets COEP `require-corp`) able to load these images.
+# Cache-Control is `immutable` because a vault URL's bytes never change:
+# replace-artwork rotates the storage key (new UUID, new URL) instead of
+# overwriting in place; the old URL keeps serving for a 7-day grace period,
+# then 404s (retired_artworks sweep). Avatars likewise get a fresh UUID per
+# upload. CORP `cross-origin` keeps the divoom-import page (which sets COEP
+# `require-corp`) able to load these images.
 # -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------

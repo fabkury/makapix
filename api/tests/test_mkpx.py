@@ -441,6 +441,11 @@ def test_storage_used_counts_mkpx_once(db):
 
 
 def test_replace_artwork_drops_mkpx(client, db, vault_tmp):
+    """The attachment is discarded immediately (contract §10.1), but the
+    physical file belongs to the retired artwork version and is unlinked by
+    the 7-day retirement sweep, not by the endpoint."""
+    from app.models import RetiredArtwork
+
     owner = _make_user(db)
     # Create via the real upload flow so replace-artwork has real vault files
     r = client.post(
@@ -455,6 +460,7 @@ def test_replace_artwork_drops_mkpx(client, db, vault_tmp):
     assert r.status_code == 201, r.text
     post_id = r.json()["post"]["id"]
     row = db.query(Post).filter(Post.id == post_id).first()
+    old_storage_key = row.storage_key
     path = get_mkpx_file_path(row.storage_key, row.storage_shard)
     assert path.exists()
 
@@ -469,7 +475,14 @@ def test_replace_artwork_drops_mkpx(client, db, vault_tmp):
     row = db.query(Post).filter(Post.id == post_id).first()
     assert row.mkpx_file_bytes is None
     assert row.mkpx_attached_at is None
-    assert not path.exists()
+    # Physical unlink is deferred to the retirement sweep
+    assert path.exists()
+    retired = (
+        db.query(RetiredArtwork)
+        .filter(RetiredArtwork.storage_key == old_storage_key)
+        .one()
+    )
+    assert retired.had_mkpx is True
 
 
 def test_permanent_delete_removes_mkpx_file(client, db, vault_tmp):
