@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { authenticatedFetch, clearLoggedOutMarker, clearTokens, logout } from '../lib/api';
 import SocialNotificationBadge from './SocialNotificationBadge';
+import AnnouncementBanner from './AnnouncementBanner';
 
 interface LayoutProps {
   children: ReactNode;
@@ -538,6 +539,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
         </header>
 
         <main className="main-content" style={{ paddingTop: showBottomRow ? 'calc(var(--header-height) + var(--header-bottom-row-height))' : 'var(--header-height)' }}>
+          <AnnouncementBanner />
           {children}
         </main>
       </div>
