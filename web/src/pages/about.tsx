@@ -148,6 +148,14 @@ function AboutTab() {
         </a>.
       </p>
 
+      <h2>📱 Android app (beta)</h2>
+
+      <p>
+        The official Makapix Club Android app — the full animated pixel-art editor plus
+        the whole Club in one app — is in closed beta on Google Play.{' '}
+        <Link href="/beta">Become a beta tester</Link> and help unlock the public release.
+      </p>
+
       <h2>Who is MPX for?</h2>
       
       <p>
