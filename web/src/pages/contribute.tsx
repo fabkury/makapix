@@ -128,6 +128,14 @@ export default function ContributePage() {
                   <h2 className="option-title">Import from Divoom</h2>
                   <p className="option-description">Import artworks from your Divoom account</p>
                 </Link>
+
+                <Link href="/beta" className="option-card">
+                  <div className="option-icon option-icon-emoji">📱</div>
+                  <h2 className="option-title">Android app (beta)</h2>
+                  <p className="option-description">
+                    Draw and post from the official app — join the beta
+                  </p>
+                </Link>
               </>
             )}
           </div>

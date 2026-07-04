@@ -493,6 +493,14 @@ export default function Layout({ children, title, description }: LayoutProps) {
                 aria-label="More navigation"
               >
                 <Link
+                  href="/beta"
+                  className="menu-item"
+                  role="menuitem"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  📱 Android app (beta)
+                </Link>
+                <Link
                   href="/players"
                   className="menu-item"
                   role="menuitem"

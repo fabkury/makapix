@@ -200,6 +200,9 @@ export default function WelcomePage() {
             <p className="recommended-link">
               <Link href="/players">Building a connected display? See player projects →</Link>
             </p>
+            <p className="recommended-link">
+              <Link href="/beta">📱 Android app (beta) — become a tester →</Link>
+            </p>
           </div>
         </section>
 
