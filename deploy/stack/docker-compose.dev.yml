@@ -66,6 +66,10 @@ services:
     env_file:
       - .env.dev
     environment:
+      # Container name, not the "mqtt" service alias: both environments'
+      # brokers carry the alias "mqtt" on the shared caddy_net, so from a
+      # container attached to caddy_net it resolves to either broker.
+      MQTT_BROKER_HOST: makapix-dev-mqtt
       MQTT_PUBLIC_HOST: development.makapix.club
       MQTT_PUBLIC_PORT: 8884
       # Mobile push (FCM): in-container path to the Firebase service-account key.
