@@ -2,6 +2,12 @@
 
 Update this file after every work session. Newest entries first.
 
+## 2026-07-05 — App release confirmed; exchange archived (CLOSED)
+
+- App team confirmed the feature works in their production release.
+- `message/` exchange (0001–0005) archived to `docs/mod-hashtags/messages/`.
+- Feature is fully live on both clients. No open items.
+
 ## 2026-07-05 — Production flip (feature complete)
 
 - App team acked contract v1 (message 0003: built + unit-tested same day, no
@@ -63,5 +69,5 @@ Update this file after every work session. Newest entries first.
 | Phase 3 — docs/http-api | ✅ done |
 | Phase 4 — dev verification | ✅ done (server + app E2E) |
 | Prod flip | ✅ done (PR #216, 2026-07-05) |
-| App release on Play | ⏳ app team's cadence |
-| Archive message/ exchange | ⏳ after app release |
+| App release on Play | ✅ confirmed working (2026-07-05) |
+| Archive message/ exchange | ✅ done → docs/mod-hashtags/messages/ |
