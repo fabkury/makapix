@@ -119,6 +119,9 @@ class Config(BaseModel):
     max_comments_per_post: int = 1000
     max_emojis_per_user_per_post: int = 5
     max_hashtags_per_post: int = 64
+    # Presence of this key is the clients' mod-hashtags feature-discovery
+    # signal (docs/mod-hashtags/API-CONTRACT.md §2).
+    max_mod_hashtags_per_post: int = 16
     # NOTE: populated from vault.ALLOWED_SMALL_DIMENSIONS by the /config endpoint
     # (single source of truth). The default below mirrors it for constructibility.
     allowed_dimensions: list[tuple[int, int]] = [
@@ -313,6 +316,9 @@ class Post(BaseModel):
     title: str
     description: str | None = None
     hashtags: list[str] = []
+    # Moderator-owned subset of `hashtags`; only moderators can change these
+    # (docs/mod-hashtags/API-CONTRACT.md)
+    mod_hashtags: list[str] = []
     art_url: str  # Can be relative URL for vault-hosted images or full URL for external
     width: int  # Canvas width in pixels
     height: int  # Canvas height in pixels
@@ -386,6 +392,20 @@ class PostUpdate(BaseModel):
     hashtags: list[str] | None = Field(None, max_length=64)
     hidden_by_user: bool | None = None
     hidden_by_mod: bool | None = None
+
+
+class ModHashtagsUpdate(BaseModel):
+    """Replace a post's moderator-owned hashtags (moderator only).
+
+    The raw-list bound is deliberately loose; the real cap
+    (MAX_MOD_HASHTAGS_PER_POST) is enforced post-normalization in the endpoint
+    so duplicates/#-variants don't trip a schema-level 422.
+    """
+
+    hashtags: list[str] = Field(..., max_length=64)
+    # Conventional values: spam|abuse|copyright|other (free string, audit log)
+    reason_code: str | None = Field(None, max_length=50)
+    note: str | None = Field(None, max_length=500)
 
 
 class PostRead(Post):

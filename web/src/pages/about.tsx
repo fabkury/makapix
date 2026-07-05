@@ -634,6 +634,12 @@ function RulesTab() {
       </p>
 
       <p>
+        Moderators may add missing hashtags (including monitored ones) to any
+        artwork. Hashtags added by moderators are marked with a shield (🛡️) for
+        you and can only be changed by moderators.
+      </p>
+
+      <p>
         To view content with monitored hashtags, you must explicitly enable each
         hashtag in your account settings. This applies to the web interface and
         any connected player devices.

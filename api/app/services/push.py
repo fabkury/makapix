@@ -36,6 +36,7 @@ _TITLES = {
     "comment_like": "Someone liked your comment",
     "follow": "New follower",
     "post_promoted": "Your post was promoted",
+    "mod_hashtags_updated": "A moderator updated tags on your artwork",
     "reputation_change": "Reputation update",
     "moderator_granted": "You're now a moderator",
     "moderator_revoked": "Moderator role removed",

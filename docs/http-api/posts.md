@@ -160,6 +160,7 @@ Get a single post by its public sqid. No authentication required.
   "title": "My Artwork",
   "description": "A pixel art landscape",
   "hashtags": ["landscape", "nature"],
+  "mod_hashtags": [],
   "art_url": "https://makapix.club/api/vault/21/32/abc123-def456.png",
   "width": 64,
   "height": 64,
@@ -214,6 +215,44 @@ Update post metadata. Requires ownership.
 ```
 
 **Response (200):** Updated post object
+
+Notes:
+
+- `hashtags` is the **artist-controlled** tag list. It is normalized
+  server-side (trim, strip one leading `#`, lowercase, dedupe, max 64) and
+  moderator-owned tags (`mod_hashtags`) are re-merged automatically — artists
+  cannot remove them. The response body is the source of truth.
+- `hidden_by_mod` is ignored unless the caller is a moderator.
+
+## Moderator Hashtags
+
+### PUT /post/{id}/mod-hashtags
+
+Replace a post's moderator-owned hashtags. Requires the `moderator` (or
+`owner`) role. Full contract: `docs/mod-hashtags/API-CONTRACT.md`.
+
+```json
+{
+  "hashtags": ["nsfw", "politics"],
+  "reason_code": "abuse",
+  "note": "missing monitored tag"
+}
+```
+
+Full replace of the mod set: added tags are also added to `hashtags`
+(claiming them if the artist already had them); removed tags are removed from
+`hashtags` entirely. Cap: 16 tags after normalization
+(`max_mod_hashtags_per_post` in `GET /config`). Targets must be non-deleted
+artwork posts.
+
+**Response (200):** Updated post object (including `mod_hashtags`)
+
+**Errors** (`/v1` envelope, branch on `error.code`): 401 `unauthorized`,
+403 `forbidden`, 404 `not_found` (missing, playlist, or soft-deleted post),
+422 `validation_error` (>16 tags after normalization or a tag >64 chars).
+
+Changes are audit-logged (`update_mod_hashtags`) and notify the artist
+(notification type `mod_hashtags_updated`, diff in `comment_preview`).
 
 ## Delete Post
 
