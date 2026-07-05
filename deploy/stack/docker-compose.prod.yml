@@ -42,6 +42,10 @@ services:
   api:
     container_name: makapix-prod-api
     environment:
+      # Container name, not the "mqtt" service alias: both environments'
+      # brokers carry the alias "mqtt" on the shared caddy_net, so from a
+      # container attached to caddy_net it resolves to either broker.
+      MQTT_BROKER_HOST: makapix-prod-mqtt
       MQTT_PUBLIC_HOST: makapix.club
       MQTT_PUBLIC_PORT: 8883
       # Mobile push (FCM): in-container path to the Firebase service-account key.
