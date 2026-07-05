@@ -43,7 +43,9 @@ from ..mqtt.notifications import (
     publish_new_post_notification,
     publish_category_promotion_notification,
 )
+from ..constants import MAX_HASHTAG_LENGTH, MAX_MOD_HASHTAGS_PER_POST
 from ..utils.audit import log_moderation_action
+from ..utils.hashtags import normalize_hashtags
 from ..utils.monitored_hashtags import (
     apply_monitored_hashtag_filter,
     filter_posts_by_monitored_hashtags,
@@ -473,15 +475,7 @@ def create_post(
             413,
         )
 
-    # Normalize hashtags (lowercase, strip whitespace)
-    normalized_hashtags = []
-    for tag in payload.hashtags:
-        normalized_tag = tag.strip().lower()
-        if normalized_tag and normalized_tag not in normalized_hashtags:
-            normalized_hashtags.append(normalized_tag)
-
-    # Limit hashtags to 64
-    normalized_hashtags = normalized_hashtags[:64]
+    normalized_hashtags = normalize_hashtags(payload.hashtags, cap=64)
 
     # Generate UUID for storage_key
     storage_key = uuid.uuid4()
@@ -687,19 +681,8 @@ async def upload_artwork(
             detail="Failed to process image. Please try again.",
         )
 
-    # Parse hashtags (comma-separated, normalize to lowercase)
-    parsed_hashtags = []
-    if hashtags.strip():
-        for tag in hashtags.split(","):
-            normalized_tag = tag.strip().lower()
-            # Remove # prefix if present
-            if normalized_tag.startswith("#"):
-                normalized_tag = normalized_tag[1:]
-            if normalized_tag and normalized_tag not in parsed_hashtags:
-                parsed_hashtags.append(normalized_tag)
-
-    # Limit hashtags to 64
-    parsed_hashtags = parsed_hashtags[:64]
+    # Parse hashtags (comma-separated)
+    parsed_hashtags = normalize_hashtags(hashtags.split(","), cap=64)
 
     # Determine public visibility based on user's auto_public_approval privilege
     public_visibility = getattr(current_user, "auto_public_approval", False)
@@ -1112,11 +1095,12 @@ def update_post(
     """
     Update post fields.
 
-    TODO: Validate ownership before allowing update
-    TODO: Only moderators can update hidden_by_mod
     TODO: Re-extract hashtags if title/description changed
     """
-    post = db.query(models.Post).filter(models.Post.id == id).first()
+    # FOR UPDATE: hashtag writes are read-modify-write against mod_hashtags;
+    # without the lock a concurrent mod-hashtags PUT can be silently undone
+    # (docs/mod-hashtags/DECISIONS.md D17).
+    post = db.query(models.Post).filter(models.Post.id == id).with_for_update().first()
     if not post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
@@ -1124,17 +1108,26 @@ def update_post(
 
     require_ownership(post.owner_id, current_user)
 
+    hashtags_changed = False
     if payload.title is not None:
         post.title = payload.title
     if payload.description is not None:
         post.description = payload.description
     if payload.hashtags is not None:
-        post.hashtags = payload.hashtags
+        # The submitted list is the artist-controlled tags; mod-owned tags are
+        # re-merged so artists can't remove them (docs/mod-hashtags/ D10).
+        artist_tags = normalize_hashtags(payload.hashtags, cap=64)
+        mod_tags = post.mod_hashtags or []
+        new_hashtags = artist_tags + [t for t in mod_tags if t not in artist_tags]
+        hashtags_changed = new_hashtags != post.hashtags
+        post.hashtags = new_hashtags
     if payload.hidden_by_user is not None:
         post.hidden_by_user = payload.hidden_by_user
     if payload.hidden_by_mod is not None:
-        # TODO: Only allow moderators to set this
-        post.hidden_by_mod = payload.hidden_by_mod
+        # Only moderators may change moderation-hide state (D21).
+        roles = current_user.roles or []
+        if "moderator" in roles or "owner" in roles:
+            post.hidden_by_mod = payload.hidden_by_mod
 
     from datetime import datetime, timezone
 
@@ -1142,6 +1135,105 @@ def update_post(
 
     db.commit()
     db.refresh(post)
+
+    if hashtags_changed:
+        cache_invalidate("feed:recent:*")
+        cache_invalidate("feed:promoted:*")
+        cache_invalidate("hashtags:*")
+
+    return schemas.Post.model_validate(post)
+
+
+@router.put(
+    "/{id}/mod-hashtags",
+    response_model=schemas.Post,
+    tags=["Admin"],
+)
+def update_mod_hashtags(
+    id: int,
+    payload: schemas.ModHashtagsUpdate,
+    db: Session = Depends(get_db),
+    moderator: models.User = Depends(require_moderator),
+) -> schemas.Post:
+    """
+    Replace a post's moderator-owned hashtags (moderator only).
+
+    Full replace of the mod set: tags added to the mod set are also added to
+    the effective `hashtags` (claiming them if the artist already had them);
+    tags removed from the mod set are removed from `hashtags` entirely.
+    See docs/mod-hashtags/API-CONTRACT.md.
+    """
+    # FOR UPDATE: see update_post (D17).
+    post = db.query(models.Post).filter(models.Post.id == id).with_for_update().first()
+    # Playlist rows can't serialize as schemas.Post, and a soft-deleted post
+    # would notify the artist with a dead link (D18).
+    if not post or post.kind != "artwork" or post.deleted_by_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        )
+
+    new_mod = normalize_hashtags(payload.hashtags, cap=None)
+    if len(new_mod) > MAX_MOD_HASHTAGS_PER_POST:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"At most {MAX_MOD_HASHTAGS_PER_POST} moderator hashtags per "
+                f"post ({len(new_mod)} after normalization)."
+            ),
+        )
+    too_long = [t for t in new_mod if len(t) > MAX_HASHTAG_LENGTH]
+    if too_long:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Hashtags longer than {MAX_HASHTAG_LENGTH} characters: "
+                f"{', '.join(too_long)}"
+            ),
+        )
+
+    old_mod = post.mod_hashtags or []
+    added = [t for t in new_mod if t not in old_mod]
+    removed = [t for t in old_mod if t not in new_mod]
+
+    # Build fresh lists (ARRAY columns aren't mutation-tracked). The append
+    # line runs even on a no-op replace so re-submitting the same set repairs
+    # a corrupted mod_hashtags ⊆ hashtags invariant (D17).
+    effective = [t for t in (post.hashtags or []) if t not in removed]
+    effective += [t for t in new_mod if t not in effective]
+    post.hashtags = effective
+    post.mod_hashtags = new_mod
+
+    from datetime import datetime, timezone
+
+    post.metadata_modified_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(post)
+
+    cache_invalidate("feed:recent:*")
+    cache_invalidate("feed:promoted:*")
+    cache_invalidate("hashtags:*")
+
+    if added or removed:
+        diff = " ".join([f"+{t}" for t in added] + [f"−{t}" for t in removed])
+        log_moderation_action(
+            db=db,
+            actor_id=moderator.id,
+            action="update_mod_hashtags",
+            target_type="post",
+            target_id=id,
+            reason_code=payload.reason_code,
+            note=f"{diff} — {payload.note}" if payload.note else diff,
+        )
+        # Delivered to clients in `comment_preview` (D13); the service
+        # self-skips when the moderator edits their own post.
+        SocialNotificationService.create_notification(
+            db=db,
+            user_id=post.owner_id,
+            notification_type="mod_hashtags_updated",
+            post=post,
+            actor=moderator,
+            extra_preview=diff,
+        )
 
     return schemas.Post.model_validate(post)
 

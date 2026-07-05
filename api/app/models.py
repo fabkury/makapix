@@ -324,6 +324,9 @@ class Post(Base):
     title = Column(String(128), nullable=False)
     description = Column(Text, nullable=True)
     hashtags = Column(ARRAY(String), nullable=False, default=list)
+    # Moderator-owned subset of `hashtags` (invariant: mod_hashtags ⊆ hashtags).
+    # Only moderators may add/remove these; artist edits preserve them.
+    mod_hashtags = Column(ARRAY(String), nullable=False, default=list)
 
     # Art metadata
     # NOTE: These are nullable to allow kind="playlist" rows in this table.

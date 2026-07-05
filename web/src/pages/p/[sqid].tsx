@@ -16,6 +16,7 @@ import {
   downloadMkpx,
   getMkpxConfig,
 } from "../../lib/api";
+import { MONITORED_HASHTAGS } from "../../lib/constants";
 import { ensureCompatibleArtUrl } from "../../utils/imageCompat";
 import {
   getNavigationContext,
@@ -44,6 +45,7 @@ interface Post {
   title: string;
   description?: string;
   hashtags?: string[];
+  mod_hashtags?: string[];
   art_url: string;
   width: number;
   height: number;
@@ -125,6 +127,12 @@ export default function PostPage() {
   const [editHashtags, setEditHashtags] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Moderator hashtags edit state (docs/mod-hashtags/)
+  const [isEditingModTags, setIsEditingModTags] = useState(false);
+  const [editModHashtags, setEditModHashtags] = useState("");
+  const [isSavingModTags, setIsSavingModTags] = useState(false);
+  const [modTagsError, setModTagsError] = useState<string | null>(null);
 
   // Stats panel state
   const [showStats, setShowStats] = useState(false);
@@ -1018,7 +1026,12 @@ export default function PostPage() {
     if (!post) return;
     setEditTitle(post.title || "");
     setEditDescription(post.description || "");
-    setEditHashtags(post.hashtags?.join(", ") || "");
+    // Only artist-controlled tags are editable; mod-owned tags are shown as
+    // read-only chips and re-merged server-side (docs/mod-hashtags/ D10).
+    const modTags = post.mod_hashtags ?? [];
+    setEditHashtags(
+      (post.hashtags ?? []).filter((t) => !modTags.includes(t)).join(", "),
+    );
     setSaveError(null);
     setIsEditing(true);
   };
@@ -1065,6 +1078,59 @@ export default function PostPage() {
       setSaveError("Failed to save changes.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // Moderator: edit moderator-owned hashtags (docs/mod-hashtags/)
+  const handleEditModTagsClick = () => {
+    if (!post) return;
+    setEditModHashtags((post.mod_hashtags ?? []).join(", "));
+    setModTagsError(null);
+    setIsEditingModTags(true);
+  };
+
+  const toggleModTagChip = (tag: string) => {
+    const tags = editModHashtags
+      .split(",")
+      .map((t) => t.trim().toLowerCase().replace(/^#/, ""))
+      .filter((t) => t.length > 0);
+    const next = tags.includes(tag)
+      ? tags.filter((t) => t !== tag)
+      : [...tags, tag];
+    setEditModHashtags(next.join(", "));
+  };
+
+  const handleSaveModTags = async () => {
+    if (!post) return;
+
+    setIsSavingModTags(true);
+    setModTagsError(null);
+
+    const tags = editModHashtags
+      .split(",")
+      .map((t) => t.trim().toLowerCase().replace(/^#/, ""))
+      .filter((t) => t.length > 0);
+
+    try {
+      const updatedPost = await authenticatedRequestJson<Post>(
+        `/api/post/${post.id}/mod-hashtags`,
+        { body: JSON.stringify({ hashtags: tags }) },
+        "PUT",
+      );
+      setPost(updatedPost);
+      setIsEditingModTags(false);
+    } catch (err) {
+      console.error("Error saving mod hashtags:", err);
+      if (err instanceof Error && err.message.includes("401")) {
+        clearTokens();
+        router.push("/auth");
+        return;
+      }
+      setModTagsError(
+        err instanceof Error ? err.message : "Failed to save mod hashtags.",
+      );
+    } finally {
+      setIsSavingModTags(false);
     }
   };
 
@@ -1473,6 +1539,17 @@ export default function PostPage() {
                     className="hashtag"
                   >
                     #{tag}
+                    {/* Mod-owned marker, visible to moderators and the artist only (D2) */}
+                    {(isModerator || isOwner) &&
+                      (post.mod_hashtags ?? []).includes(tag) && (
+                        <span
+                          className="mod-tag-marker"
+                          title="Added by moderators"
+                        >
+                          {" "}
+                          🛡️
+                        </span>
+                      )}
                   </Link>
                 ))}
               </div>
@@ -1548,6 +1625,18 @@ export default function PostPage() {
                   <span className="field-hint">
                     Separate hashtags with commas
                   </span>
+                  {(post.mod_hashtags ?? []).length > 0 && (
+                    <div className="mod-tags-readonly">
+                      {(post.mod_hashtags ?? []).map((tag) => (
+                        <span key={tag} className="mod-tag-chip">
+                          🛡️ #{tag}
+                        </span>
+                      ))}
+                      <span className="field-hint">
+                        Added by moderators — only moderators can change these.
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {saveError && <p className="save-error">{saveError}</p>}
@@ -1564,6 +1653,73 @@ export default function PostPage() {
                     onClick={handleCancelEdit}
                     className="action-button cancel"
                     disabled={isSaving}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {isModerator && isEditingModTags && (
+              <div className="edit-section">
+                <h3 className="edit-title">Edit Mod Hashtags</h3>
+
+                <div className="edit-field">
+                  <label htmlFor="edit-mod-hashtags">
+                    Moderator hashtags
+                  </label>
+                  <input
+                    id="edit-mod-hashtags"
+                    type="text"
+                    value={editModHashtags}
+                    onChange={(e) => setEditModHashtags(e.target.value)}
+                    placeholder="nsfw, politics (comma-separated)"
+                    disabled={isSavingModTags}
+                  />
+                  <span className="field-hint">
+                    Only moderators can change these tags. Monitored tags hide
+                    the post from users who haven&apos;t opted in.
+                  </span>
+                  <div className="mod-tags-readonly">
+                    {MONITORED_HASHTAGS.map((m) => {
+                      const active = editModHashtags
+                        .split(",")
+                        .map((t) => t.trim().toLowerCase().replace(/^#/, ""))
+                        .includes(m.tag);
+                      return (
+                        <button
+                          key={m.tag}
+                          type="button"
+                          className={`mod-tag-chip clickable${active ? " active" : ""}`}
+                          title={m.description}
+                          onClick={() => toggleModTagChip(m.tag)}
+                          disabled={isSavingModTags}
+                        >
+                          {active ? "✓ " : "+ "}
+                          {m.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {modTagsError && <p className="save-error">{modTagsError}</p>}
+
+                <div className="edit-actions">
+                  <button
+                    onClick={handleSaveModTags}
+                    className="action-button save"
+                    disabled={isSavingModTags}
+                  >
+                    {isSavingModTags ? "Saving..." : "🛡️ Save Mod Hashtags"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsEditingModTags(false);
+                      setModTagsError(null);
+                    }}
+                    className="action-button cancel"
+                    disabled={isSavingModTags}
                   >
                     Cancel
                   </button>
@@ -1848,6 +2004,15 @@ export default function PostPage() {
                 >
                   {post.promoted ? "⬇️ Demote" : "⭐ Promote"}
                 </button>
+                <button
+                  className="menu-item"
+                  onClick={() => {
+                    closeMoreMenu();
+                    handleEditModTagsClick();
+                  }}
+                >
+                  🛡️ Edit mod hashtags
+                </button>
                 {!post.public_visibility && (
                   <button
                     className="menu-item"
@@ -2118,6 +2283,42 @@ export default function PostPage() {
           font-size: 0.85rem;
           font-weight: 500;
           transition: all var(--transition-fast);
+        }
+
+        .mod-tag-marker {
+          font-size: 0.75rem;
+        }
+
+        .mod-tags-readonly {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 6px;
+          margin-top: 8px;
+        }
+
+        .mod-tag-chip {
+          background: rgba(180, 78, 255, 0.15);
+          border: 1px solid rgba(180, 78, 255, 0.35);
+          color: var(--accent-purple);
+          padding: 4px 10px;
+          border-radius: 16px;
+          font-size: 0.8rem;
+          font-weight: 500;
+        }
+
+        .mod-tag-chip.clickable {
+          cursor: pointer;
+          transition: all var(--transition-fast);
+        }
+
+        .mod-tag-chip.clickable:hover {
+          background: rgba(180, 78, 255, 0.3);
+        }
+
+        .mod-tag-chip.active {
+          background: rgba(180, 78, 255, 0.4);
+          border-color: var(--accent-purple);
         }
 
         .hashtag:hover {

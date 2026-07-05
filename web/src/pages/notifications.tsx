@@ -118,6 +118,9 @@ export default function NotificationsPage() {
     } else if (notification.notification_type === "post_promoted") {
       const category = notification.comment_preview || "Recommended";
       return `${actor} promoted "${title}" to ${category}`;
+    } else if (notification.notification_type === "mod_hashtags_updated") {
+      const diff = notification.comment_preview;
+      return `A moderator updated the tags on "${title}"${diff ? `: ${diff}` : ""}`;
     }
     return `${actor} interacted with "${title}"`;
   };
@@ -179,6 +182,9 @@ export default function NotificationsPage() {
                         >
                           <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z" />
                         </svg>
+                      ) : notification.notification_type ===
+                        "mod_hashtags_updated" ? (
+                        <span className="emoji">{"🛡️"}</span>
                       ) : notification.notification_type === "post_promoted" ? (
                         <svg
                           width="20"

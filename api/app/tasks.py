@@ -706,6 +706,7 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
     """Process relay job: commit bundle to GitHub Pages."""
     from . import models
     from .db import SessionLocal
+    from .utils.hashtags import normalize_hashtags
     from .github import (
         create_or_update_file,
         create_repository,
@@ -867,7 +868,7 @@ def process_relay_job(self, job_id: str) -> dict[str, Any]:
                 kind="artwork",
                 title=artwork["title"],
                 description=artwork.get("description"),
-                hashtags=artwork.get("hashtags", []),
+                hashtags=normalize_hashtags(artwork.get("hashtags", []), cap=64),
                 art_url=f"https://{owner}.github.io/{repo_name}/{artwork['filename']}",
                 width=width,
                 height=height,
@@ -3378,6 +3379,7 @@ def process_bdr_job(self, bdr_id: str) -> dict[str, Any]:
                             "frame_count": post.frame_count,
                             "file_format": native_fmt,
                             "hashtags": post.hashtags or [],
+                            "mod_hashtags": post.mod_hashtags or [],
                         }
                     )
 

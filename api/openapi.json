@@ -2098,6 +2098,11 @@
             "title": "Max Hashtags Per Post",
             "type": "integer"
           },
+          "max_mod_hashtags_per_post": {
+            "default": 16,
+            "title": "Max Mod Hashtags Per Post",
+            "type": "integer"
+          },
           "upload": {
             "anyOf": [
               {
@@ -3358,6 +3363,48 @@
           "max_file_bytes"
         ],
         "title": "MkpxUploadConfig",
+        "type": "object"
+      },
+      "ModHashtagsUpdate": {
+        "description": "Replace a post's moderator-owned hashtags (moderator only).\n\nThe raw-list bound is deliberately loose; the real cap\n(MAX_MOD_HASHTAGS_PER_POST) is enforced post-normalization in the endpoint\nso duplicates/#-variants don't trip a schema-level 422.",
+        "properties": {
+          "hashtags": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "title": "Hashtags",
+            "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          }
+        },
+        "required": [
+          "hashtags"
+        ],
+        "title": "ModHashtagsUpdate",
         "type": "object"
       },
       "NotificationPreferences": {
@@ -4966,6 +5013,14 @@
               }
             ],
             "title": "Mkpx File Bytes"
+          },
+          "mod_hashtags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Mod Hashtags",
+            "type": "array"
           },
           "non_conformant": {
             "title": "Non Conformant",
@@ -18285,7 +18340,7 @@
         ]
       },
       "patch": {
-        "description": "Update post fields.\n\nTODO: Validate ownership before allowing update\nTODO: Only moderators can update hidden_by_mod\nTODO: Re-extract hashtags if title/description changed",
+        "description": "Update post fields.\n\nTODO: Re-extract hashtags if title/description changed",
         "operationId": "update_post_v1_post__id__patch",
         "parameters": [
           {
@@ -18887,6 +18942,65 @@
         "summary": "Attach Mkpx",
         "tags": [
           "Posts"
+        ]
+      }
+    },
+    "/v1/post/{id}/mod-hashtags": {
+      "put": {
+        "description": "Replace a post's moderator-owned hashtags (moderator only).\n\nFull replace of the mod set: tags added to the mod set are also added to\nthe effective `hashtags` (claiming them if the artist already had them);\ntags removed from the mod set are removed from `hashtags` entirely.\nSee docs/mod-hashtags/API-CONTRACT.md.",
+        "operationId": "update_mod_hashtags_v1_post__id__mod_hashtags_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModHashtagsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Mod Hashtags",
+        "tags": [
+          "Posts",
+          "Admin"
         ]
       }
     },

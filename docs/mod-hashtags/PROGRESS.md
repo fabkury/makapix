@@ -2,6 +2,24 @@
 
 Update this file after every work session. Newest entries first.
 
+## 2026-07-05 — Implementation (Phases 1–3)
+
+- Backend: `posts.mod_hashtags` column + hand-written migration
+  (`b3d9a1c40f21`), shared `normalize_hashtags` helper adopted in create /
+  upload / PATCH / import job, PATCH rewritten (FOR UPDATE lock, mod-tag
+  merge, `hidden_by_mod` mod-only, cache invalidation), new
+  `PUT /post/{id}/mod-hashtags` endpoint (audit + notification +
+  invalidation), `mod_hashtags` on `schemas.Post`, `ModHashtagsUpdate`,
+  `max_mod_hashtags_per_post` in config, push title, export metadata.
+- Tests: `api/tests/test_mod_hashtags.py` (24 tests) — full suite green
+  (41 files, 4 chunks OK).
+- Web: shared `MONITORED_HASHTAGS` constant (`web/src/lib/constants.ts`),
+  post page (shield markers, owner edit form excludes mod tags + read-only
+  chips, mod editor with monitored quick-pick chips, kebab menu item),
+  notifications branch, MQTT type union, about-page rules sentence.
+- Docs: `docs/http-api/posts.md` updated.
+- Dev stack rebuilt; migration applied at startup.
+
 ## 2026-07-05 — Planning
 
 - Explored codebase (hashtag storage, monitored-tag filtering, moderation
