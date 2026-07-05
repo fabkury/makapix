@@ -1214,7 +1214,7 @@ def update_mod_hashtags(
     cache_invalidate("hashtags:*")
 
     if added or removed:
-        diff = " ".join([f"+{t}" for t in added] + [f"−{t}" for t in removed])
+        diff = " ".join([f"+#{t}" for t in added] + [f"−#{t}" for t in removed])
         log_moderation_action(
             db=db,
             actor_id=moderator.id,

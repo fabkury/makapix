@@ -249,8 +249,8 @@ class TestAuditAndNotification:
         _put_mod_hashtags(client, post, moderator, [])
         rows = self._audit_rows(db, post)
         assert len(rows) == 2
-        assert "+nsfw" in rows[0].note
-        assert "−nsfw" in rows[1].note
+        assert "+#nsfw" in rows[0].note
+        assert "−#nsfw" in rows[1].note
         notifs = self._notifications(db, artist)
         assert len(notifs) == 2
 

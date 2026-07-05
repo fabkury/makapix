@@ -132,7 +132,7 @@ target validation:
      note="+a +b −c" diff + optional moderator note)`.
   8. Notify (D3/D13): `SocialNotificationService.create_notification(
      user_id=post.owner_id, notification_type="mod_hashtags_updated",
-     post=post, actor=moderator, extra_preview="+nsfw −politics")`.
+     post=post, actor=moderator, extra_preview="+#nsfw −#politics")`.
      The service already self-skips when actor == recipient. Wire note: this
      value is delivered to clients as **`comment_preview`** (D13).
   9. Return `schemas.Post` (includes the new `mod_hashtags`).

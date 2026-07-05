@@ -75,8 +75,9 @@ PATCH also gains the `feed:recent:*` / `hashtags:*` cache invalidation it was
 missing.
 
 **D13 — One notification type, `mod_hashtags_updated`.** A single PUT can both
-add and remove; one notification carries the whole diff (e.g. `+nsfw
-−politics`). Wire note: the diff is passed as `extra_preview=` to
+add and remove; one notification carries the whole diff (e.g. `+#nsfw
+−#politics` — `#`-prefixed per app-team suggestion in message 0003). Wire
+note: the diff is passed as `extra_preview=` to
 `SocialNotificationService.create_notification` but is **stored and delivered
 as `comment_preview`** (same as `post_promoted`) — clients must read
 `comment_preview`. Push notifications degrade gracefully for unknown types

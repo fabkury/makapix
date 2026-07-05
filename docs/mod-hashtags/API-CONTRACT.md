@@ -143,7 +143,7 @@ a social notification (same delivery as `post_promoted`: notifications list,
 MQTT broadcast, FCM push):
 
 - `notification_type`: `"mod_hashtags_updated"`
-- The human-readable diff (e.g. `"+nsfw −politics"`) arrives in the
+- The human-readable diff (e.g. `"+#nsfw −#politics"`) arrives in the
   **`comment_preview`** field — the same field `post_promoted` uses for its
   category label. (Server-side the parameter is called `extra_preview`, but
   the wire/schema field is `comment_preview`.)
