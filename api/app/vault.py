@@ -546,7 +546,7 @@ def validate_image_dimensions(width: int, height: int) -> tuple[bool, str | None
     Validate image dimensions according to Makapix Club size rules.
 
     Rules:
-    - Under 128x128: Only specific sizes allowed (8x8, 8x16, 16x8, 16x16, 16x32, 32x16, 32x32, 32x64, 64x32, 64x64, 64x128, 128x64)
+    - Under 128x128: Only specific sizes allowed (8x8, 8x16, 16x8, 8x32, 32x8, 16x16, 16x32, 32x16, 32x32, 32x64, 64x32, 64x64, 64x128, 128x64)
       All 90-degree rotations of these sizes are also allowed (e.g., 8x16 and 16x8 are both valid)
     - From 128x128 to 256x256 (inclusive): Any size allowed (square or rectangular)
     - Above 256x256: Not allowed
