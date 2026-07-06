@@ -25,7 +25,15 @@ Update after every work session, newest first.
 - **Verified live on dev**: `moderation` key in /api/v1/config with per-env
   URLs; anonymous report E2E → 201 + real alert email to acme@makapix.club
   (Resend id logged) + new_report notifications to all 3 moderators.
-- Next: joint E2E with app team on development.makapix.club (message 0002).
+- App team replied (`0002-app-…`, same day): contract v1 acked, first-run
+  rules gate confirmed (D26 satisfied app-side), logged-out browsing
+  confirmed (logged-out reporting is first-class for them), ETA ≈1–2 days
+  then manual E2E against dev. Our `0003-server-…` announces the dev go
+  signal and answers their two clarifications (playlist posts are valid
+  `post` targets — their call; `new_report` is a system notification with
+  null post fields, summary in `content_title`).
+- Next: app team manual E2E on development.makapix.club → `0004-app-…`
+  with prod go/no-go.
 
 ## 2026-07-06 — kickoff
 
