@@ -186,3 +186,19 @@ and the app team is asked (contract §8.6) to gate first run on accepting the
 rules at `guidelines_url`. A formal standalone ToS page + signup-time
 acceptance checkbox on the website is recommended but deferred — flagged to
 the owner as a follow-up decision, not silently dropped.
+
+> **D26 follow-up CLOSED 2026-07-06** (owner interview): standard
+> plain-English ToS at `/terms` (same voice as `/privacy`; ~10 sections:
+> eligibility 13+, account, content ownership + hosting license +
+> per-artwork licenses, community rules incorporated by reference with
+> zero tolerance, moderation/enforcement per the About ladder,
+> players/API, as-is disclaimer, termination, changes, contact).
+> Acceptance = **notice line, no checkbox** ("By creating an account you
+> agree…") on both the email form and the GitHub button; existing users =
+> continued use (stated in the Terms; no banner, no gate). Server records
+> acceptance: `users.terms_version_accepted` (effective-date string,
+> `constants.TERMS_VERSION`; migration `b7f2c9d4e1a8`) stamped at all
+> three self-signup paths; NULL = pre-ToS account. `/v1/config`
+> moderation block gains additive `terms_url`; clients MAY point their
+> rules gate at it instead of `guidelines_url` (message 0006). Bump the
+> page's effective date and `TERMS_VERSION` together on material changes.

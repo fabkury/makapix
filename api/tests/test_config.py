@@ -34,3 +34,14 @@ def test_config_etag_conditional_request(client):
 def test_config_available_on_legacy_root_during_transition(client):
     # The legacy root mount keeps working until web migrates to /api/v1.
     assert client.get("/config").status_code == 200
+
+
+def test_config_moderation_block_has_terms_url(client):
+    """D26: terms_url is advertised in the moderation block (additive)."""
+    r = client.get("/v1/config")
+    assert r.status_code == 200
+    moderation = r.json()["moderation"]
+    assert moderation["terms_url"].endswith("/terms")
+    # The pre-existing keys survive (additive change)
+    assert moderation["guidelines_url"]
+    assert moderation["report_reasons"]

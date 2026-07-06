@@ -3478,6 +3478,10 @@
             },
             "title": "Report Reasons",
             "type": "array"
+          },
+          "terms_url": {
+            "title": "Terms Url",
+            "type": "string"
           }
         },
         "required": [
@@ -3485,6 +3489,7 @@
           "contact_email",
           "guidelines_url",
           "moderation_policy_url",
+          "terms_url",
           "max_blocks_per_user"
         ],
         "title": "ModerationConfig",

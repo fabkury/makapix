@@ -219,11 +219,13 @@ function AboutTab() {
         <a href="mailto:acme@makapix.club">acme@makapix.club</a>.
       </p>
 
-      <h2>Privacy</h2>
+      <h2>Privacy &amp; Terms</h2>
 
       <p>
         We collect as little data as we can and never sell it. Read our{' '}
-        <Link href="/privacy">Privacy Policy</Link> for the full details.
+        <Link href="/privacy">Privacy Policy</Link> for the full details, and our{' '}
+        <Link href="/terms">Terms of Service</Link> for the agreement that governs
+        using Makapix Club.
       </p>
 
       <style jsx>{`

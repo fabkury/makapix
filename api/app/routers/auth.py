@@ -49,6 +49,7 @@ from ..services.email_verification import (
 )
 from ..services.rate_limit import check_rate_limit
 from ..services.email_normalization import normalize_email
+from ..constants import TERMS_VERSION
 from ..utils.handles import generate_default_handle, validate_handle, is_handle_taken
 from ..utils.site_tracking import record_site_event
 
@@ -345,6 +346,7 @@ def register(
         email_normalized=email_norm,
         email_verified=False,  # Requires email verification
         roles=["user"],
+        terms_version_accepted=TERMS_VERSION,  # D26: signup = acceptance
     )
     db.add(user)
     try:
@@ -1718,6 +1720,7 @@ def github_callback(
                     email=email_to_use.lower() if email_to_use else None,
                     email_verified=True,
                     roles=["user"],
+                    terms_version_accepted=TERMS_VERSION,  # D26
                 )
                 db.add(user)
                 try:
@@ -2195,6 +2198,7 @@ def exchange_github_code(
                 email=email_to_use.lower() if email_to_use else None,
                 email_verified=True,
                 roles=["user"],
+                terms_version_accepted=TERMS_VERSION,  # D26
             )
             db.add(user)
             db.flush()  # Get the user ID without committing

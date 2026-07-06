@@ -384,6 +384,10 @@ export default function AuthPanel({
             {mode === 'register' && (
               <p className="consent-note">
                 By creating an account you agree to our{' '}
+                <Link href="/terms" className="consent-link">
+                  Terms of Service
+                </Link>{' '}
+                and{' '}
                 <Link href="/privacy" className="consent-link">
                   Privacy Policy
                 </Link>
@@ -413,6 +417,18 @@ export default function AuthPanel({
             </svg>
             GitHub
           </button>
+
+          <p className="consent-note">
+            By continuing with GitHub you agree to our{' '}
+            <Link href="/terms" className="consent-link">
+              Terms of Service
+            </Link>{' '}
+            and{' '}
+            <Link href="/privacy" className="consent-link">
+              Privacy Policy
+            </Link>
+            .
+          </p>
         </div>
       )}
 

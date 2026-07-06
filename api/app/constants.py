@@ -16,3 +16,8 @@ MAX_MOD_HASHTAGS_PER_POST = 16
 # Per-tag length bound enforced on the mod-hashtags endpoint (matches the
 # player verify-hashtag bound).
 MAX_HASHTAG_LENGTH = 64
+
+# Terms of Service version (its effective date). Stamped into
+# users.terms_version_accepted at self-signup (docs/ugc-safety/ D26).
+# Bump when /terms changes materially.
+TERMS_VERSION = "2026-07-06"

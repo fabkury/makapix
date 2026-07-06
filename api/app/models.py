@@ -100,6 +100,11 @@ class User(Base):
     # Per-notification-type push preferences ({type: bool}); absent type => push on.
     notification_prefs = Column(JSON, nullable=False, default=dict)
 
+    # ToS version (effective-date string, constants.TERMS_VERSION) accepted at
+    # self-signup (docs/ugc-safety/ D26). NULL = pre-ToS account or an account
+    # not created through self-signup (continued use = acceptance).
+    terms_version_accepted = Column(String(20), nullable=True)
+
     # Content preferences
     approved_hashtags = Column(
         ARRAY(String(50)), nullable=False, default=list
