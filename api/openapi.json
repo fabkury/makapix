@@ -865,6 +865,42 @@
         "title": "BatchLicenseChangeResponse",
         "type": "object"
       },
+      "BlockedUserEntry": {
+        "description": "One entry in the caller's blocked-users list (GET /v1/me/blocks).",
+        "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "blocked_at": {
+            "format": "date-time",
+            "title": "Blocked At",
+            "type": "string"
+          },
+          "handle": {
+            "title": "Handle",
+            "type": "string"
+          },
+          "public_sqid": {
+            "title": "Public Sqid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_sqid",
+          "handle",
+          "blocked_at"
+        ],
+        "title": "BlockedUserEntry",
+        "type": "object"
+      },
       "BlogPost": {
         "description": "Blog post with Markdown content.",
         "properties": {
@@ -2102,6 +2138,16 @@
             "default": 16,
             "title": "Max Mod Hashtags Per Post",
             "type": "integer"
+          },
+          "moderation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModerationConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "upload": {
             "anyOf": [
@@ -3407,6 +3453,43 @@
         "title": "ModHashtagsUpdate",
         "type": "object"
       },
+      "ModerationConfig": {
+        "description": "UGC-safety capability advertisement (docs/ugc-safety/).\n\nPresence of this block in `/config` is the clients' feature-discovery\nsignal (D17): key on dev = dev go, key on prod = production launch.",
+        "properties": {
+          "contact_email": {
+            "title": "Contact Email",
+            "type": "string"
+          },
+          "guidelines_url": {
+            "title": "Guidelines Url",
+            "type": "string"
+          },
+          "max_blocks_per_user": {
+            "title": "Max Blocks Per User",
+            "type": "integer"
+          },
+          "moderation_policy_url": {
+            "title": "Moderation Policy Url",
+            "type": "string"
+          },
+          "report_reasons": {
+            "items": {
+              "$ref": "#/components/schemas/ReportReasonEntry"
+            },
+            "title": "Report Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "report_reasons",
+          "contact_email",
+          "guidelines_url",
+          "moderation_policy_url",
+          "max_blocks_per_user"
+        ],
+        "title": "ModerationConfig",
+        "type": "object"
+      },
       "NotificationPreferences": {
         "description": "Per-notification-type push preferences ({type: bool}); absent => on.",
         "properties": {
@@ -3780,6 +3863,33 @@
           "items"
         ],
         "title": "Page[AuditLogEntry]",
+        "type": "object"
+      },
+      "Page_BlockedUserEntry_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BlockedUserEntry"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "Page[BlockedUserEntry]",
         "type": "object"
       },
       "Page_BlogPostComment_": {
@@ -6408,6 +6518,17 @@
             "title": "Id",
             "type": "string"
           },
+          "mod_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mod Notes"
+          },
           "notes": {
             "anyOf": [
               {
@@ -6420,14 +6541,19 @@
             "title": "Notes"
           },
           "reason_code": {
-            "enum": [
-              "spam",
-              "abuse",
-              "copyright",
-              "other"
-            ],
             "title": "Reason Code",
             "type": "string"
+          },
+          "reporter_handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reporter Handle"
           },
           "status": {
             "enum": [
@@ -6452,9 +6578,16 @@
             "type": "string"
           },
           "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
           }
         },
         "required": [
@@ -6463,14 +6596,13 @@
           "target_id",
           "reason_code",
           "status",
-          "created_at",
-          "updated_at"
+          "created_at"
         ],
         "title": "Report",
         "type": "object"
       },
       "ReportCreate": {
-        "description": "Create report request.",
+        "description": "Create report request. Auth optional (anonymous reports, D2).",
         "properties": {
           "notes": {
             "anyOf": [
@@ -6487,7 +6619,12 @@
           "reason_code": {
             "enum": [
               "spam",
-              "abuse",
+              "harassment",
+              "hate",
+              "sexual_explicit",
+              "violence_gore",
+              "illegal_csam",
+              "self_harm",
               "copyright",
               "other"
             ],
@@ -6516,8 +6653,27 @@
         "title": "ReportCreate",
         "type": "object"
       },
+      "ReportReasonEntry": {
+        "description": "One selectable report reason (docs/ugc-safety/API-CONTRACT.md §1).",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label"
+        ],
+        "title": "ReportReasonEntry",
+        "type": "object"
+      },
       "ReportUpdate": {
-        "description": "Update report request (admin only).",
+        "description": "Update report request (moderator only).\n\n`notes` are the moderator's notes — stored in `mod_notes`; the reporter's\noriginal text is immutable (D25).",
         "properties": {
           "action_taken": {
             "anyOf": [
@@ -8185,6 +8341,11 @@
           "id": {
             "title": "Id",
             "type": "integer"
+          },
+          "is_blocked_by_viewer": {
+            "default": false,
+            "title": "Is Blocked By Viewer",
+            "type": "boolean"
           },
           "is_following": {
             "default": false,
@@ -16511,6 +16672,73 @@
         ]
       }
     },
+    "/v1/me/blocks": {
+      "get": {
+        "description": "The caller's blocked-users list (docs/ugc-safety/API-CONTRACT.md §4).",
+        "operationId": "list_my_blocks_v1_me_blocks_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_BlockedUserEntry_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List My Blocks",
+        "tags": [
+          "Me"
+        ]
+      }
+    },
     "/v1/me/notification-preferences": {
       "get": {
         "operationId": "get_notification_preferences_v1_me_notification_preferences_get",
@@ -19183,6 +19411,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Reaction Users",
         "tags": [
           "Reactions"
@@ -19765,8 +19998,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "format": "uuid",
-                  "type": "string"
+                  "type": "integer"
                 },
                 {
                   "type": "null"
@@ -19839,7 +20071,7 @@
         ]
       },
       "post": {
-        "description": "Create a content report.\n\nTODO: Validate that target_id exists for target_type\nTODO: Check rate limiting (prevent spam reports)\nTODO: Send notification to moderators",
+        "description": "Create a content report. Auth optional: logged-out reports are accepted\nsubject to stricter per-IP limits (docs/ugc-safety/API-CONTRACT.md §3).",
         "operationId": "create_report_v1_report_post",
         "requestBody": {
           "content": {
@@ -19886,7 +20118,7 @@
     },
     "/v1/report/{id}": {
       "patch": {
-        "description": "Update report status (moderator only).\n\nIf action_taken is set, automatically applies the moderation action.",
+        "description": "Update report status (moderator only).\n\nIf action_taken is set, automatically applies the moderation action.\nModerator notes land in `mod_notes`; the reporter's text is immutable (D25).",
         "operationId": "update_report_v1_report__id__patch",
         "parameters": [
           {
@@ -20869,6 +21101,86 @@
           }
         ],
         "summary": "Get User By Sqid",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/v1/user/u/{public_sqid}/block": {
+      "delete": {
+        "description": "Unblock a user. Idempotent — 404 only if the user doesn't exist.",
+        "operationId": "unblock_user_v1_user_u__public_sqid__block_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_sqid",
+            "required": true,
+            "schema": {
+              "title": "Public Sqid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unblock User",
+        "tags": [
+          "Users"
+        ]
+      },
+      "post": {
+        "description": "Block a user (docs/ugc-safety/ D1). Idempotent.\n\nRemoves follows in both directions (D12); the blocked user's content\ndisappears from the caller's list surfaces (D10) and interactions between\nthe pair are refused both ways (D11).",
+        "operationId": "block_user_v1_user_u__public_sqid__block_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_sqid",
+            "required": true,
+            "schema": {
+              "title": "Public Sqid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Block User",
         "tags": [
           "Users"
         ]

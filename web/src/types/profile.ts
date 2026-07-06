@@ -53,6 +53,7 @@ export interface UserProfileEnhanced {
   stats: UserProfileStats;
   is_following: boolean;
   is_own_profile: boolean;
+  is_blocked_by_viewer?: boolean;
   highlights: UserHighlightItem[];
 }
 

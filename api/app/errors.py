@@ -66,6 +66,12 @@ class ErrorCode(StrEnum):
     mkpx_invalid = "mkpx_invalid"
     mkpx_too_large = "mkpx_too_large"
 
+    # --- UGC safety (docs/ugc-safety/API-CONTRACT.md) ---
+    # Interaction refused because a block exists between the two users (D11/D20)
+    blocked = "blocked"
+    # Per-user block cap exceeded (D19)
+    block_cap_reached = "block_cap_reached"
+
 
 # Fallback: HTTP status -> generic ErrorCode for plain HTTPExceptions raised
 # without a structured detail. Anything unmapped becomes internal_error.

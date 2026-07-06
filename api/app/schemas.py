@@ -112,6 +112,27 @@ class UploadConfig(BaseModel):
     mkpx: MkpxUploadConfig | None = None
 
 
+class ReportReasonEntry(BaseModel):
+    """One selectable report reason (docs/ugc-safety/API-CONTRACT.md §1)."""
+
+    code: str
+    label: str
+
+
+class ModerationConfig(BaseModel):
+    """UGC-safety capability advertisement (docs/ugc-safety/).
+
+    Presence of this block in `/config` is the clients' feature-discovery
+    signal (D17): key on dev = dev go, key on prod = production launch.
+    """
+
+    report_reasons: list[ReportReasonEntry]
+    contact_email: str
+    guidelines_url: str
+    moderation_policy_url: str
+    max_blocks_per_user: int
+
+
 class Config(BaseModel):
     """Public system configuration."""
 
@@ -146,6 +167,9 @@ class Config(BaseModel):
     max_art_file_bytes_default: int = MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES
     # Machine-readable upload/conformance rules; populated by the /config endpoint.
     upload: UploadConfig | None = None
+    # UGC-safety block (docs/ugc-safety/); its presence is the clients'
+    # feature gate + launch signal (D17). Populated by the /config endpoint.
+    moderation: ModerationConfig | None = None
 
 
 # ============================================================================
@@ -868,33 +892,66 @@ class WidgetData(BaseModel):
 # ============================================================================
 
 
+# Report reason codes (docs/ugc-safety/ D3). `abuse` is legacy read-only (D21).
+REPORT_REASONS: list[tuple[str, str]] = [
+    ("spam", "Spam or misleading"),
+    ("harassment", "Harassment or bullying"),
+    ("hate", "Hate or discrimination"),
+    ("sexual_explicit", "Sexual or explicit content"),
+    ("violence_gore", "Violence or gore"),
+    ("illegal_csam", "Illegal content or child endangerment"),
+    ("self_harm", "Self-harm or suicide"),
+    ("copyright", "Copyright or IP violation"),
+    ("other", "Something else"),
+]
+
+ReportReasonCode = Literal[
+    "spam",
+    "harassment",
+    "hate",
+    "sexual_explicit",
+    "violence_gore",
+    "illegal_csam",
+    "self_harm",
+    "copyright",
+    "other",
+]
+
+
 class Report(BaseModel):
     """Content moderation report."""
 
     id: UUID
     target_type: Literal["user", "post", "comment"]
-    target_id: str  # String to support both UUID and integer IDs
-    reason_code: Literal["spam", "abuse", "copyright", "other"]
+    # post -> int id, comment -> UUID, user -> public_sqid (D9)
+    target_id: str
+    reason_code: str  # D3 set; legacy rows may carry "abuse" (D21)
     notes: str | None = None
+    mod_notes: str | None = None  # moderator notes (D25); mod listings only
     status: Literal["open", "triaged", "resolved"]
     action_taken: Literal["hide", "delete", "ban", "none"] | None = None
+    reporter_handle: str | None = None  # populated in moderator listings only
     created_at: datetime
-    updated_at: datetime
+    updated_at: datetime | None = None  # NULL until first update
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class ReportCreate(BaseModel):
-    """Create report request."""
+    """Create report request. Auth optional (anonymous reports, D2)."""
 
     target_type: Literal["user", "post", "comment"]
-    target_id: str  # String to support both UUID and integer IDs
-    reason_code: Literal["spam", "abuse", "copyright", "other"]
+    target_id: str  # post -> int id, comment -> UUID, user -> public_sqid (D9)
+    reason_code: ReportReasonCode
     notes: str | None = Field(None, max_length=2000)
 
 
 class ReportUpdate(BaseModel):
-    """Update report request (admin only)."""
+    """Update report request (moderator only).
+
+    `notes` are the moderator's notes — stored in `mod_notes`; the reporter's
+    original text is immutable (D25).
+    """
 
     status: Literal["triaged", "resolved"] | None = None
     action_taken: Literal["hide", "delete", "ban", "none"] | None = None
@@ -2366,9 +2423,21 @@ class UserProfileEnhanced(BaseModel):
     stats: UserProfileStats  # Aggregated statistics
     is_following: bool = False  # Whether current user follows this user
     is_own_profile: bool = False  # Whether this is the viewer's own profile
+    # Whether the viewer has blocked this user (docs/ugc-safety/ D14);
+    # always present, false when logged out
+    is_blocked_by_viewer: bool = False
     highlights: list[UserHighlightItem] = []  # Featured posts
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class BlockedUserEntry(BaseModel):
+    """One entry in the caller's blocked-users list (GET /v1/me/blocks)."""
+
+    public_sqid: str
+    handle: str
+    avatar_url: str | None = None
+    blocked_at: datetime
 
 
 class FollowResponse(BaseModel):

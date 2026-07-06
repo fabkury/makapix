@@ -2,6 +2,27 @@
 
 Update this file after every work session. Newest entries first.
 
+## 2026-07-05 — App release confirmed; exchange archived (CLOSED)
+
+- App team confirmed the feature works in their production release.
+- `message/` exchange (0001–0005) archived to `docs/mod-hashtags/messages/`.
+- Feature is fully live on both clients. No open items.
+
+## 2026-07-05 — Production flip (feature complete)
+
+- App team acked contract v1 (message 0003: built + unit-tested same day, no
+  app metadata editor so §5's edit-form rule is N/A there), ran manual E2E on
+  Android against dev — clean (message 0004) — and gave go for prod.
+- Adopted their suggestion: diff in `comment_preview`/audit note is now
+  `#`-prefixed (`+#nsfw −#politics`).
+- `make check-full` green → PR #216 merged → prod deployed. Verified on
+  makapix.club: migration at head, `max_mod_hashtags_per_post: 16` in
+  `/v1/config` (the app's launch signal), `mod_hashtags` on Post, 401 on
+  unauthenticated PUT.
+- Remaining: app team ships their release on their cadence (order-independent
+  per D19); archive `message/` exchange to `docs/mod-hashtags/messages/`
+  after that.
+
 ## 2026-07-05 — Implementation (Phases 1–3)
 
 - Backend: `posts.mod_hashtags` column + hand-written migration
@@ -42,9 +63,11 @@ Update this file after every work session. Newest entries first.
 | Phase | Status |
 |-------|--------|
 | Plan + contract | ✅ done |
-| Message to app team | ⏳ pending |
-| Phase 1 — backend | not started |
-| Phase 2 — web UI | not started |
-| Phase 3 — docs/http-api | not started |
-| Phase 4 — dev verification | not started |
-| Prod flip | not started |
+| Message to app team | ✅ done (0001–0005) |
+| Phase 1 — backend | ✅ done |
+| Phase 2 — web UI | ✅ done |
+| Phase 3 — docs/http-api | ✅ done |
+| Phase 4 — dev verification | ✅ done (server + app E2E) |
+| Prod flip | ✅ done (PR #216, 2026-07-05) |
+| App release on Play | ✅ confirmed working (2026-07-05) |
+| Archive message/ exchange | ✅ done → docs/mod-hashtags/messages/ |

@@ -78,6 +78,11 @@ def browse_users(
             models.User.banned_until.is_(None),
         )
 
+    # Hide users the viewer has blocked (docs/ugc-safety/ D10)
+    from ..utils.blocks import apply_block_filter
+
+    query = apply_block_filter(query, models.User.id, current_user.id)
+
     # Apply search filter
     if q:
         search_term = f"%{q}%"
@@ -1095,6 +1100,19 @@ def get_user_profile_enhanced(
         )
         is_following = follow is not None
 
+    # Whether the viewer has blocked this user (docs/ugc-safety/ D14)
+    is_blocked_by_viewer = False
+    if current_user and not is_own_profile:
+        is_blocked_by_viewer = (
+            db.query(models.UserBlock)
+            .filter(
+                models.UserBlock.blocker_id == current_user.id,
+                models.UserBlock.blocked_id == user.id,
+            )
+            .first()
+            is not None
+        )
+
     # Get highlights
     highlights = []
     for hl in user.highlights:
@@ -1133,6 +1151,7 @@ def get_user_profile_enhanced(
         stats=stats_schema,
         is_following=is_following,
         is_own_profile=is_own_profile or False,
+        is_blocked_by_viewer=is_blocked_by_viewer,
         highlights=highlights,
     )
 
@@ -1173,6 +1192,11 @@ def follow_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You cannot follow yourself",
         )
+
+    # Blocked pairs can't follow each other (docs/ugc-safety/ D11)
+    from ..utils.blocks import ensure_not_blocked
+
+    ensure_not_blocked(db, current_user.id, target_user.id)
 
     # Check if already following
     existing = (
@@ -1273,6 +1297,108 @@ def unfollow_user(
     )
 
     return schemas.FollowResponse(following=False, follower_count=follower_count)
+
+
+@router.post("/u/{public_sqid}/block", status_code=status.HTTP_204_NO_CONTENT)
+def block_user(
+    public_sqid: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> None:
+    """
+    Block a user (docs/ugc-safety/ D1). Idempotent.
+
+    Removes follows in both directions (D12); the blocked user's content
+    disappears from the caller's list surfaces (D10) and interactions between
+    the pair are refused both ways (D11).
+    """
+    from ..sqids_config import decode_user_sqid
+    from ..errors import AppError, ErrorCode
+    from ..utils.blocks import MAX_BLOCKS_PER_USER
+    from sqlalchemy import func, or_ as sa_or
+
+    user_id = decode_user_sqid(public_sqid)
+    target_user = (
+        db.query(models.User).filter(models.User.id == user_id).first()
+        if user_id is not None
+        else None
+    )
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
+    if target_user.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot block yourself",
+        )
+
+    existing = (
+        db.query(models.UserBlock)
+        .filter(
+            models.UserBlock.blocker_id == current_user.id,
+            models.UserBlock.blocked_id == target_user.id,
+        )
+        .first()
+    )
+    if existing:
+        return  # Idempotent
+
+    block_count = (
+        db.query(func.count(models.UserBlock.id))
+        .filter(models.UserBlock.blocker_id == current_user.id)
+        .scalar()
+        or 0
+    )
+    if block_count >= MAX_BLOCKS_PER_USER:
+        raise AppError(
+            ErrorCode.block_cap_reached,
+            f"You cannot block more than {MAX_BLOCKS_PER_USER} users.",
+            status.HTTP_409_CONFLICT,
+        )
+
+    # Remove follows in both directions in the same transaction (D12)
+    db.query(models.Follow).filter(
+        sa_or(
+            (models.Follow.follower_id == current_user.id)
+            & (models.Follow.following_id == target_user.id),
+            (models.Follow.follower_id == target_user.id)
+            & (models.Follow.following_id == current_user.id),
+        )
+    ).delete(synchronize_session=False)
+
+    db.add(models.UserBlock(blocker_id=current_user.id, blocked_id=target_user.id))
+    db.commit()
+
+
+@router.delete("/u/{public_sqid}/block", status_code=status.HTTP_204_NO_CONTENT)
+def unblock_user(
+    public_sqid: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> None:
+    """
+    Unblock a user. Idempotent — 404 only if the user doesn't exist.
+    """
+    from ..sqids_config import decode_user_sqid
+
+    user_id = decode_user_sqid(public_sqid)
+    target_user = (
+        db.query(models.User).filter(models.User.id == user_id).first()
+        if user_id is not None
+        else None
+    )
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
+    db.query(models.UserBlock).filter(
+        models.UserBlock.blocker_id == current_user.id,
+        models.UserBlock.blocked_id == target_user.id,
+    ).delete(synchronize_session=False)
+    db.commit()
 
 
 @router.get("/u/{public_sqid}/followers", response_model=schemas.FollowersResponse)

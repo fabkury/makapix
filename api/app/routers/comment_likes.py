@@ -91,6 +91,13 @@ def like_comment(
             detail="Comment not found.",
         )
 
+    # Interaction guard (docs/ugc-safety/ D11): a block in either direction
+    # between the liker and the comment author refuses the like.
+    if comment.author_id:
+        from ..utils.blocks import ensure_not_blocked
+
+        ensure_not_blocked(db, current_user.id, comment.author_id)
+
     # Create like if not exists (idempotent)
     existing = (
         db.query(models.CommentLike)

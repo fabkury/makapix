@@ -452,3 +452,81 @@ If you didn't request this download, you can safely ignore this email.
     except Exception as e:
         logger.error(f"Failed to send BDR ready email to {to_email}: {e}")
         return None
+
+
+def send_report_alert_email(
+    target_type: str,
+    target_id: str,
+    reason_code: str,
+    notes: str | None,
+    reporter_handle: str | None,
+) -> dict[str, Any] | None:
+    """
+    Alert the moderation inbox about a new content report (docs/ugc-safety/ D4).
+
+    Throttled by the caller (one email per target per 6 h, D18). Failures are
+    logged and swallowed — reporting must never fail because email did.
+    """
+    if not _init_resend():
+        logger.info("Email sending disabled - would send report alert")
+        return None
+
+    import html as html_lib
+
+    to_email = os.getenv("MODERATION_ALERT_EMAIL", "acme@makapix.club")
+    # Reporter handle, notes, and target_id are user-controlled — escape them
+    # before interpolating into the HTML body.
+    reporter = html_lib.escape(reporter_handle or "anonymous")
+    notes_str = (notes or "").strip()
+    if len(notes_str) > 500:
+        notes_str = notes_str[:500] + "…"
+    notes_str = html_lib.escape(notes_str)
+    target_id = html_lib.escape(target_id)
+
+    if target_type == "post":
+        target_url = f"{BASE_URL}/post/{target_id}"
+    elif target_type == "user":
+        target_url = f"{BASE_URL}/u/{target_id}"
+    else:
+        target_url = f"{BASE_URL}/mod-dashboard"
+
+    text_content = f"""New content report on Makapix Club
+
+Target:   {target_type} {target_id}
+          {target_url}
+Reason:   {reason_code}
+Reporter: {reporter}
+Notes:    {notes_str or "(none)"}
+
+Review it in the moderation queue: {BASE_URL}/mod-dashboard
+(Further reports on this target are muted for 6 hours.)
+"""
+
+    html_content = (
+        f"<p><strong>New content report on Makapix Club</strong></p>"
+        f"<ul>"
+        f"<li>Target: {target_type} <a href='{target_url}'>{target_id}</a></li>"
+        f"<li>Reason: <code>{reason_code}</code></li>"
+        f"<li>Reporter: {reporter}</li>"
+        f"</ul>"
+        f"<p>Notes: {notes_str or '(none)'}</p>"
+        f"<p><a href='{BASE_URL}/mod-dashboard'>Open the moderation queue</a></p>"
+        f"<p style='color:#666'>Further reports on this target are muted for 6 hours.</p>"
+    )
+
+    try:
+        params: resend.Emails.SendParams = {
+            "from": RESEND_FROM_EMAIL,
+            "to": [to_email],
+            "subject": f"[MPX report] {target_type} {target_id}: {reason_code}",
+            "html": html_content,
+            "text": text_content,
+        }
+        response = resend.Emails.send(params)
+        logger.info(
+            f"Report alert email sent to {to_email}, id: {response.get('id', 'unknown')}"
+        )
+        return response
+    except Exception as e:
+        logger.error(f"Failed to send report alert email: {e}")
+        return None

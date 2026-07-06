@@ -243,6 +243,12 @@ class SocialNotificationService:
             models.SocialNotification.user_id == user_id
         )
 
+        # Hide notifications whose actor the viewer has blocked
+        # (docs/ugc-safety/ D10); actor-less/system rows are unaffected.
+        from ..utils.blocks import apply_block_filter
+
+        query = apply_block_filter(query, models.SocialNotification.actor_id, user_id)
+
         if unread_only:
             query = query.filter(models.SocialNotification.is_read == False)
 

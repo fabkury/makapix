@@ -544,6 +544,24 @@ class AnonymousUser:
         return False
 
 
+def get_trusted_client_ip(request: Request) -> str:
+    """
+    Extract the client IP that our own reverse proxy (Caddy) vouches for.
+
+    Takes the RIGHTMOST X-Forwarded-For entry — the one Caddy appends — so a
+    client cannot spoof it by sending its own X-Forwarded-For header (the
+    leftmost entries are client-controlled). Use this whenever the IP is a
+    security control (e.g. anonymous-report rate limits, docs/ugc-safety/
+    D23b); `get_client_ip` below keeps the legacy leftmost semantics.
+    """
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        return forwarded_for.split(",")[-1].strip()
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+
 def get_client_ip(request: Request) -> str:
     """
     Extract client IP address from request, handling proxies.

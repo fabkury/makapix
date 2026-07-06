@@ -8,7 +8,7 @@ export default function PrivacyPage() {
         <article className="policy-article">
           <h1>Privacy Policy</h1>
 
-          <p className="effective-date">Effective date: July 4, 2026</p>
+          <p className="effective-date">Effective date: July 6, 2026</p>
 
           <p className="lead">
             Makapix Club is a small, community-run social network for pixel artists and DIY
@@ -46,6 +46,14 @@ export default function PrivacyPage() {
             files), comments, reactions, playlists, follows, and reports you submit are
             stored on our servers so we can show them to you and, depending on your
             settings, to other users.
+          </p>
+
+          <p>
+            <strong>Reports filed while logged out.</strong> If you file a content
+            report without being signed in, we record the IP address the report
+            came from. This is kept for up to 30 days for abuse prevention (to stop
+            report spam) and is then automatically deleted. Reports filed while
+            signed in are linked to your account, not stored with an IP address.
           </p>
 
           <p>

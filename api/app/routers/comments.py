@@ -65,6 +65,19 @@ def list_comments(
 
     comments = query.all()
 
+    # Hide comments by users the viewer has blocked (docs/ugc-safety/ D10).
+    # Done Python-side, BEFORE the deleted/orphan passes below: removing a
+    # blocked top-level comment here makes its replies orphans, which the
+    # parent-validation pass then drops — exactly the contract §5 rule
+    # ("blocked top-level drops with its replies; blocked reply drops alone").
+    viewer_id = current_user.id if isinstance(current_user, models.User) else None
+    if viewer_id is not None:
+        from ..utils.blocks import blocked_ids_for
+
+        blocked = blocked_ids_for(db, viewer_id)
+        if blocked:
+            comments = [c for c in comments if c.author_id not in blocked]
+
     # Filter out deleted comments recursively using bottom-up approach
     # Build a map of comment ID -> list of children comment IDs
     comment_dict = {c.id: c for c in comments}
@@ -203,6 +216,19 @@ def create_comment(
                 "Maximum comment depth (2) exceeded.",
                 status.HTTP_409_CONFLICT,
             )
+
+    # Interaction guard (docs/ugc-safety/ D11): a block in either direction
+    # between the commenter and the post owner (or parent comment author)
+    # refuses the comment with 403 `blocked`. Anonymous commenters have no
+    # identity to check (D16).
+    if isinstance(current_user, models.User):
+        from ..utils.blocks import ensure_not_blocked
+
+        guard_post = db.query(models.Post).filter(models.Post.id == id).first()
+        if guard_post:
+            ensure_not_blocked(db, current_user.id, guard_post.owner_id)
+        if parent is not None and parent.author_id is not None:
+            ensure_not_blocked(db, current_user.id, parent.author_id)
 
     # Create comment with appropriate author identification
     comment = models.Comment(

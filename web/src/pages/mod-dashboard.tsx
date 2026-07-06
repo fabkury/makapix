@@ -56,7 +56,35 @@ interface Report {
   status: 'open' | 'triaged' | 'resolved';
   action_taken?: string;
   created_at: string;
+  reporter_handle?: string | null;
+  mod_notes?: string | null;
 }
+
+// Human labels for report reason codes (docs/ugc-safety/). Legacy rows may
+// still carry "abuse" -> render as "Harassment or bullying" (D21).
+const REPORT_REASON_LABELS: Record<string, string> = {
+  spam: 'Spam or misleading',
+  harassment: 'Harassment or bullying',
+  hate: 'Hate or discrimination',
+  sexual_explicit: 'Sexual or explicit content',
+  violence_gore: 'Violence or gore',
+  illegal_csam: 'Illegal content or child endangerment',
+  self_harm: 'Self-harm or suicide',
+  copyright: 'Copyright or IP violation',
+  other: 'Something else',
+  abuse: 'Harassment or bullying',
+};
+
+const reportReasonLabel = (code: string): string =>
+  REPORT_REASON_LABELS[code] || code;
+
+// Link to a report target where a page exists (post -> /p or /post,
+// user -> /u/{public_sqid}); comments have no dedicated page.
+const reportTargetHref = (r: Report): string | null => {
+  if (r.target_type === 'post') return `/post/${r.target_id}`;
+  if (r.target_type === 'user') return `/u/${r.target_id}`;
+  return null;
+};
 
 interface AuditLogEntry {
   id: string;
@@ -644,8 +672,22 @@ export default function ModDashboardPage() {
                   {reports.map(report => (
                     <div key={report.id} className="item-card">
                       <div className="item-info">
-                        <strong>{report.target_type}</strong> - {report.reason_code}
+                        <strong>{report.target_type}</strong> - {reportReasonLabel(report.reason_code)}
+                        <p className="item-notes">
+                          {reportTargetHref(report) ? (
+                            <Link href={reportTargetHref(report) as string}>
+                              {report.target_type} {report.target_id}
+                            </Link>
+                          ) : (
+                            <span>{report.target_type} {report.target_id}</span>
+                          )}
+                          {' · reported by '}
+                          {report.reporter_handle || 'anonymous'}
+                        </p>
                         {report.notes && <p className="item-notes">{report.notes}</p>}
+                        {report.mod_notes && (
+                          <p className="item-notes">Mod notes: {report.mod_notes}</p>
+                        )}
                         <p className="item-date">{new Date(report.created_at).toLocaleString()}</p>
                       </div>
                       <div className="item-actions">

@@ -230,6 +230,13 @@ def list_posts(
     if not is_viewing_own_posts:
         query = apply_monitored_hashtag_filter(query, models.Post, current_user)
 
+    # Hide posts by users the viewer has blocked (docs/ugc-safety/ D10)
+    from ..utils.blocks import apply_block_filter
+
+    query = apply_block_filter(
+        query, models.Post.owner_id, current_user.id if current_user else None
+    )
+
     if promoted is not None:
         query = query.filter(models.Post.promoted == promoted)
 
@@ -908,6 +915,12 @@ def list_recent_posts(
         response.items = filter_posts_by_monitored_hashtags(
             response.items, current_user
         )
+        # Apply block filtering (user-specific, post-cache; docs/ugc-safety/ D10)
+        from ..utils.blocks import filter_items_by_blocks
+
+        response.items = filter_items_by_blocks(
+            response.items, db, current_user.id if current_user else None
+        )
         # Add user-specific like status if authenticated
         if current_user and response.items:
             post_ids = [item.id for item in response.items]
@@ -964,6 +977,13 @@ def list_recent_posts(
 
     # Apply monitored hashtag filtering (user-specific, after caching)
     response.items = filter_posts_by_monitored_hashtags(response.items, current_user)
+
+    # Apply block filtering (user-specific, after caching; docs/ugc-safety/ D10)
+    from ..utils.blocks import filter_items_by_blocks
+
+    response.items = filter_items_by_blocks(
+        response.items, db, current_user.id if current_user else None
+    )
 
     # Record site event for page view
     record_site_event(request, "page_view", user=current_user)

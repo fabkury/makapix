@@ -87,7 +87,10 @@ def decode_user_sqid(sqid: str) -> int | None:
     """
     try:
         decoded = sqids.decode(sqid)
-        if decoded and len(decoded) == 1:
+        # Arbitrary strings can decode to huge numbers; users.id is a
+        # Postgres INTEGER, so out-of-range values are simply "not found"
+        # (avoids NumericValueOutOfRange from the DB driver).
+        if decoded and len(decoded) == 1 and decoded[0] <= 2_147_483_647:
             return decoded[0]
     except Exception:
         pass
