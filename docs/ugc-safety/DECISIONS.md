@@ -150,6 +150,23 @@ anonymous reports, reporting uses a new trusted-IP helper that takes the
 peer. Migrating other `get_client_ip` callers (login throttle) to it is a
 recommended follow-up, out of scope here.
 
+> **D23b follow-up CLOSED 2026-07-06.** Empirical verification (forged
+> single- and multi-hop XFF sent through Caddy) showed Caddy ≥2.5 with
+> `trusted_proxies` unset REPLACES client-supplied X-Forwarded-For with the
+> real peer address — so the "spoofable via forged header" threat did not
+> actually hold for via-Caddy traffic; rightmost-vs-leftmost is
+> defense-in-depth for topology changes (CDN, `trusted_proxies`) and
+> in-network direct access. The consolidation surfaced a worse live bug:
+> there were FOUR divergent `get_client_ip` copies, and the one in
+> `routers/auth.py` read only `request.client.host` — behind the proxy
+> always Caddy's container IP — so every "per-IP" login/register/OTP
+> throttle was one global bucket shared by all external users (20 failed
+> logins by anyone throttled logins for everyone for 5 minutes). All
+> copies are replaced by the canonical `utils/client_ip.py` (rightmost
+> XFF → peer fallback), re-exported from the old import locations, and
+> guarded by `tests/test_client_ip.py` (including a shared-identity test
+> so a local copy can't silently reappear).
+
 ## Decisions added after independent plan review (2026-07-06)
 
 **D24 — `reporter_ip` is collected only for anonymous reports** (logged-in

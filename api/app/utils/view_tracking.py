@@ -190,36 +190,9 @@ def extract_referrer_domain(referrer: str | None) -> str | None:
         return None
 
 
-def get_client_ip(request: Request) -> str:
-    """
-    Extract client IP address from request, handling proxies.
-
-    Checks X-Forwarded-For header first (for reverse proxy setups),
-    then falls back to direct client IP.
-
-    Args:
-        request: FastAPI Request object
-
-    Returns:
-        IP address string
-    """
-    # Check X-Forwarded-For header (set by reverse proxies)
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        # X-Forwarded-For can contain multiple IPs; take the first one
-        return forwarded_for.split(",")[0].strip()
-
-    # Check X-Real-IP header (alternative proxy header)
-    real_ip = request.headers.get("X-Real-IP")
-    if real_ip:
-        return real_ip.strip()
-
-    # Fall back to direct client IP
-    if request.client:
-        return request.client.host
-
-    # Fallback if neither is available
-    return "unknown"
+# Canonical client-IP extraction lives in utils/client_ip.py (D23b);
+# re-exported here because site_tracking et al. import it from this module.
+from .client_ip import get_client_ip  # noqa: E402,F401
 
 
 def truncate_ip(ip: str) -> str:

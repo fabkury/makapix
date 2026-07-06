@@ -544,43 +544,9 @@ class AnonymousUser:
         return False
 
 
-def get_trusted_client_ip(request: Request) -> str:
-    """
-    Extract the client IP that our own reverse proxy (Caddy) vouches for.
-
-    Takes the RIGHTMOST X-Forwarded-For entry — the one Caddy appends — so a
-    client cannot spoof it by sending its own X-Forwarded-For header (the
-    leftmost entries are client-controlled). Use this whenever the IP is a
-    security control (e.g. anonymous-report rate limits, docs/ugc-safety/
-    D23b); `get_client_ip` below keeps the legacy leftmost semantics.
-    """
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        return forwarded_for.split(",")[-1].strip()
-    if request.client:
-        return request.client.host
-    return "unknown"
-
-
-def get_client_ip(request: Request) -> str:
-    """
-    Extract client IP address from request, handling proxies.
-
-    Checks X-Forwarded-For header first (for reverse proxy setups),
-    then falls back to direct client IP.
-    """
-    # Check X-Forwarded-For header (set by reverse proxies)
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        # X-Forwarded-For can contain multiple IPs; take the first one
-        return forwarded_for.split(",")[0].strip()
-
-    # Fall back to direct client IP
-    if request.client:
-        return request.client.host
-
-    # Fallback if neither is available (shouldn't happen in practice)
-    return "unknown"
+# Canonical client-IP extraction lives in utils/client_ip.py (D23b);
+# re-exported here because many modules import it from app.auth.
+from .utils.client_ip import get_client_ip, get_trusted_client_ip  # noqa: E402,F401
 
 
 def generate_guest_name(ip: str) -> str:

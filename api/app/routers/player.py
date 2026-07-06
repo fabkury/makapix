@@ -75,20 +75,8 @@ def _https_api_info() -> dict[str, Any]:
     return {"base_url": _https_api_base_url(), "auth": "bearer"}
 
 
-def get_client_ip(request: Request) -> str:
-    """
-    Extract client IP address from request, handling proxies.
-
-    Checks X-Forwarded-For header first (for reverse proxy setups),
-    then falls back to direct client IP.
-    """
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-    if request.client:
-        return request.client.host
-    return "unknown"
-
+# Canonical client-IP extraction lives in utils/client_ip.py (D23b).
+from ..utils.client_ip import get_client_ip  # noqa: E402,F401
 
 router = APIRouter(tags=["Players"])
 
