@@ -2,6 +2,26 @@
 
 Update after every work session, newest first.
 
+## 2026-07-06 — PRODUCTION LIVE; effort closed
+
+- App team `0004`: prod **GO** (contract acked, first-run gate shipped,
+  27 green app-side tests; playlist-report exclusion kept per our 0003a).
+- PR #217 merged → `make deploy` on /opt/makapix. Verified on prod:
+  site 200, `moderation` key in makapix.club/api/v1/config (prod URLs),
+  migration `a6045606b0a3` at head, MQTT subscribers reconnected clean,
+  About/privacy content serving, and a live smoke report → 201 + alert
+  email to acme@ + `new_report` notifications to all 3 moderators.
+- Message `0005` (prod live) sent; `message/` thread archived to
+  `docs/ugc-safety/messages/`. Two open smoke-test reports (reason
+  `other`, "please ignore") left in the dev + prod mod queues — dismiss
+  them from mod-dashboard at leisure.
+- Follow-ups (out of scope, recorded): formal ToS page + signup checkbox
+  (D26, owner decision); migrate remaining `get_client_ip` callers to the
+  trusted-IP helper (D23b); PRE-EXISTING prod bug found during deploy
+  verification: `PostNotificationPayload.owner_id: UUID` vs integer
+  `post.owner_id` — follower new-post MQTT notifications have failed
+  silently since ~2025-10; needs its own fix.
+
 ## 2026-07-06 — Phases 1–3 implemented, live on dev
 
 - **Backend (Phases 1+2)** committed: reports hardening (anonymous reports w/
@@ -54,5 +74,5 @@ Update after every work session, newest first.
 | 1 — backend: reports hardening | ✅ done (2026-07-06) |
 | 2 — backend: blocking | ✅ done (2026-07-06) |
 | 3 — website UI + About content | ✅ done (2026-07-06) |
-| 4 — dev deploy + joint E2E | 🔄 server live on dev; awaiting app team |
-| 5 — production flip + archive | ⬜ |
+| 4 — dev deploy + joint E2E | ✅ done (2026-07-06) |
+| 5 — production flip + archive | ✅ done (2026-07-06, PR #217) |
