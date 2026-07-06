@@ -17,10 +17,11 @@ Update after every work session, newest first.
   them from mod-dashboard at leisure.
 - Follow-ups (out of scope, recorded): formal ToS page + signup checkbox
   (D26, owner decision); migrate remaining `get_client_ip` callers to the
-  trusted-IP helper (D23b); PRE-EXISTING prod bug found during deploy
-  verification: `PostNotificationPayload.owner_id: UUID` vs integer
-  `post.owner_id` — follower new-post MQTT notifications have failed
-  silently since ~2025-10; needs its own fix.
+  trusted-IP helper (D23b). The pre-existing new-post MQTT notification
+  bug found during deploy verification (`PostNotificationPayload.owner_id`
+  UUID vs int, broken since ~2025-10) was FIXED same day — PR #218,
+  deployed to prod 2026-07-06, wire-verified on the prod broker; see
+  docs/mqtt-protocol/03-notifications.md "Resolved Issues".
 
 ## 2026-07-06 — Phases 1–3 implemented, live on dev
 
