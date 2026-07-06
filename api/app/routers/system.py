@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import time
 
 from fastapi import APIRouter, Request, Response
@@ -49,6 +50,24 @@ def _build_config() -> schemas.Config:
                 max_file_bytes=vault.MKPX_SIZE_LIMIT_BYTES,
             ),
         ),
+        # UGC-safety capability block (docs/ugc-safety/API-CONTRACT.md §1):
+        # its presence is the clients' feature gate, and its appearance on
+        # prod is the launch signal (deploy=flip), like the mkpx block above.
+        moderation=_build_moderation_config(),
+    )
+
+
+def _build_moderation_config() -> schemas.ModerationConfig:
+    base_url = os.getenv("BASE_URL", "https://makapix.club").rstrip("/")
+    return schemas.ModerationConfig(
+        report_reasons=[
+            schemas.ReportReasonEntry(code=code, label=label)
+            for code, label in schemas.REPORT_REASONS
+        ],
+        contact_email=os.getenv("MODERATION_ALERT_EMAIL", "acme@makapix.club"),
+        guidelines_url=f"{base_url}/about?tab=rules",
+        moderation_policy_url=f"{base_url}/about?tab=moderation",
+        max_blocks_per_user=1000,
     )
 
 

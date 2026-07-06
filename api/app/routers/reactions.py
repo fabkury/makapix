@@ -11,7 +11,12 @@ from sqlalchemy.orm import Session, joinedload
 from uuid import UUID
 
 from .. import models, schemas
-from ..auth import AnonymousUser, get_current_user, get_current_user_or_anonymous
+from ..auth import (
+    AnonymousUser,
+    get_current_user,
+    get_current_user_optional,
+    get_current_user_or_anonymous,
+)
 from ..deps import get_db
 from ..errors import AppError, ErrorCode
 from ..services.social_notifications import SocialNotificationService
@@ -102,6 +107,7 @@ def get_reactions(
 def get_reaction_users(
     id: int,
     db: Session = Depends(get_db),
+    current_user: models.User | None = Depends(get_current_user_optional),
 ) -> schemas.ReactionUsersResponse:
     """
     Get list of users who reacted to a post (public endpoint).
@@ -109,17 +115,24 @@ def get_reaction_users(
     Returns user details and emoji for each authenticated reaction.
     Anonymous reactions are excluded.
     """
-    reactions = (
+    query = (
         db.query(models.Reaction)
         .options(joinedload(models.Reaction.user))
         .filter(
             models.Reaction.post_id == id,
             models.Reaction.user_id.isnot(None),
         )
-        .order_by(models.Reaction.created_at.desc())
-        .limit(200)
-        .all()
     )
+
+    # Hide reactions by users the viewer has blocked (docs/ugc-safety/ D10);
+    # aggregate counts are intentionally NOT adjusted (D13).
+    from ..utils.blocks import apply_block_filter
+
+    query = apply_block_filter(
+        query, models.Reaction.user_id, current_user.id if current_user else None
+    )
+
+    reactions = query.order_by(models.Reaction.created_at.desc()).limit(200).all()
 
     items = []
     for r in reactions:
@@ -161,6 +174,16 @@ def add_reaction(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid emoji format"
         )
+
+    # Interaction guard (docs/ugc-safety/ D11): a block in either direction
+    # between the reactor and the post owner refuses the reaction. Anonymous
+    # reactors have no identity to check (D16).
+    if isinstance(current_user, models.User):
+        guard_post = db.query(models.Post).filter(models.Post.id == id).first()
+        if guard_post:
+            from ..utils.blocks import ensure_not_blocked
+
+            ensure_not_blocked(db, current_user.id, guard_post.owner_id)
 
     # Check if reaction already exists (idempotent)
     if isinstance(current_user, models.User):

@@ -668,6 +668,39 @@ class Follow(Base):
     )
 
 
+class UserBlock(Base):
+    """User block relationship (docs/ugc-safety/ D1).
+
+    One-way visibility filtering (blocker no longer sees blocked's content on
+    list surfaces) + symmetric interaction prevention (either direction blocks
+    comment/reaction/like/follow between the pair).
+    """
+
+    __tablename__ = "user_blocks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    blocker_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    blocked_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("blocker_id", "blocked_id", name="uq_user_blocks_pair"),
+    )
+
+
 class CategoryFollow(Base):
     """User following a category (e.g., daily's-best)."""
 
@@ -795,15 +828,20 @@ class Report(Base):
     __tablename__ = "reports"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    reporter_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    # Nullable: anonymous (logged-out) reports are allowed (docs/ugc-safety/ D2)
+    reporter_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    # Client IP, stored ONLY for anonymous reports (D24); nulled after 30 days
+    # by cleanup_report_ips. Never exposed outside moderator tooling.
+    reporter_ip = Column(String(45), nullable=True)
 
     target_type = Column(String(20), nullable=False, index=True)  # user, post, comment
     target_id = Column(
         String(50), nullable=False, index=True
-    )  # String to support both UUID and integer IDs
+    )  # post -> int id, comment -> UUID, user -> public_sqid (D9)
 
-    reason_code = Column(String(50), nullable=False)  # spam, abuse, copyright, other
-    notes = Column(Text, nullable=True)
+    reason_code = Column(String(50), nullable=False)  # docs/ugc-safety/ D3 set
+    notes = Column(Text, nullable=True)  # reporter's text; immutable after create
+    mod_notes = Column(Text, nullable=True)  # moderator notes (D25)
 
     status = Column(
         String(20), nullable=False, default="open", index=True

@@ -88,6 +88,11 @@ def search_all(
             ),  # Always hide owner from search
         )
 
+        # Hide users the viewer has blocked (docs/ugc-safety/ D10)
+        from ..utils.blocks import apply_block_filter
+
+        user_query = apply_block_filter(user_query, models.User.id, current_user.id)
+
         # Apply cursor pagination (using similarity as sort field)
         if cursor:
             cursor_data = decode_cursor(cursor)
@@ -147,6 +152,13 @@ def search_all(
         # Apply monitored hashtag filtering
         post_query = apply_monitored_hashtag_filter(
             post_query, models.Post, current_user
+        )
+
+        # Hide posts by users the viewer has blocked (docs/ugc-safety/ D10)
+        from ..utils.blocks import apply_block_filter
+
+        post_query = apply_block_filter(
+            post_query, models.Post.owner_id, current_user.id
         )
 
         # Apply cursor pagination

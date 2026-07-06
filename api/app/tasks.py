@@ -437,6 +437,13 @@ celery_app.conf.update(
             "schedule": crontab(minute=0, hour=4),  # 04:00 ET
             "options": {"queue": "default"},
         },
+        # PII minimization (docs/ugc-safety/ D24): null reporter_ip on
+        # anonymous reports older than 30 days. No ordering dependency.
+        "cleanup-report-ips": {
+            "task": "app.tasks.cleanup_report_ips",
+            "schedule": crontab(minute=15, hour=4),  # 04:15 ET
+            "options": {"queue": "default"},
+        },
         "cleanup-expired-bdrs": {
             "task": "app.tasks.cleanup_expired_bdrs",
             "schedule": crontab(minute=30, hour=4),  # 04:30 ET
@@ -2186,6 +2193,46 @@ def cleanup_old_view_events(self) -> dict[str, Any]:
 
     except Exception as e:
         logger.error(f"Error in cleanup_old_view_events task: {e}", exc_info=True)
+        db.rollback()
+        return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.cleanup_report_ips", bind=True)
+def cleanup_report_ips(self) -> dict[str, Any]:
+    """
+    Daily task: null reporter_ip on reports older than 30 days.
+
+    PII minimization for anonymous reports (docs/ugc-safety/ D24) — the IP is
+    only needed short-term for abuse correlation. Runs at 04:15 US Eastern.
+    """
+    from datetime import datetime, timedelta, timezone
+    from . import models
+    from .db import SessionLocal
+
+    db = SessionLocal()
+    try:
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=30)
+
+        updated_count = (
+            db.query(models.Report)
+            .filter(
+                models.Report.reporter_ip.isnot(None),
+                models.Report.created_at < cutoff_date,
+            )
+            .update({"reporter_ip": None}, synchronize_session=False)
+        )
+
+        db.commit()
+
+        if updated_count > 0:
+            logger.info(f"Nulled reporter_ip on {updated_count} old reports")
+
+        return {"status": "success", "cleared": updated_count}
+
+    except Exception as e:
+        logger.error(f"Error in cleanup_report_ips task: {e}", exc_info=True)
         db.rollback()
         return {"status": "error", "message": str(e)}
     finally:
