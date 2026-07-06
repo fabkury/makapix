@@ -130,6 +130,9 @@ class ModerationConfig(BaseModel):
     contact_email: str
     guidelines_url: str
     moderation_policy_url: str
+    # Terms of Service page (D26); additive 2026-07-06. Clients MAY point
+    # their rules-acceptance gate here instead of guidelines_url.
+    terms_url: str
     max_blocks_per_user: int
 
 

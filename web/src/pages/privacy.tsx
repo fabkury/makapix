@@ -214,7 +214,8 @@ export default function PrivacyPage() {
           </p>
 
           <p>
-            See also our <Link href="/about?tab=rules">community rules</Link> and{' '}
+            See also our <Link href="/terms">Terms of Service</Link>,{' '}
+            <Link href="/about?tab=rules">community rules</Link>, and{' '}
             <Link href="/about">about page</Link>.
           </p>
         </article>

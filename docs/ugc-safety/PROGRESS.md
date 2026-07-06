@@ -2,6 +2,23 @@
 
 Update after every work session, newest first.
 
+## 2026-07-06 — D26 closed: formal ToS live
+
+- Owner interview → notice-line acceptance (no checkbox), continued-use for
+  existing users, standard plain-English content, server-side acceptance
+  record. Decisions appended to D26 in DECISIONS.md.
+- Shipped: `/terms` page (privacy-page voice/styles); consent lines on the
+  email signup form + under the GitHub button; cross-links from /privacy and
+  About; `users.terms_version_accepted` (migration `b7f2c9d4e1a8`) stamped
+  at all three self-signup paths (email register + both GitHub OAuth
+  creation paths; moderator-created placeholder accounts intentionally not
+  stamped); `terms_url` added to the /v1/config moderation block (additive).
+- Message `0006-server-ugc-safety-terms-url.md` → app team (informational;
+  they may point their first-run gate at terms_url instead of
+  guidelines_url).
+- Maintenance rule: bump the page effective date and
+  `api/app/constants.py:TERMS_VERSION` **together** on material changes.
+
 ## 2026-07-06 — PRODUCTION LIVE; effort closed
 
 - App team `0004`: prod **GO** (contract acked, first-run gate shipped,

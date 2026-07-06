@@ -158,3 +158,19 @@ def test_register_unverified_no_password_keeps_409(client, db):
     r = client.post("/v1/auth/register", json={"email": email})
     assert r.status_code == 409, r.text
     assert r.json()["error"]["message"] == "pending_verification"
+
+
+def test_register_stamps_terms_version(client, db):
+    """D26: self-signup records acceptance of the current ToS version."""
+    from app.constants import TERMS_VERSION
+    from app.models import User
+
+    email = "terms-stamp@example.com"
+    r = client.post(
+        "/v1/auth/register", json={"email": email, "password": "hunter2pix"}
+    )
+    assert r.status_code in (200, 201), r.text
+
+    user = db.query(User).filter(User.email == email).first()
+    assert user is not None
+    assert user.terms_version_accepted == TERMS_VERSION

@@ -67,6 +67,7 @@ def _build_moderation_config() -> schemas.ModerationConfig:
         contact_email=os.getenv("MODERATION_ALERT_EMAIL", "acme@makapix.club"),
         guidelines_url=f"{base_url}/about?tab=rules",
         moderation_policy_url=f"{base_url}/about?tab=moderation",
+        terms_url=f"{base_url}/terms",
         max_blocks_per_user=1000,
     )
 
