@@ -20,10 +20,16 @@ from ..player_protocol.schemas import __all__ as _player_protocol_all
 
 
 class PostNotificationPayload(BaseModel):
-    """MQTT notification payload for new posts."""
+    """MQTT notification payload for new posts.
+
+    `owner_id` is the owner's `user_key` UUID (the documented wire contract),
+    NOT the integer `users.id` — passing the integer here is exactly the bug
+    that silently killed these notifications from 2025-10 to 2026-07.
+    """
 
     post_id: int  # Changed from UUID to int
-    owner_id: UUID
+    owner_id: UUID  # owner's user_key
+    owner_sqid: str  # owner's public_sqid, for /u/{sqid} links
     owner_handle: str
     title: str
     art_url: HttpUrl

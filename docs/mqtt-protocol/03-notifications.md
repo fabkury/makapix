@@ -22,6 +22,7 @@ All published with QoS 1, no retention.
 {
   "post_id": 123,
   "owner_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "owner_sqid": "t5",
   "owner_handle": "artist123",
   "title": "Cool Pixel Art",
   "art_url": "https://makapix.club/api/vault/23/16/7c9e6679.png",
@@ -35,7 +36,8 @@ All published with QoS 1, no retention.
 | Field | Type | Description |
 |-------|------|-------------|
 | `post_id` | int | Post ID |
-| `owner_id` | string (UUID) | Creator's user ID |
+| `owner_id` | string (UUID) | Creator's `user_key` UUID (NOT the integer user id) |
+| `owner_sqid` | string | Creator's `public_sqid` (for `/u/{sqid}` links) |
 | `owner_handle` | string | Creator's handle |
 | `title` | string | Post title |
 | `art_url` | string (URL) | Full URL to artwork file |
@@ -57,11 +59,11 @@ Source: `api/app/mqtt/notifications.py:publish_new_post_notification()`
 
 ### Category Promotion Notifications
 
-When a post is promoted to a category (e.g., `"daily's-best"`), the server:
-
-1. Queries all users following that category.
-2. Filters out followers who haven't approved the post's monitored hashtags.
-3. Publishes to `makapix/post/new/category/{category}/{post_id}` for each follower.
+When a post is promoted to a category (e.g., `"daily's-best"`), the server
+publishes **once** to `makapix/post/new/category/{category}/{post_id}` — the
+topic is shared by all category subscribers. Per-subscriber monitored-hashtag
+filtering is not possible on a shared topic; clients must filter monitored
+content on display (the web already does this on its list surfaces).
 
 Source: `api/app/mqtt/notifications.py:publish_category_promotion_notification()`
 
@@ -178,9 +180,20 @@ The MQTT client is implemented in `web/src/lib/mqtt-client.ts` as the `MQTTClien
 
 The `SocialNotificationsContext` React context (in `web/src/contexts/SocialNotificationsContext.tsx`) wraps the MQTT client, managing connection lifecycle, unread counts, and notification state.
 
-### Known Issue
+### Resolved Issues (2026-07-06)
 
-The frontend subscribes to `makapix/posts/new/...` (plural "posts") but the backend publishes to `makapix/post/new/...` (singular "post"). This means web clients do not currently receive post notifications via MQTT. Social notifications (which use `makapix/social-notifications/...`) are unaffected.
+Post notifications were broken end-to-end from ~2025-10 to 2026-07 by two
+independent defects, both fixed on 2026-07-06:
+
+1. **Server payload crash**: when post/user ids migrated from UUID to
+   integer, the publishers kept passing the integer `post.owner_id` into
+   `PostNotificationPayload.owner_id: UUID`, so payload construction raised
+   on every new post and no message was ever published (the error was caught
+   and only logged). `owner_id` now carries the owner's `user_key` UUID per
+   this contract, and the payload additionally carries `owner_sqid`.
+2. **Topic mismatch**: the frontend subscribed to `makapix/posts/new/...`
+   (plural) while the backend publishes `makapix/post/new/...` (singular).
+   The frontend now subscribes to the singular topics.
 
 ---
 
