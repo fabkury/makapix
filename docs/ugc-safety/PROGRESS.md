@@ -2,6 +2,19 @@
 
 Update after every work session, newest first.
 
+## 2026-07-06 — app team adopted terms_url (0007)
+
+- App reply `0007`: first-run gate now links BOTH guidelines_url and
+  terms_url with an explicit agree line (adaptive to config contents);
+  existing installs re-prompted once (their local gate version 1→2); ships
+  on their next Play build (inert until terms_url in config — already live
+  on prod, so it activates on release). No server action needed.
+- Note: server-side acceptance recording already covers app users — they
+  sign up through the same /v1 endpoints, so `terms_version_accepted` is
+  stamped regardless of client. Their client-side gate is an extra signal.
+- ToS-change protocol confirmed both sides: material change → bump
+  effective date + TERMS_VERSION → numbered message → they re-show gate.
+
 ## 2026-07-06 — D26 closed: formal ToS live
 
 - Owner interview → notice-line acceptance (no checkbox), continued-use for
