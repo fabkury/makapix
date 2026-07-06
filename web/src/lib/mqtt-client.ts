@@ -22,8 +22,9 @@ const logger = {
 };
 
 export interface PostNotification {
-  post_id: string;
-  owner_id: string;
+  post_id: number;
+  owner_id: string; // owner's user_key UUID
+  owner_sqid: string; // owner's public_sqid, for /u/{sqid} links
   owner_handle: string;
   title: string;
   art_url: string;
@@ -146,7 +147,9 @@ export class MQTTClient {
     }
 
     // Subscribe to user-specific notifications (new posts from followed users)
-    const userTopic = `makapix/posts/new/user/${this.userId}/+`;
+    // NOTE: singular "post" — the plural "posts" here was a years-long
+    // mismatch with the backend topic (docs/mqtt-protocol/03-notifications.md)
+    const userTopic = `makapix/post/new/user/${this.userId}/+`;
     this.client.subscribe(userTopic, { qos: 1 }, (error) => {
       if (error) {
         logger.error(`Failed to subscribe to ${userTopic}:`, error);
@@ -156,7 +159,7 @@ export class MQTTClient {
     });
 
     // Subscribe to category notifications (daily's-best)
-    const categoryTopic = `makapix/posts/new/category/daily's-best/+`;
+    const categoryTopic = `makapix/post/new/category/daily's-best/+`;
     this.client.subscribe(categoryTopic, { qos: 1 }, (error) => {
       if (error) {
         logger.error(`Failed to subscribe to ${categoryTopic}:`, error);

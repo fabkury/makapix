@@ -182,7 +182,7 @@ makapix/player/{key}/view                      # Fire-and-forget artwork views (
 makapix/player/{key}/capabilities, .../state   # Retained player self-reports
 ```
 
-> Known mismatch (documented in `03-notifications.md`): the web client subscribes to `makapix/posts/new/...` (plural) while the backend publishes to `makapix/post/new/...` (singular), so web clients do not currently receive new-post notifications via MQTT.
+> The long-standing new-post notification breakage (plural/singular topic mismatch + `owner_id` UUID/int payload crash) was fixed 2026-07-06 — see "Resolved Issues" in `03-notifications.md`.
 
 ## Documentation Map
 

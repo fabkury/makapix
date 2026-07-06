@@ -32,10 +32,11 @@ def publish_new_post_notification(post_id: int, db: Session) -> None:
         logger.warning(f"Owner {post.owner_id} not found for post {post_id}")
         return
 
-    # Build notification payload
+    # Build notification payload (owner_id = user_key UUID per the contract)
     payload = PostNotificationPayload(
         post_id=post.id,
-        owner_id=post.owner_id,
+        owner_id=owner.user_key,
+        owner_sqid=owner.public_sqid or "",
         owner_handle=owner.handle,
         title=post.title,
         art_url=post.art_url,
@@ -115,10 +116,11 @@ def publish_category_promotion_notification(
         logger.warning(f"Owner {post.owner_id} not found for post {post_id}")
         return
 
-    # Build notification payload
+    # Build notification payload (owner_id = user_key UUID per the contract)
     payload = PostNotificationPayload(
         post_id=post.id,
-        owner_id=post.owner_id,
+        owner_id=owner.user_key,
+        owner_sqid=owner.public_sqid or "",
         owner_handle=owner.handle,
         title=post.title,
         art_url=post.art_url,
@@ -128,47 +130,21 @@ def publish_category_promotion_notification(
         created_at=post.created_at,
     ).model_dump(mode="json")
 
-    # Find all users following this category (with their user data for hashtag filtering)
-    category_followers = (
-        db.query(models.User)
-        .join(models.CategoryFollow, models.CategoryFollow.user_id == models.User.id)
-        .filter(models.CategoryFollow.category == category)
-        .all()
-    )
-
-    # Publish to category-specific topics for each follower
-    notified_count = 0
-    skipped_count = 0
-    for follower in category_followers:
-        # Skip followers who haven't approved the post's monitored hashtags
-        if post_has_unapproved_monitored_hashtags(post, follower):
-            skipped_count += 1
-            logger.debug(
-                f"Skipped category notification to follower {follower.id} for "
-                f"category {category}, post {post_id}: unapproved monitored hashtags"
-            )
-            continue
-
-        topic = f"makapix/post/new/category/{category}/{post_id}"
-
-        success = publish(topic, payload, qos=1, retain=False)
-        if success:
-            notified_count += 1
-            logger.info(
-                f"Published category promotion notification to follower {follower.id} "
-                f"for category {category}, post {post_id}"
-            )
-        else:
-            logger.error(
-                f"Failed to publish category notification to follower {follower.id} "
-                f"for category {category}, post {post_id}"
-            )
-
-    # Also publish to generic category topic
-    generic_topic = f"makapix/post/new/category/{category}/{post_id}"
-    publish(generic_topic, payload, qos=1, retain=False)
-
-    logger.info(
-        f"Published category promotion notification for category {category}, post {post_id}: "
-        f"{notified_count} notified, {skipped_count} skipped (monitored hashtags)"
-    )
+    # The category topic is shared by all subscribers, so it is published
+    # exactly ONCE. (The previous per-follower loop republished the same
+    # topic N times — duplicate deliveries to every subscriber — and
+    # per-follower monitored-hashtag filtering is impossible on a shared
+    # topic anyway: subscribers must filter client-side, as the web does
+    # on its list surfaces.)
+    topic = f"makapix/post/new/category/{category}/{post_id}"
+    success = publish(topic, payload, qos=1, retain=False)
+    if success:
+        logger.info(
+            f"Published category promotion notification for category {category}, "
+            f"post {post_id}"
+        )
+    else:
+        logger.error(
+            f"Failed to publish category notification for category {category}, "
+            f"post {post_id}"
+        )
