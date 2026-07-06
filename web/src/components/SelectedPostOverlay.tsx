@@ -14,8 +14,10 @@ import {
   downloadMkpx,
   getAccessToken,
   getMkpxConfig,
+  getModerationConfig,
 } from "../lib/api";
 import { PLAYER_BAR_HEIGHT } from "./PlayerBarDynamic";
+import ReportDialog from "./ReportDialog";
 import SPOCommentsOverlay from "./SPOCommentsOverlay";
 import SPOReactionUsersOverlay from "./SPOReactionUsersOverlay";
 import { EMOJI_OPTIONS } from "./CommentsAndReactions";
@@ -977,6 +979,20 @@ export default function SelectedPostOverlay({
     {},
   );
   const mkpxFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // UGC-safety: report affordance, gated on the moderation config key.
+  const [moderationEnabled, setModerationEnabled] = useState(false);
+  const [showReportDialog, setShowReportDialog] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getModerationConfig().then((cfg) => {
+      if (!cancelled) setModerationEnabled(!!cfg);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -2150,8 +2166,46 @@ export default function SelectedPostOverlay({
                 )}
               </>
             )}
+
+            {/* Report (docs/ugc-safety/) — anyone but the post owner */}
+            {moderationEnabled && !isPostOwner && (
+              <>
+                <div
+                  style={{
+                    height: 1,
+                    background: "rgba(255,255,255,0.1)",
+                    margin: "4px 0",
+                  }}
+                />
+                <button
+                  style={menuItemStyles}
+                  onClick={() => {
+                    setShowMoreMenu(false);
+                    closeSubPanelImmediate();
+                    setShowReportDialog(true);
+                  }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.background = "rgba(255,255,255,0.08)")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.background = "transparent")
+                  }
+                >
+                  Report
+                </button>
+              </>
+            )}
           </div>
         </div>
+      )}
+
+      {post && (
+        <ReportDialog
+          targetType="post"
+          targetId={String(post.id)}
+          open={showReportDialog}
+          onClose={() => setShowReportDialog(false)}
+        />
       )}
 
       {/* Hidden picker for attaching/replacing a layers file */}

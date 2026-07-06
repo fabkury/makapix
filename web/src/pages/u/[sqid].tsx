@@ -7,7 +7,15 @@ import PlayerBar from '../../components/PlayerBarDynamic';
 import { FilterButton } from '../../components/FilterButton';
 import { WPButton } from '../../components/WPButton';
 import { WebPlayer } from '../../components/WebPlayerDynamic';
-import { authenticatedFetch, clearTokens, logout } from '../../lib/api';
+import {
+  authenticatedFetch,
+  clearTokens,
+  logout,
+  getModerationConfig,
+  blockUser,
+  unblockUser,
+} from '../../lib/api';
+import ReportDialog from '../../components/ReportDialog';
 import { usePlayerBarOptional } from '../../contexts/PlayerBarContext';
 import { useFilters, FilterConfig } from '../../hooks/useFilters';
 import { calculatePageSize } from '../../utils/gridUtils';
@@ -103,6 +111,12 @@ export default function UserProfilePage() {
   // Follow state
   const [isFollowing, setIsFollowing] = useState(false);
 
+  // UGC-safety state (report + block)
+  const [moderationEnabled, setModerationEnabled] = useState(false);
+  const [showReportDialog, setShowReportDialog] = useState(false);
+  const [isBlocking, setIsBlocking] = useState(false);
+  const [blockError, setBlockError] = useState<string | null>(null);
+
   // Account deletion state
   const [deletionStep, setDeletionStep] = useState<'initial' | 'confirm-1' | 'confirm-2' | 'final-1' | 'final-2' | 'deleting' | 'success'>('initial');
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
@@ -133,6 +147,55 @@ export default function UserProfilePage() {
     const token = localStorage.getItem('access_token');
     setIsAuthenticated(!!token);
   }, []);
+
+  // Feature gate: report/block affordances only appear when the server
+  // advertises the moderation block in /api/config (docs/ugc-safety/).
+  useEffect(() => {
+    getModerationConfig().then((cfg) => setModerationEnabled(!!cfg));
+  }, []);
+
+  // Block / unblock the profile owner.
+  const handleBlockUser = async () => {
+    if (!profile?.public_sqid) return;
+    if (
+      !window.confirm(
+        `Block @${profile.handle}? They won't be able to comment on, react to, or follow you, and you won't see their content.`
+      )
+    ) {
+      return;
+    }
+    setIsBlocking(true);
+    setBlockError(null);
+    try {
+      await blockUser(profile.public_sqid);
+      setProfile((prev) =>
+        prev ? { ...prev, is_blocked_by_viewer: true, is_following: false } : prev
+      );
+      setIsFollowing(false);
+    } catch (err) {
+      console.error('Failed to block user:', err);
+      setBlockError('Could not block this user. Please try again.');
+    } finally {
+      setIsBlocking(false);
+    }
+  };
+
+  const handleUnblockUser = async () => {
+    if (!profile?.public_sqid) return;
+    setIsBlocking(true);
+    setBlockError(null);
+    try {
+      await unblockUser(profile.public_sqid);
+      setProfile((prev) =>
+        prev ? { ...prev, is_blocked_by_viewer: false } : prev
+      );
+    } catch (err) {
+      console.error('Failed to unblock user:', err);
+      setBlockError('Could not unblock this user. Please try again.');
+    } finally {
+      setIsBlocking(false);
+    }
+  };
 
   // Fetch enhanced user profile
   useEffect(() => {
@@ -848,6 +911,36 @@ export default function UserProfilePage() {
       });
     }
   }
+  // Report / block affordances for anyone viewing someone else's profile
+  // (gated on the moderation feature flag). Report works logged-out; block
+  // requires auth.
+  const isBlocked = !!profile.is_blocked_by_viewer;
+  if (!isSelf && moderationEnabled) {
+    menuItems.push({
+      key: 'report-user',
+      icon: '🚩',
+      label: 'Report user',
+      onClick: () => setShowReportDialog(true),
+    });
+    if (isAuthenticated) {
+      menuItems.push(
+        isBlocked
+          ? {
+              key: 'unblock-user',
+              icon: '✅',
+              label: 'Unblock user',
+              onClick: handleUnblockUser,
+            }
+          : {
+              key: 'block-user',
+              icon: '🚫',
+              label: 'Block user',
+              onClick: handleBlockUser,
+              danger: true,
+            }
+      );
+    }
+  }
   const showMenu = !isEditing && menuItems.length > 0;
 
   return (
@@ -1111,7 +1204,7 @@ export default function UserProfilePage() {
               </div>
 
               {/* Desktop Action Buttons (visitors only) */}
-              {!isEditing && !profile.is_own_profile && (
+              {!isEditing && !profile.is_own_profile && !isBlocked && (
                 <div className="desktop-actions">
                   <FollowButton
                     userSqid={profile.public_sqid || ''}
@@ -1151,7 +1244,7 @@ export default function UserProfilePage() {
         )}
 
         {/* Mobile Action Buttons (below bio, visitors only) */}
-        {!isEditing && !profile.is_own_profile && (
+        {!isEditing && !profile.is_own_profile && !isBlocked && (
           <div className="mobile-actions">
             <FollowButton
               userSqid={profile.public_sqid || ''}
@@ -1168,15 +1261,40 @@ export default function UserProfilePage() {
           </div>
         )}
 
+        {blockError && <div className="block-error">{blockError}</div>}
+
+        {/* Blocked state: collapse the user's content behind a banner (D14) */}
+        {isBlocked && !isEditing && (
+          <div className="blocked-banner">
+            <div className="blocked-banner-text">
+              <span className="blocked-banner-title">You&apos;ve blocked this user</span>
+              <span className="blocked-banner-sub">
+                Their posts and activity are hidden from you.
+              </span>
+            </div>
+            <button
+              type="button"
+              className="unblock-btn"
+              onClick={handleUnblockUser}
+              disabled={isBlocking}
+            >
+              {isBlocking ? 'Unblocking…' : 'Unblock'}
+            </button>
+          </div>
+        )}
+
         {/* Highlights Gallery */}
-        {profile.highlights && profile.highlights.length > 0 && (
+        {!isBlocked && profile.highlights && profile.highlights.length > 0 && (
           <HighlightsGallery highlights={profile.highlights} />
         )}
 
         {/* Tabs */}
-        <ProfileTabs activeTab={activeTab} onTabChange={handleTabChange} isAuthenticated={isAuthenticated} />
+        {!isBlocked && (
+          <ProfileTabs activeTab={activeTab} onTabChange={handleTabChange} isAuthenticated={isAuthenticated} />
+        )}
 
         {/* Artworks Section */}
+        {!isBlocked && (
         <div className="artworks-section">
           {currentPosts.length === 0 && postsLoading && (
             <div className="loading-state">
@@ -1219,7 +1337,18 @@ export default function UserProfilePage() {
             </div>
           )}
         </div>
+        )}
       </div>
+
+      {/* Report user dialog */}
+      {profile.public_sqid && (
+        <ReportDialog
+          targetType="user"
+          targetId={profile.public_sqid}
+          open={showReportDialog}
+          onClose={() => setShowReportDialog(false)}
+        />
+      )}
 
       {/* Badges Overlay */}
       <BadgesOverlay
@@ -1751,6 +1880,67 @@ export default function UserProfilePage() {
           color: var(--text-primary);
           font-size: 1.25rem;
           line-height: 2;
+        }
+
+        .block-error {
+          background: rgba(239, 68, 68, 0.1);
+          color: var(--accent-pink, #ff6b6b);
+          padding: 12px 16px;
+          border-radius: 8px;
+          font-size: 0.9rem;
+          margin-bottom: 16px;
+        }
+
+        .blocked-banner {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          flex-wrap: wrap;
+          padding: 20px 24px;
+          margin: 8px 0 24px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 12px;
+          background: var(--bg-secondary);
+        }
+
+        .blocked-banner-text {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .blocked-banner-title {
+          font-weight: 600;
+          color: var(--text-primary);
+          font-size: 1rem;
+        }
+
+        .blocked-banner-sub {
+          color: var(--text-muted);
+          font-size: 0.9rem;
+          margin-top: 2px;
+        }
+
+        .unblock-btn {
+          background: var(--bg-tertiary);
+          color: var(--text-primary);
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          border-radius: 8px;
+          padding: 10px 20px;
+          font-size: 0.95rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+        }
+
+        .unblock-btn:hover:not(:disabled) {
+          border-color: var(--accent-cyan);
+          color: var(--accent-cyan);
+        }
+
+        .unblock-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
 
         .artworks-section {

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { authenticatedFetch, authenticatedPostJson } from '../lib/api';
+import { authenticatedFetch, authenticatedPostJson, getModerationConfig } from '../lib/api';
 import CommentLikeUsersOverlay from './CommentLikeUsersOverlay';
+import ReportDialog from './ReportDialog';
 
 interface Comment {
   id: string;
@@ -60,6 +61,13 @@ export default function SPOCommentsOverlay({
   const [replyBody, setReplyBody] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showCommentLikeUsers, setShowCommentLikeUsers] = useState<string | null>(null);
+
+  // UGC-safety: per-comment report affordance, gated on the moderation config.
+  const [moderationEnabled, setModerationEnabled] = useState(false);
+  const [reportCommentId, setReportCommentId] = useState<string | null>(null);
+  useEffect(() => {
+    getModerationConfig().then((cfg) => setModerationEnabled(!!cfg));
+  }, []);
 
   const API_BASE_URL = typeof window !== 'undefined'
     ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
@@ -339,11 +347,30 @@ export default function SPOCommentsOverlay({
                       cursor: 'pointer',
                       padding: '4px 0',
                       fontWeight: 500,
+                      marginRight: 12,
                     }}
                   >
                     Delete
                   </button>
                 )}
+                {moderationEnabled &&
+                  !isDeletedUser &&
+                  !(currentUserId && comment.author_id === currentUserId) && (
+                    <button
+                      onClick={() => setReportCommentId(comment.id)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#8b93a7',
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        padding: '4px 0',
+                        fontWeight: 500,
+                      }}
+                    >
+                      Report
+                    </button>
+                  )}
               </div>
             )}
             {replyingTo === comment.id && (
@@ -564,6 +591,12 @@ export default function SPOCommentsOverlay({
         commentId={showCommentLikeUsers || ''}
         isOpen={!!showCommentLikeUsers}
         onClose={() => setShowCommentLikeUsers(null)}
+      />
+      <ReportDialog
+        targetType="comment"
+        targetId={reportCommentId || ''}
+        open={!!reportCommentId}
+        onClose={() => setReportCommentId(null)}
       />
       <style jsx>{`
         .spo-comments-backdrop {

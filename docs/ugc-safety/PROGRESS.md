@@ -2,6 +2,31 @@
 
 Update after every work session, newest first.
 
+## 2026-07-06 — Phases 1–3 implemented, live on dev
+
+- **Backend (Phases 1+2)** committed: reports hardening (anonymous reports w/
+  trusted-IP rate limits, target validation, D9 public_sqid fix, mod_notes,
+  reporter_ip anon-only + 04:15 ET sweep, extended reason codes, email +
+  new_report alerting w/ 6 h throttle, report_resolved loop, `moderation`
+  config block) and blocking (user_blocks, block/unblock//me/blocks,
+  is_blocked_by_viewer, one-way visibility filtering on feeds/search/
+  comments/reactions/notifications/browse, symmetric interaction guards).
+  Migration `a6045606b0a3` applied on dev. 38 new tests; full suite green.
+- Two extra latent bugs fixed en route: `Report.updated_at` 500 on create;
+  `decode_user_sqid` integer overflow on arbitrary sqid strings (500 on
+  follow/block of a nonsense sqid).
+- **Web UI (Phase 3)**: ReportDialog (config-driven reasons, logged-out
+  capable), report affordances on post overlay + post page + comments (both
+  renderers) + profiles, block/unblock + blocked-state banner on profiles,
+  Blocked-users section in settings, mod-dashboard reason/reporter/target
+  rendering, About Rules ("What's not allowed" + zero tolerance) &
+  Moderation ("Reporting content"/"Blocking users"/"Contact") sections,
+  privacy page IP-retention line (effective date bumped). Typecheck clean.
+- **Verified live on dev**: `moderation` key in /api/v1/config with per-env
+  URLs; anonymous report E2E → 201 + real alert email to acme@makapix.club
+  (Resend id logged) + new_report notifications to all 3 moderators.
+- Next: joint E2E with app team on development.makapix.club (message 0002).
+
 ## 2026-07-06 — kickoff
 
 - Audited existing moderation surface (report model/router/dashboard exist;
@@ -18,8 +43,8 @@ Update after every work session, newest first.
 | Phase | Status |
 |---|---|
 | 0 — plan + contract + kickoff message | ✅ done |
-| 1 — backend: reports hardening | ⬜ |
-| 2 — backend: blocking | ⬜ |
-| 3 — website UI + About content | ⬜ |
-| 4 — dev deploy + joint E2E | ⬜ |
+| 1 — backend: reports hardening | ✅ done (2026-07-06) |
+| 2 — backend: blocking | ✅ done (2026-07-06) |
+| 3 — website UI + About content | ✅ done (2026-07-06) |
+| 4 — dev deploy + joint E2E | 🔄 server live on dev; awaiting app team |
 | 5 — production flip + archive | ⬜ |

@@ -645,6 +645,52 @@ function RulesTab() {
         any connected player devices.
       </p>
 
+      <h2>What&apos;s not allowed</h2>
+
+      <p>
+        Some content has no place on Makapix Club. Posting any of the following
+        can lead to removal, suspension, or a permanent ban:
+      </p>
+
+      <ul>
+        <li>
+          <strong>Spam or misleading content</strong> — repetitive, deceptive, or
+          scam posts.
+        </li>
+        <li>
+          <strong>Harassment or bullying</strong> — targeting or intimidating
+          other people.
+        </li>
+        <li>
+          <strong>Hate or discrimination</strong> — attacks based on identity or
+          protected characteristics.
+        </li>
+        <li>
+          <strong>Sexual or explicit content</strong> without the proper
+          monitored tags — see Monitored Hashtags above.
+        </li>
+        <li>
+          <strong>Gratuitous violence or gore.</strong>
+        </li>
+        <li>
+          <strong>Illegal content</strong>, including anything that sexualizes
+          minors — zero tolerance; such content is removed immediately, the
+          account is banned, and it is reported to the authorities.
+        </li>
+        <li>
+          <strong>Content encouraging self-harm</strong> or suicide.
+        </li>
+        <li>
+          <strong>Copyright or intellectual-property violations</strong> — art you
+          do not have the right to post.
+        </li>
+      </ul>
+
+      <p className="warning">
+        We have zero tolerance for objectionable content and abusive users.
+        Reports are reviewed within 24 hours.
+      </p>
+
       <h2>User Handles</h2>
       
       <ul>
@@ -856,6 +902,46 @@ function ModerationTab() {
       <p className="note">
         All moderator actions are automatically recorded for auditing. When one moderator
         overrides another&apos;s action, it is flagged for review by the site owner.
+      </p>
+
+      <h2>Reporting content</h2>
+
+      <p>
+        Every post, comment, and user profile has a report option. Use it whenever
+        you see something that breaks the community rules. You can report content
+        even without an account — anonymous reports are accepted (subject to rate
+        limits to prevent abuse).
+      </p>
+
+      <p>
+        When you file a report, our moderators are alerted right away. We review
+        reports within 24 hours and take action when the rules have been broken. If
+        you were signed in when you reported, we&apos;ll notify you once we&apos;ve
+        reviewed it.
+      </p>
+
+      <h2>Blocking users</h2>
+
+      <p>
+        Blocking is a personal control: when you block someone, you stop seeing
+        their posts, comments, reactions, and profile content across the site, and
+        they can no longer comment on your work, react to it, or follow you. Any
+        existing follows between you are removed in both directions. Blocking is
+        private — the other person is not notified.
+      </p>
+
+      <p>
+        You can block a user from their profile page, and manage everyone
+        you&apos;ve blocked from the &quot;Blocked users&quot; section of your
+        account settings.
+      </p>
+
+      <h2>Contact</h2>
+
+      <p>
+        Questions or concerns about moderation? Email us at{' '}
+        <a href="mailto:acme@makapix.club">acme@makapix.club</a>. We aim to respond
+        within 24 hours.
       </p>
 
       <h2>Violations</h2>

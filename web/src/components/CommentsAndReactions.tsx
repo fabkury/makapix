@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { authenticatedFetch, authenticatedPostJson, clearTokens } from '../lib/api';
+import { authenticatedFetch, authenticatedPostJson, clearTokens, getModerationConfig } from '../lib/api';
 import CommentLikeUsersOverlay from './CommentLikeUsersOverlay';
+import ReportDialog from './ReportDialog';
 
 interface ReactionTotals {
   totals: Record<string, number>;
@@ -81,6 +82,13 @@ export default function CommentsAndReactions({
   const [submittingComment, setSubmittingComment] = useState(false);
   const [foldedComments, setFoldedComments] = useState<Set<string>>(new Set());
   const [showCommentLikeUsers, setShowCommentLikeUsers] = useState<string | null>(null);
+
+  // UGC-safety: per-comment report affordance, gated on the moderation config.
+  const [moderationEnabled, setModerationEnabled] = useState(false);
+  const [reportCommentId, setReportCommentId] = useState<string | null>(null);
+  useEffect(() => {
+    getModerationConfig().then((cfg) => setModerationEnabled(!!cfg));
+  }, []);
 
   useEffect(() => {
     loadWidgetData();
@@ -398,6 +406,16 @@ export default function CommentsAndReactions({
                     Delete
                   </button>
                 )}
+                {moderationEnabled &&
+                  !isDeletedUser &&
+                  !(currentUserId && comment.author_id === currentUserId) && (
+                    <button
+                      className="makapix-comment-report-btn"
+                      onClick={() => setReportCommentId(comment.id)}
+                    >
+                      Report
+                    </button>
+                  )}
               </div>
             )}
             {replyingTo === comment.id && (
@@ -503,6 +521,13 @@ export default function CommentsAndReactions({
         commentId={showCommentLikeUsers || ''}
         isOpen={!!showCommentLikeUsers}
         onClose={() => setShowCommentLikeUsers(null)}
+      />
+
+      <ReportDialog
+        targetType="comment"
+        targetId={reportCommentId || ''}
+        open={!!reportCommentId}
+        onClose={() => setReportCommentId(null)}
       />
 
       <style jsx global>{`
@@ -789,6 +814,23 @@ export default function CommentsAndReactions({
         .makapix-comment-delete-btn:hover {
           background: rgba(239, 68, 68, 0.1);
           color: #f87171;
+        }
+
+        .makapix-comment-report-btn {
+          padding: 6px 14px;
+          background: transparent;
+          color: #8b93a7;
+          border: none;
+          font-size: 0.85rem;
+          font-weight: 600;
+          cursor: pointer;
+          border-radius: 6px;
+          transition: all 0.15s ease;
+        }
+
+        .makapix-comment-report-btn:hover {
+          background: rgba(139, 147, 167, 0.12);
+          color: #b0b7c8;
         }
 
         .makapix-comment-like-btn {

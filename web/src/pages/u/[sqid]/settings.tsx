@@ -1,7 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../../../components/Layout';
-import { authenticatedFetch, clearTokens } from '../../../lib/api';
+import {
+  authenticatedFetch,
+  clearTokens,
+  getMyBlocks,
+  unblockUser,
+  BlockedUserEntry,
+} from '../../../lib/api';
 import { MONITORED_HASHTAGS } from '../../../lib/constants';
 
 export default function ContentSettingsPage() {
@@ -21,6 +27,13 @@ export default function ContentSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Blocked-users management (docs/ugc-safety/)
+  const [blocks, setBlocks] = useState<BlockedUserEntry[]>([]);
+  const [blocksLoading, setBlocksLoading] = useState(true);
+  const [blocksError, setBlocksError] = useState<string | null>(null);
+  const [blocksCursor, setBlocksCursor] = useState<string | null>(null);
+  const [unblocking, setUnblocking] = useState<string | null>(null);
 
   const API_BASE_URL =
     typeof window !== 'undefined'
@@ -72,6 +85,58 @@ export default function ContentSettingsPage() {
 
     loadMe();
   }, [sqidStr, API_BASE_URL]);
+
+  // Load the caller's blocked-users list once ownership is confirmed.
+  useEffect(() => {
+    if (!userKey) return;
+    let cancelled = false;
+    const loadBlocks = async () => {
+      setBlocksLoading(true);
+      setBlocksError(null);
+      try {
+        const page = await getMyBlocks();
+        if (cancelled) return;
+        setBlocks(page.items);
+        setBlocksCursor(page.next_cursor);
+      } catch (err) {
+        if (cancelled) return;
+        console.error('Failed to load blocked users:', err);
+        setBlocksError('Could not load your blocked users.');
+      } finally {
+        if (!cancelled) setBlocksLoading(false);
+      }
+    };
+    loadBlocks();
+    return () => {
+      cancelled = true;
+    };
+  }, [userKey]);
+
+  const loadMoreBlocks = async () => {
+    if (!blocksCursor) return;
+    try {
+      const page = await getMyBlocks(blocksCursor);
+      setBlocks((prev) => [...prev, ...page.items]);
+      setBlocksCursor(page.next_cursor);
+    } catch (err) {
+      console.error('Failed to load more blocked users:', err);
+      setBlocksError('Could not load more blocked users.');
+    }
+  };
+
+  const handleUnblock = async (publicSqid: string) => {
+    setUnblocking(publicSqid);
+    setBlocksError(null);
+    try {
+      await unblockUser(publicSqid);
+      setBlocks((prev) => prev.filter((b) => b.public_sqid !== publicSqid));
+    } catch (err) {
+      console.error('Failed to unblock user:', err);
+      setBlocksError('Could not unblock that user. Please try again.');
+    } finally {
+      setUnblocking(null);
+    }
+  };
 
   const toggle = (tag: string) => {
     setSaveSuccess(false);
@@ -242,6 +307,57 @@ export default function ContentSettingsPage() {
             </button>
           </div>
         </section>
+
+        <section className="settings-card">
+          <h2>Blocked users</h2>
+          <p className="section-intro">
+            People you&apos;ve blocked can&apos;t comment on your work, react to it,
+            or follow you, and you won&apos;t see their content. Unblock someone to
+            undo this.
+          </p>
+
+          {blocksError && <p className="save-error">{blocksError}</p>}
+
+          {blocksLoading ? (
+            <p className="blocks-empty">Loading…</p>
+          ) : blocks.length === 0 ? (
+            <p className="blocks-empty">You haven&apos;t blocked anyone.</p>
+          ) : (
+            <div className="blocks-list">
+              {blocks.map((b) => (
+                <div key={b.public_sqid} className="block-row">
+                  <div className="block-user">
+                    {b.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={b.avatar_url}
+                        alt={b.handle}
+                        className="block-avatar"
+                      />
+                    ) : (
+                      <span className="block-avatar placeholder">
+                        {b.handle.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                    <span className="block-handle">{b.handle}</span>
+                  </div>
+                  <button
+                    className="unblock-btn"
+                    onClick={() => handleUnblock(b.public_sqid)}
+                    disabled={unblocking === b.public_sqid}
+                  >
+                    {unblocking === b.public_sqid ? 'Unblocking…' : 'Unblock'}
+                  </button>
+                </div>
+              ))}
+              {blocksCursor && (
+                <button className="load-more-blocks" onClick={loadMoreBlocks}>
+                  Load more
+                </button>
+              )}
+            </div>
+          )}
+        </section>
       </div>
 
       <style jsx>{`
@@ -266,6 +382,10 @@ export default function ContentSettingsPage() {
           background: var(--bg-secondary);
           border-radius: 16px;
           padding: 24px;
+        }
+
+        .settings-card + .settings-card {
+          margin-top: 24px;
         }
 
         .settings-card h2 {
@@ -377,6 +497,96 @@ export default function ContentSettingsPage() {
         .save-btn:disabled {
           opacity: 0.5;
           cursor: not-allowed;
+        }
+
+        .blocks-empty {
+          color: var(--text-muted);
+          margin: 0;
+        }
+
+        .blocks-list {
+          display: flex;
+          flex-direction: column;
+        }
+        .blocks-list > :global(* + *) {
+          margin-top: 12px;
+        }
+
+        .block-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 12px 16px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 12px;
+          background: var(--bg-tertiary);
+        }
+
+        .block-user {
+          display: flex;
+          align-items: center;
+          min-width: 0;
+        }
+        .block-user > :global(* + *) {
+          margin-left: 12px;
+        }
+
+        .block-avatar {
+          width: 36px;
+          height: 36px;
+          border-radius: 8px;
+          object-fit: cover;
+          flex-shrink: 0;
+          image-rendering: pixelated;
+        }
+
+        .block-avatar.placeholder {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+          color: white;
+          font-weight: 700;
+          text-transform: uppercase;
+        }
+
+        .block-handle {
+          font-weight: 600;
+          color: var(--text-primary);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .unblock-btn {
+          background: var(--bg-secondary);
+          color: var(--text-primary);
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          border-radius: 8px;
+          padding: 8px 16px;
+          font-size: 0.9rem;
+          font-weight: 600;
+          cursor: pointer;
+          flex-shrink: 0;
+          transition: all var(--transition-fast);
+        }
+        .unblock-btn:hover:not(:disabled) {
+          border-color: var(--accent-cyan);
+          color: var(--accent-cyan);
+        }
+        .unblock-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .load-more-blocks {
+          align-self: flex-start;
+          background: none;
+          border: none;
+          color: var(--accent-cyan);
+          font-size: 0.9rem;
+          cursor: pointer;
+          padding: 8px 0;
         }
       `}</style>
     </Layout>

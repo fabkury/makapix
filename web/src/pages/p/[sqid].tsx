@@ -15,7 +15,9 @@ import {
   detachMkpx,
   downloadMkpx,
   getMkpxConfig,
+  getModerationConfig,
 } from "../../lib/api";
+import ReportDialog from "../../components/ReportDialog";
 import { MONITORED_HASHTAGS } from "../../lib/constants";
 import { ensureCompatibleArtUrl } from "../../utils/imageCompat";
 import {
@@ -152,6 +154,19 @@ export default function PostPage() {
     top: number;
     right: number;
   } | null>(null);
+
+  // UGC-safety: report affordance, gated on the moderation config key.
+  const [moderationEnabled, setModerationEnabled] = useState(false);
+  const [showReportDialog, setShowReportDialog] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    getModerationConfig().then((cfg) => {
+      if (!cancelled) setModerationEnabled(!!cfg);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // .mkpx layers file: gated on the server's config advertisement
   const [mkpxEnabled, setMkpxEnabled] = useState(false);
@@ -2037,8 +2052,33 @@ export default function PostPage() {
                 )}
               </>
             )}
+
+            {/* Report (docs/ugc-safety/) — anyone but the post owner */}
+            {moderationEnabled && !isOwner && (
+              <>
+                <div className="menu-divider" />
+                <button
+                  className="menu-item"
+                  onClick={() => {
+                    closeMoreMenu();
+                    setShowReportDialog(true);
+                  }}
+                >
+                  🚩 Report
+                </button>
+              </>
+            )}
           </div>
         </div>
+      )}
+
+      {post && (
+        <ReportDialog
+          targetType="post"
+          targetId={String(post.id)}
+          open={showReportDialog}
+          onClose={() => setShowReportDialog(false)}
+        />
       )}
 
       {/* Hidden picker for attaching/replacing a layers file */}

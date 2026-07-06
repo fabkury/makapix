@@ -698,6 +698,95 @@ export function getMkpxConfig(): Promise<MkpxConfig | null> {
   return mkpxConfigPromise;
 }
 
+// ---------------------------------------------------------------------------
+// UGC safety: moderation config, reporting, blocking (docs/ugc-safety/)
+// ---------------------------------------------------------------------------
+
+export interface ReportReason {
+  code: string;
+  label: string;
+}
+
+export interface ModerationConfig {
+  report_reasons: ReportReason[];
+  contact_email: string;
+  guidelines_url?: string;
+  moderation_policy_url?: string;
+  max_blocks_per_user?: number;
+}
+
+let moderationConfigPromise: Promise<ModerationConfig | null> | null = null;
+
+/**
+ * Capability discovery for the UGC-safety feature. The server advertises it via
+ * GET /api/config -> moderation. Presence of the key is the feature gate (same
+ * mechanism as mkpx and mod-hashtags): when absent, report/block affordances
+ * must stay hidden. Cached for the page lifetime; the endpoint is cached
+ * server-side.
+ */
+export function getModerationConfig(): Promise<ModerationConfig | null> {
+  if (!moderationConfigPromise) {
+    moderationConfigPromise = fetch(`${publicBaseUrl}/api/config`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((cfg) => {
+        const mod = cfg?.moderation;
+        return mod && Array.isArray(mod.report_reasons)
+          ? (mod as ModerationConfig)
+          : null;
+      })
+      .catch(() => null);
+  }
+  return moderationConfigPromise;
+}
+
+export interface BlockedUserEntry {
+  public_sqid: string;
+  handle: string;
+  avatar_url: string | null;
+  blocked_at: string;
+}
+
+export interface BlockedUsersPage {
+  items: BlockedUserEntry[];
+  next_cursor: string | null;
+}
+
+/** Block a user by public_sqid. Auth required; 204 on success (idempotent). */
+export async function blockUser(publicSqid: string): Promise<void> {
+  const resp = await authenticatedFetch(
+    `${publicBaseUrl}/api/user/u/${publicSqid}/block`,
+    { method: "POST" },
+  );
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => "");
+    throw new Error(`Block failed (${resp.status}): ${body}`);
+  }
+}
+
+/** Unblock a user by public_sqid. Auth required; 204 on success (idempotent). */
+export async function unblockUser(publicSqid: string): Promise<void> {
+  const resp = await authenticatedFetch(
+    `${publicBaseUrl}/api/user/u/${publicSqid}/block`,
+    { method: "DELETE" },
+  );
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => "");
+    throw new Error(`Unblock failed (${resp.status}): ${body}`);
+  }
+}
+
+/** The caller's blocked-users list (cursor-paginated). Auth required. */
+export async function getMyBlocks(
+  cursor?: string | null,
+  limit = 50,
+): Promise<BlockedUsersPage> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) params.set("cursor", cursor);
+  return authenticatedRequestJson<BlockedUsersPage>(
+    `/api/me/blocks?${params.toString()}`,
+  );
+}
+
 /** Download a post's layers file. Requires login (401 otherwise). */
 export async function downloadMkpx(publicSqid: string): Promise<Blob> {
   const resp = await authenticatedFetch(
