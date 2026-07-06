@@ -137,14 +137,11 @@ PASSWORD_SPECIAL_CHARS = "!@#$%^&*()-_=+[]{}|;:,.<>?"
 PASSWORD_MIN_LENGTH = 8
 
 
-def get_client_ip(request: Request) -> str:
-    """
-    Extract client IP address from request.
-
-    Used for rate limiting to track requests per IP.
-    Falls back to "unknown" if client information is not available.
-    """
-    return request.client.host if request.client else "unknown"
+# Canonical client-IP extraction (utils/client_ip.py, D23b). The local
+# version this replaces read only request.client.host — behind Caddy that is
+# always the proxy's container IP, so every "per-IP" throttle in this router
+# was actually one global bucket shared by all external users.
+from ..utils.client_ip import get_client_ip  # noqa: E402,F401
 
 
 def validate_password(password: str) -> tuple[bool, str | None]:
