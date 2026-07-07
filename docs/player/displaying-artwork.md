@@ -112,6 +112,17 @@ Query response includes timing hints:
 | `min_frame_duration_ms` | Shortest frame delay |
 | `max_frame_duration_ms` | Longest frame delay |
 
+> **Frame metadata describes the native file.** `frame_count`,
+> `min_frame_duration_ms`, and `max_frame_duration_ms` are measured from the
+> artwork as uploaded — the `native_format` file, which `art_url` points to.
+> The server-side conversions to other formats merge consecutive duplicate
+> frames (their durations are summed), so a non-native rendition can contain
+> fewer frames than `frame_count`, and a merged frame's delay can exceed
+> `max_frame_duration_ms`. Playback is visually identical and the total loop
+> duration is preserved. If you fetch a format other than `native_format`,
+> take frame count and per-frame delays from the file itself, not from the
+> metadata.
+
 ### GIF Frame Delays
 
 GIF frame delays are embedded in the file. Libraries like PIL/Pillow, ImageMagick, or giflib can extract them:

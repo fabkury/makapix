@@ -323,7 +323,13 @@ class ReputationView(BaseModel):
 
 
 class PostFile(BaseModel):
-    """File variant for a post."""
+    """File variant for a post.
+
+    Non-native variants are server-side re-encodes of the native file.
+    Animated variants can contain fewer frames than the post's frame_count
+    (consecutive duplicate frames merge on encode, durations are summed;
+    playback is visually identical).
+    """
 
     format: str
     file_bytes: int
@@ -349,7 +355,10 @@ class Post(BaseModel):
     art_url: str  # Can be relative URL for vault-hosted images or full URL for external
     width: int  # Canvas width in pixels
     height: int  # Canvas height in pixels
-    frame_count: int = 1  # Number of animation frames
+    # Frames in the native file (the one art_url points to). Converted
+    # renditions may contain fewer: encoders merge consecutive duplicate
+    # frames, summing durations (docs/player/displaying-artwork.md)
+    frame_count: int = 1
     min_frame_duration_ms: int | None = (
         None  # Minimum non-zero frame duration (ms), NULL for static
     )

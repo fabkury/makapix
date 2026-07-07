@@ -192,7 +192,7 @@ Query posts from various channels with optional filtering, sorting, and paginati
 | `artwork_modified_at` | string | ISO 8601 timestamp of last artwork edit |
 | `width` | int | Image width in pixels |
 | `height` | int | Image height in pixels |
-| `frame_count` | int | Number of frames (1 for static images) |
+| `frame_count` | int | Number of frames in the native-format file (1 for static images). Converted renditions may contain fewer — consecutive duplicate frames merge on encode; see `docs/player/displaying-artwork.md` |
 | `dwell_time_ms` | int | Display time in milliseconds (default: 30000) |
 | `transparency_actual` | bool | Whether image has actual transparent pixels |
 | `alpha_actual` | bool | Whether image has actual alpha channel |

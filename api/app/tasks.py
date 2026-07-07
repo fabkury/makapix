@@ -2844,6 +2844,11 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
     4. Convert to each target format (skip native, skip if exists)
     5. Create upscaled version
     6. Update formats_available in database
+
+    Note: Pillow's animated GIF and WebP encoders merge consecutive duplicate
+    frames (durations are summed), so converted variants can contain fewer
+    frames than post.frame_count. Playback is visually identical; frame_count
+    describes the native file only (docs/player/displaying-artwork.md).
     """
     from io import BytesIO
     from PIL import Image

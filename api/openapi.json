@@ -5354,7 +5354,7 @@
         "type": "object"
       },
       "PostFile": {
-        "description": "File variant for a post.",
+        "description": "File variant for a post.\n\nNon-native variants are server-side re-encodes of the native file.\nAnimated variants can contain fewer frames than the post's frame_count\n(consecutive duplicate frames merge on encode, durations are summed;\nplayback is visually identical).",
         "properties": {
           "file_bytes": {
             "title": "File Bytes",

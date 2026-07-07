@@ -23,6 +23,10 @@ export function supportsWebP(): boolean {
  * GIF is the safe default because it is always generated (even for animations),
  * whereas PNG is not created for animated artwork.
  *
+ * The GIF variant can contain fewer frames than the post's frame_count:
+ * consecutive duplicate frames merge on encode (durations are summed), so
+ * playback is visually identical. frame_count describes the native file.
+ *
  * URLs that don't end in `.webp` pass through unchanged.
  */
 export function ensureCompatibleArtUrl(
