@@ -356,6 +356,9 @@ class Post(BaseModel):
     max_frame_duration_ms: int | None = (
         None  # Maximum frame duration (ms), NULL for static
     )
+    # Clamped loop duration (ms), NULL for static: per frame missing/<=10ms
+    # counts as 100ms, whole-loop totals <=30ms stored as 30ms (message 0010)
+    total_duration_ms: int | None = None
     unique_colors: int | None = None  # Max unique colors in any single frame
     transparency_meta: bool = False  # File metadata claims transparency capability
     alpha_meta: bool = False  # File metadata claims alpha channel

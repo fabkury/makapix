@@ -164,6 +164,7 @@ def main() -> int:
             "frame_count": metadata.frame_count,
             "shortest_duration_ms": metadata.shortest_duration_ms,
             "longest_duration_ms": metadata.longest_duration_ms,
+            "total_duration_ms": metadata.total_duration_ms,
             "unique_colors": metadata.unique_colors,
             "transparency_meta": metadata.transparency_meta,
             "alpha_meta": metadata.alpha_meta,

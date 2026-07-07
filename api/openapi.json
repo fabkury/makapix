@@ -5193,6 +5193,17 @@
             "title": "Title",
             "type": "string"
           },
+          "total_duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Duration Ms"
+          },
           "transparency_actual": {
             "default": false,
             "title": "Transparency Actual",

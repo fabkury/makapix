@@ -4185,6 +4185,133 @@ def backfill_post_files(batch_size: int = 100) -> dict[str, Any]:
         db.close()
 
 
+# ============================================================================
+# BACKFILL ANIMATION DURATIONS (message 0010)
+# ============================================================================
+
+
+@celery_app.task(name="app.tasks.backfill_animation_durations")
+def backfill_animation_durations(batch_size: int = 100) -> dict[str, Any]:
+    """
+    Re-extract per-frame durations for animated artworks from their native
+    vault files. Manual trigger, idempotent (recomputes every animated post).
+
+    Fixes the historical NULL min/max_frame_duration_ms on animated WebP
+    natives (durations were read after seek() but before load(), and the
+    WebP plugin only populates them on load) and populates the new
+    total_duration_ms column under the clamp policy pinned in message 0010.
+    """
+    from datetime import datetime, timezone
+
+    from PIL import Image
+
+    from . import models, vault
+    from .amp.metadata_extraction import (
+        collect_frame_durations,
+        compute_total_duration_ms,
+        _min_max_durations,
+    )
+    from .db import get_session
+
+    db = next(get_session())
+    try:
+        posts = (
+            db.query(models.Post)
+            .filter(
+                models.Post.kind == "artwork",
+                models.Post.frame_count > 1,
+                models.Post.storage_key.isnot(None),
+                models.Post.storage_shard.isnot(None),
+            )
+            .all()
+        )
+
+        total = len(posts)
+        updated = 0
+        skipped = 0
+        errors = 0
+
+        for i, post in enumerate(posts):
+            try:
+                native_pf = next((f for f in post.files if f.is_native), None)
+                if not native_pf:
+                    logger.warning(f"Post {post.id}: no native file row, skipping")
+                    skipped += 1
+                    continue
+
+                native_format = native_pf.format.lower()
+                file_path = vault.get_artwork_file_path(
+                    post.storage_key,
+                    vault.FORMAT_TO_EXT.get(native_format, f".{native_format}"),
+                    storage_shard=post.storage_shard,
+                )
+                if not file_path.exists():
+                    logger.warning(f"Post {post.id}: vault file missing, skipping")
+                    skipped += 1
+                    continue
+
+                with Image.open(file_path) as img:
+                    frame_count = getattr(img, "n_frames", 1)
+                    if frame_count != post.frame_count:
+                        logger.warning(
+                            f"Post {post.id}: file has {frame_count} frames, "
+                            f"DB says {post.frame_count} (using file)"
+                        )
+                    durations = collect_frame_durations(img, frame_count)
+
+                min_d, max_d = _min_max_durations(durations)
+                total_d = compute_total_duration_ms(durations, frame_count)
+                changed = (
+                    post.min_frame_duration_ms,
+                    post.max_frame_duration_ms,
+                    post.total_duration_ms,
+                ) != (min_d, max_d, total_d)
+                if not changed:
+                    skipped += 1
+                    continue
+
+                post.min_frame_duration_ms = min_d
+                post.max_frame_duration_ms = max_d
+                post.total_duration_ms = total_d
+                # Metadata-cache consumers key on this timestamp; without the
+                # bump they would never learn the corrected values.
+                post.metadata_modified_at = datetime.now(timezone.utc)
+                updated += 1
+
+                if (i + 1) % batch_size == 0:
+                    db.commit()
+                    logger.info(
+                        f"Duration backfill progress: {i + 1}/{total} posts, "
+                        f"{updated} updated, {skipped} skipped, {errors} errors"
+                    )
+
+            except Exception as e:
+                logger.error(f"Error backfilling durations for post {post.id}: {e}")
+                errors += 1
+
+        db.commit()
+        logger.info(
+            f"Duration backfill completed: {total} posts, "
+            f"{updated} updated, {skipped} skipped, {errors} errors"
+        )
+
+        return {
+            "status": "success",
+            "total_posts": total,
+            "updated": updated,
+            "skipped": skipped,
+            "errors": errors,
+        }
+
+    except Exception as e:
+        logger.error(f"Duration backfill failed: {e}", exc_info=True)
+        db.rollback()
+        raise
+
+    finally:
+        db.close()
+
+
 @celery_app.task(name="app.tasks.rollup_download_stats", bind=True)
 def rollup_download_stats(self, target_date_iso: str | None = None) -> dict[str, Any]:
     """Roll up the Caddy vault access log into download_stats_daily.
