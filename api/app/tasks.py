@@ -2844,6 +2844,11 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
     4. Convert to each target format (skip native, skip if exists)
     5. Create upscaled version
     6. Update formats_available in database
+
+    Note: Pillow's animated GIF and WebP encoders merge consecutive duplicate
+    frames (durations are summed), so converted variants can contain fewer
+    frames than post.frame_count. Playback is visually identical; frame_count
+    describes the native file only (docs/player/displaying-artwork.md).
     """
     from io import BytesIO
     from PIL import Image
@@ -2929,11 +2934,33 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
                 storage_shard=post.storage_shard,
             )
 
-            # Skip if already exists
+            # Skip if already exists. The file write and the PostFile row
+            # commit are not atomic — a run that died in between leaves the
+            # file on disk with no row, and this branch is the only chance a
+            # retry gets to repair that, so recreate the row from disk here.
             if target_path.exists():
                 if target_format not in formats_available:
                     formats_available.append(target_format)
-                conversion_results[target_format] = "exists"
+                row_exists = (
+                    db.query(models.PostFile)
+                    .filter(
+                        models.PostFile.post_id == post.id,
+                        models.PostFile.format == target_format,
+                    )
+                    .first()
+                )
+                if row_exists is None:
+                    db.add(
+                        models.PostFile(
+                            post_id=post.id,
+                            format=target_format,
+                            file_bytes=target_path.stat().st_size,
+                            is_native=False,
+                        )
+                    )
+                    conversion_results[target_format] = "exists (healed row)"
+                else:
+                    conversion_results[target_format] = "exists"
                 continue
 
             try:
