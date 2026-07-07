@@ -453,7 +453,7 @@ class ViewRegisterPayload(BaseModel):
     with the supplied channel metadata (used by the Web Player).
     """
 
-    channel: Literal["all", "promoted", "by_user", "hashtag"] | None = None
+    channel: Literal["all", "promoted", "by_user", "hashtag", "reactions"] | None = None
     channel_context: str | None = Field(None, max_length=100)
     play_order: Literal[0, 1, 2] | None = None
 
@@ -932,7 +932,10 @@ class Report(BaseModel):
     notes: str | None = None
     mod_notes: str | None = None  # moderator notes (D25); mod listings only
     status: Literal["open", "triaged", "resolved"]
-    action_taken: Literal["hide", "delete", "ban", "none"] | None = None
+    # "delete" is a legacy value on old rows — it never hard-deleted anything,
+    # it was the old name for "take_down" (post: visible=False; comment: body
+    # replaced). New resolutions store "take_down".
+    action_taken: Literal["hide", "take_down", "delete", "ban", "none"] | None = None
     reporter_handle: str | None = None  # populated in moderator listings only
     created_at: datetime
     updated_at: datetime | None = None  # NULL until first update
@@ -957,7 +960,9 @@ class ReportUpdate(BaseModel):
     """
 
     status: Literal["triaged", "resolved"] | None = None
-    action_taken: Literal["hide", "delete", "ban", "none"] | None = None
+    # "delete" is a deprecated alias for "take_down" (normalized in the router).
+    # Neither hard-deletes: post -> visible=False, comment -> body replaced.
+    action_taken: Literal["hide", "take_down", "delete", "ban", "none"] | None = None
     notes: str | None = Field(None, max_length=2000)
 
 

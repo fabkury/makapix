@@ -2,6 +2,33 @@
 
 Update after every work session, newest first.
 
+## 2026-07-07 — report action "delete" renamed to "take_down"
+
+- Incident: post 3647 (`5PpX`) vanished from feeds — the app team's prod
+  smoke-test report ("please ignore") was resolved with action "delete" in
+  the mod dashboard, which sets `visible=false` (no hard delete). Post
+  restored by hand (`visible=true`).
+- Root cause was wording: the reports-queue "Delete" button sat next to a
+  real permanent-delete elsewhere in the dashboard but only takes content
+  down. Renamed the action to `take_down` end to end: schemas + router
+  (with `delete` kept as a deprecated write alias, normalized on write;
+  legacy rows still readable), audit log now `take_down_post` /
+  `take_down_comment`, dashboard button relabeled "Take down" with a
+  tooltip. Tests added for both the new value and the alias.
+
+## 2026-07-06 — app team adopted terms_url (0007)
+
+- App reply `0007`: first-run gate now links BOTH guidelines_url and
+  terms_url with an explicit agree line (adaptive to config contents);
+  existing installs re-prompted once (their local gate version 1→2); ships
+  on their next Play build (inert until terms_url in config — already live
+  on prod, so it activates on release). No server action needed.
+- Note: server-side acceptance recording already covers app users — they
+  sign up through the same /v1 endpoints, so `terms_version_accepted` is
+  stamped regardless of client. Their client-side gate is an extra signal.
+- ToS-change protocol confirmed both sides: material change → bump
+  effective date + TERMS_VERSION → numbered message → they re-show gate.
+
 ## 2026-07-06 — D26 closed: formal ToS live
 
 - Owner interview → notice-line acceptance (no checkbox), continued-use for

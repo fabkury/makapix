@@ -38,7 +38,12 @@ from ..auth import (
 )
 from ..cache import cache_get, cache_set, cache_invalidate
 from ..deps import get_db
-from ..pagination import apply_cursor_filter, create_page_response
+from ..pagination import (
+    apply_cursor_filter,
+    create_page_response,
+    decode_cursor,
+    encode_cursor,
+)
 from ..mqtt.notifications import (
     publish_new_post_notification,
     publish_category_promotion_notification,
@@ -134,6 +139,7 @@ def list_posts(
     owner_id: UUID | None = None,
     hashtag: str | None = None,
     promoted: bool | None = None,
+    reacted_by: UUID | None = None,
     visible_only: bool = True,
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
@@ -172,6 +178,12 @@ def list_posts(
 ) -> schemas.Page[schemas.Post]:
     """
     List posts with filters.
+
+    `reacted_by` restricts results to posts the given user (user_key) has
+    reacted to — the "reactions channel" (docs/mqtt-api has the physical-player
+    counterpart). Only authenticated reactions count, one row per post. With
+    `sort=reacted_at` (valid only alongside `reacted_by`) results are ordered
+    by when the user reacted.
     """
     # The web/UI post endpoints currently serve artwork posts only.
     # Playlist posts are used primarily for players (MQTT) and have a different shape.
@@ -206,6 +218,40 @@ def list_posts(
     if owner_user_id is not None:
         query = query.filter(models.Post.owner_id == owner_user_id)
 
+    # Reactions channel: restrict to posts the target user has reacted to,
+    # joining the latest reaction time per post (dedup — a user can react to
+    # a post with several emoji). Anonymous (IP-only) reactions are excluded,
+    # matching /user/u/{sqid}/reacted-posts and the player RPC channel.
+    reacted_at_col = None
+    if reacted_by is not None:
+        from sqlalchemy import func as sa_func
+
+        reacting_user = (
+            db.query(models.User).filter(models.User.user_key == reacted_by).first()
+        )
+        if reacting_user is None:
+            # User not found, return empty results
+            query = query.filter(models.Post.id == -1)
+        else:
+            latest_reactions = (
+                db.query(
+                    models.Reaction.post_id.label("post_id"),
+                    sa_func.max(models.Reaction.created_at).label("reacted_at"),
+                )
+                .filter(
+                    models.Reaction.user_id == reacting_user.id,
+                    models.Reaction.user_id.isnot(None),
+                )
+                .group_by(models.Reaction.post_id)
+                .subquery()
+            )
+            query = query.join(
+                latest_reactions, latest_reactions.c.post_id == models.Post.id
+            )
+            reacted_at_col = latest_reactions.c.reacted_at
+    if sort == "reacted_at" and reacted_at_col is None:
+        sort = "created_at"
+
     # Apply visibility filters
     # Note: Moderator-only visibility exceptions are handled in the Moderator Dashboard
     # endpoints (admin.py), not here. This endpoint shows the same content to all users.
@@ -224,7 +270,20 @@ def list_posts(
         # Apply public_visibility filter unless viewing own posts
         # Posts pending approval are visible only to their owner and in Moderator Dashboard
         if not is_viewing_own_posts:
-            query = query.filter(models.Post.public_visibility == True)
+            if reacted_by is not None and current_user is not None:
+                # Reactions channel: a viewer's own posts stay visible to them
+                # even when not publicly visible (mirrors
+                # /user/u/{sqid}/reacted-posts).
+                from sqlalchemy import or_
+
+                query = query.filter(
+                    or_(
+                        models.Post.public_visibility == True,
+                        models.Post.owner_id == current_user.id,
+                    )
+                )
+            else:
+                query = query.filter(models.Post.public_visibility == True)
 
     # Apply monitored hashtag filtering (unless viewing own posts)
     if not is_viewing_own_posts:
@@ -377,12 +436,52 @@ def list_posts(
         if comments_max is not None:
             query = query.filter(comment_count_subq <= comments_max)
 
-    # Apply cursor pagination (skip for random sort — stateless ordering)
+    # Apply cursor pagination (skip for random sort — stateless ordering;
+    # reacted_at sorts on the joined reaction column, handled below)
     sort_desc = order == "desc"
-    if sort != "random":
+    if sort not in ("random", "reacted_at"):
         query = apply_cursor_filter(
             query, models.Post, cursor, sort or "created_at", sort_desc=sort_desc
         )
+    elif sort == "reacted_at" and cursor:
+        # Keyset cursor on (reacted_at, post id) — apply_cursor_filter only
+        # handles Post columns, so filter on the join subquery column here.
+        cursor_data = decode_cursor(cursor)
+        if cursor_data:
+            from datetime import datetime
+
+            from sqlalchemy import and_, or_
+
+            last_id, sort_value = cursor_data
+            try:
+                last_id = int(last_id)
+                if isinstance(sort_value, str):
+                    sort_value = datetime.fromisoformat(
+                        sort_value.replace("Z", "+00:00")
+                    )
+            except (TypeError, ValueError):
+                sort_value = None
+            if sort_value is not None:
+                if sort_desc:
+                    query = query.filter(
+                        or_(
+                            reacted_at_col < sort_value,
+                            and_(
+                                reacted_at_col == sort_value,
+                                models.Post.id < last_id,
+                            ),
+                        )
+                    )
+                else:
+                    query = query.filter(
+                        or_(
+                            reacted_at_col > sort_value,
+                            and_(
+                                reacted_at_col == sort_value,
+                                models.Post.id > last_id,
+                            ),
+                        )
+                    )
 
     # Map sort field to model attribute and apply ordering
     # Subquery for native file bytes (used for sorting)
@@ -413,6 +512,11 @@ def list_posts(
         from sqlalchemy import func as sa_func
 
         query = query.order_by(sa_func.random())
+    elif sort == "reacted_at":
+        if order == "desc":
+            query = query.order_by(reacted_at_col.desc(), models.Post.id.desc())
+        else:
+            query = query.order_by(reacted_at_col.asc(), models.Post.id.asc())
     elif sort == "reactions":
         from sqlalchemy import func
 
@@ -435,13 +539,23 @@ def list_posts(
             query = query.order_by(sort_column.asc())
 
     # Fetch limit + 1 to check if there are more results
-    posts = query.limit(limit + 1).all()
+    if sort == "reacted_at":
+        # Fetch reacted_at alongside each post so the next cursor can encode
+        # the reaction time (create_page_response only knows Post columns).
+        rows = query.add_columns(reacted_at_col).limit(limit + 1).all()
+        next_cursor = None
+        if len(rows) > limit:
+            rows = rows[:limit]
+            last_post, last_reacted_at = rows[-1]
+            next_cursor = encode_cursor(str(last_post.id), last_reacted_at.isoformat())
+        posts = [row[0] for row in rows]
+        page_data = {"items": posts, "next_cursor": next_cursor}
+    else:
+        posts = query.limit(limit + 1).all()
+        page_data = create_page_response(posts, limit, cursor)
 
     # Add reaction and comment counts, and user liked status
     annotate_posts_with_counts(db, posts, current_user.id if current_user else None)
-
-    # Create paginated response
-    page_data = create_page_response(posts, limit, cursor)
 
     # Record site event for page view
     record_site_event(request, "page_view", user=current_user if current_user else None)

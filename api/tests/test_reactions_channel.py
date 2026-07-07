@@ -83,8 +83,17 @@ def _make_post(
     return post
 
 
-def _react(db: Session, *, user: User, post: Post, emoji: str = "❤️") -> Reaction:
+def _react(
+    db: Session,
+    *,
+    user: User,
+    post: Post,
+    emoji: str = "❤️",
+    created_at: datetime | None = None,
+) -> Reaction:
     r = Reaction(post_id=post.id, user_id=user.id, emoji=emoji)
+    if created_at is not None:
+        r.created_at = created_at
     db.add(r)
     db.commit()
     db.refresh(r)
@@ -307,3 +316,169 @@ class TestPlayChannelReactions:
 
         assert response.status_code == 400
         assert "user_sqid" in response.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# GET /post?reacted_by=… — reactions channel on the main listing endpoint
+# (feeds the in-browser web player; docs equivalent of the player RPC channel)
+# ---------------------------------------------------------------------------
+
+
+class TestListPostsReactedBy:
+    def test_filters_to_reacted_posts(
+        self, client: TestClient, db: Session, reactor: User, artist: User
+    ):
+        reacted_1 = _make_post(db, owner=artist, title="reacted-1")
+        reacted_2 = _make_post(db, owner=artist, title="reacted-2")
+        _make_post(db, owner=artist, title="not-reacted")
+        _react(db, user=reactor, post=reacted_1)
+        _react(db, user=reactor, post=reacted_2)
+
+        response = client.get(f"/post?reacted_by={reactor.user_key}")
+
+        assert response.status_code == 200
+        returned_ids = {item["id"] for item in response.json()["items"]}
+        assert returned_ids == {reacted_1.id, reacted_2.id}
+
+    def test_multiple_emoji_dedup(
+        self, client: TestClient, db: Session, reactor: User, artist: User
+    ):
+        post = _make_post(db, owner=artist, title="double-reacted")
+        _react(db, user=reactor, post=post, emoji="❤️")
+        _react(db, user=reactor, post=post, emoji="🔥")
+
+        response = client.get(f"/post?reacted_by={reactor.user_key}")
+
+        assert response.status_code == 200
+        returned_ids = [item["id"] for item in response.json()["items"]]
+        assert returned_ids == [post.id]
+
+    def test_unknown_user_returns_empty(
+        self, client: TestClient, db: Session, reactor: User, artist: User
+    ):
+        post = _make_post(db, owner=artist, title="reacted")
+        _react(db, user=reactor, post=post)
+
+        response = client.get(f"/post?reacted_by={uuid.uuid4()}")
+
+        assert response.status_code == 200
+        assert response.json()["items"] == []
+
+    def test_visibility_anonymous_vs_own_posts(
+        self,
+        client: TestClient,
+        db: Session,
+        reactor: User,
+        viewer: User,
+        artist: User,
+    ):
+        public_post = _make_post(db, owner=artist, title="public-art")
+        private_post = _make_post(
+            db, owner=artist, title="private-art", public_visibility=False
+        )
+        viewer_private = _make_post(
+            db, owner=viewer, title="viewer-private", public_visibility=False
+        )
+        _react(db, user=reactor, post=public_post)
+        _react(db, user=reactor, post=private_post)
+        _react(db, user=reactor, post=viewer_private)
+
+        # Anonymous: public posts only
+        response = client.get(f"/post?reacted_by={reactor.user_key}")
+        assert response.status_code == 200
+        assert {i["id"] for i in response.json()["items"]} == {public_post.id}
+
+        # Authenticated viewer additionally sees their own private post
+        token = create_access_token(viewer)
+        response = client.get(
+            f"/post?reacted_by={reactor.user_key}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200
+        assert {i["id"] for i in response.json()["items"]} == {
+            public_post.id,
+            viewer_private.id,
+        }
+
+    def test_sort_reacted_at_order_and_cursor(
+        self, client: TestClient, db: Session, reactor: User, artist: User
+    ):
+        """Ordering follows reaction time (not post creation) with a working cursor."""
+        posts = [_make_post(db, owner=artist, title=f"art-{i}") for i in range(3)]
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        # React in reverse creation order so reacted_at != created_at order
+        _react(db, user=reactor, post=posts[2], created_at=base.replace(hour=1))
+        _react(db, user=reactor, post=posts[0], created_at=base.replace(hour=2))
+        _react(db, user=reactor, post=posts[1], created_at=base.replace(hour=3))
+
+        url = f"/post?reacted_by={reactor.user_key}&sort=reacted_at&limit=2"
+        response = client.get(url)
+        assert response.status_code == 200
+        data = response.json()
+        assert [i["id"] for i in data["items"]] == [posts[1].id, posts[0].id]
+        assert data["next_cursor"]
+
+        response = client.get(f"{url}&cursor={data['next_cursor']}")
+        assert response.status_code == 200
+        data = response.json()
+        assert [i["id"] for i in data["items"]] == [posts[2].id]
+        assert data["next_cursor"] is None
+
+    def test_sort_reacted_at_without_reacted_by_falls_back(
+        self, client: TestClient, db: Session, artist: User
+    ):
+        _make_post(db, owner=artist, title="plain")
+
+        response = client.get("/post?sort=reacted_at")
+
+        assert response.status_code == 200
+
+    def test_random_sort_single_pick(
+        self, client: TestClient, db: Session, reactor: User, artist: User
+    ):
+        """The web player's fetch shape: sort=random&limit=1."""
+        reacted = _make_post(db, owner=artist, title="reacted")
+        _make_post(db, owner=artist, title="not-reacted")
+        _react(db, user=reactor, post=reacted)
+
+        response = client.get(
+            f"/post?reacted_by={reactor.user_key}&sort=random&limit=1"
+        )
+
+        assert response.status_code == 200
+        items = response.json()["items"]
+        assert len(items) == 1
+        assert items[0]["id"] == reacted.id
+
+    def test_composes_with_other_filters(
+        self, client: TestClient, db: Session, reactor: User, artist: User, viewer: User
+    ):
+        artist_post = _make_post(db, owner=artist, title="artist-art")
+        viewer_post = _make_post(db, owner=viewer, title="viewer-art")
+        _react(db, user=reactor, post=artist_post)
+        _react(db, user=reactor, post=viewer_post)
+
+        response = client.get(
+            f"/post?reacted_by={reactor.user_key}&owner_id={artist.user_key}"
+        )
+
+        assert response.status_code == 200
+        assert [i["id"] for i in response.json()["items"]] == [artist_post.id]
+
+    def test_register_view_accepts_reactions_channel(
+        self, client: TestClient, db: Session, reactor: User, artist: User
+    ):
+        post = _make_post(db, owner=artist, title="viewed")
+        token = create_access_token(reactor)
+
+        response = client.post(
+            f"/post/{post.id}/view",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "channel": "reactions",
+                "channel_context": reactor.public_sqid,
+                "play_order": 2,
+            },
+        )
+
+        assert response.status_code == 204

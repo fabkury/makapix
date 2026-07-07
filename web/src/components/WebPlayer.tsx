@@ -52,6 +52,8 @@ interface WebPlayerProps {
   buildApiQuery: (baseParams: Record<string, string>) => string;
   baseParams: Record<string, string>;
   channelName?: string;
+  /** View-analytics channel_context (e.g. target user sqid for reactions). */
+  channelContext?: string | null;
 }
 
 /** Load an image into the browser cache and decode it, ready to paint. */
@@ -264,14 +266,20 @@ async function fetchWidgetData(postId: number): Promise<WidgetData | null> {
   }
 }
 
-type ViewChannel = "all" | "promoted" | "by_user" | "hashtag";
+type ViewChannel = "all" | "promoted" | "by_user" | "hashtag" | "reactions";
 
 function deriveViewChannel(
   baseParams: Record<string, string>,
   artwork: Artwork | null,
+  channelContext: string | null = null,
 ): { channel: ViewChannel; channel_context: string | null } {
   if (baseParams.promoted === "true") {
     return { channel: "promoted", channel_context: null };
+  }
+  if (baseParams.reacted_by) {
+    // channel_context is the reacting user's public sqid (passed by the host
+    // page; the artwork owner is unrelated to the channel target here).
+    return { channel: "reactions", channel_context: channelContext };
   }
   if (baseParams.owner_id) {
     return {
@@ -314,6 +322,7 @@ export function WebPlayer({
   buildApiQuery,
   baseParams,
   channelName,
+  channelContext,
 }: WebPlayerProps) {
   const router = useRouter();
 
@@ -417,6 +426,8 @@ export function WebPlayer({
   buildApiQueryRef.current = buildApiQuery;
   const baseParamsRef = useRef(baseParams);
   baseParamsRef.current = baseParams;
+  const channelContextRef = useRef(channelContext ?? null);
+  channelContextRef.current = channelContext ?? null;
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -1102,6 +1113,7 @@ export function WebPlayer({
     const { channel, channel_context } = deriveViewChannel(
       baseParamsRef.current,
       displayedArtwork,
+      channelContextRef.current,
     );
 
     const submitView = async () => {

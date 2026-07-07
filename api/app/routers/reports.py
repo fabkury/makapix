@@ -275,9 +275,15 @@ def update_report(
             status_code=status.HTTP_404_NOT_FOUND, detail="Report not found"
         )
 
-    # Auto-apply action if specified
+    # Auto-apply action if specified.
+    # "delete" is a deprecated alias for "take_down" — normalize it here so
+    # stored reports and audit logs use the honest name (nothing is deleted:
+    # posts are made invisible, comment bodies are replaced).
+    action_taken = (
+        "take_down" if payload.action_taken == "delete" else payload.action_taken
+    )
     action_applied = False
-    if payload.action_taken and payload.action_taken != "none":
+    if action_taken and action_taken != "none":
         if report.target_type == "user":
             # target_id is the user's public_sqid (D9)
             target_user = (
@@ -291,12 +297,12 @@ def update_report(
                     detail=f"Target user {report.target_id} not found",
                 )
 
-            if payload.action_taken == "ban":
+            if action_taken == "ban":
                 target_user.banned_until = datetime.now(timezone.utc) + timedelta(
                     days=7
                 )  # Default 7 days
                 action_applied = True
-            elif payload.action_taken == "hide":
+            elif action_taken == "hide":
                 target_user.hidden_by_mod = True
                 action_applied = True
 
@@ -318,10 +324,10 @@ def update_report(
                     detail=f"Target post {report.target_id} not found",
                 )
 
-            if payload.action_taken == "hide":
+            if action_taken == "hide":
                 target_post.hidden_by_mod = True
                 action_applied = True
-            elif payload.action_taken == "delete":
+            elif action_taken == "take_down":
                 target_post.visible = False
                 action_applied = True
 
@@ -345,10 +351,10 @@ def update_report(
                     detail=f"Target comment {report.target_id} not found",
                 )
 
-            if payload.action_taken == "hide":
+            if action_taken == "hide":
                 target_comment.hidden_by_mod = True
                 action_applied = True
-            elif payload.action_taken == "delete":
+            elif action_taken == "take_down":
                 target_comment.deleted_by_owner = True
                 target_comment.body = "[deleted by moderator]"
                 action_applied = True
@@ -356,8 +362,8 @@ def update_report(
     # Update report fields
     if payload.status is not None:
         report.status = payload.status
-    if payload.action_taken is not None:
-        report.action_taken = payload.action_taken
+    if action_taken is not None:
+        report.action_taken = action_taken
     if payload.notes is not None:
         report.mod_notes = payload.notes  # D25: never overwrite reporter notes
 
@@ -365,12 +371,12 @@ def update_report(
     db.refresh(report)
 
     # Log actions to audit log after commit
-    if action_applied and payload.action_taken:
+    if action_applied and action_taken:
         action_name = {
             "ban": "ban_user",
             "hide": f"hide_{report.target_type}",
-            "delete": f"delete_{report.target_type}",
-        }.get(payload.action_taken)
+            "take_down": f"take_down_{report.target_type}",
+        }.get(action_taken)
 
         if action_name:
             log_moderation_action(

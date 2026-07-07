@@ -692,7 +692,7 @@ export default function ModDashboardPage() {
                       </div>
                       <div className="item-actions">
                         <button onClick={() => resolveReport(report.id, 'hide')} className="action-btn">Hide</button>
-                        <button onClick={() => resolveReport(report.id, 'delete')} className="action-btn danger">Delete</button>
+                        <button onClick={() => resolveReport(report.id, 'take_down')} className="action-btn danger" title="Remove from feeds (reversible; does not delete the post)">Take down</button>
                         <button onClick={() => resolveReport(report.id, 'none')} className="action-btn secondary">Dismiss</button>
                       </div>
                     </div>
