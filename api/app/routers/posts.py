@@ -780,6 +780,7 @@ async def upload_artwork(
         frame_count = metadata["frame_count"]
         min_frame_duration_ms = metadata.get("shortest_duration_ms")
         max_frame_duration_ms = metadata.get("longest_duration_ms")
+        total_duration_ms = metadata.get("total_duration_ms")
         unique_colors = metadata.get("unique_colors")
         transparency_meta = metadata.get("transparency_meta", False)
         alpha_meta = metadata.get("alpha_meta", False)
@@ -844,6 +845,7 @@ async def upload_artwork(
         frame_count=frame_count,
         min_frame_duration_ms=min_frame_duration_ms,
         max_frame_duration_ms=max_frame_duration_ms,
+        total_duration_ms=total_duration_ms,
         unique_colors=unique_colors,
         transparency_meta=transparency_meta,
         alpha_meta=alpha_meta,
@@ -1988,6 +1990,7 @@ async def replace_artwork(
         frame_count = metadata["frame_count"]
         min_frame_duration_ms = metadata.get("shortest_duration_ms")
         max_frame_duration_ms = metadata.get("longest_duration_ms")
+        total_duration_ms = metadata.get("total_duration_ms")
         unique_colors = metadata.get("unique_colors")
         transparency_meta = metadata.get("transparency_meta", False)
         alpha_meta = metadata.get("alpha_meta", False)
@@ -2063,6 +2066,7 @@ async def replace_artwork(
     post.frame_count = frame_count
     post.min_frame_duration_ms = min_frame_duration_ms
     post.max_frame_duration_ms = max_frame_duration_ms
+    post.total_duration_ms = total_duration_ms
     post.unique_colors = unique_colors
     post.transparency_meta = transparency_meta
     post.alpha_meta = alpha_meta

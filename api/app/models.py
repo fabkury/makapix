@@ -351,6 +351,11 @@ class Post(Base):
     max_frame_duration_ms = Column(
         Integer, nullable=True
     )  # Maximum frame duration (ms), NULL for static
+    # Clamped loop duration (ms), NULL for static. Per frame, a missing or
+    # <=10ms stored delay counts as 100ms; a total <=30ms is stored as 30ms
+    # (policy pinned in message 0010 — matches app-side playback clamping,
+    # deliberately NOT the raw sum requested in message 0008 §3).
+    total_duration_ms = Column(Integer, nullable=True)
     unique_colors = Column(
         Integer, nullable=True
     )  # Max unique colors in any single frame

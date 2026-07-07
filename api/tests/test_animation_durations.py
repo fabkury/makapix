@@ -147,3 +147,71 @@ def test_extract_metadata_static_png(tmp_path):
     assert meta.shortest_duration_ms is None
     assert meta.longest_duration_ms is None
     assert meta.total_duration_ms is None
+
+
+# --- upload integration ---------------------------------------------------------
+
+
+def _make_user(db):
+    import uuid as _uuid
+
+    from app.models import User
+    from app.sqids_config import encode_user_id
+
+    uid = str(_uuid.uuid4())[:8]
+    u = User(handle=f"ad_{uid}", email=f"ad_{uid}@example.com", roles=["user"])
+    db.add(u)
+    db.commit()
+    db.refresh(u)
+    u.public_sqid = encode_user_id(u.id)
+    db.commit()
+    db.refresh(u)
+    return u
+
+
+def _headers(user):
+    from app.auth import create_access_token
+
+    return {"Authorization": f"Bearer {create_access_token(user)}"}
+
+
+def test_upload_animated_webp_sets_durations(client, db, tmp_path, monkeypatch):
+    from app.models import Post
+
+    monkeypatch.setenv("VAULT_LOCATION", str(tmp_path))
+    owner = _make_user(db)
+
+    data = make_animated_bytes("webp", [50, 100, 200])
+    r = client.post(
+        "/v1/post/upload",
+        files={"image": ("anim.webp", data, "image/webp")},
+        data={"title": "sync test"},
+        headers=_headers(owner),
+    )
+    assert r.status_code == 201, r.text
+    payload = r.json()["post"]
+    assert payload["frame_count"] == 3
+    assert payload["min_frame_duration_ms"] == 50
+    assert payload["max_frame_duration_ms"] == 200
+    assert payload["total_duration_ms"] == 350
+
+    row = db.query(Post).filter(Post.id == payload["id"]).first()
+    assert (row.min_frame_duration_ms, row.max_frame_duration_ms) == (50, 200)
+    assert row.total_duration_ms == 350
+
+
+def test_upload_static_png_total_is_null(client, db, tmp_path, monkeypatch):
+    monkeypatch.setenv("VAULT_LOCATION", str(tmp_path))
+    owner = _make_user(db)
+
+    img = Image.new("RGBA", (8, 8), (9, 9, 9, 255))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    r = client.post(
+        "/v1/post/upload",
+        files={"image": ("still.png", buf.getvalue(), "image/png")},
+        data={"title": "static test"},
+        headers=_headers(owner),
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["post"]["total_duration_ms"] is None
