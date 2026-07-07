@@ -35,6 +35,7 @@ class AMPMetadata:
     frame_count: int
     shortest_duration_ms: int | None  # None for static images
     longest_duration_ms: int | None  # None for static images
+    total_duration_ms: int | None  # Clamped loop duration; None for static images
 
     # Colors
     unique_colors: int  # Max unique colors in any single frame
@@ -68,7 +69,9 @@ def extract_metadata(file_path: Path, img: Image.Image) -> AMPMetadata:
 
     # Animation metadata
     frame_count = _get_frame_count(img)
-    shortest_duration_ms, longest_duration_ms = _get_frame_durations(img, frame_count)
+    raw_durations = collect_frame_durations(img, frame_count)
+    shortest_duration_ms, longest_duration_ms = _min_max_durations(raw_durations)
+    total_duration_ms = compute_total_duration_ms(raw_durations, frame_count)
 
     # Unique colors (max across all frames)
     unique_colors = _get_max_unique_colors(img, frame_count)
@@ -96,6 +99,7 @@ def extract_metadata(file_path: Path, img: Image.Image) -> AMPMetadata:
         frame_count=frame_count,
         shortest_duration_ms=shortest_duration_ms,
         longest_duration_ms=longest_duration_ms,
+        total_duration_ms=total_duration_ms,
         unique_colors=unique_colors,
         transparency_meta=transparency_meta,
         alpha_meta=alpha_meta,
@@ -131,35 +135,89 @@ def _get_frame_count(img: Image.Image) -> int:
         return 1
 
 
-def _get_frame_durations(
-    img: Image.Image, frame_count: int
-) -> tuple[int | None, int | None]:
-    """
-    Get shortest and longest frame durations in milliseconds.
+# Per-frame clamp: frames with a missing/zero/near-zero stored delay play at
+# the browser-convention 100 ms. Applied when computing total_duration_ms so
+# the stored total matches what wall-clock-synced clients actually play
+# (message/0008 exchange; policy pinned in message 0009/0010).
+FRAME_DELAY_CLAMP_THRESHOLD_MS = 10
+FRAME_DELAY_CLAMP_VALUE_MS = 100
+# Whole-loop floor: a total at or below this is stored as this, so loop
+# arithmetic (wall clock modulo total) never divides by a near-zero duration.
+TOTAL_DURATION_FLOOR_MS = 30
 
-    Returns (None, None) for static images.
+
+def collect_frame_durations(img: Image.Image, frame_count: int) -> list[int | None]:
+    """
+    Collect the stored per-frame delays (ms) of an animated image, in frame
+    order; a frame whose delay cannot be read yields None.
+
+    ``load()`` after each ``seek()`` is required: the WebP plugin only
+    populates ``info["duration"]`` on load (GIF sets it on seek), which is why
+    animated WebP durations were historically extracted as NULL.
+
+    Returns [] for static images.
     """
     if frame_count <= 1:
-        return None, None
+        return []
 
+    durations: list[int | None] = []
     try:
-        durations = []
         original_frame = img.tell() if hasattr(img, "tell") else 0
 
         for frame_idx in range(frame_count):
             img.seek(frame_idx)
+            img.load()
             duration = img.info.get("duration")
-            if duration is not None and duration > 0:
-                durations.append(duration)
+            durations.append(int(duration) if duration is not None else None)
 
         # Restore original frame
         img.seek(original_frame)
-
-        if durations:
-            return min(durations), max(durations)
-        return None, None
     except Exception:
-        return None, None
+        # Keep whatever was read; missing frames are treated as unreadable
+        pass
+
+    # Pad so downstream policy sees one entry per frame
+    durations.extend([None] * (frame_count - len(durations)))
+    return durations
+
+
+def _min_max_durations(
+    durations: list[int | None],
+) -> tuple[int | None, int | None]:
+    """
+    Shortest/longest stored frame delay in ms — raw file values, positive
+    entries only (unchanged semantics of min/max_frame_duration_ms).
+    Returns (None, None) when no frame has a positive stored delay.
+    """
+    positive = [d for d in durations if d is not None and d > 0]
+    if positive:
+        return min(positive), max(positive)
+    return None, None
+
+
+def compute_total_duration_ms(
+    durations: list[int | None], frame_count: int
+) -> int | None:
+    """
+    Total loop duration in ms under the pinned clamp policy:
+
+    - per frame: a missing delay or one <= 10 ms counts as 100 ms
+    - whole loop: a total <= 30 ms is stored as 30 ms
+
+    Returns None for static images (frame_count <= 1).
+    """
+    if frame_count <= 1:
+        return None
+
+    total = sum(
+        (
+            d
+            if d is not None and d > FRAME_DELAY_CLAMP_THRESHOLD_MS
+            else FRAME_DELAY_CLAMP_VALUE_MS
+        )
+        for d in durations
+    )
+    return max(total, TOTAL_DURATION_FLOOR_MS)
 
 
 def _get_max_unique_colors(img: Image.Image, frame_count: int) -> int:
