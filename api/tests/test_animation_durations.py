@@ -200,6 +200,67 @@ def test_upload_animated_webp_sets_durations(client, db, tmp_path, monkeypatch):
     assert row.total_duration_ms == 350
 
 
+def test_backfill_animation_durations(db, tmp_path, monkeypatch):
+    """Historical animated WebP row (NULL durations) gets repaired from vault."""
+    import uuid as _uuid
+    from datetime import datetime, timezone
+
+    from app.models import Post, PostFile
+    from app.tasks import backfill_animation_durations
+    from app.vault import compute_storage_shard, save_artwork_to_vault
+
+    monkeypatch.setenv("VAULT_LOCATION", str(tmp_path))
+    owner = _make_user(db)
+
+    data = make_animated_bytes("webp", [50, 100, 200])
+    key = _uuid.uuid4()
+    shard = compute_storage_shard(key)
+    save_artwork_to_vault(key, data, "webp", storage_shard=shard)
+
+    now = datetime.now(timezone.utc)
+    post = Post(
+        storage_key=key,
+        storage_shard=shard,
+        owner_id=owner.id,
+        kind="artwork",
+        title="legacy anim",
+        art_url=f"/api/vault/{shard}/{key}.webp",
+        width=8,
+        height=8,
+        frame_count=3,
+        min_frame_duration_ms=None,
+        max_frame_duration_ms=None,
+        total_duration_ms=None,
+        hash=f"fake-{key}",
+        metadata_modified_at=now,
+        artwork_modified_at=now,
+        dwell_time_ms=30000,
+    )
+    db.add(post)
+    db.flush()
+    db.add(
+        PostFile(post_id=post.id, format="webp", file_bytes=len(data), is_native=True)
+    )
+    db.commit()
+
+    result = backfill_animation_durations()
+    assert result["status"] == "success"
+    assert result["updated"] >= 1
+
+    db.refresh(post)
+    assert post.min_frame_duration_ms == 50
+    assert post.max_frame_duration_ms == 200
+    assert post.total_duration_ms == 350
+    assert post.metadata_modified_at > now
+
+    # Idempotent: second run changes nothing
+    stamp = post.metadata_modified_at
+    result2 = backfill_animation_durations()
+    assert result2["status"] == "success"
+    db.refresh(post)
+    assert post.metadata_modified_at == stamp
+
+
 def test_upload_static_png_total_is_null(client, db, tmp_path, monkeypatch):
     monkeypatch.setenv("VAULT_LOCATION", str(tmp_path))
     owner = _make_user(db)
