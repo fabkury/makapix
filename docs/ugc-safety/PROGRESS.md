@@ -2,6 +2,20 @@
 
 Update after every work session, newest first.
 
+## 2026-07-07 — report action "delete" renamed to "take_down"
+
+- Incident: post 3647 (`5PpX`) vanished from feeds — the app team's prod
+  smoke-test report ("please ignore") was resolved with action "delete" in
+  the mod dashboard, which sets `visible=false` (no hard delete). Post
+  restored by hand (`visible=true`).
+- Root cause was wording: the reports-queue "Delete" button sat next to a
+  real permanent-delete elsewhere in the dashboard but only takes content
+  down. Renamed the action to `take_down` end to end: schemas + router
+  (with `delete` kept as a deprecated write alias, normalized on write;
+  legacy rows still readable), audit log now `take_down_post` /
+  `take_down_comment`, dashboard button relabeled "Take down" with a
+  tooltip. Tests added for both the new value and the alias.
+
 ## 2026-07-06 — app team adopted terms_url (0007)
 
 - App reply `0007`: first-run gate now links BOTH guidelines_url and

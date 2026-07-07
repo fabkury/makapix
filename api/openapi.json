@@ -6501,6 +6501,7 @@
               {
                 "enum": [
                   "hide",
+                  "take_down",
                   "delete",
                   "ban",
                   "none"
@@ -6685,6 +6686,7 @@
               {
                 "enum": [
                   "hide",
+                  "take_down",
                   "delete",
                   "ban",
                   "none"

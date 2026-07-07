@@ -277,6 +277,46 @@ class TestModeratorTriage:
         db.refresh(artist)
         assert artist.banned_until is not None  # D9 regression: sqid resolution
 
+    def test_take_down_post_sets_invisible(
+        self, client: TestClient, db: Session, moderator, reporter, artist
+    ):
+        post = _make_post(db, owner=artist, title="td1")
+        r = client.post(
+            "/v1/report", json=_report_payload(post), headers=_auth(reporter)
+        )
+        report_id = r.json()["id"]
+
+        r2 = client.patch(
+            f"/v1/report/{report_id}",
+            json={"status": "resolved", "action_taken": "take_down"},
+            headers=_auth(moderator),
+        )
+        assert r2.status_code == 200, r2.text
+        assert r2.json()["action_taken"] == "take_down"
+        db.refresh(post)
+        assert post.visible is False
+        assert post.hidden_by_mod is False  # take_down only flips visibility
+
+    def test_delete_is_legacy_alias_for_take_down(
+        self, client: TestClient, db: Session, moderator, reporter, artist
+    ):
+        post = _make_post(db, owner=artist, title="td2")
+        r = client.post(
+            "/v1/report", json=_report_payload(post), headers=_auth(reporter)
+        )
+        report_id = r.json()["id"]
+
+        r2 = client.patch(
+            f"/v1/report/{report_id}",
+            json={"status": "resolved", "action_taken": "delete"},
+            headers=_auth(moderator),
+        )
+        assert r2.status_code == 200, r2.text
+        # Normalized on write: stored and returned as take_down
+        assert r2.json()["action_taken"] == "take_down"
+        db.refresh(post)
+        assert post.visible is False
+
     def test_patch_mod_notes_preserves_reporter_notes(
         self, client: TestClient, db: Session, moderator, reporter, artist
     ):
