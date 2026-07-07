@@ -374,7 +374,16 @@ export default function UserProfilePage() {
     setPostsLoading(true);
 
     try {
-      const url = `${API_BASE_URL}/api/user/u/${profile.public_sqid}/reacted-posts?limit=${pageSizeRef.current}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const baseParams: Record<string, string> = {
+        reacted_by: profile.user_key,
+        limit: String(pageSizeRef.current),
+      };
+      if (!filters.sortBy) {
+        baseParams.sort = 'reacted_at';
+        baseParams.order = 'desc';
+      }
+      const queryString = buildApiQuery(baseParams);
+      const url = `${API_BASE_URL}/api/post?${queryString}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       const response = await authenticatedFetch(url);
 
       if (fetchVersionRef.current !== version) return;
@@ -404,7 +413,7 @@ export default function UserProfilePage() {
         setPostsLoading(false);
       }
     }
-  }, [profile, API_BASE_URL]);
+  }, [profile, API_BASE_URL, buildApiQuery, filters.sortBy]);
 
   // Load posts when profile is loaded
   useEffect(() => {
@@ -433,6 +442,13 @@ export default function UserProfilePage() {
       hasMoreRef.current = true;
       setHasMore(true);
       loadPosts();
+      // Reset favourites too; the tab-load effect refetches when the list
+      // is empty and the favourites tab is active.
+      setReactedPosts([]);
+      setReactedNextCursor(null);
+      reactedNextCursorRef.current = null;
+      hasMoreReactedRef.current = true;
+      setHasMoreReacted(true);
     }
   }, [filters, profile, loadPosts]);
 
@@ -950,7 +966,7 @@ export default function UserProfilePage() {
         initialFilters={filters}
         isLoading={loading}
       />
-      {isAuthenticated && activeTab === 'gallery' && profile && (
+      {isAuthenticated && profile && (
         <WPButton onClick={() => setWpActive(true)} />
       )}
       {profile && (
@@ -958,8 +974,17 @@ export default function UserProfilePage() {
           isActive={wpActive}
           onClose={() => setWpActive(false)}
           buildApiQuery={buildApiQuery}
-          baseParams={{ owner_id: profile.user_key }}
-          channelName={`@${profile.handle}`}
+          baseParams={
+            activeTab === 'favourites'
+              ? { reacted_by: profile.user_key }
+              : { owner_id: profile.user_key }
+          }
+          channelName={
+            activeTab === 'favourites'
+              ? `@${profile.handle}'s Favourites`
+              : `@${profile.handle}`
+          }
+          channelContext={activeTab === 'favourites' ? profile.public_sqid : null}
         />
       )}
       <div className="profile-container">

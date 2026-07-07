@@ -453,7 +453,7 @@ class ViewRegisterPayload(BaseModel):
     with the supplied channel metadata (used by the Web Player).
     """
 
-    channel: Literal["all", "promoted", "by_user", "hashtag"] | None = None
+    channel: Literal["all", "promoted", "by_user", "hashtag", "reactions"] | None = None
     channel_context: str | None = Field(None, max_length=100)
     play_order: Literal[0, 1, 2] | None = None
 

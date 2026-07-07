@@ -8948,7 +8948,8 @@
                   "all",
                   "promoted",
                   "by_user",
-                  "hashtag"
+                  "hashtag",
+                  "reactions"
                 ],
                 "type": "string"
               },
@@ -17399,7 +17400,7 @@
     },
     "/v1/post": {
       "get": {
-        "description": "List posts with filters.",
+        "description": "List posts with filters.\n\n`reacted_by` restricts results to posts the given user (user_key) has\nreacted to — the \"reactions channel\" (docs/mqtt-api has the physical-player\ncounterpart). Only authenticated reactions count, one row per post. With\n`sort=reacted_at` (valid only alongside `reacted_by`) results are ordered\nby when the user reacted.",
         "operationId": "list_posts_v1_post_get",
         "parameters": [
           {
@@ -17449,6 +17450,23 @@
                 }
               ],
               "title": "Promoted"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reacted_by",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reacted By"
             }
           },
           {
