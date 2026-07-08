@@ -49,6 +49,10 @@ services:
     container_name: makapix-dev-mqtt
     env_file:
       - .env.dev
+    environment:
+      # Consumed by gen-certs.sh so a freshly minted broker cert always
+      # carries this environment's public MQTT hostname in its SANs.
+      MQTT_PUBLIC_HOST: development.makapix.club
     ports:
       - "1884:1883"
       - "8884:8883"
