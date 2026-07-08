@@ -120,4 +120,8 @@ fi
 # Generate password file if it doesn't exist
 /mosquitto/config/scripts/gen-passwd.sh
 
+# Reload the broker whenever the CRL is rewritten (nightly renewal from the
+# api container, or a revocation). Backgrounded so mosquitto stays PID 1.
+/mosquitto/config/scripts/watch-crl.sh &
+
 exec mosquitto -c /mosquitto/config/mosquitto.conf

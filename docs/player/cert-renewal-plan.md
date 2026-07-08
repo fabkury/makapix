@@ -12,15 +12,18 @@ user intervention. This is the implementation plan for the "v1" mechanism.
 ## Why this is needed
 
 Each client certificate has its own expiry. The current fleet's certs expire
-roughly **2026-12-12 → 2027-05-27**, and the broker rejects a connection whose
-client cert has lapsed. Today the **only** way to mint a replacement is the
+starting **2026-12-12 09:12 UTC** (confirmed against the production database on
+2026-07-08: 4 registered players expire before 2027, 15 across Dec 2026–Apr
+2027, plus 9 already on 3-year certs expiring 2029), and the broker rejects a
+connection whose client cert has lapsed. Today the **only** way to mint a replacement is the
 owner-gated endpoint `POST /u/{sqid}/player/{player_id}/renew-cert`, which
 requires the account owner to log into the web app. That does not scale to a
 fleet and is not "hands-off."
 
-The renewal window opens `CERT_RENEWAL_THRESHOLD_DAYS` (90) before expiry, so the
-earliest device windows open **~2026-09-13**. **This mechanism must be live and
-in firmware before then.**
+The renewal window opens `CERT_RENEWAL_THRESHOLD_DAYS` (90) before expiry, so
+the earliest device window opens **2026-09-13** (confirmed from the prod
+earliest expiry above). **This mechanism must be live and in firmware before
+then.**
 
 ## Design
 
@@ -136,7 +139,7 @@ so a device is never bricked by an expired MQTT trust anchor.
 ## Rollout & timing
 
 1. Ship the server endpoint (this plan) on `develop`, batch into the next
-   production PR — **before ~Sep 2026**.
+   production PR — **before 2026-09-13** (confirmed window-open date).
 2. Firmware adds the renewal loop alongside the `ca_pem` refresh loop (same
    fetch + atomic-replace machinery); ideally one firmware update covers both.
 3. After the first renewal, every cert is 3-year, so the cadence drops sharply.
