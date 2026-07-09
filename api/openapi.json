@@ -7532,8 +7532,19 @@
         "type": "object"
       },
       "TokenRequest": {
-        "description": "OAuth2-style token request for non-browser (native) clients.\n\nUnlike /auth/login (which puts the refresh token in an HttpOnly cookie), this\nendpoint returns the refresh token in the body so a native client can store it\nin secure storage. `grant_type` selects the flow:\n  - \"password\":           email + password\n  - \"refresh_token\":      refresh_token (rotates, same engine as the cookie flow)\n  - \"authorization_code\": code + code_verifier (server-brokered OAuth; B3)",
+        "description": "OAuth2-style token request for non-browser (native) clients.\n\nUnlike /auth/login (which puts the refresh token in an HttpOnly cookie), this\nendpoint returns the refresh token in the body so a native client can store it\nin secure storage. `grant_type` selects the flow:\n  - \"password\":           email + password\n  - \"refresh_token\":      refresh_token (rotates, same engine as the cookie flow)\n  - \"authorization_code\": code + code_verifier (server-brokered OAuth; B3)\n  - \"apple_identity_token\": identity_token + nonce (Sign in with Apple;\n    docs/apple-signin/API-CONTRACT.md)",
         "properties": {
+          "authorization_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorization Code"
+          },
           "code": {
             "anyOf": [
               {
@@ -7568,14 +7579,62 @@
             ],
             "title": "Email"
           },
+          "family_name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family Name"
+          },
+          "given_name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Given Name"
+          },
           "grant_type": {
             "enum": [
               "password",
               "refresh_token",
-              "authorization_code"
+              "authorization_code",
+              "apple_identity_token"
             ],
             "title": "Grant Type",
             "type": "string"
+          },
+          "identity_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Token"
+          },
+          "nonce": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nonce"
           },
           "password": {
             "anyOf": [

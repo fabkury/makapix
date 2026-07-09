@@ -638,6 +638,170 @@ def token(
                 "Invalid authorization code.",
                 status.HTTP_400_BAD_REQUEST,
             )
+    elif grant_type == "apple_identity_token":
+        # Sign in with Apple (docs/apple-signin/API-CONTRACT.md). The app did the
+        # native Apple flow and hands us the identity token + raw nonce; we verify
+        # against Apple's public JWKS (no Apple secrets) and map (apple, sub) to a
+        # user the same way the GitHub provider mapping works.
+        if not payload.identity_token or not payload.nonce:
+            raise AppError(
+                ErrorCode.validation_error,
+                "identity_token and nonce are required for the "
+                "apple_identity_token grant.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Same per-IP throttle as the password grant (shared login bucket).
+        client_ip = get_client_ip(request)
+        allowed, _ = check_rate_limit(
+            f"ratelimit:login:{client_ip}", limit=20, window_seconds=300
+        )
+        if not allowed:
+            raise AppError(
+                ErrorCode.rate_limited,
+                "Too many login attempts. Please try again later.",
+                status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        from ..services.apple_signin import (
+            AppleVerificationError,
+            extract_verified_email,
+            verify_apple_identity_token,
+        )
+
+        try:
+            claims = verify_apple_identity_token(payload.identity_token, payload.nonce)
+        except AppleVerificationError as e:
+            raise AppError(
+                ErrorCode.apple_token_invalid, str(e), status.HTTP_401_UNAUTHORIZED
+            )
+
+        apple_sub = str(claims["sub"])
+        identity = find_identity_by_oauth(db, "apple", apple_sub)
+
+        if identity:
+            # Returning Apple user — look up by sub, mint tokens.
+            user = (
+                db.query(models.User).filter(models.User.id == identity.user_id).first()
+            )
+            if not user:
+                logger.error(
+                    f"Apple identity found but user missing: {identity.user_id}"
+                )
+                raise AppError(
+                    ErrorCode.internal_error,
+                    "User account not found.",
+                    status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+        else:
+            # First sign-in for this Apple `sub`. Apple never resends the name or
+            # email after the first authorization, so persist them now (§3).
+            claim_email, linkable = extract_verified_email(claims)
+            email = claim_email or (
+                payload.email.strip().lower() if payload.email else None
+            )
+
+            apple_metadata = {
+                k: v
+                for k, v in {
+                    "given_name": payload.given_name,
+                    "family_name": payload.family_name,
+                    "is_private_email": claims.get("is_private_email"),
+                }.items()
+                if v is not None
+            }
+
+            # Email collision / linking — GitHub-parity policy: link only on a
+            # provider-verified, non-private-relay address (message 0001 Q1).
+            user = None
+            if email and linkable:
+                user = db.query(models.User).filter(models.User.email == email).first()
+                if user:
+                    link_oauth_identity(
+                        db=db,
+                        user_id=user.id,
+                        provider="apple",
+                        provider_user_id=apple_sub,
+                        email=email,
+                        provider_metadata=apple_metadata,
+                    )
+                    logger.info(
+                        f"Linked Apple identity to existing user {user.id} "
+                        "by verified email"
+                    )
+
+            if user is None:
+                if email is None:
+                    # users.email is NOT NULL — we cannot create an account
+                    # without one. Apple resends the email after the user removes
+                    # the app from their Apple ID sign-in settings.
+                    raise AppError(
+                        ErrorCode.bad_request,
+                        "Apple did not provide an email address for this account. "
+                        "Remove this app under Settings → Apple ID → Sign-In & "
+                        "Security → Sign in with Apple, then try again.",
+                        status.HTTP_400_BAD_REQUEST,
+                    )
+                # A relay/unverified collision can't be linked safely — reject it
+                # (parity with the GitHub flows).
+                existing = (
+                    db.query(models.User).filter(models.User.email == email).first()
+                )
+                if existing:
+                    raise AppError(
+                        ErrorCode.conflict,
+                        "An account with this email already exists. Please log in "
+                        "with your existing account.",
+                        status.HTTP_409_CONFLICT,
+                    )
+
+                # Create user — OAuth users are pre-verified by the provider.
+                user = models.User(
+                    handle=generate_default_handle(db),
+                    email=email,
+                    email_verified=True,
+                    roles=["user"],
+                    terms_version_accepted=TERMS_VERSION,  # D26
+                )
+                db.add(user)
+                try:
+                    db.flush()
+
+                    from ..sqids_config import encode_user_id
+
+                    user.public_sqid = encode_user_id(user.id)
+                    db.commit()
+                    db.refresh(user)
+                except IntegrityError:
+                    db.rollback()
+                    raise AppError(
+                        ErrorCode.conflict,
+                        "An account with this email already exists. Please log in "
+                        "with your existing account.",
+                        status.HTTP_409_CONFLICT,
+                    )
+
+                try:
+                    create_oauth_identity(
+                        db=db,
+                        user_id=user.id,
+                        provider="apple",
+                        provider_user_id=apple_sub,
+                        email=email,
+                        provider_metadata=apple_metadata,
+                    )
+                except Exception as e:
+                    db.rollback()
+                    db.delete(user)
+                    db.commit()
+                    logger.error(f"Failed to create Apple identity: {e}", exc_info=True)
+                    raise AppError(
+                        ErrorCode.internal_error,
+                        "Failed to create authentication identity. Please try again.",
+                        status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    )
+                logger.info(f"Created new user {user.id} via Sign in with Apple")
+
     else:  # pragma: no cover - guarded by the schema Literal
         raise AppError(
             ErrorCode.validation_error,
