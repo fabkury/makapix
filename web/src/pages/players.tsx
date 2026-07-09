@@ -124,7 +124,7 @@ export default function PlayersPage() {
             </article>
 
             <article className="project-card project-card-wide">
-              <div className="project-logo project-logo-square">
+              <div className="project-logo project-logo-square project-logo-squircle">
                 <img src="/brand/logo-512p.webp" alt="Makapix Club logo" />
               </div>
               <h3>Makapix Club Web Player</h3>
@@ -338,6 +338,10 @@ export default function PlayersPage() {
           .project-logo-square img {
             width: 64px;
             height: 64px;
+          }
+
+          .project-logo-squircle img {
+            border-radius: 27%;
           }
 
           .project-logo-wide img {
