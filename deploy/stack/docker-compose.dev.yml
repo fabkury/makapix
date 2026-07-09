@@ -49,6 +49,10 @@ services:
     container_name: makapix-dev-mqtt
     env_file:
       - .env.dev
+    environment:
+      # Consumed by gen-certs.sh so a freshly minted broker cert always
+      # carries this environment's public MQTT hostname in its SANs.
+      MQTT_PUBLIC_HOST: development.makapix.club
     ports:
       - "1884:1883"
       - "8884:8883"
@@ -72,6 +76,11 @@ services:
       MQTT_BROKER_HOST: makapix-dev-mqtt
       MQTT_PUBLIC_HOST: development.makapix.club
       MQTT_PUBLIC_PORT: 8884
+      # Dev-only: fresh dev player certs are 1095-day, so with the default
+      # 90-day window every device self-renewal attempt would 400 until 2029.
+      # Widen the window so firmware e2e tests can renew immediately.
+      # Read at import time — recreate the container to apply. Prod keeps 90.
+      CERT_RENEWAL_THRESHOLD_DAYS: "3650"
       # Mobile push (FCM): in-container path to the Firebase service-account key.
       FCM_CREDENTIALS_FILE: /run/secrets/fcm.json
     volumes:
@@ -91,6 +100,8 @@ services:
     env_file:
       - .env.dev
     environment:
+      # Dev-only: keep in lockstep with the api service (see comment there).
+      CERT_RENEWAL_THRESHOLD_DAYS: "3650"
       # Mobile push (FCM): the worker performs the actual sends.
       FCM_CREDENTIALS_FILE: /run/secrets/fcm.json
     volumes:

@@ -6,7 +6,7 @@ import { useRouter } from 'next/router';
 // BANNER_ID to null. To publish a new one, change BANNER_ID (a new id makes
 // the banner reappear for users who dismissed the previous one) and update
 // the message/link below.
-const BANNER_ID: string | null = 'app-beta-2026-07';
+const BANNER_ID: string | null = null;
 const BANNER_HREF = '/beta';
 
 export default function AnnouncementBanner() {

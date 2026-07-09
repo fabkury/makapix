@@ -131,9 +131,9 @@ export default function ContributePage() {
 
                 <Link href="/beta" className="option-card">
                   <div className="option-icon option-icon-emoji">📱</div>
-                  <h2 className="option-title">Android app (beta)</h2>
+                  <h2 className="option-title">Android app (coming soon)</h2>
                   <p className="option-description">
-                    Draw and post from the official app — join the beta
+                    Draw and post from the official app — coming soon to Google Play
                   </p>
                 </Link>
               </>

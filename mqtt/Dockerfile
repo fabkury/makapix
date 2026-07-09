@@ -1,6 +1,6 @@
 FROM eclipse-mosquitto:2.0
 
-RUN apk add --no-cache bash openssl mosquitto-clients
+RUN apk add --no-cache bash openssl mosquitto-clients inotify-tools
 
 # All broker config is sourced from mqtt/config/, which is also the directory
 # bind-mounted onto /mosquitto/config at runtime. Sourcing the baked copies from
@@ -10,9 +10,11 @@ COPY mqtt/config/mosquitto.conf /mosquitto/config/mosquitto.conf
 COPY mqtt/config/acls /mosquitto/config/acls
 COPY mqtt/config/scripts/gen-certs.sh /mosquitto/config/scripts/gen-certs.sh
 COPY mqtt/config/scripts/gen-passwd.sh /mosquitto/config/scripts/gen-passwd.sh
+COPY mqtt/config/scripts/watch-crl.sh /mosquitto/config/scripts/watch-crl.sh
 
 RUN chmod +x /mosquitto/config/scripts/gen-certs.sh && \
     chmod +x /mosquitto/config/scripts/gen-passwd.sh && \
+    chmod +x /mosquitto/config/scripts/watch-crl.sh && \
     chown mosquitto:mosquitto /mosquitto/config/acls && \
     chmod 600 /mosquitto/config/acls
 

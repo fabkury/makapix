@@ -32,6 +32,10 @@ services:
   # ---------------------------------------------------------------------------
   mqtt:
     container_name: makapix-prod-mqtt
+    environment:
+      # Consumed by gen-certs.sh so a freshly minted broker cert always
+      # carries this environment's public MQTT hostname in its SANs.
+      MQTT_PUBLIC_HOST: makapix.club
     ports:
       - "1883:1883"
       - "8883:8883"

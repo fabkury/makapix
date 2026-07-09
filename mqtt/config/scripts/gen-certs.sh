@@ -52,8 +52,21 @@ else
 fi
 
 if [[ ! -f "${SRV_CRT}" || ! -f "${SRV_KEY}" ]]; then
+  # SAN list for the broker cert. Hostname-verifying clients (mbedTLS on the
+  # players) reject a connect hostname absent from the SANs, so the list must
+  # cover BOTH environments' public MQTT hostnames (a superset is harmless —
+  # the 2026-07-08 dev incident was this cert missing development.makapix.club)
+  # plus MQTT_PUBLIC_HOST when the container provides one.
+  SAN_DNS=(makapix.club www.makapix.club development.makapix.club mqtt localhost)
+  if [[ -n "${MQTT_PUBLIC_HOST:-}" ]]; then
+    dup=0
+    for d in "${SAN_DNS[@]}"; do [[ "${d}" == "${MQTT_PUBLIC_HOST}" ]] && dup=1; done
+    [[ "${dup}" -eq 0 ]] && SAN_DNS+=("${MQTT_PUBLIC_HOST}")
+  fi
+
   # Create OpenSSL config with SANs for server certificate
-  cat > "${CERT_DIR}/server_san.cnf" << 'SANEOF'
+  {
+    cat << 'SANEOF'
 [req]
 default_bits = 4096
 prompt = no
@@ -68,12 +81,14 @@ CN = makapix.club
 subjectAltName = @alt_names
 
 [alt_names]
-DNS.1 = makapix.club
-DNS.2 = www.makapix.club
-DNS.3 = mqtt
-DNS.4 = localhost
-IP.1 = 127.0.0.1
 SANEOF
+    i=1
+    for d in "${SAN_DNS[@]}"; do
+      echo "DNS.${i} = ${d}"
+      i=$((i + 1))
+    done
+    echo "IP.1 = 127.0.0.1"
+  } > "${CERT_DIR}/server_san.cnf"
 
   openssl genrsa -out "${SRV_KEY}" 4096
   openssl req -new -key "${SRV_KEY}" -out "${SRV_CSR}" -config "${CERT_DIR}/server_san.cnf"
@@ -119,5 +134,9 @@ fi
 
 # Generate password file if it doesn't exist
 /mosquitto/config/scripts/gen-passwd.sh
+
+# Reload the broker whenever the CRL is rewritten (nightly renewal from the
+# api container, or a revocation). Backgrounded so mosquitto stays PID 1.
+/mosquitto/config/scripts/watch-crl.sh &
 
 exec mosquitto -c /mosquitto/config/mosquitto.conf
