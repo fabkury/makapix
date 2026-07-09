@@ -201,6 +201,7 @@ export default function DownloadStatsPanel() {
             check back tomorrow.
           </div>
         ) : (
+          <div className="table-scroll">
           <table className="top-table">
             <thead>
               <tr>
@@ -241,6 +242,7 @@ export default function DownloadStatsPanel() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -400,12 +402,15 @@ export default function DownloadStatsPanel() {
           border-radius: 8px;
         }
 
+        .table-scroll {
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          border-radius: 8px;
+        }
         .top-table {
           width: 100%;
           border-collapse: collapse;
           background: var(--bg-secondary, #1a1a2e);
-          border-radius: 8px;
-          overflow: hidden;
         }
         .top-table th,
         .top-table td {

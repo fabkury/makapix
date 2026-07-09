@@ -222,6 +222,7 @@ export default function VaultShardingPanel() {
       {/* Class totals */}
       <div className="metrics-section">
         <h3>Σ Window totals by asset class</h3>
+        <div className="table-scroll">
         <table className="totals-table">
           <thead>
             <tr>
@@ -246,6 +247,7 @@ export default function VaultShardingPanel() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Legacy stragglers */}
@@ -258,6 +260,7 @@ export default function VaultShardingPanel() {
             No artworks fetched via legacy 3-level URLs in this window. 🎉
           </div>
         ) : (
+          <div className="table-scroll">
           <table className="totals-table">
             <thead>
               <tr>
@@ -308,6 +311,7 @@ export default function VaultShardingPanel() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -487,12 +491,15 @@ export default function VaultShardingPanel() {
           border-radius: 8px;
         }
 
+        .table-scroll {
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          border-radius: 8px;
+        }
         .totals-table {
           width: 100%;
           border-collapse: collapse;
           background: var(--bg-secondary, #1a1a2e);
-          border-radius: 8px;
-          overflow: hidden;
           font-size: 0.85rem;
         }
         .totals-table th,
