@@ -1347,14 +1347,26 @@ class TokenRequest(BaseModel):
       - "password":           email + password
       - "refresh_token":      refresh_token (rotates, same engine as the cookie flow)
       - "authorization_code": code + code_verifier (server-brokered OAuth; B3)
+      - "apple_identity_token": identity_token + nonce (Sign in with Apple;
+        docs/apple-signin/API-CONTRACT.md)
     """
 
-    grant_type: Literal["password", "refresh_token", "authorization_code"]
+    grant_type: Literal[
+        "password", "refresh_token", "authorization_code", "apple_identity_token"
+    ]
     email: str | None = Field(None, max_length=255)
     password: str | None = Field(None, max_length=100)
     refresh_token: str | None = None
     code: str | None = None
     code_verifier: str | None = None
+    # --- apple_identity_token grant ---
+    identity_token: str | None = None
+    nonce: str | None = Field(None, max_length=255)
+    # Accepted but unused in v1 (the optional server↔Apple exchange is skipped).
+    authorization_code: str | None = None
+    # Apple sends name/email ONLY on the first sign-in; persisted then or never.
+    given_name: str | None = Field(None, max_length=100)
+    family_name: str | None = Field(None, max_length=100)
 
 
 class TokenResponse(BaseModel):

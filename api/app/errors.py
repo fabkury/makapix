@@ -51,6 +51,9 @@ class ErrorCode(StrEnum):
     token_expired = "token_expired"
     token_invalid = "token_invalid"
     account_banned = "account_banned"
+    # Sign in with Apple: identity-token verification failed
+    # (docs/apple-signin/API-CONTRACT.md)
+    apple_token_invalid = "apple_token_invalid"
     forbidden_role = "forbidden_role"
     not_owner = "not_owner"
     handle_taken = "handle_taken"
