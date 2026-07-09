@@ -498,7 +498,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
                   role="menuitem"
                   onClick={() => setMenuOpen(false)}
                 >
-                  📱 Android app (beta)
+                  📱 Android app (coming soon)
                 </Link>
                 <Link
                   href="/players"
