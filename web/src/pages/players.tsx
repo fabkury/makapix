@@ -55,13 +55,23 @@ export default function PlayersPage() {
               A Pixelix LED matrix rendering a Makapix Club post.
             </figcaption>
           </figure>
+          <figure className="hero-photo">
+            <img
+              src="/players/web-player-on-corsair-xeneon-edge.webp"
+              alt="A Corsair Xeneon Edge touchscreen display running the Makapix Club web player as a dashboard widget."
+              loading="lazy"
+            />
+            <figcaption>
+              The Makapix Club web player as a widget on a Corsair Xeneon Edge.
+            </figcaption>
+          </figure>
         </div>
 
         <section className="projects">
-          <h2>Reference projects</h2>
+          <h2>Player projects</h2>
           <p className="section-lead">
-            Two open-source player projects already integrate with MPX. Both are free to
-            study, fork, and build on.
+            These player projects already integrate with MPX. The first two are
+            open-source — free to study, fork, and build on.
           </p>
 
           <div className="project-cards">
@@ -111,6 +121,19 @@ export default function PlayersPage() {
               >
                 Source on GitHub ↗
               </a>
+            </article>
+
+            <article className="project-card project-card-wide">
+              <div className="project-logo project-logo-square">
+                <img src="/brand/logo-512p.webp" alt="Makapix Club logo" />
+              </div>
+              <h3>Makapix Club Web Player</h3>
+              <p>
+                The website&apos;s own built-in player, running anywhere a browser runs —
+                here as a web widget on a Corsair Xeneon Edge, a 14.5&Prime; touchscreen
+                display. No firmware, no provisioning: any device with a modern browser
+                can put the community feed on a screen.
+              </p>
             </article>
           </div>
         </section>
@@ -234,7 +257,7 @@ export default function PlayersPage() {
 
           .hero-gallery {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr;
             gap: 20px;
             align-items: start;
             margin: 0 0 48px 0;
@@ -282,6 +305,10 @@ export default function PlayersPage() {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 20px;
+          }
+
+          .project-card-wide {
+            grid-column: 1 / -1;
           }
 
           .project-card {
