@@ -20,7 +20,12 @@ from ..auth import (
 from ..deps import get_db
 from ..utils.audit import log_moderation_action
 from ..utils.view_tracking import truncate_ip
-from ..pagination import apply_cursor_filter, create_page_response
+from ..pagination import (
+    apply_cursor_filter,
+    create_page_response,
+    decode_cursor,
+    encode_cursor,
+)
 from ..services.social_notifications import SocialNotificationService
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -499,64 +504,225 @@ def recent_posts(
     )
 
 
-@router.get(
-    "/recent-reactions", response_model=schemas.Page[schemas.RecentReactionItem]
-)
-def recent_reactions(
+PULSE_TYPES = ("post", "comment", "post_reaction", "comment_like", "player")
+
+_PULSE_PREVIEW_LEN = 140
+
+
+def _pulse_preview(body: str | None) -> str | None:
+    if body is None:
+        return None
+    if len(body) <= _PULSE_PREVIEW_LEN:
+        return body
+    return body[: _PULSE_PREVIEW_LEN - 1] + "…"
+
+
+def _pulse_actor(user: models.User | None, ip: str | None) -> dict:
+    if user is not None:
+        return {
+            "actor_handle": user.handle,
+            "actor_public_sqid": user.public_sqid,
+            "actor_avatar_url": user.avatar_url,
+        }
+    return {"anonymous_id": truncate_ip(ip) if ip else None}
+
+
+def _pulse_post_context(post: models.Post | None) -> dict:
+    if post is None:
+        return {}
+    return {
+        "post_id": post.id,
+        "post_public_sqid": post.public_sqid,
+        "post_title": post.title,
+        "post_art_url": post.art_url,
+    }
+
+
+def _pulse_post_flags(post: models.Post) -> list[str]:
+    flags = []
+    if post.hidden_by_mod:
+        flags.append("hidden_by_mod")
+    if post.hidden_by_user:
+        flags.append("hidden_by_user")
+    if post.deleted_by_user:
+        flags.append("deleted_by_user")
+    if post.non_conformant:
+        flags.append("non_conformant")
+    return flags
+
+
+@router.get("/pulse", response_model=schemas.Page[schemas.PulseItem])
+def pulse(
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     include_anonymous: bool = Query(True),
+    types: str | None = Query(
+        None,
+        description=(
+            "Comma-separated subset of post, comment, post_reaction, "
+            "comment_like, player (default: all)"
+        ),
+    ),
     db: Session = Depends(get_db),
     _moderator: models.User = Depends(require_moderator),
-) -> schemas.Page[schemas.RecentReactionItem]:
+) -> schemas.Page[schemas.PulseItem]:
     """
-    Recent reactions across all posts (moderator only).
+    Chronological firehose of recent community activity (moderator only).
 
-    Anonymous reactions are identified by a truncated IP so moderators can
-    differentiate visitors without seeing full addresses.
+    Merges new posts, comments (including replies), post reactions, comment
+    likes and player registrations into a single feed, newest first. Hidden
+    and deleted content is included, marked via `flags`. Anonymous actors are
+    identified by a truncated IP so moderators can differentiate visitors
+    without seeing full addresses.
     """
-    query = db.query(models.Reaction).options(
-        joinedload(models.Reaction.user),
-        joinedload(models.Reaction.post),
-    )
+    if types:
+        requested = [t.strip() for t in types.split(",") if t.strip()]
+        unknown = sorted(set(requested) - set(PULSE_TYPES))
+        if unknown:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown pulse types: {', '.join(unknown)}",
+            )
+        active = set(requested)
+    else:
+        active = set(PULSE_TYPES)
 
-    if not include_anonymous:
-        query = query.filter(models.Reaction.user_id.isnot(None))
+    # The cursor carries only a timestamp: each source is filtered with a
+    # strict `event_time < cursor` and the merged page is cut at `limit`.
+    # Events sharing an identical microsecond timestamp across a page
+    # boundary can be skipped; acceptable for a moderation firehose.
+    cursor_ts: datetime | None = None
+    decoded = decode_cursor(cursor)
+    if decoded:
+        _, sort_value = decoded
+        if isinstance(sort_value, str):
+            try:
+                if sort_value.endswith("Z"):
+                    sort_value = sort_value[:-1] + "+00:00"
+                cursor_ts = datetime.fromisoformat(sort_value)
+            except ValueError:
+                cursor_ts = None
 
-    # Apply cursor pagination
-    query = apply_cursor_filter(
-        query, models.Reaction, cursor, "created_at", sort_desc=True
-    )
+    fetch = limit + 1
 
-    # Order and limit (id as tie-break: reactions can share timestamps)
-    query = query.order_by(
-        models.Reaction.created_at.desc(), models.Reaction.id.desc()
-    ).limit(limit + 1)
-    reactions = query.all()
+    def page_of(query, ts_col):
+        if cursor_ts is not None:
+            query = query.filter(ts_col < cursor_ts)
+        return query.order_by(ts_col.desc()).limit(fetch).all()
 
-    page_data = create_page_response(reactions, limit, cursor)
+    merged: list[schemas.PulseItem] = []
 
-    items = []
-    for r in page_data["items"]:
-        items.append(
-            schemas.RecentReactionItem(
-                id=r.id,
-                emoji=r.emoji,
-                created_at=r.created_at,
-                post_id=r.post_id,
-                post_public_sqid=r.post.public_sqid if r.post else None,
-                post_title=r.post.title if r.post else "",
-                post_art_url=r.post.art_url if r.post else None,
-                user_handle=r.user.handle if r.user else None,
-                user_public_sqid=r.user.public_sqid if r.user else None,
-                user_avatar_url=r.user.avatar_url if r.user else None,
-                anonymous_id=(
-                    truncate_ip(r.user_ip) if r.user is None and r.user_ip else None
-                ),
+    if "post" in active:
+        query = db.query(models.Post).options(joinedload(models.Post.owner))
+        for p in page_of(query, models.Post.created_at):
+            merged.append(
+                schemas.PulseItem(
+                    type="post",
+                    id=str(p.id),
+                    created_at=p.created_at,
+                    **_pulse_actor(p.owner, None),
+                    **_pulse_post_context(p),
+                    flags=_pulse_post_flags(p),
+                )
+            )
+
+    if "comment" in active:
+        query = db.query(models.Comment).options(
+            joinedload(models.Comment.author),
+            joinedload(models.Comment.post),
+        )
+        if not include_anonymous:
+            query = query.filter(models.Comment.author_id.isnot(None))
+        for c in page_of(query, models.Comment.created_at):
+            flags = []
+            if c.hidden_by_mod:
+                flags.append("hidden_by_mod")
+            if c.deleted_by_owner:
+                flags.append("deleted_by_owner")
+            merged.append(
+                schemas.PulseItem(
+                    type="comment",
+                    id=str(c.id),
+                    created_at=c.created_at,
+                    **_pulse_actor(c.author, c.author_ip),
+                    **_pulse_post_context(c.post),
+                    comment_preview=_pulse_preview(c.body),
+                    is_reply=c.parent_id is not None,
+                    flags=flags,
+                )
+            )
+
+    if "post_reaction" in active:
+        query = db.query(models.Reaction).options(
+            joinedload(models.Reaction.user),
+            joinedload(models.Reaction.post),
+        )
+        if not include_anonymous:
+            query = query.filter(models.Reaction.user_id.isnot(None))
+        for r in page_of(query, models.Reaction.created_at):
+            merged.append(
+                schemas.PulseItem(
+                    type="post_reaction",
+                    id=str(r.id),
+                    created_at=r.created_at,
+                    **_pulse_actor(r.user, r.user_ip),
+                    **_pulse_post_context(r.post),
+                    emoji=r.emoji,
+                )
+            )
+
+    if "comment_like" in active:
+        query = db.query(models.CommentLike).options(
+            joinedload(models.CommentLike.user),
+            joinedload(models.CommentLike.comment).joinedload(models.Comment.post),
+        )
+        for cl in page_of(query, models.CommentLike.created_at):
+            comment = cl.comment
+            merged.append(
+                schemas.PulseItem(
+                    type="comment_like",
+                    id=str(cl.id),
+                    created_at=cl.created_at,
+                    **_pulse_actor(cl.user, None),
+                    **_pulse_post_context(comment.post if comment else None),
+                    comment_preview=_pulse_preview(comment.body if comment else None),
+                )
+            )
+
+    if "player" in active:
+        query = (
+            db.query(models.Player)
+            .options(joinedload(models.Player.owner))
+            .filter(
+                models.Player.registration_status == "registered",
+                models.Player.registered_at.isnot(None),
             )
         )
+        for pl in page_of(query, models.Player.registered_at):
+            merged.append(
+                schemas.PulseItem(
+                    type="player",
+                    id=str(pl.id),
+                    created_at=pl.registered_at,
+                    **_pulse_actor(pl.owner, None),
+                    player_name=pl.name,
+                    player_model=pl.device_model,
+                )
+            )
 
-    return schemas.Page(items=items, next_cursor=page_data["next_cursor"])
+    merged.sort(key=lambda item: (item.created_at, item.type, item.id), reverse=True)
+
+    # Each source fetched at most limit+1 rows, so a merged total <= limit
+    # means every active source was exhausted below the cursor.
+    has_more = len(merged) > limit
+    items = merged[:limit]
+    next_cursor = (
+        encode_cursor("pulse", items[-1].created_at.isoformat())
+        if has_more and items
+        else None
+    )
+
+    return schemas.Page(items=items, next_cursor=next_cursor)
 
 
 @router.get("/audit-log", response_model=schemas.Page[schemas.AuditLogEntry])
