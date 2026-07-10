@@ -878,20 +878,34 @@ class ReactionUsersResponse(BaseModel):
     total: int
 
 
-class RecentReactionItem(BaseModel):
-    """A reaction with post and reactor details, for the moderator dashboard."""
+class PulseItem(BaseModel):
+    """One event in the moderator dashboard's Pulse activity firehose."""
 
-    id: int
-    emoji: str
-    created_at: datetime
-    post_id: int
-    post_public_sqid: str | None = None
-    post_title: str
-    post_art_url: str | None = None
-    user_handle: str | None = None  # null for anonymous reactions
-    user_public_sqid: str | None = None
-    user_avatar_url: str | None = None
+    type: Literal["post", "comment", "post_reaction", "comment_like", "player"]
+    id: str  # source-row id (int or UUID), stringified
+    created_at: datetime  # event time (player events use registered_at)
+
+    # Actor (who did it)
+    actor_handle: str | None = None  # null for anonymous actors
+    actor_public_sqid: str | None = None
+    actor_avatar_url: str | None = None
     anonymous_id: str | None = None  # truncated IP; null for authenticated
+
+    # Post context (all types except player)
+    post_id: int | None = None
+    post_public_sqid: str | None = None
+    post_title: str | None = None
+    post_art_url: str | None = None
+
+    # Type-specific detail
+    emoji: str | None = None  # post_reaction
+    comment_preview: str | None = None  # comment body / liked comment body
+    is_reply: bool = False  # comment: replies to another comment
+    player_name: str | None = None  # player
+    player_model: str | None = None  # player
+
+    # Moderation state of the underlying content, e.g. "hidden_by_mod"
+    flags: list[str] = Field(default_factory=list)
 
 
 class WidgetData(BaseModel):

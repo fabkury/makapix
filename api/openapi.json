@@ -4032,11 +4032,11 @@
         "title": "Page[Post]",
         "type": "object"
       },
-      "Page_RecentReactionItem_": {
+      "Page_PulseItem_": {
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/RecentReactionItem"
+              "$ref": "#/components/schemas/PulseItem"
             },
             "title": "Items",
             "type": "array"
@@ -4056,7 +4056,7 @@
         "required": [
           "items"
         ],
-        "title": "Page[RecentReactionItem]",
+        "title": "Page[PulseItem]",
         "type": "object"
       },
       "Page_Report_": {
@@ -5798,6 +5798,182 @@
         "title": "PublicVisibilityResponse",
         "type": "object"
       },
+      "PulseItem": {
+        "description": "One event in the moderator dashboard's Pulse activity firehose.",
+        "properties": {
+          "actor_avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Avatar Url"
+          },
+          "actor_handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Handle"
+          },
+          "actor_public_sqid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Public Sqid"
+          },
+          "anonymous_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anonymous Id"
+          },
+          "comment_preview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment Preview"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "emoji": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emoji"
+          },
+          "flags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Flags",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_reply": {
+            "default": false,
+            "title": "Is Reply",
+            "type": "boolean"
+          },
+          "player_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Player Model"
+          },
+          "player_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Player Name"
+          },
+          "post_art_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Art Url"
+          },
+          "post_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Id"
+          },
+          "post_public_sqid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Public Sqid"
+          },
+          "post_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Title"
+          },
+          "type": {
+            "enum": [
+              "post",
+              "comment",
+              "post_reaction",
+              "comment_like",
+              "player"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "created_at"
+        ],
+        "title": "PulseItem",
+        "type": "object"
+      },
       "PushTokenRegister": {
         "description": "Register (or refresh) a mobile push token (§4).",
         "properties": {
@@ -6200,107 +6376,6 @@
           "artwork_count_capped"
         ],
         "title": "ReactionsVerifyResponse",
-        "type": "object"
-      },
-      "RecentReactionItem": {
-        "description": "A reaction with post and reactor details, for the moderator dashboard.",
-        "properties": {
-          "anonymous_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Anonymous Id"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "emoji": {
-            "title": "Emoji",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "post_art_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Post Art Url"
-          },
-          "post_id": {
-            "title": "Post Id",
-            "type": "integer"
-          },
-          "post_public_sqid": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Post Public Sqid"
-          },
-          "post_title": {
-            "title": "Post Title",
-            "type": "string"
-          },
-          "user_avatar_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "User Avatar Url"
-          },
-          "user_handle": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "User Handle"
-          },
-          "user_public_sqid": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "User Public Sqid"
-          }
-        },
-        "required": [
-          "id",
-          "emoji",
-          "created_at",
-          "post_id",
-          "post_title"
-        ],
-        "title": "RecentReactionItem",
         "type": "object"
       },
       "RegisterRequest": {
@@ -12688,6 +12763,101 @@
         ]
       }
     },
+    "/v1/admin/pulse": {
+      "get": {
+        "description": "Chronological firehose of recent community activity (moderator only).\n\nMerges new posts, comments (including replies), post reactions, comment\nlikes and player registrations into a single feed, newest first. Hidden\nand deleted content is included, marked via `flags`. Anonymous actors are\nidentified by a truncated IP so moderators can differentiate visitors\nwithout seeing full addresses.",
+        "operationId": "pulse_v1_admin_pulse_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_anonymous",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Anonymous",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Comma-separated subset of post, comment, post_reaction, comment_like, player (default: all)",
+            "in": "query",
+            "name": "types",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated subset of post, comment, post_reaction, comment_like, player (default: all)",
+              "title": "Types"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_PulseItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pulse",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
     "/v1/admin/recent-posts": {
       "get": {
         "description": "Recent posts (moderator only).",
@@ -12817,83 +12987,6 @@
           }
         ],
         "summary": "Recent Profiles",
-        "tags": [
-          "Admin"
-        ]
-      }
-    },
-    "/v1/admin/recent-reactions": {
-      "get": {
-        "description": "Recent reactions across all posts (moderator only).\n\nAnonymous reactions are identified by a truncated IP so moderators can\ndifferentiate visitors without seeing full addresses.",
-        "operationId": "recent_reactions_v1_admin_recent_reactions_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Cursor"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "maximum": 200,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "include_anonymous",
-            "required": false,
-            "schema": {
-              "default": true,
-              "title": "Include Anonymous",
-              "type": "boolean"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Page_RecentReactionItem_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Recent Reactions",
         "tags": [
           "Admin"
         ]

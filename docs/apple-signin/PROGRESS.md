@@ -24,10 +24,13 @@ Effort docs: `API-CONTRACT.md` (authoritative, mirrored from the app repo) ·
   - Tests: `api/tests/test_apple_signin.py` (12 tests, local RSA keypair with
     the JWKS lookup patched).
 - Reply sent: `messages/0002-server-apple-signin-live-on-dev.md`.
+- **2026-07-09** — App team verified on device against dev (0003: first
+  sign-in with Hide My Email + returning sign-in both minted sessions) and
+  gave GO. PR #228 merged `develop` → `main`, deployed to prod, smoke-tested
+  live on makapix.club (grant + JWKS reachability + regression on the other
+  grants). Reply sent: `messages/0004-server-apple-signin-live-on-prod.md`.
 
 ## Remaining
 
-1. App flips `kAppleSignInEnabled=true`, verifies on device against
-   development.makapix.club (first + second sign-in).
-2. Joint prod flip: PR `develop` → `main`, deploy prod, then App Store
-   submission proceeds.
+- None server-side. App team runs the prod TestFlight build and proceeds to
+  App Store submission (guideline 4.8 satisfied). Reopen on a 0005 message.

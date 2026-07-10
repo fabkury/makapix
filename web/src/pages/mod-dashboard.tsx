@@ -104,26 +104,62 @@ interface AdminNote {
   created_at: string;
 }
 
-interface RecentReactionItem {
-  id: number;
-  emoji: string;
+type PulseType = 'post' | 'comment' | 'post_reaction' | 'comment_like' | 'player';
+
+const PULSE_TYPES: PulseType[] = ['post', 'comment', 'post_reaction', 'comment_like', 'player'];
+
+interface PulseItem {
+  type: PulseType;
+  id: string;
   created_at: string;
-  post_id: number;
-  post_public_sqid: string | null;
-  post_title: string;
-  post_art_url: string | null;
-  user_handle: string | null;
-  user_public_sqid: string | null;
-  user_avatar_url: string | null;
+  actor_handle: string | null;
+  actor_public_sqid: string | null;
+  actor_avatar_url: string | null;
   anonymous_id: string | null;
+  post_id: number | null;
+  post_public_sqid: string | null;
+  post_title: string | null;
+  post_art_url: string | null;
+  emoji: string | null;
+  comment_preview: string | null;
+  is_reply: boolean;
+  player_name: string | null;
+  player_model: string | null;
+  flags: string[];
 }
+
+const PULSE_TYPE_META: Record<PulseType, { icon: string; label: string }> = {
+  post: { icon: '🖼️', label: 'Posts' },
+  comment: { icon: '💬', label: 'Comments' },
+  post_reaction: { icon: '😊', label: 'Reactions' },
+  comment_like: { icon: '👍', label: 'Comment likes' },
+  player: { icon: '📺', label: 'Players' },
+};
+
+const pulseVerb = (item: PulseItem): string => {
+  switch (item.type) {
+    case 'post': return 'published a new post';
+    case 'comment': return item.is_reply ? 'replied to a comment on' : 'commented on';
+    case 'post_reaction': return 'reacted to';
+    case 'comment_like': return 'liked a comment on';
+    case 'player': return 'registered a player';
+  }
+};
+
+const PULSE_FLAG_LABELS: Record<string, string> = {
+  hidden_by_mod: 'hidden by mod',
+  hidden_by_user: 'hidden by user',
+  deleted_by_user: 'deleted by user',
+  deleted_by_owner: 'deleted by author',
+  non_conformant: 'non-conformant',
+};
 
 interface PageResponse<T> {
   items: T[];
   next_cursor: string | null;
 }
 
-type Tab = 'pending' | 'reports' | 'posts' | 'profiles' | 'reactions' | 'audit' | 'notes' | 'metrics' | 'downloads';
+type Tab = 'pending' | 'reports' | 'posts' | 'profiles' | 'pulse' | 'audit' | 'notes' | 'metrics' | 'downloads';
 
 export default function ModDashboardPage() {
   const router = useRouter();
@@ -151,10 +187,17 @@ export default function ModDashboardPage() {
   const [auditCursor, setAuditCursor] = useState<string | null>(null);
   const [auditLoading, setAuditLoading] = useState(false);
 
-  const [reactions, setReactions] = useState<RecentReactionItem[]>([]);
-  const [reactionsCursor, setReactionsCursor] = useState<string | null>(null);
-  const [reactionsLoading, setReactionsLoading] = useState(false);
-  const [includeAnonReactions, setIncludeAnonReactions] = useState(true);
+  const [pulseItems, setPulseItems] = useState<PulseItem[]>([]);
+  const [pulseCursor, setPulseCursor] = useState<string | null>(null);
+  const [pulseLoading, setPulseLoading] = useState(false);
+  const [includeAnonPulse, setIncludeAnonPulse] = useState(true);
+  const [pulseTypes, setPulseTypes] = useState<Record<PulseType, boolean>>({
+    post: true,
+    comment: true,
+    post_reaction: true,
+    comment_like: true,
+    player: true,
+  });
   
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [adminNotes, setAdminNotes] = useState<AdminNote[]>([]);
@@ -227,7 +270,7 @@ export default function ModDashboardPage() {
       case 'reports': await loadReports(reset); break;
       case 'posts': await loadRecentPosts(reset); break;
       case 'profiles': await loadRecentProfiles(reset); break;
-      case 'reactions': await loadRecentReactions(reset); break;
+      case 'pulse': await loadPulse(reset); break;
       case 'audit': await loadAuditLog(reset); break;
     }
   };
@@ -330,27 +373,39 @@ export default function ModDashboardPage() {
     }
   };
 
-  const loadRecentReactions = async (reset = false, includeAnon = includeAnonReactions) => {
-    if (reactionsLoading) return;
-    setReactionsLoading(true);
+  const loadPulse = async (
+    reset = false,
+    opts: { includeAnon?: boolean; types?: Record<PulseType, boolean> } = {}
+  ) => {
+    if (pulseLoading) return;
+    const includeAnon = opts.includeAnon ?? includeAnonPulse;
+    const types = opts.types ?? pulseTypes;
+    const enabled = PULSE_TYPES.filter(t => types[t]);
+    if (enabled.length === 0) {
+      setPulseItems([]);
+      setPulseCursor(null);
+      return;
+    }
+    setPulseLoading(true);
     try {
-      const cursor = reset ? null : reactionsCursor;
-      const url = `${API_BASE_URL}/api/admin/recent-reactions?limit=50&include_anonymous=${includeAnon}${cursor ? `&cursor=${cursor}` : ''}`;
+      const cursor = reset ? null : pulseCursor;
+      const typesParam = enabled.length === PULSE_TYPES.length ? '' : `&types=${enabled.join(',')}`;
+      const url = `${API_BASE_URL}/api/admin/pulse?limit=50&include_anonymous=${includeAnon}${typesParam}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       const response = await authenticatedFetch(url);
       if (response.ok) {
-        const data: PageResponse<RecentReactionItem> = await response.json();
+        const data: PageResponse<PulseItem> = await response.json();
         if (reset) {
-          setReactions(data.items);
-          setReactionsCursor(data.next_cursor);
+          setPulseItems(data.items);
+          setPulseCursor(data.next_cursor);
         } else {
-          setReactions(prev => [...prev, ...data.items]);
-          setReactionsCursor(data.next_cursor);
+          setPulseItems(prev => [...prev, ...data.items]);
+          setPulseCursor(data.next_cursor);
         }
       }
     } catch (error) {
-      console.error('Error loading reactions:', error);
+      console.error('Error loading pulse:', error);
     } finally {
-      setReactionsLoading(false);
+      setPulseLoading(false);
     }
   };
 
@@ -575,13 +630,13 @@ export default function ModDashboardPage() {
 
   if (!isModerator) return null;
 
-  const tabs: Tab[] = ['pending', 'reports', 'posts', 'profiles', 'reactions', 'audit', 'notes', 'metrics', 'downloads'];
+  const tabs: Tab[] = ['pending', 'reports', 'posts', 'profiles', 'pulse', 'audit', 'notes', 'metrics', 'downloads'];
   const tabLabels: Record<Tab, string> = {
     pending: 'Pending Approval',
     reports: 'Reports',
     posts: 'Posts',
     profiles: 'Profiles',
-    reactions: 'Reactions',
+    pulse: 'Pulse',
     audit: 'Audit',
     notes: 'Notes',
     metrics: 'Metrics',
@@ -604,7 +659,7 @@ export default function ModDashboardPage() {
                 else if (tab === 'reports') { setReports([]); setReportsCursor(null); }
                 else if (tab === 'posts') { setPosts([]); setPostsCursor(null); }
                 else if (tab === 'profiles') { setProfiles([]); setProfilesCursor(null); }
-                else if (tab === 'reactions') { setReactions([]); setReactionsCursor(null); }
+                else if (tab === 'pulse') { setPulseItems([]); setPulseCursor(null); }
                 else if (tab === 'audit') { setAuditLog([]); setAuditCursor(null); }
               }}
               className={`tab ${activeTab === tab ? 'active' : ''}`}
@@ -801,62 +856,115 @@ export default function ModDashboardPage() {
             </div>
           )}
 
-          {activeTab === 'reactions' && (
+          {activeTab === 'pulse' && (
             <div className="section">
-              <h2>Recent Reactions</h2>
+              <div className="pulse-header">
+                <h2>Pulse</h2>
+                <button
+                  onClick={() => { setPulseItems([]); setPulseCursor(null); loadPulse(true); }}
+                  disabled={pulseLoading}
+                  className="action-btn"
+                >
+                  {pulseLoading ? 'Refreshing…' : '🔄 Refresh'}
+                </button>
+              </div>
+              <p className="section-description">
+                Chronological firehose of the latest community activity.
+              </p>
+              <div className="pulse-chips">
+                {PULSE_TYPES.map(t => (
+                  <button
+                    key={t}
+                    className={`pulse-chip ${pulseTypes[t] ? 'active' : ''}`}
+                    onClick={() => {
+                      const next = { ...pulseTypes, [t]: !pulseTypes[t] };
+                      setPulseTypes(next);
+                      setPulseItems([]);
+                      setPulseCursor(null);
+                      loadPulse(true, { types: next });
+                    }}
+                  >
+                    {PULSE_TYPE_META[t].icon} {PULSE_TYPE_META[t].label}
+                  </button>
+                ))}
+              </div>
               <label className="anon-toggle">
                 <input
                   type="checkbox"
-                  checked={includeAnonReactions}
+                  checked={includeAnonPulse}
                   onChange={(e) => {
                     const next = e.target.checked;
-                    setIncludeAnonReactions(next);
-                    setReactions([]);
-                    setReactionsCursor(null);
-                    loadRecentReactions(true, next);
+                    setIncludeAnonPulse(next);
+                    setPulseItems([]);
+                    setPulseCursor(null);
+                    loadPulse(true, { includeAnon: next });
                   }}
                 />
-                <span>Include anonymous reactions</span>
+                <span>Include anonymous activity</span>
               </label>
-              {reactions.length === 0 && !reactionsLoading ? (
-                <p className="empty">No reactions found</p>
+              {pulseItems.length === 0 && !pulseLoading ? (
+                <p className="empty">No activity found</p>
               ) : (
                 <>
-                  {reactions.map(reaction => (
-                    <div key={reaction.id} className="item-card pending-card">
-                      <span className="reaction-emoji">{reaction.emoji}</span>
-                      {reaction.post_art_url && (
-                        <Link href={`/p/${reaction.post_public_sqid}`} className="pending-thumbnail">
-                          <img src={ensureCompatibleArtUrl(reaction.post_art_url)} alt={reaction.post_title} className="pixel-art" style={{ width: '64px', height: '64px', maxWidth: '64px', maxHeight: '64px', objectFit: 'contain' }} />
+                  {pulseItems.map(item => (
+                    <div key={`${item.type}-${item.id}`} className="item-card pending-card">
+                      <span className="reaction-emoji" title={PULSE_TYPE_META[item.type].label}>
+                        {item.type === 'post_reaction' && item.emoji ? item.emoji : PULSE_TYPE_META[item.type].icon}
+                      </span>
+                      {item.post_art_url && item.post_public_sqid && (
+                        <Link href={`/p/${item.post_public_sqid}`} className="pending-thumbnail">
+                          <img src={ensureCompatibleArtUrl(item.post_art_url)} alt={item.post_title ?? ''} className="pixel-art" style={{ width: '64px', height: '64px', maxWidth: '64px', maxHeight: '64px', objectFit: 'contain' }} />
                         </Link>
                       )}
                       <div className="item-info">
-                        {reaction.user_handle ? (
-                          <div className="post-author">
-                            {reaction.user_avatar_url && (
-                              <img src={reaction.user_avatar_url} alt={reaction.user_handle} className="author-avatar-small" />
+                        <div className="post-author pulse-line">
+                          {item.actor_handle ? (
+                            <>
+                              {item.actor_avatar_url && (
+                                <img src={item.actor_avatar_url} alt={item.actor_handle} className="author-avatar-small" />
+                              )}
+                              <Link href={`/u/${item.actor_public_sqid}`} className="author-link">
+                                {item.actor_handle}
+                              </Link>
+                            </>
+                          ) : (
+                            <span className="anon-reactor" title="Anonymous visitor (truncated IP)">👤 {item.anonymous_id ?? 'anonymous'}</span>
+                          )}
+                          <span className="pulse-verb">{pulseVerb(item)}</span>
+                          {item.flags.map(flag => (
+                            <span key={flag} className="badge badge-flag">{PULSE_FLAG_LABELS[flag] ?? flag}</span>
+                          ))}
+                        </div>
+                        {item.type === 'player' ? (
+                          <h3>
+                            {item.actor_public_sqid ? (
+                              <Link href={`/u/${item.actor_public_sqid}`} className="post-title-link">
+                                {item.player_name || 'Unnamed player'}
+                              </Link>
+                            ) : (
+                              item.player_name || 'Unnamed player'
                             )}
-                            <Link href={`/u/${reaction.user_public_sqid}`} className="author-link">
-                              {reaction.user_handle}
-                            </Link>
-                          </div>
+                            {item.player_model && <span className="pulse-verb"> ({item.player_model})</span>}
+                          </h3>
                         ) : (
-                          <div className="post-author">
-                            <span className="anon-reactor" title="Anonymous visitor (truncated IP)">👤 {reaction.anonymous_id}</span>
-                          </div>
+                          item.post_public_sqid && (
+                            <h3>
+                              <Link href={`/p/${item.post_public_sqid}`} className="post-title-link">
+                                {item.post_title}
+                              </Link>
+                            </h3>
+                          )
                         )}
-                        <h3>
-                          <Link href={`/p/${reaction.post_public_sqid}`} className="post-title-link">
-                            {reaction.post_title}
-                          </Link>
-                        </h3>
-                        <p className="item-date">{new Date(reaction.created_at).toLocaleString()}</p>
+                        {item.comment_preview && (
+                          <p className="item-notes description-single-line">“{item.comment_preview}”</p>
+                        )}
+                        <p className="item-date">{new Date(item.created_at).toLocaleString()}</p>
                       </div>
                     </div>
                   ))}
-                  {reactionsCursor && (
-                    <button onClick={() => loadRecentReactions(false)} disabled={reactionsLoading} className="load-more">
-                      {reactionsLoading ? 'Loading...' : 'Load More'}
+                  {pulseCursor && (
+                    <button onClick={() => loadPulse(false)} disabled={pulseLoading} className="load-more">
+                      {pulseLoading ? 'Loading...' : 'Load More'}
                     </button>
                   )}
                 </>
@@ -1210,6 +1318,48 @@ export default function ModDashboardPage() {
           color: var(--text-secondary);
           font-size: 0.85rem;
           cursor: pointer;
+        }
+
+        .pulse-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+
+        .pulse-chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-bottom: 12px;
+        }
+
+        .pulse-chip {
+          padding: 6px 12px;
+          border-radius: 16px;
+          background: var(--bg-tertiary);
+          color: var(--text-muted);
+          font-size: 0.85rem;
+          transition: all var(--transition-fast);
+        }
+
+        .pulse-chip.active {
+          background: var(--accent-cyan);
+          color: var(--bg-primary);
+        }
+
+        .pulse-line .author-link {
+          flex: 0 1 auto;
+        }
+
+        .pulse-verb {
+          color: var(--text-muted);
+          font-size: 0.85rem;
+          white-space: nowrap;
+        }
+
+        .badge-flag {
+          background: rgba(239, 68, 68, 0.15);
+          color: #ef4444;
         }
 
         .item-date {
