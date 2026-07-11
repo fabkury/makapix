@@ -562,6 +562,7 @@ class Comment(BaseModel):
     _author_handle_cache: str | None = None
     _author_display_name_cache: str | None = None
     _author_avatar_url_cache: str | None = None
+    _author_public_sqid_cache: str | None = None
 
     @model_validator(mode="wrap")
     @classmethod
@@ -577,6 +578,7 @@ class Comment(BaseModel):
                 data.author.handle
             )  # Use handle as display name
             instance._author_avatar_url_cache = data.author.avatar_url
+            instance._author_public_sqid_cache = data.author.public_sqid
 
         # Extract like count and liked_by_me from transient attributes
         if hasattr(data, "_like_count"):
@@ -656,6 +658,19 @@ class Comment(BaseModel):
         if self.author_id is None:
             return None
         return self._author_avatar_url_cache
+
+    @computed_field
+    @property
+    def author_public_sqid(self) -> str | None:
+        """
+        Public sqid for the comment author (docs/comment-author-sqid/).
+
+        Lets clients navigate to /user/u/{sqid}/profile and target the
+        author in reports/blocks. None for guest/anonymous comments.
+        """
+        if self.author_id is None:
+            return None
+        return self._author_public_sqid_cache
 
 
 class CommentCreate(BaseModel):

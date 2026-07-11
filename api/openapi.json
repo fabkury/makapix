@@ -1841,6 +1841,19 @@
             ],
             "title": "Author Ip"
           },
+          "author_public_sqid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Public sqid for the comment author (docs/comment-author-sqid/).\n\nLets clients navigate to /user/u/{sqid}/profile and target the\nauthor in reports/blocks. None for guest/anonymous comments.",
+            "readOnly": true,
+            "title": "Author Public Sqid"
+          },
           "body": {
             "title": "Body",
             "type": "string"
@@ -1918,7 +1931,8 @@
           "created_at",
           "author_handle",
           "author_display_name",
-          "author_avatar_url"
+          "author_avatar_url",
+          "author_public_sqid"
         ],
         "title": "Comment",
         "type": "object"
