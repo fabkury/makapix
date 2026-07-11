@@ -5974,7 +5974,8 @@
               "comment",
               "post_reaction",
               "comment_like",
-              "player"
+              "player",
+              "profile"
             ],
             "title": "Type",
             "type": "string"
@@ -12779,7 +12780,7 @@
     },
     "/v1/admin/pulse": {
       "get": {
-        "description": "Chronological firehose of recent community activity (moderator only).\n\nMerges new posts, comments (including replies), post reactions, comment\nlikes and player registrations into a single feed, newest first. Hidden\nand deleted content is included, marked via `flags`. Anonymous actors are\nidentified by a truncated IP so moderators can differentiate visitors\nwithout seeing full addresses.",
+        "description": "Chronological firehose of recent community activity (moderator only).\n\nMerges new posts, comments (including replies), post reactions, comment\nlikes, player registrations and new user profiles into a single feed,\nnewest first. Hidden\nand deleted content is included, marked via `flags`. Anonymous actors are\nidentified by a truncated IP so moderators can differentiate visitors\nwithout seeing full addresses.",
         "operationId": "pulse_v1_admin_pulse_get",
         "parameters": [
           {
@@ -12821,7 +12822,7 @@
             }
           },
           {
-            "description": "Comma-separated subset of post, comment, post_reaction, comment_like, player (default: all)",
+            "description": "Comma-separated subset of post, comment, post_reaction, comment_like, player, profile (default: all)",
             "in": "query",
             "name": "types",
             "required": false,
@@ -12834,7 +12835,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Comma-separated subset of post, comment, post_reaction, comment_like, player (default: all)",
+              "description": "Comma-separated subset of post, comment, post_reaction, comment_like, player, profile (default: all)",
               "title": "Types"
             }
           }

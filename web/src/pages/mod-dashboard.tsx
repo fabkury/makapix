@@ -16,22 +16,6 @@ interface PostOwner {
   avatar_url?: string | null;
 }
 
-interface User {
-  id: number;
-  user_key: string;
-  handle: string;
-  public_sqid?: string;
-  display_name: string;
-  email?: string;
-  roles: string[];
-  created_at: string;
-  reputation: number;
-  hidden_by_mod?: boolean;
-  banned_until?: string | null;
-  auto_public_approval?: boolean;
-  avatar_url?: string | null;
-}
-
 interface Post {
   id: number;
   public_sqid: string;
@@ -104,9 +88,9 @@ interface AdminNote {
   created_at: string;
 }
 
-type PulseType = 'post' | 'comment' | 'post_reaction' | 'comment_like' | 'player';
+type PulseType = 'post' | 'comment' | 'post_reaction' | 'comment_like' | 'player' | 'profile';
 
-const PULSE_TYPES: PulseType[] = ['post', 'comment', 'post_reaction', 'comment_like', 'player'];
+const PULSE_TYPES: PulseType[] = ['post', 'comment', 'post_reaction', 'comment_like', 'player', 'profile'];
 
 interface PulseItem {
   type: PulseType;
@@ -134,6 +118,7 @@ const PULSE_TYPE_META: Record<PulseType, { icon: string; label: string }> = {
   post_reaction: { icon: '😊', label: 'Reactions' },
   comment_like: { icon: '👍', label: 'Comment likes' },
   player: { icon: '📺', label: 'Players' },
+  profile: { icon: '🧑', label: 'New Profiles' },
 };
 
 const pulseVerb = (item: PulseItem): string => {
@@ -143,6 +128,7 @@ const pulseVerb = (item: PulseItem): string => {
     case 'post_reaction': return 'reacted to';
     case 'comment_like': return 'liked a comment on';
     case 'player': return 'registered a player';
+    case 'profile': return 'created a profile';
   }
 };
 
@@ -152,6 +138,8 @@ const PULSE_FLAG_LABELS: Record<string, string> = {
   deleted_by_user: 'deleted by user',
   deleted_by_owner: 'deleted by author',
   non_conformant: 'non-conformant',
+  deactivated: 'deactivated',
+  banned: 'banned',
 };
 
 interface PageResponse<T> {
@@ -159,7 +147,7 @@ interface PageResponse<T> {
   next_cursor: string | null;
 }
 
-type Tab = 'pending' | 'reports' | 'posts' | 'profiles' | 'pulse' | 'audit' | 'notes' | 'metrics' | 'downloads';
+type Tab = 'pending' | 'reports' | 'posts' | 'pulse' | 'audit' | 'notes' | 'metrics' | 'downloads';
 
 export default function ModDashboardPage() {
   const router = useRouter();
@@ -179,10 +167,6 @@ export default function ModDashboardPage() {
   const [postsCursor, setPostsCursor] = useState<string | null>(null);
   const [postsLoading, setPostsLoading] = useState(false);
   
-  const [profiles, setProfiles] = useState<User[]>([]);
-  const [profilesCursor, setProfilesCursor] = useState<string | null>(null);
-  const [profilesLoading, setProfilesLoading] = useState(false);
-  
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
   const [auditCursor, setAuditCursor] = useState<string | null>(null);
   const [auditLoading, setAuditLoading] = useState(false);
@@ -197,6 +181,7 @@ export default function ModDashboardPage() {
     post_reaction: true,
     comment_like: true,
     player: true,
+    profile: true,
   });
   
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
@@ -269,7 +254,6 @@ export default function ModDashboardPage() {
       case 'pending': await loadPendingApproval(reset); break;
       case 'reports': await loadReports(reset); break;
       case 'posts': await loadRecentPosts(reset); break;
-      case 'profiles': await loadRecentProfiles(reset); break;
       case 'pulse': await loadPulse(reset); break;
       case 'audit': await loadAuditLog(reset); break;
     }
@@ -409,29 +393,6 @@ export default function ModDashboardPage() {
     }
   };
 
-  const loadRecentProfiles = async (reset = false) => {
-    if (profilesLoading) return;
-    setProfilesLoading(true);
-    try {
-      const cursor = reset ? null : profilesCursor;
-      const url = `${API_BASE_URL}/api/admin/recent-profiles?limit=50${cursor ? `&cursor=${cursor}` : ''}`;
-      const response = await authenticatedFetch(url);
-      if (response.ok) {
-        const data: PageResponse<User> = await response.json();
-        if (reset) {
-          setProfiles(data.items);
-        } else {
-          setProfiles(prev => [...prev, ...data.items]);
-        }
-        setProfilesCursor(data.next_cursor);
-      }
-    } catch (error) {
-      console.error('Error loading profiles:', error);
-    } finally {
-      setProfilesLoading(false);
-    }
-  };
-
   const loadAuditLog = async (reset = false) => {
     if (auditLoading) return;
     setAuditLoading(true);
@@ -546,41 +507,6 @@ export default function ModDashboardPage() {
     }
   };
 
-  const banUser = async (userId: string) => {
-    try {
-      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${userId}/ban`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ duration_days: 7 })
-      });
-      await loadRecentProfiles(true);
-    } catch (error) {
-      console.error('Error banning user:', error);
-    }
-  };
-
-  const trustUser = async (userId: string) => {
-    try {
-      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${userId}/auto-approval`, {
-        method: 'POST',
-      });
-      await loadRecentProfiles(true);
-    } catch (error) {
-      console.error('Error trusting user:', error);
-    }
-  };
-
-  const distrustUser = async (userId: string) => {
-    try {
-      await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${userId}/auto-approval`, {
-        method: 'DELETE',
-      });
-      await loadRecentProfiles(true);
-    } catch (error) {
-      console.error('Error distrusting user:', error);
-    }
-  };
-
   const addAdminNote = async () => {
     if (!selectedPostId || !noteText.trim()) return;
     setAddingNote(true);
@@ -630,12 +556,11 @@ export default function ModDashboardPage() {
 
   if (!isModerator) return null;
 
-  const tabs: Tab[] = ['pending', 'reports', 'posts', 'profiles', 'pulse', 'audit', 'notes', 'metrics', 'downloads'];
+  const tabs: Tab[] = ['pending', 'reports', 'posts', 'pulse', 'audit', 'notes', 'metrics', 'downloads'];
   const tabLabels: Record<Tab, string> = {
     pending: 'Pending Approval',
     reports: 'Reports',
     posts: 'Posts',
-    profiles: 'Profiles',
     pulse: 'Pulse',
     audit: 'Audit',
     notes: 'Notes',
@@ -658,7 +583,6 @@ export default function ModDashboardPage() {
                 if (tab === 'pending') { setPendingPosts([]); setPendingCursor(null); }
                 else if (tab === 'reports') { setReports([]); setReportsCursor(null); }
                 else if (tab === 'posts') { setPosts([]); setPostsCursor(null); }
-                else if (tab === 'profiles') { setProfiles([]); setProfilesCursor(null); }
                 else if (tab === 'pulse') { setPulseItems([]); setPulseCursor(null); }
                 else if (tab === 'audit') { setAuditLog([]); setAuditCursor(null); }
               }}
@@ -808,47 +732,6 @@ export default function ModDashboardPage() {
                   {postsCursor && (
                     <button onClick={() => loadRecentPosts(false)} disabled={postsLoading} className="load-more">
                       {postsLoading ? 'Loading...' : 'Load More'}
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'profiles' && (
-            <div className="section">
-              <h2>Recent Profiles</h2>
-              {profiles.length === 0 && !profilesLoading ? (
-                <p className="empty">No profiles found</p>
-              ) : (
-                <>
-                  {profiles.map(profile => (
-                    <div key={profile.id} className="item-card">
-                      <div className="item-info">
-                        <h3>
-                          <Link href={`/u/${profile.public_sqid}`} className="profile-link">
-                            {profile.avatar_url && (
-                              <img src={profile.avatar_url} alt={profile.handle} className="profile-avatar" />
-                            )}
-                            {profile.display_name} <span className="handle">@{profile.handle}</span>
-                          </Link>
-                        </h3>
-                        <p className="item-notes">Reputation: {profile.reputation}</p>
-                        <p className="item-date">Joined {new Date(profile.created_at).toLocaleString()}</p>
-                      </div>
-                      <div className="item-actions">
-                        {profile.auto_public_approval ? (
-                          <button onClick={() => distrustUser(profile.user_key)} className="action-btn danger">⚠️ Distrust</button>
-                        ) : (
-                          <button onClick={() => trustUser(profile.user_key)} className="action-btn success">🫱🏽‍🫲🏼 Trust</button>
-                        )}
-                        <button onClick={() => banUser(profile.user_key)} className="action-btn danger">🚷 Ban</button>
-                      </div>
-                    </div>
-                  ))}
-                  {profilesCursor && (
-                    <button onClick={() => loadRecentProfiles(false)} disabled={profilesLoading} className="load-more">
-                      {profilesLoading ? 'Loading...' : 'Load More'}
                     </button>
                   )}
                 </>
@@ -1139,41 +1022,6 @@ export default function ModDashboardPage() {
 
         .post-title-link:hover {
           color: var(--accent-cyan);
-        }
-
-        .profile-link {
-          color: var(--text-primary);
-          text-decoration: none;
-          transition: color var(--transition-fast);
-        }
-
-        .profile-link:hover {
-          color: var(--accent-cyan);
-        }
-
-        .profile-link:hover .handle {
-          color: var(--accent-cyan);
-        }
-
-        .profile-link {
-          display: inline-flex;
-          align-items: center;
-        }
-        .profile-link > :global(* + *) {
-          margin-left: 8px;
-        }
-
-        .profile-avatar {
-          width: 24px;
-          height: 24px;
-          border-radius: 50%;
-          object-fit: cover;
-          flex-shrink: 0;
-        }
-
-        .handle {
-          color: var(--text-muted);
-          font-weight: normal;
         }
 
         .empty {
