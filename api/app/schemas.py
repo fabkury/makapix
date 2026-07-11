@@ -866,7 +866,9 @@ class ReactionUsersResponse(BaseModel):
 class PulseItem(BaseModel):
     """One event in the moderator dashboard's Pulse activity firehose."""
 
-    type: Literal["post", "comment", "post_reaction", "comment_like", "player"]
+    type: Literal[
+        "post", "comment", "post_reaction", "comment_like", "player", "profile"
+    ]
     id: str  # source-row id (int or UUID), stringified
     created_at: datetime  # event time (player events use registered_at)
 

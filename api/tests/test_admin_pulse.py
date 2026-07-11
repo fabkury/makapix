@@ -236,7 +236,12 @@ class TestPulse:
         response = client.get(self.URL, headers=_auth(moderator))
         assert response.status_code == 200
         items = response.json()["items"]
-        assert [(i["type"], i["id"]) for i in items] == [
+        # The fixture users' own profile events also land in the feed; their
+        # timestamps (row insertion time) interleave unpredictably with the
+        # backdated events, so assert them separately.
+        profile_ids = {i["id"] for i in items if i["type"] == "profile"}
+        assert {str(member.id), str(moderator.id)} <= profile_ids
+        assert [(i["type"], i["id"]) for i in items if i["type"] != "profile"] == [
             ("player", str(player.id)),
             ("post_reaction", str(reaction.id)),
             ("comment_like", str(like.id)),
@@ -305,7 +310,12 @@ class TestPulse:
         assert response.status_code == 200
         items = response.json()["items"]
         assert all(i["anonymous_id"] is None for i in items)
-        assert {i["type"] for i in items} == {"post", "post_reaction", "comment"}
+        assert {i["type"] for i in items} == {
+            "post",
+            "post_reaction",
+            "comment",
+            "profile",
+        }
         assert len([i for i in items if i["type"] == "post_reaction"]) == 1
         assert len([i for i in items if i["type"] == "comment"]) == 1
 
@@ -369,6 +379,47 @@ class TestPulse:
             "+00:00", "Z"
         )
 
+    def test_profile_events(
+        self, client: TestClient, db: Session, moderator: User, member: User
+    ):
+        now = datetime.now(timezone.utc)
+        moderator.created_at = now - timedelta(minutes=5)
+        ex_banned = _make_user(db, handle_prefix="exban", roles=["user"])
+        ex_banned.created_at = now - timedelta(minutes=3)
+        ex_banned.banned_until = now - timedelta(days=1)  # expired ban: no flag
+        member.created_at = now - timedelta(minutes=1)
+        member.hidden_by_mod = True
+        member.deactivated = True
+        member.banned_until = now + timedelta(days=7)
+        db.commit()
+
+        response = client.get(
+            self.URL, params={"types": "profile"}, headers=_auth(moderator)
+        )
+        assert response.status_code == 200
+        items = response.json()["items"]
+        assert all(i["type"] == "profile" for i in items)
+
+        # Newest first (other users, e.g. seed data, may also be present)
+        ids = [i["id"] for i in items]
+        assert (
+            ids.index(str(member.id))
+            < ids.index(str(ex_banned.id))
+            < ids.index(str(moderator.id))
+        )
+
+        by_id = {i["id"]: i for i in items}
+        m = by_id[str(member.id)]
+        assert m["actor_handle"] == member.handle
+        assert m["actor_public_sqid"] == member.public_sqid
+        assert m["actor_avatar_url"] is None
+        assert m["anonymous_id"] is None
+        assert m["post_id"] is None
+        assert set(m["flags"]) == {"hidden_by_mod", "deactivated", "banned"}
+
+        assert by_id[str(ex_banned.id)]["flags"] == []
+        assert by_id[str(moderator.id)]["flags"] == []
+
     def test_cursor_pagination_across_types(
         self, client: TestClient, db: Session, moderator: User, member: User
     ):
@@ -399,7 +450,12 @@ class TestPulse:
         seen: list[tuple[str, str]] = []
         cursor = None
         for _ in range(4):
-            params: dict = {"limit": 2}
+            # Exclude profiles: the fixture users' registration timestamps
+            # would interleave unpredictably with the backdated events.
+            params: dict = {
+                "limit": 2,
+                "types": "post,comment,post_reaction,comment_like,player",
+            }
             if cursor:
                 params["cursor"] = cursor
             response = client.get(self.URL, params=params, headers=_auth(moderator))

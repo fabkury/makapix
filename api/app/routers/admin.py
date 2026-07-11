@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 import sqlalchemy as sa
@@ -504,7 +504,7 @@ def recent_posts(
     )
 
 
-PULSE_TYPES = ("post", "comment", "post_reaction", "comment_like", "player")
+PULSE_TYPES = ("post", "comment", "post_reaction", "comment_like", "player", "profile")
 
 _PULSE_PREVIEW_LEN = 140
 
@@ -560,7 +560,7 @@ def pulse(
         None,
         description=(
             "Comma-separated subset of post, comment, post_reaction, "
-            "comment_like, player (default: all)"
+            "comment_like, player, profile (default: all)"
         ),
     ),
     db: Session = Depends(get_db),
@@ -570,7 +570,8 @@ def pulse(
     Chronological firehose of recent community activity (moderator only).
 
     Merges new posts, comments (including replies), post reactions, comment
-    likes and player registrations into a single feed, newest first. Hidden
+    likes, player registrations and new user profiles into a single feed,
+    newest first. Hidden
     and deleted content is included, marked via `flags`. Anonymous actors are
     identified by a truncated IP so moderators can differentiate visitors
     without seeing full addresses.
@@ -707,6 +708,27 @@ def pulse(
                     **_pulse_actor(pl.owner, None),
                     player_name=pl.name,
                     player_model=pl.device_model,
+                )
+            )
+
+    if "profile" in active:
+        now = datetime.now(timezone.utc)
+        query = db.query(models.User)
+        for u in page_of(query, models.User.created_at):
+            flags = []
+            if u.hidden_by_mod:
+                flags.append("hidden_by_mod")
+            if u.deactivated:
+                flags.append("deactivated")
+            if u.banned_until is not None and u.banned_until > now:
+                flags.append("banned")
+            merged.append(
+                schemas.PulseItem(
+                    type="profile",
+                    id=str(u.id),
+                    created_at=u.created_at,
+                    **_pulse_actor(u, None),
+                    flags=flags,
                 )
             )
 
