@@ -1853,15 +1853,15 @@ def get_user_reacted_posts(
             # Anonymous viewer: public posts only
             query = query.filter(visibility_filters)
 
-    # Apply cursor pagination on reaction created_at
-    if cursor:
-        cursor_data = decode_cursor(cursor)
-        if cursor_data:
-            last_id, sort_value = cursor_data
-            if sort_value:
-                query = query.filter(models.Reaction.created_at < sort_value)
+    # Apply cursor pagination on reaction created_at (keyset, tie-broken on
+    # reaction id). apply_cursor_filter parses the cursor's ISO timestamp —
+    # comparing the raw cursor string against the timestamptz column is a
+    # type mismatch under psycopg3 and 500s every cursored page.
+    query = apply_cursor_filter(
+        query, models.Reaction, cursor, "created_at", sort_desc=True
+    )
 
-    query = query.order_by(models.Reaction.created_at.desc())
+    query = query.order_by(models.Reaction.created_at.desc(), models.Reaction.id.desc())
 
     # Limit to 8192 total reactions (per spec)
     results = query.limit(min(limit + 1, 8192)).all()

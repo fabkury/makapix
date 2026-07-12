@@ -194,6 +194,30 @@ class TestReactedPostsPublic:
         returned_ids = {item["id"] for item in response.json()["items"]}
         assert returned_ids == {public_post.id, private_post.id}
 
+    def test_cursor_pagination(
+        self, client: TestClient, db: Session, reactor: User, artist: User
+    ):
+        """Cursored pages must not 500: the ISO timestamp in the cursor has to
+        be parsed back to a datetime before it hits the timestamptz column
+        (regression: the app's Reacted tab broke on every load-more)."""
+        posts = [_make_post(db, owner=artist, title=f"paged-{i}") for i in range(3)]
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        for hour, post in enumerate(posts, start=1):
+            _react(db, user=reactor, post=post, created_at=base.replace(hour=hour))
+
+        url = f"/user/u/{reactor.public_sqid}/reacted-posts?limit=2"
+        response = client.get(url)
+        assert response.status_code == 200
+        data = response.json()
+        assert [i["id"] for i in data["items"]] == [posts[2].id, posts[1].id]
+        assert data["next_cursor"]
+
+        response = client.get(f"{url}&cursor={data['next_cursor']}")
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert [i["id"] for i in data["items"]] == [posts[0].id]
+        assert data["next_cursor"] is None
+
 
 # ---------------------------------------------------------------------------
 # /u/{sqid}/player/{id}/command — play_channel for reactions
