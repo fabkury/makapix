@@ -1861,9 +1861,7 @@ def get_user_reacted_posts(
         query, models.Reaction, cursor, "created_at", sort_desc=True
     )
 
-    query = query.order_by(
-        models.Reaction.created_at.desc(), models.Reaction.id.desc()
-    )
+    query = query.order_by(models.Reaction.created_at.desc(), models.Reaction.id.desc())
 
     # Limit to 8192 total reactions (per spec)
     results = query.limit(min(limit + 1, 8192)).all()
