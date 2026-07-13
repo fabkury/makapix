@@ -1075,6 +1075,11 @@
             "title": "Created At",
             "type": "string"
           },
+          "deleted_by_mod": {
+            "default": false,
+            "title": "Deleted By Mod",
+            "type": "boolean"
+          },
           "deleted_by_owner": {
             "title": "Deleted By Owner",
             "type": "boolean"
@@ -1862,6 +1867,11 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "deleted_by_mod": {
+            "default": false,
+            "title": "Deleted By Mod",
+            "type": "boolean"
           },
           "deleted_by_owner": {
             "title": "Deleted By Owner",
@@ -5892,6 +5902,11 @@
             },
             "title": "Flags",
             "type": "array"
+          },
+          "has_original_body": {
+            "default": false,
+            "title": "Has Original Body",
+            "type": "boolean"
           },
           "id": {
             "title": "Id",
@@ -18564,6 +18579,50 @@
         "summary": "Get Comment Like Users",
         "tags": [
           "Comment Likes"
+        ]
+      }
+    },
+    "/v1/post/comments/{commentId}/purge-original": {
+      "post": {
+        "description": "Permanently discard the preserved pre-deletion body of a deleted comment\n(moderator only). For content that must not be retained at all, e.g. PII.",
+        "operationId": "purge_comment_original_body_v1_post_comments__commentId__purge_original_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "commentId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Commentid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Purge Comment Original Body",
+        "tags": [
+          "Comments",
+          "Comments",
+          "Admin"
         ]
       }
     },

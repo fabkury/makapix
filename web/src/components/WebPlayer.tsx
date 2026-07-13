@@ -118,6 +118,7 @@ interface WidgetComment {
   body: string;
   hidden_by_mod: boolean;
   deleted_by_owner: boolean;
+  deleted_by_mod: boolean;
   created_at: string;
   updated_at: string | null;
   author_handle?: string;

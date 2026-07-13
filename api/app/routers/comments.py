@@ -96,7 +96,9 @@ def list_comments(
         changed = False
         # Find deleted leaf comments (comments with no children in the current result set)
         for comment_id, comment in list(comment_dict.items()):
-            if comment.deleted_by_owner and comment_id not in removed_ids:
+            if (
+                comment.deleted_by_owner or comment.deleted_by_mod
+            ) and comment_id not in removed_ids:
                 # Check if this comment has any children that are still in the result set
                 has_children = False
                 if comment_id in children_map:
@@ -346,9 +348,11 @@ def delete_comment(
         )
 
     # Check ownership
+    is_author = False
     if isinstance(current_user, models.User):
         # Authenticated user: check by user_id
-        if comment.author_id != current_user.id:
+        is_author = comment.author_id == current_user.id
+        if not is_author:
             # Check if user is moderator/owner
             if (
                 "moderator" not in current_user.roles
@@ -371,10 +375,29 @@ def delete_comment(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have permission to delete this comment",
             )
+        is_author = True
 
-    comment.deleted_by_owner = True
-    comment.body = "[deleted]"
+    if comment.deleted_by_owner or comment.deleted_by_mod:
+        # Already deleted; keep the original attribution and preserved body
+        return
+
+    comment.original_body = comment.body
+    if is_author:
+        comment.deleted_by_owner = True
+        comment.body = "[deleted]"
+    else:
+        comment.deleted_by_mod = True
+        comment.body = "[deleted by moderator]"
     db.commit()
+
+    if not is_author:
+        log_moderation_action(
+            db=db,
+            actor_id=current_user.id,
+            action="take_down_comment",
+            target_type="comment",
+            target_id=commentId,
+        )
 
 
 @router.post(
@@ -395,6 +418,12 @@ def undelete_comment(
         )
 
     comment.deleted_by_owner = False
+    comment.deleted_by_mod = False
+    if comment.original_body is not None:
+        # Restore the pre-deletion body (absent for purged bodies and for
+        # comments deleted before original_body existed)
+        comment.body = comment.original_body
+        comment.original_body = None
     db.commit()
 
     # Log to audit
@@ -402,6 +431,43 @@ def undelete_comment(
         db=db,
         actor_id=_moderator.id,
         action="undelete_comment",
+        target_type="comment",
+        target_id=commentId,
+    )
+
+
+@router.post(
+    "/comments/{commentId}/purge-original",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["Comments", "Admin"],
+)
+def purge_comment_original_body(
+    commentId: UUID,
+    db: Session = Depends(get_db),
+    moderator: models.User = Depends(require_moderator),
+) -> None:
+    """
+    Permanently discard the preserved pre-deletion body of a deleted comment
+    (moderator only). For content that must not be retained at all, e.g. PII.
+    """
+    comment = db.query(models.Comment).filter(models.Comment.id == commentId).first()
+    if not comment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
+        )
+    if not (comment.deleted_by_owner or comment.deleted_by_mod):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Comment is not deleted",
+        )
+
+    comment.original_body = None
+    db.commit()
+
+    log_moderation_action(
+        db=db,
+        actor_id=moderator.id,
+        action="purge_comment_body",
         target_type="comment",
         target_id=commentId,
     )

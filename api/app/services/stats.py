@@ -443,6 +443,7 @@ class PostStatsService:
                 models.Comment.post_id == post_id,
                 models.Comment.hidden_by_mod == False,
                 models.Comment.deleted_by_owner == False,
+                models.Comment.deleted_by_mod == False,
             )
             .all()
         )

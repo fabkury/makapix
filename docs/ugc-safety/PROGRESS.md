@@ -2,6 +2,30 @@
 
 Update after every work session, newest first.
 
+## 2026-07-13 — mod deletions no longer misattributed to authors
+
+- Found while reviewing prod data: BOTH moderator deletion paths set
+  `deleted_by_owner=true` on comments. The report take-down path at least
+  stamped the body `"[deleted by moderator]"`; a direct moderator
+  `DELETE /comments/{id}` was byte-for-byte identical to a self-delete and
+  wrote no audit log. Deletion also destructively overwrote the body, so
+  mod undelete resurrected a literal `"[deleted]"` husk.
+- Fix (comments + blog_post_comments symmetrically):
+  - New `deleted_by_mod` flag (additive; app/web contracts unchanged for
+    existing fields). Migration backfills rows whose body is
+    `"[deleted by moderator]"` (2 rows on prod, from the 2026-07-07 manual
+    PII cleanup).
+  - New `original_body` column preserves the pre-deletion text (mod-visible
+    via the Pulse feed preview); undelete restores it. New mod-only
+    `POST /comments/{id}/purge-original` permanently scrubs it for
+    PII/illegal content (audit-logged `purge_comment_body`; 🧹 button on
+    deleted-comment Pulse items).
+  - Direct moderator deletes now audit-log `take_down_comment`, and every
+    visibility filter / count treats `deleted_by_mod` like `deleted_by_owner`.
+  - Tombstone text is public: `"[deleted]"` for self-deletes,
+    `"[deleted by moderator]"` for mod deletes (owner decision).
+- Tests in `api/tests/test_comment_mod_deletion.py` (12 cases).
+
 ## 2026-07-07 — report action "delete" renamed to "take_down"
 
 - Incident: post 3647 (`5PpX`) vanished from feeds — the app team's prod

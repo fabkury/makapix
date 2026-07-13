@@ -551,6 +551,10 @@ class Comment(Base):
     # Moderation
     hidden_by_mod = Column(Boolean, nullable=False, default=False, index=True)
     deleted_by_owner = Column(Boolean, nullable=False, default=False)
+    deleted_by_mod = Column(Boolean, nullable=False, default=False)
+    # Body as it was before deletion tombstoned it; mod-visible only.
+    # NULL once purged (PII/illegal content) or for pre-2026-07 deletions.
+    original_body = Column(Text, nullable=True)
 
     # Timestamps
     created_at = Column(
@@ -1606,6 +1610,9 @@ class BlogPostComment(Base):
     # Moderation
     hidden_by_mod = Column(Boolean, nullable=False, default=False, index=True)
     deleted_by_owner = Column(Boolean, nullable=False, default=False)
+    deleted_by_mod = Column(Boolean, nullable=False, default=False)
+    # Body as it was before deletion tombstoned it; mod-visible only.
+    original_body = Column(Text, nullable=True)
 
     # Timestamps
     created_at = Column(

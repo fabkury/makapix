@@ -724,7 +724,7 @@ def get_comments(
     comment_summaries = []
     for comment in comments:
         # Skip deleted comments (simplified filtering)
-        if comment.deleted_by_owner:
+        if comment.deleted_by_owner or comment.deleted_by_mod:
             continue
 
         comment_summaries.append(
@@ -736,7 +736,7 @@ def get_comments(
                 depth=comment.depth,
                 parent_id=comment.parent_id,
                 created_at=comment.created_at,
-                deleted=comment.deleted_by_owner,
+                deleted=comment.deleted_by_owner or comment.deleted_by_mod,
             )
         )
 

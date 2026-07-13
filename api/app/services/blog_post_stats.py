@@ -63,6 +63,7 @@ def annotate_blog_posts_with_counts(
             models.BlogPostComment.blog_post_id.in_(post_ids),
             models.BlogPostComment.hidden_by_mod == False,
             models.BlogPostComment.deleted_by_owner == False,
+            models.BlogPostComment.deleted_by_mod == False,
         )
         .group_by(models.BlogPostComment.blog_post_id)
         .all()

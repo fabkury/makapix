@@ -164,6 +164,7 @@ def list_blog_posts(
                 func.count(models.BlogPostComment.id).label("comment_count"),
             )
             .filter(models.BlogPostComment.deleted_by_owner == False)
+            .filter(models.BlogPostComment.deleted_by_mod == False)
             .filter(models.BlogPostComment.hidden_by_mod == False)
             .group_by(models.BlogPostComment.blog_post_id)
             .subquery()
@@ -632,7 +633,9 @@ def list_blog_comments(
     while changed:
         changed = False
         for comment_id, comment in list(comment_dict.items()):
-            if comment.deleted_by_owner and comment_id not in removed_ids:
+            if (
+                comment.deleted_by_owner or comment.deleted_by_mod
+            ) and comment_id not in removed_ids:
                 has_children = False
                 if comment_id in children_map:
                     for child_id in children_map[comment_id]:
@@ -794,8 +797,10 @@ def delete_blog_comment(
             status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
         )
 
+    is_author = False
     if isinstance(current_user, models.User):
-        if comment.author_id != current_user.id:
+        is_author = comment.author_id == current_user.id
+        if not is_author:
             if (
                 "moderator" not in current_user.roles
                 and "owner" not in current_user.roles
@@ -815,10 +820,28 @@ def delete_blog_comment(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have permission to delete this comment",
             )
+        is_author = True
 
-    comment.deleted_by_owner = True
-    comment.body = "[deleted]"
+    if comment.deleted_by_owner or comment.deleted_by_mod:
+        return
+
+    comment.original_body = comment.body
+    if is_author:
+        comment.deleted_by_owner = True
+        comment.body = "[deleted]"
+    else:
+        comment.deleted_by_mod = True
+        comment.body = "[deleted by moderator]"
     db.commit()
+
+    if not is_author:
+        log_moderation_action(
+            db=db,
+            actor_id=current_user.id,
+            action="take_down_blog_comment",
+            target_type="blog_comment",
+            target_id=commentId,
+        )
 
 
 @router.get("/{id}/reactions", response_model=schemas.BlogPostReactionTotals)
