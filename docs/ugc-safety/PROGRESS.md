@@ -29,6 +29,10 @@ Update after every work session, newest first.
   prod rows. App team notified of the additive `deleted_by_mod` comment
   field via `0008-server-ugc-safety-deleted-by-mod.md` (informational; only
   flag-derived tombstone rendering needs the `|| deleted_by_mod` check).
+- App reply `0009` same day: the §3 nuance applied to them (flag-derived
+  tombstones) — adopted in app commit `78bd191`, rides the next Closed
+  Testing build (current 1.0.10+15); older builds cosmetically fine
+  (tombstone body shown as a live comment). Exchange closed, no open items.
 
 ## 2026-07-07 — report action "delete" renamed to "take_down"
 
