@@ -25,6 +25,10 @@ Update after every work session, newest first.
   - Tombstone text is public: `"[deleted]"` for self-deletes,
     `"[deleted by moderator]"` for mod deletes (owner decision).
 - Tests in `api/tests/test_comment_mod_deletion.py` (12 cases).
+- Shipped to prod same day (PR #234); migration backfill verified on the 2
+  prod rows. App team notified of the additive `deleted_by_mod` comment
+  field via `0008-server-ugc-safety-deleted-by-mod.md` (informational; only
+  flag-derived tombstone rendering needs the `|| deleted_by_mod` check).
 
 ## 2026-07-07 — report action "delete" renamed to "take_down"
 
