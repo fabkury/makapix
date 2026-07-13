@@ -110,6 +110,7 @@ interface PulseItem {
   player_name: string | null;
   player_model: string | null;
   flags: string[];
+  has_original_body: boolean;
 }
 
 const PULSE_TYPE_META: Record<PulseType, { icon: string; label: string }> = {
@@ -137,6 +138,7 @@ const PULSE_FLAG_LABELS: Record<string, string> = {
   hidden_by_user: 'hidden by user',
   deleted_by_user: 'deleted by user',
   deleted_by_owner: 'deleted by author',
+  deleted_by_mod: 'deleted by moderator',
   non_conformant: 'non-conformant',
   deactivated: 'deactivated',
   banned: 'banned',
@@ -479,6 +481,18 @@ export default function ModDashboardPage() {
       await loadRecentPosts(true);
     } catch (error) {
       console.error('Error unhiding post:', error);
+    }
+  };
+
+  const purgeCommentBody = async (commentId: string) => {
+    if (!confirm("Permanently discard this deleted comment's preserved original text? This cannot be undone.")) return;
+    try {
+      await authenticatedFetch(`${API_BASE_URL}/api/post/comments/${commentId}/purge-original`, {
+        method: 'POST'
+      });
+      await loadPulse(true);
+    } catch (error) {
+      console.error('Error purging comment body:', error);
     }
   };
 
@@ -839,7 +853,16 @@ export default function ModDashboardPage() {
                           )
                         )}
                         {item.comment_preview && (
-                          <p className="item-notes description-single-line">“{item.comment_preview}”</p>
+                          <p className="item-notes description-single-line">
+                            “{item.comment_preview}”
+                            {item.type === 'comment' && item.has_original_body && (
+                              <button
+                                onClick={() => purgeCommentBody(item.id)}
+                                className="action-btn"
+                                title="Purge the preserved original text of this deleted comment (permanent — for PII etc.)"
+                              >🧹</button>
+                            )}
+                          </p>
                         )}
                         <p className="item-date">{new Date(item.created_at).toLocaleString()}</p>
                       </div>

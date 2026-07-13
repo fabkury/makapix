@@ -404,7 +404,9 @@ def get_widget_data(
     while changed:
         changed = False
         for comment_id, comment in list(comment_dict.items()):
-            if comment.deleted_by_owner and comment_id not in removed_ids:
+            if (
+                comment.deleted_by_owner or comment.deleted_by_mod
+            ) and comment_id not in removed_ids:
                 has_children = False
                 if comment_id in children_map:
                     for child_id in children_map[comment_id]:

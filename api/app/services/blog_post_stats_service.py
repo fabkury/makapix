@@ -413,6 +413,7 @@ class BlogPostStatsService:
                 models.BlogPostComment.blog_post_id == blog_post_id,
                 models.BlogPostComment.hidden_by_mod == False,
                 models.BlogPostComment.deleted_by_owner == False,
+                models.BlogPostComment.deleted_by_mod == False,
             )
             .all()
         )

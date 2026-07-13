@@ -355,7 +355,11 @@ def update_report(
                 target_comment.hidden_by_mod = True
                 action_applied = True
             elif action_taken == "take_down":
-                target_comment.deleted_by_owner = True
+                if not (
+                    target_comment.deleted_by_owner or target_comment.deleted_by_mod
+                ):
+                    target_comment.original_body = target_comment.body
+                target_comment.deleted_by_mod = True
                 target_comment.body = "[deleted by moderator]"
                 action_applied = True
 

@@ -20,6 +20,7 @@ interface Comment {
   body: string;
   hidden_by_mod: boolean;
   deleted_by_owner: boolean;
+  deleted_by_mod: boolean;
   created_at: string;
   updated_at: string | null;
   author_handle?: string;
@@ -27,6 +28,12 @@ interface Comment {
   like_count?: number;
   liked_by_me?: boolean;
 }
+
+const isDeletedComment = (comment: Comment): boolean =>
+  comment.deleted_by_owner || comment.deleted_by_mod;
+
+const deletedCommentLabel = (comment: Comment): string =>
+  comment.deleted_by_mod ? '[deleted by moderator]' : '[deleted]';
 
 interface CommentsAndReactionsProps {
   contentType: 'artwork' | 'blog';
@@ -111,7 +118,7 @@ export default function CommentsAndReactions({
           setComments((data?.comments || []).filter((comment: Comment) => {
             if (!comment || typeof comment.id === 'undefined') return false;
             if (typeof comment.depth !== 'number' || comment.depth > 3) return false;
-            if (!comment.body && !comment.deleted_by_owner) return false;
+            if (!comment.body && !isDeletedComment(comment)) return false;
             return true;
           }));
           setLoadingReactions(false);
@@ -156,7 +163,7 @@ export default function CommentsAndReactions({
         setComments((data.items || []).filter((comment: Comment) => {
           if (!comment || typeof comment.id === 'undefined') return false;
           if (typeof comment.depth !== 'number' || comment.depth > 3) return false;
-          if (!comment.body && !comment.deleted_by_owner) return false;
+          if (!comment.body && !isDeletedComment(comment)) return false;
           return true;
         }));
       }
@@ -322,7 +329,7 @@ export default function CommentsAndReactions({
   };
 
   const canDeleteComment = (comment: Comment): boolean => {
-    if (comment.deleted_by_owner) return false;
+    if (isDeletedComment(comment)) return false;
     // Moderators can delete any comment
     if (isModerator) return true;
     // Anonymous user can delete their own guest comments
@@ -339,18 +346,19 @@ export default function CommentsAndReactions({
     
     // Filter out deleted comments only if they have no replies
     // This ensures deleted middle comments still render (showing "[deleted]") so their children remain visible
-    if (comment.deleted_by_owner && !hasReplies) {
+    if (isDeletedComment(comment) && !hasReplies) {
       return null;
     }
 
     const isFolded = foldedComments.has(comment.id);
+    const isDeleted = isDeletedComment(comment);
     const isDeletedUser = !comment.author_id && !comment.author_ip;
-    const authorName = comment.deleted_by_owner
-      ? '[deleted]'
+    const authorName = isDeleted
+      ? deletedCommentLabel(comment)
       : isDeletedUser
         ? '[deleted user]'
         : (comment.author_display_name || comment.author_handle || 'Unknown');
-    const isGuest = !comment.deleted_by_owner && !isDeletedUser && !comment.author_id && comment.author_ip !== null;
+    const isGuest = !isDeleted && !isDeletedUser && !comment.author_id && comment.author_ip !== null;
 
     return (
       <div key={comment.id} className={`makapix-comment ${isFolded ? 'makapix-folded' : ''}`} data-comment-id={comment.id}>
@@ -362,7 +370,7 @@ export default function CommentsAndReactions({
           >
             {isFolded ? '▶' : '▼'}
           </button>
-          <span className={`makapix-comment-author ${isGuest ? 'makapix-guest' : ''} ${comment.deleted_by_owner ? 'deleted' : ''}`}>
+          <span className={`makapix-comment-author ${isGuest ? 'makapix-guest' : ''} ${isDeleted ? 'deleted' : ''}`}>
             {authorName}
           </span>
           <span className="makapix-comment-date">{formatDate(comment.created_at)}</span>
@@ -370,9 +378,9 @@ export default function CommentsAndReactions({
         {!isFolded && (
           <div className="makapix-comment-content">
             <div className="makapix-comment-body">
-              {comment.deleted_by_owner ? '[deleted]' : comment.body}
+              {isDeleted ? deletedCommentLabel(comment) : comment.body}
             </div>
-            {!comment.deleted_by_owner && (
+            {!isDeleted && (
               <div className="makapix-comment-actions">
                 {currentUserId && (
                   <button

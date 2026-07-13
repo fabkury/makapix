@@ -640,6 +640,8 @@ def pulse(
                 flags.append("hidden_by_mod")
             if c.deleted_by_owner:
                 flags.append("deleted_by_owner")
+            if c.deleted_by_mod:
+                flags.append("deleted_by_mod")
             merged.append(
                 schemas.PulseItem(
                     type="comment",
@@ -647,9 +649,11 @@ def pulse(
                     created_at=c.created_at,
                     **_pulse_actor(c.author, c.author_ip),
                     **_pulse_post_context(c.post),
-                    comment_preview=_pulse_preview(c.body),
+                    # Mods see the preserved pre-deletion body until purged
+                    comment_preview=_pulse_preview(c.original_body or c.body),
                     is_reply=c.parent_id is not None,
                     flags=flags,
+                    has_original_body=c.original_body is not None,
                 )
             )
 

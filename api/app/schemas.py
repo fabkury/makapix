@@ -552,6 +552,7 @@ class Comment(BaseModel):
     body: str
     hidden_by_mod: bool
     deleted_by_owner: bool
+    deleted_by_mod: bool = False
     created_at: datetime
     updated_at: datetime | None = None
     like_count: int = 0
@@ -749,6 +750,7 @@ class BlogPostComment(BaseModel):
     body: str
     hidden_by_mod: bool
     deleted_by_owner: bool
+    deleted_by_mod: bool = False
     created_at: datetime
     updated_at: datetime | None = None
 
@@ -893,6 +895,8 @@ class PulseItem(BaseModel):
 
     # Moderation state of the underlying content, e.g. "hidden_by_mod"
     flags: list[str] = Field(default_factory=list)
+    # comment: a preserved pre-deletion body exists (purgeable)
+    has_original_body: bool = False
 
 
 class WidgetData(BaseModel):

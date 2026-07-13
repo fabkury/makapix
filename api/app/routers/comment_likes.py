@@ -81,6 +81,7 @@ def like_comment(
         .filter(
             models.Comment.id == commentId,
             models.Comment.deleted_by_owner == False,
+            models.Comment.deleted_by_mod == False,
             models.Comment.hidden_by_mod == False,
         )
         .first()

@@ -57,6 +57,7 @@ def annotate_posts_with_counts(
             models.Comment.post_id.in_(post_ids),
             models.Comment.hidden_by_mod == False,
             models.Comment.deleted_by_owner == False,
+            models.Comment.deleted_by_mod == False,
         )
         .group_by(models.Comment.post_id)
         .all()

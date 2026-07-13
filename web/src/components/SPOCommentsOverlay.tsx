@@ -13,6 +13,7 @@ interface Comment {
   body: string;
   hidden_by_mod: boolean;
   deleted_by_owner: boolean;
+  deleted_by_mod: boolean;
   created_at: string;
   updated_at: string | null;
   author_handle?: string;
@@ -21,6 +22,12 @@ interface Comment {
   like_count?: number;
   liked_by_me?: boolean;
 }
+
+const isDeletedComment = (comment: Comment): boolean =>
+  comment.deleted_by_owner || comment.deleted_by_mod;
+
+const deletedCommentLabel = (comment: Comment): string =>
+  comment.deleted_by_mod ? '[deleted by moderator]' : '[deleted]';
 
 interface SPOCommentsOverlayProps {
   postId: number;
@@ -88,7 +95,7 @@ export default function SPOCommentsOverlay({
         const items = (data.items || []).filter((comment: Comment) => {
           if (!comment || typeof comment.id === 'undefined') return false;
           if (typeof comment.depth !== 'number' || comment.depth > 2) return false;
-          if (!comment.body && !comment.deleted_by_owner) return false;
+          if (!comment.body && !isDeletedComment(comment)) return false;
           return true;
         });
         setComments(items);
@@ -162,7 +169,7 @@ export default function SPOCommentsOverlay({
   };
 
   const canDeleteComment = useCallback((comment: Comment): boolean => {
-    if (comment.deleted_by_owner) return false;
+    if (isDeletedComment(comment)) return false;
     // Moderators can delete any comment
     if (isModerator) return true;
     // Anonymous user can delete their own guest comments
@@ -197,17 +204,18 @@ export default function SPOCommentsOverlay({
     const hasReplies = replies.length > 0;
     
     // Filter out deleted comments only if they have no replies
-    if (comment.deleted_by_owner && !hasReplies) {
+    if (isDeletedComment(comment) && !hasReplies) {
       return null;
     }
 
+    const isDeleted = isDeletedComment(comment);
     const isDeletedUser = !comment.author_id && !comment.author_ip;
-    const authorName = comment.deleted_by_owner
-      ? '[deleted]'
+    const authorName = isDeleted
+      ? deletedCommentLabel(comment)
       : isDeletedUser
         ? '[deleted user]'
         : (comment.author_display_name || comment.author_handle || 'Anonymous');
-    const isGuest = !comment.deleted_by_owner && !isDeletedUser && !comment.author_id && comment.author_ip !== null;
+    const isGuest = !isDeleted && !isDeletedUser && !comment.author_id && comment.author_ip !== null;
     const canReply = depth < 2; // Only allow replies up to 2 levels deep (0, 1)
 
     return (
@@ -234,7 +242,7 @@ export default function SPOCommentsOverlay({
             fontSize: 16,
             overflow: 'hidden',
           }}>
-            {comment.deleted_by_owner ? (
+            {isDeleted ? (
               '🗑️'
             ) : isGuest ? (
               '👤'
@@ -267,7 +275,7 @@ export default function SPOCommentsOverlay({
               }}>
                 {authorName}
               </span>
-              {isGuest && !comment.deleted_by_owner && (
+              {isGuest && !isDeleted && (
                 <span style={{ fontSize: 11, color: '#6a6a80', fontStyle: 'italic', marginRight: 8 }}>guest</span>
               )}
               <span style={{ fontSize: 11, color: '#6a6a80', marginLeft: 'auto' }}>
@@ -277,13 +285,13 @@ export default function SPOCommentsOverlay({
             <div style={{
               fontSize: 13,
               lineHeight: 1.5,
-              color: comment.deleted_by_owner ? '#6a6a80' : '#a0a0b8',
+              color: isDeleted ? '#6a6a80' : '#a0a0b8',
               marginBottom: 6,
               wordWrap: 'break-word',
             }}>
-              {comment.deleted_by_owner ? '[deleted]' : comment.body}
+              {isDeleted ? deletedCommentLabel(comment) : comment.body}
             </div>
-            {!comment.deleted_by_owner && (
+            {!isDeleted && (
               <div style={{ display: 'flex', alignItems: 'center' }}>
                 {currentUserId && (
                   <button
