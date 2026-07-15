@@ -54,6 +54,28 @@ services:
       - internal
 
   # ---------------------------------------------------------------------------
+  # Broker (Redis) - Celery broker + result backend ONLY.
+  # Must be a SEPARATE instance from `cache`: Celery's Redis transport requires
+  # noeviction, but `cache` runs allkeys-lru for the app cache. Sharing one
+  # instance means memory pressure silently evicts queued tasks (notifications,
+  # rollups, account deletion) with no error. Kept small; result rows expire via
+  # Celery's result_expires + backend_cleanup.
+  # ---------------------------------------------------------------------------
+  broker:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy noeviction --appendonly yes
+    volumes:
+      - broker_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - internal
+
+  # ---------------------------------------------------------------------------
   # MQTT Broker (Mosquitto)
   # ---------------------------------------------------------------------------
   mqtt:
@@ -95,8 +117,8 @@ services:
     environment:
       PYTHONPATH: /workspace/api
       DATABASE_URL: postgresql://${DB_API_WORKER_USER}:${DB_API_WORKER_PASSWORD}@db:5432/${DB_DATABASE}
-      CELERY_BROKER_URL: redis://cache:6379/0
-      CELERY_RESULT_BACKEND: redis://cache:6379/0
+      CELERY_BROKER_URL: redis://broker:6379/0
+      CELERY_RESULT_BACKEND: redis://broker:6379/0
       REDIS_URL: redis://cache:6379/1
       MQTT_CA_FILE: /certs/ca.crt
       MQTT_CA_KEY_FILE: /certs/ca.key
@@ -121,6 +143,8 @@ services:
       db:
         condition: service_healthy
       cache:
+        condition: service_healthy
+      broker:
         condition: service_healthy
       mqtt:
         condition: service_started
@@ -149,8 +173,8 @@ services:
     environment:
       PYTHONPATH: /workspace/api
       DATABASE_URL: postgresql://${DB_API_WORKER_USER}:${DB_API_WORKER_PASSWORD}@db:5432/${DB_DATABASE}
-      CELERY_BROKER_URL: redis://cache:6379/0
-      CELERY_RESULT_BACKEND: redis://cache:6379/0
+      CELERY_BROKER_URL: redis://broker:6379/0
+      CELERY_RESULT_BACKEND: redis://broker:6379/0
       MQTT_CA_FILE: /certs/ca.crt
       MQTT_CA_KEY_FILE: /certs/ca.key
       MQTT_CRL_FILE: /certs/crl.pem
@@ -167,6 +191,8 @@ services:
       - /var/log/caddy:/var/log/caddy:ro
     depends_on:
       cache:
+        condition: service_healthy
+      broker:
         condition: service_healthy
       db:
         condition: service_healthy
@@ -314,6 +340,7 @@ networks:
 
 volumes:
   cache_data:
+  broker_data:
   api_pip_cache:
   caddy_data:
     external: true
