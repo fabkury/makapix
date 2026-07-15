@@ -113,9 +113,11 @@ def check_user_can_authenticate(user: "models.User") -> None:
             detail="Account deactivated",
         )
 
-    if user.banned_until and user.banned_until > datetime.now(timezone.utc).replace(
-        tzinfo=None
-    ):
+    # Compare as timezone-aware UTC. The previous naive comparison raised
+    # TypeError (-> 500 on every request) whenever banned_until was tz-aware,
+    # and the permanent-ban sentinel (a far-future datetime) is enforced here
+    # naturally because it is always > now.
+    if user.banned_until is not None and _as_utc_aware(user.banned_until) > _utcnow():
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Account banned",

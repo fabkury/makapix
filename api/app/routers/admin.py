@@ -48,7 +48,7 @@ def ban_user(
     Banning a user prevents them from authenticating but does NOT delete their account.
     The user profile and all associated data remain in the database indefinitely.
 
-    - No duration (None/0) = permanent ban (banned_until = None)
+    - No duration (None/0) = permanent ban (banned_until = PERMANENT_BAN_UNTIL)
     - With duration = temporary ban (banned_until = current_time + duration_days)
 
     Note: There is no automatic cleanup of banned user profiles. To completely remove
@@ -73,9 +73,11 @@ def ban_user(
             detail="Cannot manage the site owner",
         )
 
-    until = None
+    # Permanent ban uses the sentinel (NOT NULL, which would read as "not banned").
     if payload.duration_days:
         until = datetime.now(timezone.utc) + timedelta(days=payload.duration_days)
+    else:
+        until = models.PERMANENT_BAN_UNTIL
 
     user.banned_until = until
     db.commit()
