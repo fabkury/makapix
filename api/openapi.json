@@ -1835,17 +1835,6 @@
             ],
             "title": "Author Id"
           },
-          "author_ip": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Author Ip"
-          },
           "author_public_sqid": {
             "anyOf": [
               {
@@ -2640,37 +2629,6 @@
           }
         },
         "title": "HTTPValidationError",
-        "type": "object"
-      },
-      "HashUrlRequest": {
-        "description": "Hash URL task request.",
-        "properties": {
-          "url": {
-            "format": "uri",
-            "maxLength": 2083,
-            "minLength": 1,
-            "title": "Url",
-            "type": "string"
-          }
-        },
-        "required": [
-          "url"
-        ],
-        "title": "HashUrlRequest",
-        "type": "object"
-      },
-      "HashUrlResponse": {
-        "description": "Hash URL task response.",
-        "properties": {
-          "task_id": {
-            "title": "Task Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "task_id"
-        ],
-        "title": "HashUrlResponse",
         "type": "object"
       },
       "HashtagItem": {
@@ -9583,7 +9541,7 @@
         ]
       },
       "post": {
-        "description": "Ban user (moderator only).\n\nBanning a user prevents them from authenticating but does NOT delete their account.\nThe user profile and all associated data remain in the database.\n\n- No duration (None) = permanent ban (banned_until = None)\n- With duration = temporary ban (banned_until = current_time + duration_days)\n\nNote: There is no automatic cleanup of banned user profiles. They remain in the\ndatabase indefinitely unless manually deleted by an administrator.",
+        "description": "Ban user (moderator only).\n\nBanning a user prevents them from authenticating but does NOT delete their account.\nThe user profile and all associated data remain in the database.\n\n- No duration (None) = permanent ban (banned_until = PERMANENT_BAN_UNTIL)\n- With duration = temporary ban (banned_until = current_time + duration_days)\n\nNote: There is no automatic cleanup of banned user profiles. They remain in the\ndatabase indefinitely unless manually deleted by an administrator.",
         "operationId": "ban_user_admin_user__sqid__ban_post",
         "parameters": [
           {
@@ -11469,48 +11427,6 @@
         ]
       }
     },
-    "/tasks/hash-url": {
-      "post": {
-        "description": "Queue URL hashing task (legacy demo endpoint).\n\nTODO: Remove in production or move to /admin/tasks",
-        "operationId": "enqueue_hash_url_tasks_hash_url_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/HashUrlRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HashUrlResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Enqueue Hash Url",
-        "tags": [
-          "Legacy"
-        ]
-      }
-    },
     "/u/{sqid}/player": {
       "get": {
         "description": "List all players for a user.",
@@ -13211,7 +13127,7 @@
         ]
       },
       "post": {
-        "description": "Ban user (moderator only).\n\nBanning a user prevents them from authenticating but does NOT delete their account.\nThe user profile and all associated data remain in the database indefinitely.\n\n- No duration (None/0) = permanent ban (banned_until = None)\n- With duration = temporary ban (banned_until = current_time + duration_days)\n\nNote: There is no automatic cleanup of banned user profiles. To completely remove\na user's data, a separate deletion process would need to be implemented.\n\nTODO: Send notification to user (currently not implemented)\nTODO: Hide all user's content (currently content visibility depends on other flags)",
+        "description": "Ban user (moderator only).\n\nBanning a user prevents them from authenticating but does NOT delete their account.\nThe user profile and all associated data remain in the database indefinitely.\n\n- No duration (None/0) = permanent ban (banned_until = PERMANENT_BAN_UNTIL)\n- With duration = temporary ban (banned_until = current_time + duration_days)\n\nNote: There is no automatic cleanup of banned user profiles. To completely remove\na user's data, a separate deletion process would need to be implemented.\n\nTODO: Send notification to user (currently not implemented)\nTODO: Hide all user's content (currently content visibility depends on other flags)",
         "operationId": "ban_user_v1_admin_user__id__ban_post",
         "parameters": [
           {

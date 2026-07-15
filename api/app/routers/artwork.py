@@ -181,10 +181,9 @@ def download_mkpx_by_sqid(
         path=str(file_path),
         media_type=MKPX_MIME,
         filename=filename,
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "Cache-Control": "no-store",
-        },
+        # FileResponse(filename=...) already emits an RFC-5987-encoded
+        # Content-Disposition; a hand-built header 500s on non-Latin-1 titles.
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -272,8 +271,9 @@ def download_by_sqid_format(
     return FileResponse(
         path=str(file_path),
         media_type=media_type,
+        # FileResponse(filename=...) RFC-5987-encodes Content-Disposition; a
+        # hand-built header 500s on non-Latin-1 (emoji/CJK) titles.
         filename=filename,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -340,8 +340,9 @@ def download_by_sqid(
     return FileResponse(
         path=str(file_path),
         media_type=media_type,
+        # FileResponse(filename=...) RFC-5987-encodes Content-Disposition; a
+        # hand-built header 500s on non-Latin-1 (emoji/CJK) titles.
         filename=filename,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -404,8 +405,9 @@ def download_upscaled_by_sqid(
     return FileResponse(
         path=str(file_path),
         media_type="image/webp",
+        # FileResponse(filename=...) RFC-5987-encodes Content-Disposition; a
+        # hand-built header 500s on non-Latin-1 (emoji/CJK) titles.
         filename=filename,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -457,8 +459,9 @@ def download_by_storage_key(
     return FileResponse(
         path=str(file_path),
         media_type=media_type,
+        # FileResponse(filename=...) RFC-5987-encodes Content-Disposition; a
+        # hand-built header 500s on non-Latin-1 (emoji/CJK) titles.
         filename=filename,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

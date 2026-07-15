@@ -40,7 +40,12 @@ user webclient
 topic read makapix/post/new/user/#
 topic read makapix/post/new/category/#
 topic read makapix/social-notifications/#
-topic read $SYS/#
 
-# Default: deny all (this should be last)
-topic read #
+# NOTE: mosquitto denies by default — any topic not granted above is already
+# refused. The previous "topic read #" line here (mislabelled "deny all") in
+# fact GRANTED this shared, browser-shipped account read access to EVERY topic,
+# including all physical-player command/status/RPC traffic. Do not reintroduce
+# a wildcard grant. The remaining social-notifications/# grant is a known
+# cross-user exposure of a shared credential and is tracked for migration to
+# the authenticated SSE stream (appraisal S1); a shared password cannot scope
+# social-notifications/user/{id} per user.

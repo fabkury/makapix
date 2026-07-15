@@ -546,7 +546,10 @@ class Comment(BaseModel):
     id: UUID
     post_id: int  # Changed from UUID to int (FK to posts.id)
     author_id: int | None = None  # None for anonymous comments (FK to users.id)
-    author_ip: str | None = None  # For anonymous users (visible to moderators)
+    # Anonymous commenter IP: populated from the ORM to derive the Guest_xxxxxx
+    # handle below, but excluded from serialization so it never leaks to the
+    # public comment list / widget. Moderators read raw IPs via the admin pulse.
+    author_ip: str | None = Field(default=None, exclude=True)
     parent_id: UUID | None = None
     depth: int = Field(..., ge=0, le=2)
     body: str
