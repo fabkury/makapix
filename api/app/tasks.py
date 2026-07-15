@@ -2607,39 +2607,55 @@ def cleanup_deleted_posts(self) -> dict[str, Any]:
         errors = []
 
         for post in posts_to_delete:
+            post_id = post.id
             try:
-                # Delete all artwork format variants + upscaled version
-                if post.storage_key:
-                    try:
-                        formats_to_delete = [pf.format for pf in post.files] or []
-                        vault.delete_all_artwork_formats(
-                            post.storage_key,
-                            formats_to_delete,
-                            storage_shard=post.storage_shard,
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            f"Failed to delete vault files for post {post.id}: {e}"
-                        )
+                # Capture storage info BEFORE deleting the row — we remove files
+                # only AFTER the DB delete is committed, so a failed delete can
+                # never leave a surviving row whose artwork files are gone.
+                storage_key = post.storage_key
+                storage_shard = post.storage_shard
+                formats_to_delete = [pf.format for pf in post.files] or []
+                has_mkpx = post.mkpx_file_bytes is not None
 
-                    # Attached .mkpx layers file, if any (best-effort)
-                    if post.mkpx_file_bytes is not None:
-                        vault.delete_mkpx_from_vault(
-                            post.storage_key, post.storage_shard
-                        )
+                # players.current_post_id is a NO ACTION FK, so a player still
+                # showing this post would raise and (with the old batched commit)
+                # roll back the whole uncommitted batch, orphaning files that
+                # were already unlinked. Null it first.
+                db.query(models.Player).filter(
+                    models.Player.current_post_id == post_id
+                ).update(
+                    {models.Player.current_post_id: None}, synchronize_session=False
+                )
 
-                # Delete the post (cascades to comments, reactions, admin_notes, etc.)
+                # Delete the row and commit per post (cascades to comments,
+                # reactions, admin_notes, ...). Per-post commits keep each
+                # deletion atomic with respect to its file removal.
                 db.delete(post)
+                db.commit()
                 deleted_count += 1
 
-                # Commit in batches of 100 to avoid large transactions
+                # Now remove vault files (best-effort — an orphan here is
+                # harmless and self-heals, unlike a broken row).
+                if storage_key:
+                    try:
+                        vault.delete_all_artwork_formats(
+                            storage_key,
+                            formats_to_delete,
+                            storage_shard=storage_shard,
+                        )
+                        if has_mkpx:
+                            vault.delete_mkpx_from_vault(storage_key, storage_shard)
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to delete vault files for deleted post {post_id}: {e}"
+                        )
+
                 if deleted_count % 100 == 0:
-                    db.commit()
                     logger.info(f"Deleted {deleted_count} posts so far...")
 
             except Exception as e:
-                logger.error(f"Error deleting post {post.id}: {e}")
-                errors.append({"post_id": post.id, "error": str(e)})
+                logger.error(f"Error deleting post {post_id}: {e}")
+                errors.append({"post_id": post_id, "error": str(e)})
                 db.rollback()
                 continue
 
