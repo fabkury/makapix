@@ -382,13 +382,17 @@ celery_app.conf.update(
         # low-traffic window so they don't pile onto the worker (concurrency=2)
         # at once.
         #
-        # Ordering is load-bearing for the view/site-event pipeline:
-        # rollup_view_events aggregates raw view events into post_stats_daily and
-        # then deletes the non-player ones; cleanup_old_view_events is a
-        # safety-net that also deletes non-player events, so it MUST run after the
-        # rollup, never before, or it would delete events before they're rolled
-        # up. rollup_site_events consumes the surviving player view events, so it
-        # sits between them.
+        # Ordering for the view/site-event pipeline: rollup_view_events
+        # aggregates raw view events into post_stats_daily and then deletes the
+        # non-player ones it rolled up (same cutoff, one transaction), so a
+        # failed rollup leaves its events intact for the next run to pick up.
+        # rollup_site_events consumes the surviving player view events, so it
+        # runs after. There is deliberately NO separate cleanup task: a second
+        # task with its own `now - 7d` cutoff deleted the ~90-minute band of
+        # events that were not yet 7 days old at rollup time but were by cleanup
+        # time — permanent, un-rolled-up loss — and it also deleted everything
+        # when the rollup failed. The same race already forced the removal of
+        # cleanup-old-site-events (below).
         "rollup-view-events": {
             "task": "app.tasks.rollup_view_events",
             "schedule": crontab(minute=0, hour=1),  # 01:00 ET
@@ -404,14 +408,10 @@ celery_app.conf.update(
             "schedule": crontab(minute=0, hour=2),  # 02:00 ET (after view rollup)
             "options": {"queue": "default"},
         },
-        # NOTE: cleanup-old-site-events removed — it raced with rollup-site-events,
-        # deleting raw events before they could be aggregated into site_stats_daily.
-        # The rollup task already handles deletion after aggregation.
-        "cleanup-old-view-events": {
-            "task": "app.tasks.cleanup_old_view_events",
-            "schedule": crontab(minute=30, hour=2),  # 02:30 ET (after the rollups)
-            "options": {"queue": "default"},
-        },
+        # NOTE: cleanup-old-site-events AND cleanup-old-view-events were both
+        # removed — each raced its rollup with an independent cutoff and deleted
+        # raw events before (or instead of) aggregating them. The rollups own
+        # deletion, after aggregation, in the same transaction.
         "rollup-download-stats": {
             "task": "app.tasks.rollup_download_stats",
             # 03:00 ET. 3 AM ET == 07:00 UTC (EDT) / 08:00 UTC (EST), both safely
@@ -1402,7 +1402,7 @@ def rollup_view_events(self) -> dict[str, Any]:
                 existing.unique_viewers += len(agg["unique_viewer_keys"])
 
                 # Merge country data
-                existing_countries = existing.views_by_country or {}
+                existing_countries = dict(existing.views_by_country or {})
                 for country, count in agg["views_by_country"].items():
                     existing_countries[country] = (
                         existing_countries.get(country, 0) + count
@@ -1410,13 +1410,13 @@ def rollup_view_events(self) -> dict[str, Any]:
                 existing.views_by_country = existing_countries
 
                 # Merge device data
-                existing_devices = existing.views_by_device or {}
+                existing_devices = dict(existing.views_by_device or {})
                 for device, count in agg["views_by_device"].items():
                     existing_devices[device] = existing_devices.get(device, 0) + count
                 existing.views_by_device = existing_devices
 
                 # Merge type data
-                existing_types = existing.views_by_type or {}
+                existing_types = dict(existing.views_by_type or {})
                 for vtype, count in agg["views_by_type"].items():
                     existing_types[vtype] = existing_types.get(vtype, 0) + count
                 existing.views_by_type = existing_types
@@ -1427,21 +1427,25 @@ def rollup_view_events(self) -> dict[str, Any]:
                     agg["authenticated_unique_viewer_keys"]
                 )
 
-                existing_countries_auth = existing.views_by_country_authenticated or {}
+                existing_countries_auth = dict(
+                    existing.views_by_country_authenticated or {}
+                )
                 for country, count in agg["views_by_country_authenticated"].items():
                     existing_countries_auth[country] = (
                         existing_countries_auth.get(country, 0) + count
                     )
                 existing.views_by_country_authenticated = existing_countries_auth
 
-                existing_devices_auth = existing.views_by_device_authenticated or {}
+                existing_devices_auth = dict(
+                    existing.views_by_device_authenticated or {}
+                )
                 for device, count in agg["views_by_device_authenticated"].items():
                     existing_devices_auth[device] = (
                         existing_devices_auth.get(device, 0) + count
                     )
                 existing.views_by_device_authenticated = existing_devices_auth
 
-                existing_types_auth = existing.views_by_type_authenticated or {}
+                existing_types_auth = dict(existing.views_by_type_authenticated or {})
                 for vtype, count in agg["views_by_type_authenticated"].items():
                     existing_types_auth[vtype] = (
                         existing_types_auth.get(vtype, 0) + count
@@ -1492,10 +1496,14 @@ def rollup_view_events(self) -> dict[str, Any]:
         )
         return {"status": "success", "rolled_up": rolled_up, "deleted": deleted_count}
 
-    except Exception as e:
-        logger.error(f"Error in rollup_view_events task: {e}", exc_info=True)
+    except Exception:
+        # Raise (not a success-shaped error dict) so Celery records a real
+        # failure and alerting fires. The rolled-up events are only deleted in
+        # the same transaction as the aggregation, so a failure here leaves the
+        # raw events intact for the next run — no data loss, no double count.
+        logger.error("Error in rollup_view_events task", exc_info=True)
         db.rollback()
-        return {"status": "error", "message": str(e)}
+        raise
     finally:
         db.close()
 
@@ -1589,7 +1597,7 @@ def rollup_blog_post_view_events(self) -> dict[str, Any]:
                 existing.unique_viewers += len(agg["unique_ip_hashes"])
 
                 # Merge country data
-                existing_countries = existing.views_by_country or {}
+                existing_countries = dict(existing.views_by_country or {})
                 for country, count in agg["views_by_country"].items():
                     existing_countries[country] = (
                         existing_countries.get(country, 0) + count
@@ -1597,13 +1605,13 @@ def rollup_blog_post_view_events(self) -> dict[str, Any]:
                 existing.views_by_country = existing_countries
 
                 # Merge device data
-                existing_devices = existing.views_by_device or {}
+                existing_devices = dict(existing.views_by_device or {})
                 for device, count in agg["views_by_device"].items():
                     existing_devices[device] = existing_devices.get(device, 0) + count
                 existing.views_by_device = existing_devices
 
                 # Merge type data
-                existing_types = existing.views_by_type or {}
+                existing_types = dict(existing.views_by_type or {})
                 for vtype, count in agg["views_by_type"].items():
                     existing_types[vtype] = existing_types.get(vtype, 0) + count
                 existing.views_by_type = existing_types
@@ -1949,35 +1957,35 @@ def rollup_site_events(self) -> dict[str, Any]:
                 existing.total_errors += agg["total_errors"]
 
                 # Merge JSON fields
-                existing_views_by_page = existing.views_by_page or {}
+                existing_views_by_page = dict(existing.views_by_page or {})
                 for page, count in agg["views_by_page"].items():
                     existing_views_by_page[page] = (
                         existing_views_by_page.get(page, 0) + count
                     )
                 existing.views_by_page = existing_views_by_page
 
-                existing_views_by_country = existing.views_by_country or {}
+                existing_views_by_country = dict(existing.views_by_country or {})
                 for country, count in agg["views_by_country"].items():
                     existing_views_by_country[country] = (
                         existing_views_by_country.get(country, 0) + count
                     )
                 existing.views_by_country = existing_views_by_country
 
-                existing_views_by_device = existing.views_by_device or {}
+                existing_views_by_device = dict(existing.views_by_device or {})
                 for device, count in agg["views_by_device"].items():
                     existing_views_by_device[device] = (
                         existing_views_by_device.get(device, 0) + count
                     )
                 existing.views_by_device = existing_views_by_device
 
-                existing_errors_by_type = existing.errors_by_type or {}
+                existing_errors_by_type = dict(existing.errors_by_type or {})
                 for error_type, count in agg["errors_by_type"].items():
                     existing_errors_by_type[error_type] = (
                         existing_errors_by_type.get(error_type, 0) + count
                     )
                 existing.errors_by_type = existing_errors_by_type
 
-                existing_top_referrers = existing.top_referrers or {}
+                existing_top_referrers = dict(existing.top_referrers or {})
                 for referrer, count in agg["top_referrers"].items():
                     existing_top_referrers[referrer] = (
                         existing_top_referrers.get(referrer, 0) + count
@@ -1990,14 +1998,16 @@ def rollup_site_events(self) -> dict[str, Any]:
                     agg["authenticated_unique_visitor_keys"]
                 )
 
-                existing_auth_views_by_page = existing.authenticated_views_by_page or {}
+                existing_auth_views_by_page = dict(
+                    existing.authenticated_views_by_page or {}
+                )
                 for page, count in agg["authenticated_views_by_page"].items():
                     existing_auth_views_by_page[page] = (
                         existing_auth_views_by_page.get(page, 0) + count
                     )
                 existing.authenticated_views_by_page = existing_auth_views_by_page
 
-                existing_auth_views_by_country = (
+                existing_auth_views_by_country = dict(
                     existing.authenticated_views_by_country or {}
                 )
                 for country, count in agg["authenticated_views_by_country"].items():
@@ -2006,7 +2016,7 @@ def rollup_site_events(self) -> dict[str, Any]:
                     )
                 existing.authenticated_views_by_country = existing_auth_views_by_country
 
-                existing_auth_views_by_device = (
+                existing_auth_views_by_device = dict(
                     existing.authenticated_views_by_device or {}
                 )
                 for device, count in agg["authenticated_views_by_device"].items():
@@ -2015,7 +2025,9 @@ def rollup_site_events(self) -> dict[str, Any]:
                     )
                 existing.authenticated_views_by_device = existing_auth_views_by_device
 
-                existing_auth_top_referrers = existing.authenticated_top_referrers or {}
+                existing_auth_top_referrers = dict(
+                    existing.authenticated_top_referrers or {}
+                )
                 for referrer, count in agg["authenticated_top_referrers"].items():
                     existing_auth_top_referrers[referrer] = (
                         existing_auth_top_referrers.get(referrer, 0) + count
@@ -2028,7 +2040,7 @@ def rollup_site_events(self) -> dict[str, Any]:
                     existing.total_player_views += pagg["total_player_views"]
                     existing.active_players += len(pagg["player_ids"])
 
-                    existing_views_by_player = existing.views_by_player or {}
+                    existing_views_by_player = dict(existing.views_by_player or {})
                     for player_name, count in pagg["views_by_player"].items():
                         existing_views_by_player[player_name] = (
                             existing_views_by_player.get(player_name, 0) + count
@@ -2107,10 +2119,12 @@ def rollup_site_events(self) -> dict[str, Any]:
             "deleted_player_views": deleted_player_views,
         }
 
-    except Exception as e:
-        logger.error(f"Error in rollup_site_events task: {e}", exc_info=True)
+    except Exception:
+        # Raise so a failed rollup is a visible Celery failure, not a
+        # success-shaped error dict; surviving raw events roll up next run.
+        logger.error("Error in rollup_site_events task", exc_info=True)
         db.rollback()
-        return {"status": "error", "message": str(e)}
+        raise
     finally:
         db.close()
 
@@ -2159,12 +2173,13 @@ def cleanup_old_site_events(self) -> dict[str, Any]:
 @celery_app.task(name="app.tasks.cleanup_old_view_events", bind=True)
 def cleanup_old_view_events(self) -> dict[str, Any]:
     """
-    Daily task: Clean up view events older than 7 days.
+    Manual-only cleanup of non-player view events older than 7 days.
 
-    This is a safety net - rollup_view_events should delete events after rolling them up,
-    but this ensures any stragglers are cleaned up if the rollup fails partway through.
-
-    Runs daily at 02:30 US Eastern, after the rollups (configured in beat_schedule).
+    NOT scheduled: as a nightly beat task with its own `now - 7d` cutoff it
+    deleted the band of events not yet 7 days old at rollup time (permanent,
+    un-rolled-up loss) and deleted everything when the rollup failed. The
+    rollups own deletion, after aggregation, in the same transaction. Kept only
+    as an operator tool for clearing confirmed post-rollup stragglers by hand.
     """
     from datetime import datetime, timedelta, timezone
     from . import models
