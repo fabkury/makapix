@@ -1,7 +1,15 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
-import { Player, listPlayers, authenticatedFetch } from '../lib/api';
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  ReactNode,
+} from "react";
+import { Player, listPlayers, authenticatedFetch } from "../lib/api";
 
-export type PendingField = 'is_paused' | 'brightness' | 'rotation' | 'mirror';
+export type PendingField = "is_paused" | "brightness" | "rotation" | "mirror";
 
 export interface PendingPatch {
   is_paused?: boolean;
@@ -19,10 +27,10 @@ export interface SelectedArtwork {
 
 export interface ChannelInfo {
   displayName: string;
-  channelName?: string;  // 'promoted', 'all', 'by_user', or 'reactions'
-  hashtag?: string;      // hashtag without #
-  userSqid?: string;     // user's sqid (for by_user / reactions channels)
-  userHandle?: string;   // user's handle (for by_user / reactions channels)
+  channelName?: string; // 'promoted', 'all', 'by_user', or 'reactions'
+  hashtag?: string; // hashtag without #
+  userSqid?: string; // user's sqid (for by_user / reactions channels)
+  userHandle?: string; // user's handle (for by_user / reactions channels)
 }
 
 interface PlayerBarContextValue {
@@ -46,7 +54,11 @@ interface PlayerBarContextValue {
    * error / timeout.
    */
   pendingPatches: Record<string, PendingPatch>;
-  setPendingPatch: (playerId: string, field: PendingField, value: unknown) => void;
+  setPendingPatch: (
+    playerId: string,
+    field: PendingField,
+    value: unknown,
+  ) => void;
   clearPendingPatch: (playerId: string, field: PendingField) => void;
 }
 
@@ -59,11 +71,18 @@ interface PlayerBarProviderProps {
 export function PlayerBarProvider({ children }: PlayerBarProviderProps) {
   const [players, setPlayers] = useState<Player[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedArtwork, setSelectedArtwork] = useState<SelectedArtwork | null>(null);
-  const [currentChannel, setCurrentChannel] = useState<ChannelInfo | null>(null);
+  const [selectedArtwork, setSelectedArtwork] =
+    useState<SelectedArtwork | null>(null);
+  const [currentChannel, setCurrentChannel] = useState<ChannelInfo | null>(
+    null,
+  );
   const [userSqid, setUserSqid] = useState<string | null>(null);
-  const [activePlayerId, setActivePlayerIdState] = useState<string | null>(null);
-  const [pendingPatches, setPendingPatches] = useState<Record<string, PendingPatch>>({});
+  const [activePlayerId, setActivePlayerIdState] = useState<string | null>(
+    null,
+  );
+  const [pendingPatches, setPendingPatches] = useState<
+    Record<string, PendingPatch>
+  >({});
   const sseRef = useRef<EventSource | null>(null);
 
   // Fetch user info and then players
@@ -80,16 +99,16 @@ export function PlayerBarProvider({ children }: PlayerBarProviderProps) {
 
   // Initialize: get user sqid and fetch players
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
 
-    const token = localStorage.getItem('access_token');
+    const token = localStorage.getItem("access_token");
     if (!token) {
       setIsLoading(false);
       return;
     }
 
     // Check if we already have sqid in localStorage (fast path)
-    const storedSqid = localStorage.getItem('public_sqid');
+    const storedSqid = localStorage.getItem("public_sqid");
     if (storedSqid) {
       setUserSqid(storedSqid);
       fetchPlayersForUser(storedSqid);
@@ -97,16 +116,16 @@ export function PlayerBarProvider({ children }: PlayerBarProviderProps) {
     }
 
     // Fallback: fetch user info from API to get sqid
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "";
     authenticatedFetch(`${apiBaseUrl}/api/auth/me`)
-      .then(res => {
+      .then((res) => {
         if (!res.ok) {
           setIsLoading(false);
           return null;
         }
         return res.json();
       })
-      .then(data => {
+      .then((data) => {
         if (data?.user?.public_sqid) {
           setUserSqid(data.user.public_sqid);
           fetchPlayersForUser(data.user.public_sqid);
@@ -121,24 +140,26 @@ export function PlayerBarProvider({ children }: PlayerBarProviderProps) {
 
   // Public refresh function
   const refreshPlayers = useCallback(async () => {
-    const sqid = userSqid || localStorage.getItem('public_sqid');
+    const sqid = userSqid || localStorage.getItem("public_sqid");
     if (sqid) {
       await fetchPlayersForUser(sqid);
     }
   }, [userSqid, fetchPlayersForUser]);
 
-  const onlinePlayers = players.filter((p) => p.connection_status === 'online');
+  const onlinePlayers = players.filter((p) => p.connection_status === "online");
   const hasOnlinePlayer = onlinePlayers.length > 0;
 
   // Restore preferred active player from localStorage when the user changes.
   // Keying by sqid keeps each account's last pick separate on shared browsers.
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     if (!userSqid) {
       setActivePlayerIdState(null);
       return;
     }
-    const saved = localStorage.getItem(`player_bar.active_player_id.${userSqid}`);
+    const saved = localStorage.getItem(
+      `player_bar.active_player_id.${userSqid}`,
+    );
     setActivePlayerIdState(saved);
   }, [userSqid]);
 
@@ -155,20 +176,23 @@ export function PlayerBarProvider({ children }: PlayerBarProviderProps) {
       if (activePlayerId !== null) setActivePlayerIdState(null);
       return;
     }
-    const stillOnline = activePlayerId &&
-      onlinePlayers.some((p) => p.id === activePlayerId);
+    const stillOnline =
+      activePlayerId && onlinePlayers.some((p) => p.id === activePlayerId);
     if (!stillOnline) {
       setActivePlayerIdState(onlinePlayers[0].id);
     }
   }, [onlinePlayers, activePlayerId, isLoading]);
 
-  const setActivePlayerId = useCallback((id: string | null) => {
-    setActivePlayerIdState(id);
-    if (typeof window === 'undefined' || !userSqid) return;
-    const key = `player_bar.active_player_id.${userSqid}`;
-    if (id) localStorage.setItem(key, id);
-    else localStorage.removeItem(key);
-  }, [userSqid]);
+  const setActivePlayerId = useCallback(
+    (id: string | null) => {
+      setActivePlayerIdState(id);
+      if (typeof window === "undefined" || !userSqid) return;
+      const key = `player_bar.active_player_id.${userSqid}`;
+      if (id) localStorage.setItem(key, id);
+      else localStorage.removeItem(key);
+    },
+    [userSqid],
+  );
 
   const setPendingPatch = useCallback(
     (playerId: string, field: PendingField, value: unknown) => {
@@ -177,7 +201,7 @@ export function PlayerBarProvider({ children }: PlayerBarProviderProps) {
         [playerId]: { ...prev[playerId], [field]: value as never },
       }));
     },
-    []
+    [],
   );
 
   const clearPendingPatch = useCallback(
@@ -193,7 +217,7 @@ export function PlayerBarProvider({ children }: PlayerBarProviderProps) {
         return out;
       });
     },
-    []
+    [],
   );
 
   // Drop pending entries that the player has now confirmed via state.
@@ -217,57 +241,110 @@ export function PlayerBarProvider({ children }: PlayerBarProviderProps) {
         return out;
       });
     },
-    []
+    [],
   );
 
   // Live updates via SSE. Re-subscribes when sqid changes.
+  //
+  // Auth uses a single-use ticket fetched with the bearer token in a header
+  // (never in the URL, which would leak the 60-minute token into access logs).
+  // Because the ticket is consumed on first use, native EventSource
+  // auto-reconnect (which would replay the stale ticket forever) is disabled:
+  // on error we close and reconnect manually with a fresh ticket.
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     if (!userSqid) return;
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
 
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || '';
-    const url = `${apiBase}/api/u/${userSqid}/player/sse?token=${encodeURIComponent(token)}`;
-    const es = new EventSource(url);
-    sseRef.current = es;
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+    let cancelled = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
 
-    es.addEventListener('capabilities', (event) => {
-      try {
-        const data = JSON.parse((event as MessageEvent).data);
-        setPlayers((prev) =>
-          prev.map((p) =>
-            p.id === data.player_id
-              ? {
-                  ...p,
-                  capabilities: data.capabilities ?? null,
-                  firmware_version: data.firmware_version ?? p.firmware_version,
-                }
-              : p
-          )
-        );
-      } catch (e) { /* ignore */ }
-    });
+    const wireEvents = (es: EventSource) => {
+      es.addEventListener("capabilities", (event) => {
+        try {
+          const data = JSON.parse((event as MessageEvent).data);
+          setPlayers((prev) =>
+            prev.map((p) =>
+              p.id === data.player_id
+                ? {
+                    ...p,
+                    capabilities: data.capabilities ?? null,
+                    firmware_version:
+                      data.firmware_version ?? p.firmware_version,
+                  }
+                : p,
+            ),
+          );
+        } catch (e) {
+          /* ignore */
+        }
+      });
 
-    es.addEventListener('state', (event) => {
-      try {
-        const data = JSON.parse((event as MessageEvent).data);
-        const playerId: string = data.player_id;
-        const state: Partial<PendingPatch> = data.state ?? {};
-        setPlayers((prev) =>
-          prev.map((p) => (p.id === playerId ? { ...p, ...state } : p))
-        );
-        reconcilePendingFromState(playerId, state);
-      } catch (e) { /* ignore */ }
-    });
+      es.addEventListener("state", (event) => {
+        try {
+          const data = JSON.parse((event as MessageEvent).data);
+          const playerId: string = data.player_id;
+          const state: Partial<PendingPatch> = data.state ?? {};
+          setPlayers((prev) =>
+            prev.map((p) => (p.id === playerId ? { ...p, ...state } : p)),
+          );
+          reconcilePendingFromState(playerId, state);
+        } catch (e) {
+          /* ignore */
+        }
+      });
 
-    es.onerror = () => {
-      // EventSource auto-reconnects; nothing to do.
+      es.onopen = () => {
+        attempts = 0;
+      };
+
+      es.onerror = () => {
+        // Ticket is single-use, so let native reconnect stop and reconnect
+        // ourselves with a fresh ticket (capped backoff).
+        es.close();
+        if (sseRef.current === es) sseRef.current = null;
+        if (cancelled) return;
+        attempts += 1;
+        const delay = Math.min(30000, 1000 * 2 ** Math.min(attempts, 5));
+        reconnectTimer = setTimeout(connect, delay);
+      };
     };
 
+    const connect = async () => {
+      if (cancelled) return;
+      const token = localStorage.getItem("access_token");
+      if (!token) return;
+      try {
+        const resp = await fetch(
+          `${apiBase}/api/u/${userSqid}/player/sse-ticket`,
+          { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (!resp.ok || cancelled) return;
+        const { ticket } = await resp.json();
+        if (!ticket || cancelled) return;
+        const es = new EventSource(
+          `${apiBase}/api/u/${userSqid}/player/sse?ticket=${encodeURIComponent(ticket)}`,
+        );
+        sseRef.current = es;
+        wireEvents(es);
+      } catch (e) {
+        if (cancelled) return;
+        attempts += 1;
+        const delay = Math.min(30000, 1000 * 2 ** Math.min(attempts, 5));
+        reconnectTimer = setTimeout(connect, delay);
+      }
+    };
+
+    connect();
+
     return () => {
-      es.close();
-      sseRef.current = null;
+      cancelled = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (sseRef.current) {
+        sseRef.current.close();
+        sseRef.current = null;
+      }
     };
   }, [userSqid, reconcilePendingFromState]);
 
@@ -298,7 +375,7 @@ export function PlayerBarProvider({ children }: PlayerBarProviderProps) {
 export function usePlayerBar() {
   const context = useContext(PlayerBarContext);
   if (!context) {
-    throw new Error('usePlayerBar must be used within a PlayerBarProvider');
+    throw new Error("usePlayerBar must be used within a PlayerBarProvider");
   }
   return context;
 }
