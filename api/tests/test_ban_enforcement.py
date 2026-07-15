@@ -72,3 +72,19 @@ def test_permanent_ban_sentinel_is_far_future():
     assert models.PERMANENT_BAN_UNTIL > datetime.now(timezone.utc) + timedelta(
         days=365 * 100
     )
+
+
+def test_user_can_authenticate_boolean_matches_raising_check():
+    """The non-raising helper (used by MQTT player auth, S6) agrees with the
+    raising HTTP check."""
+    from app.auth import user_can_authenticate
+
+    assert user_can_authenticate(_user(banned_until=None)) is True
+    assert user_can_authenticate(_user(deactivated=True)) is False
+    assert (
+        user_can_authenticate(_user(banned_until=models.PERMANENT_BAN_UNTIL)) is False
+    )
+    future = datetime.now(timezone.utc) + timedelta(days=1)
+    assert user_can_authenticate(_user(banned_until=future)) is False
+    past = datetime.now(timezone.utc) - timedelta(days=1)
+    assert user_can_authenticate(_user(banned_until=past)) is True

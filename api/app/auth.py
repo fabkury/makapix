@@ -97,6 +97,27 @@ def _as_utc_aware(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
+def _auth_block_reason(user: "models.User") -> str | None:
+    """Return "deactivated"/"banned" if the user may not authenticate, else None.
+
+    Single source of truth for the eligibility rules, so the raising HTTP check
+    and the non-raising boolean (used off the request path, e.g. MQTT player
+    auth) can never diverge. Compares banned_until as tz-aware UTC and treats
+    the permanent-ban sentinel (a far-future datetime) as banned.
+    """
+    if user.deactivated:
+        return "deactivated"
+    if user.banned_until is not None and _as_utc_aware(user.banned_until) > _utcnow():
+        return "banned"
+    return None
+
+
+def user_can_authenticate(user: "models.User") -> bool:
+    """Non-raising eligibility check (for contexts without an HTTP response,
+    such as the MQTT player-auth path)."""
+    return _auth_block_reason(user) is None
+
+
 def check_user_can_authenticate(user: "models.User") -> None:
     """
     Check if a user is allowed to authenticate.
@@ -105,19 +126,14 @@ def check_user_can_authenticate(user: "models.User") -> None:
     This function should be called during login, token refresh, and any other
     authentication flow to ensure consistent authorization checks.
     """
-    from datetime import timezone
-
-    if user.deactivated:
+    reason = _auth_block_reason(user)
+    if reason == "deactivated":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Account deactivated",
         )
 
-    # Compare as timezone-aware UTC. The previous naive comparison raised
-    # TypeError (-> 500 on every request) whenever banned_until was tz-aware,
-    # and the permanent-ban sentinel (a far-future datetime) is enforced here
-    # naturally because it is always > now.
-    if user.banned_until is not None and _as_utc_aware(user.banned_until) > _utcnow():
+    if reason == "banned":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Account banned",

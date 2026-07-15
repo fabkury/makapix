@@ -178,6 +178,23 @@ class TestAuthentication:
         player = _authenticate_player(pending_player.player_key, db)
         assert player is None
 
+    def test_authenticate_rejects_banned_owner(self, test_player: Player, db: Session):
+        """S6: a player whose owner is banned must not authenticate over MQTT
+        (the HTTP path already refuses; the two must agree)."""
+        from app import models
+
+        test_player.owner.banned_until = models.PERMANENT_BAN_UNTIL
+        db.commit()
+        assert _authenticate_player(test_player.player_key, db) is None
+
+    def test_authenticate_rejects_deactivated_owner(
+        self, test_player: Player, db: Session
+    ):
+        """S6: a player whose owner deactivated must not authenticate over MQTT."""
+        test_player.owner.deactivated = True
+        db.commit()
+        assert _authenticate_player(test_player.player_key, db) is None
+
 
 class TestReactions:
     """Test reaction functionality."""
