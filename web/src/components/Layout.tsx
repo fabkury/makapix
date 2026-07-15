@@ -268,7 +268,11 @@ export default function Layout({ children, title, description }: LayoutProps) {
   // Listen for OAuth success message from popup
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      // Verify message origin for security (in production, check against your domain)
+      // Only trust OAuth results from our own origin. Without this, any page
+      // that opened this window could postMessage a forged OAUTH_SUCCESS with
+      // attacker-controlled tokens and silently log the victim into the
+      // attacker's account (login CSRF / session fixation).
+      if (event.origin !== window.location.origin) return;
       if (event.data && event.data.type === 'OAUTH_SUCCESS') {
         const { tokens, redirectUrl } = event.data;
         if (tokens) {
