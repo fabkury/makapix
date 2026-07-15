@@ -20,6 +20,7 @@ from ..auth import (
 from ..deps import get_db
 from ..errors import AppError, ErrorCode
 from ..services.social_notifications import SocialNotificationService
+from ..utils.visibility import get_accessible_post_or_404
 from .comment_likes import annotate_comments_with_likes
 
 router = APIRouter(prefix="/post", tags=["Reactions"])
@@ -40,6 +41,9 @@ def get_reactions(
 
     Uses SQL aggregation for efficiency instead of fetching all rows.
     """
+    viewer = current_user if isinstance(current_user, models.User) else None
+    get_accessible_post_or_404(db, id, viewer)
+
     # Aggregate counts by emoji with authenticated/anonymous breakdown
     # This is much more efficient than fetching all reaction rows
     aggregated = (
@@ -115,6 +119,8 @@ def get_reaction_users(
     Returns user details and emoji for each authenticated reaction.
     Anonymous reactions are excluded.
     """
+    get_accessible_post_or_404(db, id, current_user)
+
     query = (
         db.query(models.Reaction)
         .options(joinedload(models.Reaction.user))
@@ -175,15 +181,18 @@ def add_reaction(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid emoji format"
         )
 
+    # Enforce post visibility (and 404 a nonexistent id instead of a later FK
+    # 500): you cannot react to a post you cannot see.
+    viewer = current_user if isinstance(current_user, models.User) else None
+    target_post = get_accessible_post_or_404(db, id, viewer)
+
     # Interaction guard (docs/ugc-safety/ D11): a block in either direction
     # between the reactor and the post owner refuses the reaction. Anonymous
     # reactors have no identity to check (D16).
     if isinstance(current_user, models.User):
-        guard_post = db.query(models.Post).filter(models.Post.id == id).first()
-        if guard_post:
-            from ..utils.blocks import ensure_not_blocked
+        from ..utils.blocks import ensure_not_blocked
 
-            ensure_not_blocked(db, current_user.id, guard_post.owner_id)
+        ensure_not_blocked(db, current_user.id, target_post.owner_id)
 
     # Check if reaction already exists (idempotent)
     if isinstance(current_user, models.User):
@@ -253,16 +262,14 @@ def add_reaction(
 
     # Create notification for post owner (only for authenticated users)
     if isinstance(current_user, models.User):
-        post = db.query(models.Post).filter(models.Post.id == id).first()
-        if post:
-            SocialNotificationService.create_notification(
-                db=db,
-                user_id=post.owner_id,
-                notification_type="reaction",
-                post=post,
-                actor=current_user,
-                emoji=emoji,
-            )
+        SocialNotificationService.create_notification(
+            db=db,
+            user_id=target_post.owner_id,
+            notification_type="reaction",
+            post=target_post,
+            actor=current_user,
+            emoji=emoji,
+        )
 
 
 @router.delete(
@@ -309,6 +316,9 @@ def get_widget_data(
 
     This is more efficient than making separate requests for reactions and comments.
     """
+    viewer = current_user if isinstance(current_user, models.User) else None
+    get_accessible_post_or_404(db, id, viewer)
+
     # ===== REACTIONS (using SQL aggregation) =====
     aggregated = (
         db.query(
@@ -389,6 +399,18 @@ def get_widget_data(
     query = query.order_by(models.Comment.created_at.asc()).limit(50)
 
     comments_raw = query.all()
+
+    # Hide comments by users the viewer has blocked (docs/ugc-safety/ D10),
+    # BEFORE the deleted/orphan passes so a blocked top-level comment drops with
+    # its replies — the same rule and ordering as list_comments. This endpoint
+    # is what the embeddable widget actually uses, so it must not skip the block
+    # filter (it previously did, a drifted copy of list_comments).
+    if viewer is not None:
+        from ..utils.blocks import blocked_ids_for
+
+        blocked = blocked_ids_for(db, viewer.id)
+        if blocked:
+            comments_raw = [c for c in comments_raw if c.author_id not in blocked]
 
     # Filter out deleted comments using bottom-up approach
     comment_dict = {c.id: c for c in comments_raw}

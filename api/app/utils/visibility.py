@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
+
 if TYPE_CHECKING:
     from .. import models
 
@@ -58,3 +61,25 @@ def can_access_post(post: "models.Post", user: "models.User" | None) -> bool:
         return False
 
     return bool(post.public_visibility or post.promoted)
+
+
+def get_accessible_post_or_404(
+    db: Session, post_id: int, user: "models.User | None"
+) -> "models.Post":
+    """Load a post by id and enforce visibility, returning 404 for a missing OR
+    inaccessible post.
+
+    Post ids are sequential integers, so any endpoint that loads a post by id
+    without this check (comment/reaction reads and writes) leaks the existence
+    and content of hidden/unlisted/soft-deleted posts to enumeration, and 500s
+    on a nonexistent id via a later FK violation. Using a single 404 for both
+    "missing" and "forbidden" also avoids disclosing which posts exist.
+    """
+    from .. import models
+
+    post = db.query(models.Post).filter(models.Post.id == post_id).first()
+    if post is None or not can_access_post(post, user):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        )
+    return post
