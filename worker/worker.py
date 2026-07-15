@@ -55,6 +55,13 @@ if __name__ == "__main__":
         print(f"\n❌ Error connecting to database: {e}\n")
         print("=" * 60 + "\n")
     
+    # Error monitoring + beat-task dead-man's-switches (both no-op unless their
+    # env var is set). Registered before the worker starts so signals are wired.
+    from app.observability import init_sentry, register_beat_heartbeats
+
+    init_sentry("worker")
+    register_beat_heartbeats()
+
     # Start the Celery worker with beat scheduler
     # Beat runs periodic tasks like rollup_view_events, rollup_site_events
     celery_app.worker_main(["worker", "--beat", "--concurrency=2", "--loglevel=info"])

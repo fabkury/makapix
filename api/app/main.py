@@ -57,6 +57,12 @@ load_dotenv()
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
 
+# Initialise error monitoring as early as possible so import/startup failures
+# are captured too. No-op unless SENTRY_DSN is set.
+from .observability import init_sentry  # noqa: E402
+
+init_sentry("api")
+
 _STARTUP_COMPLETE = False
 
 
