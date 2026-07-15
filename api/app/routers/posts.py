@@ -252,6 +252,28 @@ def list_posts(
     if sort == "reacted_at" and reacted_at_col is None:
         sort = "created_at"
 
+    # Whitelist sort fields. Anything else used to reach getattr(Post, sort) in
+    # the keyset filter and 500 (an unauthenticated vector for arbitrary input).
+    if sort is None:
+        sort = "created_at"
+    ALLOWED_SORTS = {
+        "created_at",
+        "creation_date",
+        "width",
+        "height",
+        "frame_count",
+        "unique_colors",
+        "file_bytes",
+        "reactions",
+        "reacted_at",
+        "random",
+    }
+    if sort not in ALLOWED_SORTS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid sort field: {sort}",
+        )
+
     # Apply visibility filters
     # Note: Moderator-only visibility exceptions are handled in the Moderator Dashboard
     # endpoints (admin.py), not here. This endpoint shows the same content to all users.
@@ -436,56 +458,19 @@ def list_posts(
         if comments_max is not None:
             query = query.filter(comment_count_subq <= comments_max)
 
-    # Apply cursor pagination (skip for random sort — stateless ordering;
-    # reacted_at sorts on the joined reaction column, handled below)
+    # ------------------------------------------------------------------
+    # Keyset pagination + ordering, unified across every sort field.
+    #
+    # Each sort resolves to ONE `keyset_expr` (a Post column or a correlated
+    # subquery). The cursor encodes that expression's value for the last row of
+    # the page plus the post id as a tiebreaker, and the next page filters on the
+    # SAME expression. Previously the cursor always encoded created_at regardless
+    # of the active sort, so page 2 of width/height/file_bytes/reactions/... hit
+    # a type mismatch or getattr(Post, sort) AttributeError — a 500.
+    # ------------------------------------------------------------------
+    from sqlalchemy import and_, func as sa_func, or_, select as sa_select
+
     sort_desc = order == "desc"
-    if sort not in ("random", "reacted_at"):
-        query = apply_cursor_filter(
-            query, models.Post, cursor, sort or "created_at", sort_desc=sort_desc
-        )
-    elif sort == "reacted_at" and cursor:
-        # Keyset cursor on (reacted_at, post id) — apply_cursor_filter only
-        # handles Post columns, so filter on the join subquery column here.
-        cursor_data = decode_cursor(cursor)
-        if cursor_data:
-            from datetime import datetime
-
-            from sqlalchemy import and_, or_
-
-            last_id, sort_value = cursor_data
-            try:
-                last_id = int(last_id)
-                if isinstance(sort_value, str):
-                    sort_value = datetime.fromisoformat(
-                        sort_value.replace("Z", "+00:00")
-                    )
-            except (TypeError, ValueError):
-                sort_value = None
-            if sort_value is not None:
-                if sort_desc:
-                    query = query.filter(
-                        or_(
-                            reacted_at_col < sort_value,
-                            and_(
-                                reacted_at_col == sort_value,
-                                models.Post.id < last_id,
-                            ),
-                        )
-                    )
-                else:
-                    query = query.filter(
-                        or_(
-                            reacted_at_col > sort_value,
-                            and_(
-                                reacted_at_col == sort_value,
-                                models.Post.id > last_id,
-                            ),
-                        )
-                    )
-
-    # Map sort field to model attribute and apply ordering
-    # Subquery for native file bytes (used for sorting)
-    from sqlalchemy import select as sa_select
 
     native_bytes_subq = (
         sa_select(models.PostFile.file_bytes)
@@ -496,63 +481,95 @@ def list_posts(
         .correlate(models.Post)
         .scalar_subquery()
     )
+    reaction_count_expr = sa_func.coalesce(
+        db.query(sa_func.count(models.Reaction.id))
+        .filter(models.Reaction.post_id == models.Post.id)
+        .correlate(models.Post)
+        .scalar_subquery(),
+        0,
+    )
 
-    sort_field_map = {
-        "created_at": models.Post.created_at,
-        "creation_date": models.Post.created_at,  # Alias
-        "width": models.Post.width,
-        "height": models.Post.height,
-        "file_bytes": native_bytes_subq,
-        "frame_count": models.Post.frame_count,
-        "unique_colors": models.Post.unique_colors,
+    # (keyset expression, is-datetime) per sort. `reacted_at` is only present
+    # when reacted_at_col was set (guaranteed by the fallback above).
+    keyset_map = {
+        "created_at": (models.Post.created_at, True),
+        "creation_date": (models.Post.created_at, True),
+        "width": (models.Post.width, False),
+        "height": (models.Post.height, False),
+        "frame_count": (models.Post.frame_count, False),
+        "unique_colors": (models.Post.unique_colors, False),
+        "file_bytes": (native_bytes_subq, False),
+        "reactions": (reaction_count_expr, False),
     }
+    if reacted_at_col is not None:
+        keyset_map["reacted_at"] = (reacted_at_col, True)
 
-    # Handle special sort cases
     if sort == "random":
-        from sqlalchemy import func as sa_func
-
+        # Stateless ordering — no keyset cursor.
         query = query.order_by(sa_func.random())
-    elif sort == "reacted_at":
-        if order == "desc":
-            query = query.order_by(reacted_at_col.desc(), models.Post.id.desc())
-        else:
-            query = query.order_by(reacted_at_col.asc(), models.Post.id.asc())
-    elif sort == "reactions":
-        from sqlalchemy import func
-
-        reaction_count_sort_subq = (
-            db.query(func.count(models.Reaction.id))
-            .filter(models.Reaction.post_id == models.Post.id)
-            .correlate(models.Post)
-            .scalar_subquery()
-        )
-        sort_expr = func.coalesce(reaction_count_sort_subq, 0)
-        if order == "desc":
-            query = query.order_by(sort_expr.desc())
-        else:
-            query = query.order_by(sort_expr.asc())
+        posts = query.limit(limit + 1).all()[:limit]
+        page_data = {"items": posts, "next_cursor": None}
     else:
-        sort_column = sort_field_map.get(sort or "created_at", models.Post.created_at)
-        if order == "desc":
-            query = query.order_by(sort_column.desc())
-        else:
-            query = query.order_by(sort_column.asc())
+        keyset_expr, keyset_is_datetime = keyset_map[sort]
 
-    # Fetch limit + 1 to check if there are more results
-    if sort == "reacted_at":
-        # Fetch reacted_at alongside each post so the next cursor can encode
-        # the reaction time (create_page_response only knows Post columns).
-        rows = query.add_columns(reacted_at_col).limit(limit + 1).all()
+        if cursor:
+            cursor_data = decode_cursor(cursor)
+            if cursor_data:
+                last_id, sort_value = cursor_data
+                try:
+                    last_id = int(last_id)
+                except (TypeError, ValueError):
+                    last_id = None
+                if keyset_is_datetime and isinstance(sort_value, str):
+                    from datetime import datetime as _datetime
+
+                    try:
+                        sort_value = _datetime.fromisoformat(
+                            sort_value.replace("Z", "+00:00")
+                        )
+                    except ValueError:
+                        sort_value = None
+                if last_id is not None and sort_value is not None:
+                    if sort_desc:
+                        query = query.filter(
+                            or_(
+                                keyset_expr < sort_value,
+                                and_(
+                                    keyset_expr == sort_value,
+                                    models.Post.id < last_id,
+                                ),
+                            )
+                        )
+                    else:
+                        query = query.filter(
+                            or_(
+                                keyset_expr > sort_value,
+                                and_(
+                                    keyset_expr == sort_value,
+                                    models.Post.id > last_id,
+                                ),
+                            )
+                        )
+
+        # Order by the keyset expression, then post id as the stable tiebreaker.
+        if sort_desc:
+            query = query.order_by(keyset_expr.desc(), models.Post.id.desc())
+        else:
+            query = query.order_by(keyset_expr.asc(), models.Post.id.asc())
+
+        # Fetch limit+1 alongside the keyset value so the next cursor can encode
+        # the right field whether it is a column or a subquery.
+        rows = query.add_columns(keyset_expr).limit(limit + 1).all()
         next_cursor = None
         if len(rows) > limit:
             rows = rows[:limit]
-            last_post, last_reacted_at = rows[-1]
-            next_cursor = encode_cursor(str(last_post.id), last_reacted_at.isoformat())
+            last_post, last_key = rows[-1]
+            key_encoded = (
+                last_key.isoformat() if hasattr(last_key, "isoformat") else last_key
+            )
+            next_cursor = encode_cursor(str(last_post.id), key_encoded)
         posts = [row[0] for row in rows]
         page_data = {"items": posts, "next_cursor": next_cursor}
-    else:
-        posts = query.limit(limit + 1).all()
-        page_data = create_page_response(posts, limit, cursor)
 
     # Add reaction and comment counts, and user liked status
     annotate_posts_with_counts(db, posts, current_user.id if current_user else None)
