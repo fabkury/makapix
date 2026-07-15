@@ -1,13 +1,31 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/router';
-import Link from 'next/link';
-import Layout from '../components/Layout';
-import StatsPanel from '../components/StatsPanel';
-import SiteMetricsPanel from '../components/SiteMetricsPanel';
-import DownloadStatsPanel from '../components/DownloadStatsPanel';
-import VaultShardingPanel from '../components/VaultShardingPanel';
-import { authenticatedFetch, clearTokens } from '../lib/api';
-import { ensureCompatibleArtUrl } from '../utils/imageCompat';
+import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/router";
+import Link from "next/link";
+import Layout from "../components/Layout";
+import StatsPanel from "../components/StatsPanel";
+import SiteMetricsPanel from "../components/SiteMetricsPanel";
+import DownloadStatsPanel from "../components/DownloadStatsPanel";
+import VaultShardingPanel from "../components/VaultShardingPanel";
+import { authenticatedFetch, clearTokens } from "../lib/api";
+import { ensureCompatibleArtUrl } from "../utils/imageCompat";
+
+// A moderation tool must never make a failed action look like a success. These
+// handlers reload the list after the request, so without an explicit ok-check a
+// 403/409/429 silently reads as "done" (dangerous for permanent-delete/purge).
+async function assertOk(response: Response, action: string): Promise<boolean> {
+  if (response.ok) return true;
+  let detail = "";
+  try {
+    const body = await response.json();
+    detail = body?.detail || body?.message || "";
+  } catch {
+    /* non-JSON body */
+  }
+  alert(
+    `Failed to ${action} (HTTP ${response.status})${detail ? `: ${detail}` : ""}`,
+  );
+  return false;
+}
 
 interface PostOwner {
   id: string;
@@ -33,11 +51,11 @@ interface Post {
 
 interface Report {
   id: string;
-  target_type: 'user' | 'post' | 'comment';
+  target_type: "user" | "post" | "comment";
   target_id: string;
   reason_code: string;
   notes?: string;
-  status: 'open' | 'triaged' | 'resolved';
+  status: "open" | "triaged" | "resolved";
   action_taken?: string;
   created_at: string;
   reporter_handle?: string | null;
@@ -47,16 +65,16 @@ interface Report {
 // Human labels for report reason codes (docs/ugc-safety/). Legacy rows may
 // still carry "abuse" -> render as "Harassment or bullying" (D21).
 const REPORT_REASON_LABELS: Record<string, string> = {
-  spam: 'Spam or misleading',
-  harassment: 'Harassment or bullying',
-  hate: 'Hate or discrimination',
-  sexual_explicit: 'Sexual or explicit content',
-  violence_gore: 'Violence or gore',
-  illegal_csam: 'Illegal content or child endangerment',
-  self_harm: 'Self-harm or suicide',
-  copyright: 'Copyright or IP violation',
-  other: 'Something else',
-  abuse: 'Harassment or bullying',
+  spam: "Spam or misleading",
+  harassment: "Harassment or bullying",
+  hate: "Hate or discrimination",
+  sexual_explicit: "Sexual or explicit content",
+  violence_gore: "Violence or gore",
+  illegal_csam: "Illegal content or child endangerment",
+  self_harm: "Self-harm or suicide",
+  copyright: "Copyright or IP violation",
+  other: "Something else",
+  abuse: "Harassment or bullying",
 };
 
 const reportReasonLabel = (code: string): string =>
@@ -65,8 +83,8 @@ const reportReasonLabel = (code: string): string =>
 // Link to a report target where a page exists (post -> /p or /post,
 // user -> /u/{public_sqid}); comments have no dedicated page.
 const reportTargetHref = (r: Report): string | null => {
-  if (r.target_type === 'post') return `/post/${r.target_id}`;
-  if (r.target_type === 'user') return `/u/${r.target_id}`;
+  if (r.target_type === "post") return `/post/${r.target_id}`;
+  if (r.target_type === "user") return `/u/${r.target_id}`;
   return null;
 };
 
@@ -88,9 +106,22 @@ interface AdminNote {
   created_at: string;
 }
 
-type PulseType = 'post' | 'comment' | 'post_reaction' | 'comment_like' | 'player' | 'profile';
+type PulseType =
+  | "post"
+  | "comment"
+  | "post_reaction"
+  | "comment_like"
+  | "player"
+  | "profile";
 
-const PULSE_TYPES: PulseType[] = ['post', 'comment', 'post_reaction', 'comment_like', 'player', 'profile'];
+const PULSE_TYPES: PulseType[] = [
+  "post",
+  "comment",
+  "post_reaction",
+  "comment_like",
+  "player",
+  "profile",
+];
 
 interface PulseItem {
   type: PulseType;
@@ -114,34 +145,40 @@ interface PulseItem {
 }
 
 const PULSE_TYPE_META: Record<PulseType, { icon: string; label: string }> = {
-  post: { icon: '🖼️', label: 'Posts' },
-  comment: { icon: '💬', label: 'Comments' },
-  post_reaction: { icon: '😊', label: 'Reactions' },
-  comment_like: { icon: '👍', label: 'Comment likes' },
-  player: { icon: '📺', label: 'Players' },
-  profile: { icon: '🧑', label: 'New Profiles' },
+  post: { icon: "🖼️", label: "Posts" },
+  comment: { icon: "💬", label: "Comments" },
+  post_reaction: { icon: "😊", label: "Reactions" },
+  comment_like: { icon: "👍", label: "Comment likes" },
+  player: { icon: "📺", label: "Players" },
+  profile: { icon: "🧑", label: "New Profiles" },
 };
 
 const pulseVerb = (item: PulseItem): string => {
   switch (item.type) {
-    case 'post': return 'published a new post';
-    case 'comment': return item.is_reply ? 'replied to a comment on' : 'commented on';
-    case 'post_reaction': return 'reacted to';
-    case 'comment_like': return 'liked a comment on';
-    case 'player': return 'registered a player';
-    case 'profile': return 'created a profile';
+    case "post":
+      return "published a new post";
+    case "comment":
+      return item.is_reply ? "replied to a comment on" : "commented on";
+    case "post_reaction":
+      return "reacted to";
+    case "comment_like":
+      return "liked a comment on";
+    case "player":
+      return "registered a player";
+    case "profile":
+      return "created a profile";
   }
 };
 
 const PULSE_FLAG_LABELS: Record<string, string> = {
-  hidden_by_mod: 'hidden by mod',
-  hidden_by_user: 'hidden by user',
-  deleted_by_user: 'deleted by user',
-  deleted_by_owner: 'deleted by author',
-  deleted_by_mod: 'deleted by moderator',
-  non_conformant: 'non-conformant',
-  deactivated: 'deactivated',
-  banned: 'banned',
+  hidden_by_mod: "hidden by mod",
+  hidden_by_user: "hidden by user",
+  deleted_by_user: "deleted by user",
+  deleted_by_owner: "deleted by author",
+  deleted_by_mod: "deleted by moderator",
+  non_conformant: "non-conformant",
+  deactivated: "deactivated",
+  banned: "banned",
 };
 
 interface PageResponse<T> {
@@ -149,26 +186,34 @@ interface PageResponse<T> {
   next_cursor: string | null;
 }
 
-type Tab = 'pending' | 'reports' | 'posts' | 'pulse' | 'audit' | 'notes' | 'metrics' | 'downloads';
+type Tab =
+  | "pending"
+  | "reports"
+  | "posts"
+  | "pulse"
+  | "audit"
+  | "notes"
+  | "metrics"
+  | "downloads";
 
 export default function ModDashboardPage() {
   const router = useRouter();
   const [isModerator, setIsModerator] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<Tab>('pending');
-  
+  const [activeTab, setActiveTab] = useState<Tab>("pending");
+
   const [pendingPosts, setPendingPosts] = useState<Post[]>([]);
   const [pendingCursor, setPendingCursor] = useState<string | null>(null);
   const [pendingLoading, setPendingLoading] = useState(false);
-  
+
   const [reports, setReports] = useState<Report[]>([]);
   const [reportsCursor, setReportsCursor] = useState<string | null>(null);
   const [reportsLoading, setReportsLoading] = useState(false);
-  
+
   const [posts, setPosts] = useState<Post[]>([]);
   const [postsCursor, setPostsCursor] = useState<string | null>(null);
   const [postsLoading, setPostsLoading] = useState(false);
-  
+
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
   const [auditCursor, setAuditCursor] = useState<string | null>(null);
   const [auditLoading, setAuditLoading] = useState(false);
@@ -185,19 +230,20 @@ export default function ModDashboardPage() {
     player: true,
     profile: true,
   });
-  
+
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [adminNotes, setAdminNotes] = useState<AdminNote[]>([]);
-  const [noteText, setNoteText] = useState('');
+  const [noteText, setNoteText] = useState("");
   const [addingNote, setAddingNote] = useState(false);
-  
+
   // Stats panel state
   const [statsPostId, setStatsPostId] = useState<number | null>(null);
   const [showStats, setShowStats] = useState(false);
 
-  const API_BASE_URL = typeof window !== 'undefined' 
-    ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
-    : '';
+  const API_BASE_URL =
+    typeof window !== "undefined"
+      ? process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin
+      : "";
 
   const checkModeratorStatus = useCallback(async () => {
     try {
@@ -205,34 +251,34 @@ export default function ModDashboardPage() {
 
       if (response.status === 401) {
         clearTokens();
-        router.push('/');
+        router.push("/");
         return;
       }
 
       if (!response.ok) {
-        router.push('/');
+        router.push("/");
         return;
       }
 
       const data = await response.json();
       const roles = data.roles || [];
-      
-      if (roles.includes('moderator') || roles.includes('owner')) {
+
+      if (roles.includes("moderator") || roles.includes("owner")) {
         setIsModerator(true);
       } else {
-        router.push('/');
+        router.push("/");
       }
     } catch (error) {
       // eslint-disable-next-line no-console
-      console.error('Error checking moderator status:', error);
-      router.push('/');
+      console.error("Error checking moderator status:", error);
+      router.push("/");
     } finally {
       setLoading(false);
     }
   }, [API_BASE_URL, router]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       checkModeratorStatus();
     }
   }, [checkModeratorStatus]);
@@ -245,7 +291,7 @@ export default function ModDashboardPage() {
   }, [isModerator, activeTab]);
 
   useEffect(() => {
-    if (selectedPostId && activeTab === 'notes') {
+    if (selectedPostId && activeTab === "notes") {
       loadAdminNotes(selectedPostId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -253,11 +299,21 @@ export default function ModDashboardPage() {
 
   const loadTabData = async (tab: Tab, reset = true) => {
     switch (tab) {
-      case 'pending': await loadPendingApproval(reset); break;
-      case 'reports': await loadReports(reset); break;
-      case 'posts': await loadRecentPosts(reset); break;
-      case 'pulse': await loadPulse(reset); break;
-      case 'audit': await loadAuditLog(reset); break;
+      case "pending":
+        await loadPendingApproval(reset);
+        break;
+      case "reports":
+        await loadReports(reset);
+        break;
+      case "posts":
+        await loadRecentPosts(reset);
+        break;
+      case "pulse":
+        await loadPulse(reset);
+        break;
+      case "audit":
+        await loadAuditLog(reset);
+        break;
     }
   };
 
@@ -266,19 +322,19 @@ export default function ModDashboardPage() {
     setPendingLoading(true);
     try {
       const cursor = reset ? null : pendingCursor;
-      const url = `${API_BASE_URL}/api/admin/pending-approval?limit=50${cursor ? `&cursor=${cursor}` : ''}`;
+      const url = `${API_BASE_URL}/api/admin/pending-approval?limit=50${cursor ? `&cursor=${cursor}` : ""}`;
       const response = await authenticatedFetch(url);
       if (response.ok) {
         const data: PageResponse<Post> = await response.json();
         if (reset) {
           setPendingPosts(data.items);
         } else {
-          setPendingPosts(prev => [...prev, ...data.items]);
+          setPendingPosts((prev) => [...prev, ...data.items]);
         }
         setPendingCursor(data.next_cursor);
       }
     } catch (error) {
-      console.error('Error loading pending approvals:', error);
+      console.error("Error loading pending approvals:", error);
     } finally {
       setPendingLoading(false);
     }
@@ -286,29 +342,35 @@ export default function ModDashboardPage() {
 
   const approvePublicVisibility = async (postId: number) => {
     try {
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/approve-public`, {
-        method: 'POST',
-      });
-      if (response.ok) {
-        // Remove from pending list
-        setPendingPosts(pendingPosts.filter(p => p.id !== postId));
-      }
+      const response = await authenticatedFetch(
+        `${API_BASE_URL}/api/post/${postId}/approve-public`,
+        {
+          method: "POST",
+        },
+      );
+      if (!(await assertOk(response, "approve post"))) return;
+      // Remove from pending list
+      setPendingPosts(pendingPosts.filter((p) => p.id !== postId));
     } catch (error) {
-      console.error('Error approving post:', error);
+      console.error("Error approving post:", error);
+      alert("Error approving post. Please try again.");
     }
   };
 
   const rejectPublicVisibility = async (postId: number) => {
     try {
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/approve-public`, {
-        method: 'DELETE',
-      });
-      if (response.ok) {
-        // Remove from pending list (it's already not public)
-        setPendingPosts(pendingPosts.filter(p => p.id !== postId));
-      }
+      const response = await authenticatedFetch(
+        `${API_BASE_URL}/api/post/${postId}/approve-public`,
+        {
+          method: "DELETE",
+        },
+      );
+      if (!(await assertOk(response, "reject post"))) return;
+      // Remove from pending list (it's already not public)
+      setPendingPosts(pendingPosts.filter((p) => p.id !== postId));
     } catch (error) {
-      console.error('Error rejecting post:', error);
+      console.error("Error rejecting post:", error);
+      alert("Error rejecting post. Please try again.");
     }
   };
 
@@ -317,19 +379,19 @@ export default function ModDashboardPage() {
     setReportsLoading(true);
     try {
       const cursor = reset ? null : reportsCursor;
-      const url = `${API_BASE_URL}/api/report?status=open&limit=50${cursor ? `&cursor=${cursor}` : ''}`;
+      const url = `${API_BASE_URL}/api/report?status=open&limit=50${cursor ? `&cursor=${cursor}` : ""}`;
       const response = await authenticatedFetch(url);
       if (response.ok) {
         const data: PageResponse<Report> = await response.json();
         if (reset) {
           setReports(data.items);
         } else {
-          setReports(prev => [...prev, ...data.items]);
+          setReports((prev) => [...prev, ...data.items]);
         }
         setReportsCursor(data.next_cursor);
       }
     } catch (error) {
-      console.error('Error loading reports:', error);
+      console.error("Error loading reports:", error);
     } finally {
       setReportsLoading(false);
     }
@@ -340,7 +402,7 @@ export default function ModDashboardPage() {
     setPostsLoading(true);
     try {
       const cursor = reset ? null : postsCursor;
-      const url = `${API_BASE_URL}/api/admin/recent-posts?limit=50${cursor ? `&cursor=${cursor}` : ''}`;
+      const url = `${API_BASE_URL}/api/admin/recent-posts?limit=50${cursor ? `&cursor=${cursor}` : ""}`;
       const response = await authenticatedFetch(url);
       if (response.ok) {
         const data: PageResponse<Post> = await response.json();
@@ -348,12 +410,12 @@ export default function ModDashboardPage() {
           setPosts(data.items);
           setPostsCursor(data.next_cursor);
         } else {
-          setPosts(prev => [...prev, ...data.items]);
+          setPosts((prev) => [...prev, ...data.items]);
           setPostsCursor(data.next_cursor);
         }
       }
     } catch (error) {
-      console.error('Error loading posts:', error);
+      console.error("Error loading posts:", error);
     } finally {
       setPostsLoading(false);
     }
@@ -361,12 +423,12 @@ export default function ModDashboardPage() {
 
   const loadPulse = async (
     reset = false,
-    opts: { includeAnon?: boolean; types?: Record<PulseType, boolean> } = {}
+    opts: { includeAnon?: boolean; types?: Record<PulseType, boolean> } = {},
   ) => {
     if (pulseLoading) return;
     const includeAnon = opts.includeAnon ?? includeAnonPulse;
     const types = opts.types ?? pulseTypes;
-    const enabled = PULSE_TYPES.filter(t => types[t]);
+    const enabled = PULSE_TYPES.filter((t) => types[t]);
     if (enabled.length === 0) {
       setPulseItems([]);
       setPulseCursor(null);
@@ -375,8 +437,11 @@ export default function ModDashboardPage() {
     setPulseLoading(true);
     try {
       const cursor = reset ? null : pulseCursor;
-      const typesParam = enabled.length === PULSE_TYPES.length ? '' : `&types=${enabled.join(',')}`;
-      const url = `${API_BASE_URL}/api/admin/pulse?limit=50&include_anonymous=${includeAnon}${typesParam}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const typesParam =
+        enabled.length === PULSE_TYPES.length
+          ? ""
+          : `&types=${enabled.join(",")}`;
+      const url = `${API_BASE_URL}/api/admin/pulse?limit=50&include_anonymous=${includeAnon}${typesParam}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
       const response = await authenticatedFetch(url);
       if (response.ok) {
         const data: PageResponse<PulseItem> = await response.json();
@@ -384,12 +449,12 @@ export default function ModDashboardPage() {
           setPulseItems(data.items);
           setPulseCursor(data.next_cursor);
         } else {
-          setPulseItems(prev => [...prev, ...data.items]);
+          setPulseItems((prev) => [...prev, ...data.items]);
           setPulseCursor(data.next_cursor);
         }
       }
     } catch (error) {
-      console.error('Error loading pulse:', error);
+      console.error("Error loading pulse:", error);
     } finally {
       setPulseLoading(false);
     }
@@ -400,19 +465,19 @@ export default function ModDashboardPage() {
     setAuditLoading(true);
     try {
       const cursor = reset ? null : auditCursor;
-      const url = `${API_BASE_URL}/api/admin/audit-log?limit=50${cursor ? `&cursor=${cursor}` : ''}`;
+      const url = `${API_BASE_URL}/api/admin/audit-log?limit=50${cursor ? `&cursor=${cursor}` : ""}`;
       const response = await authenticatedFetch(url);
       if (response.ok) {
         const data: PageResponse<AuditLogEntry> = await response.json();
         if (reset) {
           setAuditLog(data.items);
         } else {
-          setAuditLog(prev => [...prev, ...data.items]);
+          setAuditLog((prev) => [...prev, ...data.items]);
         }
         setAuditCursor(data.next_cursor);
       }
     } catch (error) {
-      console.error('Error loading audit log:', error);
+      console.error("Error loading audit log:", error);
     } finally {
       setAuditLoading(false);
     }
@@ -420,104 +485,152 @@ export default function ModDashboardPage() {
 
   const loadAdminNotes = async (postId: string) => {
     try {
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/admin-notes`);
+      const response = await authenticatedFetch(
+        `${API_BASE_URL}/api/post/${postId}/admin-notes`,
+      );
       if (response.ok) {
         const data = await response.json();
         setAdminNotes(data.items || []);
       }
     } catch (error) {
-      console.error('Error loading admin notes:', error);
+      console.error("Error loading admin notes:", error);
     }
   };
 
   const resolveReport = async (reportId: string, action: string) => {
     try {
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/report/${reportId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'resolved', action_taken: action, notes: `Action: ${action}` })
-      });
-      if (response.ok) {
-        setReports(reports.filter(r => r.id !== reportId));
-      }
+      const response = await authenticatedFetch(
+        `${API_BASE_URL}/api/report/${reportId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: "resolved",
+            action_taken: action,
+            notes: `Action: ${action}`,
+          }),
+        },
+      );
+      if (!(await assertOk(response, "resolve report"))) return;
+      setReports(reports.filter((r) => r.id !== reportId));
     } catch (error) {
-      console.error('Error resolving report:', error);
+      console.error("Error resolving report:", error);
+      alert("Error resolving report. Please try again.");
     }
   };
 
   const promotePost = async (postId: number) => {
     try {
-      await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/promote`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category: 'frontpage' })
-      });
+      const response = await authenticatedFetch(
+        `${API_BASE_URL}/api/post/${postId}/promote`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ category: "frontpage" }),
+        },
+      );
+      if (!(await assertOk(response, "promote post"))) return;
       await loadRecentPosts(true);
     } catch (error) {
-      console.error('Error promoting post:', error);
+      console.error("Error promoting post:", error);
+      alert("Error promoting post. Please try again.");
     }
   };
 
   const hidePost = async (postId: number) => {
     try {
-      await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/hide`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ by: 'mod' })
-      });
+      const response = await authenticatedFetch(
+        `${API_BASE_URL}/api/post/${postId}/hide`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ by: "mod" }),
+        },
+      );
+      if (!(await assertOk(response, "hide post"))) return;
       await loadRecentPosts(true);
     } catch (error) {
-      console.error('Error hiding post:', error);
+      console.error("Error hiding post:", error);
+      alert("Error hiding post. Please try again.");
     }
   };
 
   const unhidePost = async (postId: number) => {
     try {
-      await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/unhide`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ by: 'mod' })
-      });
+      const response = await authenticatedFetch(
+        `${API_BASE_URL}/api/post/${postId}/unhide`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ by: "mod" }),
+        },
+      );
+      if (!(await assertOk(response, "unhide post"))) return;
       await loadRecentPosts(true);
     } catch (error) {
-      console.error('Error unhiding post:', error);
+      console.error("Error unhiding post:", error);
+      alert("Error unhiding post. Please try again.");
     }
   };
 
   const purgeCommentBody = async (commentId: string) => {
-    if (!confirm("Permanently discard this deleted comment's preserved original text? This cannot be undone.")) return;
+    if (
+      !confirm(
+        "Permanently discard this deleted comment's preserved original text? This cannot be undone.",
+      )
+    )
+      return;
     try {
-      await authenticatedFetch(`${API_BASE_URL}/api/post/comments/${commentId}/purge-original`, {
-        method: 'POST'
-      });
+      const response = await authenticatedFetch(
+        `${API_BASE_URL}/api/post/comments/${commentId}/purge-original`,
+        {
+          method: "POST",
+        },
+      );
+      if (!(await assertOk(response, "purge comment text"))) return;
       await loadPulse(true);
     } catch (error) {
-      console.error('Error purging comment body:', error);
+      console.error("Error purging comment body:", error);
+      alert("Error purging comment text. Please try again.");
     }
   };
 
   const demotePost = async (postId: number) => {
     try {
-      await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/demote`, {
-        method: 'POST',
-      });
+      const response = await authenticatedFetch(
+        `${API_BASE_URL}/api/post/${postId}/demote`,
+        {
+          method: "POST",
+        },
+      );
+      if (!(await assertOk(response, "demote post"))) return;
       await loadRecentPosts(true);
     } catch (error) {
-      console.error('Error demoting post:', error);
+      console.error("Error demoting post:", error);
+      alert("Error demoting post. Please try again.");
     }
   };
 
   const deletePostPermanently = async (postId: number) => {
-    if (!confirm('Are you sure you want to permanently delete this post? This action cannot be undone.')) {
+    if (
+      !confirm(
+        "Are you sure you want to permanently delete this post? This action cannot be undone.",
+      )
+    ) {
       return;
     }
     try {
-      await authenticatedFetch(`${API_BASE_URL}/api/post/${postId}/permanent`, {
-        method: 'DELETE',
-      });
+      const response = await authenticatedFetch(
+        `${API_BASE_URL}/api/post/${postId}/permanent`,
+        {
+          method: "DELETE",
+        },
+      );
+      if (!(await assertOk(response, "permanently delete post"))) return;
       await loadRecentPosts(true);
     } catch (error) {
-      console.error('Error deleting post:', error);
+      console.error("Error deleting post:", error);
+      alert("Error deleting post. Please try again.");
     }
   };
 
@@ -525,17 +638,20 @@ export default function ModDashboardPage() {
     if (!selectedPostId || !noteText.trim()) return;
     setAddingNote(true);
     try {
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/post/${selectedPostId}/admin-notes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ note: noteText })
-      });
+      const response = await authenticatedFetch(
+        `${API_BASE_URL}/api/post/${selectedPostId}/admin-notes`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ note: noteText }),
+        },
+      );
       if (response.ok) {
-        setNoteText('');
+        setNoteText("");
         await loadAdminNotes(selectedPostId);
       }
     } catch (error) {
-      console.error('Error adding admin note:', error);
+      console.error("Error adding admin note:", error);
     } finally {
       setAddingNote(false);
     }
@@ -562,7 +678,11 @@ export default function ModDashboardPage() {
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
           }
-          @keyframes spin { to { transform: rotate(360deg); } }
+          @keyframes spin {
+            to {
+              transform: rotate(360deg);
+            }
+          }
         `}</style>
       </Layout>
     );
@@ -570,37 +690,57 @@ export default function ModDashboardPage() {
 
   if (!isModerator) return null;
 
-  const tabs: Tab[] = ['pending', 'reports', 'posts', 'pulse', 'audit', 'notes', 'metrics', 'downloads'];
+  const tabs: Tab[] = [
+    "pending",
+    "reports",
+    "posts",
+    "pulse",
+    "audit",
+    "notes",
+    "metrics",
+    "downloads",
+  ];
   const tabLabels: Record<Tab, string> = {
-    pending: 'Pending Approval',
-    reports: 'Reports',
-    posts: 'Posts',
-    pulse: 'Pulse',
-    audit: 'Audit',
-    notes: 'Notes',
-    metrics: 'Metrics',
-    downloads: 'Downloads'
+    pending: "Pending Approval",
+    reports: "Reports",
+    posts: "Posts",
+    pulse: "Pulse",
+    audit: "Audit",
+    notes: "Notes",
+    metrics: "Metrics",
+    downloads: "Downloads",
   };
 
   return (
     <Layout title="Moderator Dashboard">
       <div className="dashboard">
         <h1>Moderator Dashboard</h1>
-        
+
         <div className="tabs">
-          {tabs.map(tab => (
+          {tabs.map((tab) => (
             <button
               key={tab}
               onClick={() => {
                 setActiveTab(tab);
                 // Reset data when switching tabs - loadTabData will reload fresh
-                if (tab === 'pending') { setPendingPosts([]); setPendingCursor(null); }
-                else if (tab === 'reports') { setReports([]); setReportsCursor(null); }
-                else if (tab === 'posts') { setPosts([]); setPostsCursor(null); }
-                else if (tab === 'pulse') { setPulseItems([]); setPulseCursor(null); }
-                else if (tab === 'audit') { setAuditLog([]); setAuditCursor(null); }
+                if (tab === "pending") {
+                  setPendingPosts([]);
+                  setPendingCursor(null);
+                } else if (tab === "reports") {
+                  setReports([]);
+                  setReportsCursor(null);
+                } else if (tab === "posts") {
+                  setPosts([]);
+                  setPostsCursor(null);
+                } else if (tab === "pulse") {
+                  setPulseItems([]);
+                  setPulseCursor(null);
+                } else if (tab === "audit") {
+                  setAuditLog([]);
+                  setAuditCursor(null);
+                }
               }}
-              className={`tab ${activeTab === tab ? 'active' : ''}`}
+              className={`tab ${activeTab === tab ? "active" : ""}`}
             >
               {tabLabels[tab]}
             </button>
@@ -608,46 +748,78 @@ export default function ModDashboardPage() {
         </div>
 
         <div className="tab-content">
-          {activeTab === 'pending' && (
+          {activeTab === "pending" && (
             <div className="section">
               <h2>Pending Public Visibility Approval</h2>
               <p className="section-description">
-                These artworks are waiting for moderator approval before appearing in Recent Artworks and search results.
+                These artworks are waiting for moderator approval before
+                appearing in Recent Artworks and search results.
               </p>
               {pendingPosts.length === 0 && !pendingLoading ? (
                 <p className="empty">No pending approvals</p>
               ) : (
                 <>
-                  {pendingPosts.map(post => (
+                  {pendingPosts.map((post) => (
                     <div key={post.id} className="item-card pending-card">
                       {post.art_url && (
                         <div className="pending-thumbnail">
-                          <img src={ensureCompatibleArtUrl(post.art_url)} alt={post.title} className="pixel-art" />
+                          <img
+                            src={ensureCompatibleArtUrl(post.art_url)}
+                            alt={post.title}
+                            className="pixel-art"
+                          />
                         </div>
                       )}
                       <div className="item-info">
                         <h3>
-                          <a href={`/p/${post.public_sqid}`} target="_blank" rel="noopener noreferrer">
+                          <a
+                            href={`/p/${post.public_sqid}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
                             {post.title}
                           </a>
                         </h3>
-                        {post.description && <p className="item-notes">{post.description}</p>}
-                        <p className="item-date">{new Date(post.created_at).toLocaleString()}</p>
+                        {post.description && (
+                          <p className="item-notes">{post.description}</p>
+                        )}
+                        <p className="item-date">
+                          {new Date(post.created_at).toLocaleString()}
+                        </p>
                       </div>
                       <div className="item-actions">
-                        <button onClick={() => { setStatsPostId(post.id); setShowStats(true); }} className="action-btn stats" title="View Statistics">📈</button>
-                        <button onClick={() => approvePublicVisibility(post.id)} className="action-btn success">
+                        <button
+                          onClick={() => {
+                            setStatsPostId(post.id);
+                            setShowStats(true);
+                          }}
+                          className="action-btn stats"
+                          title="View Statistics"
+                        >
+                          📈
+                        </button>
+                        <button
+                          onClick={() => approvePublicVisibility(post.id)}
+                          className="action-btn success"
+                        >
                           Approve
                         </button>
-                        <button onClick={() => rejectPublicVisibility(post.id)} className="action-btn danger">
+                        <button
+                          onClick={() => rejectPublicVisibility(post.id)}
+                          className="action-btn danger"
+                        >
                           Reject
                         </button>
                       </div>
                     </div>
                   ))}
                   {pendingCursor && (
-                    <button onClick={() => loadPendingApproval(false)} disabled={pendingLoading} className="load-more">
-                      {pendingLoading ? 'Loading...' : 'Load More'}
+                    <button
+                      onClick={() => loadPendingApproval(false)}
+                      disabled={pendingLoading}
+                      className="load-more"
+                    >
+                      {pendingLoading ? "Loading..." : "Load More"}
                     </button>
                   )}
                 </>
@@ -655,44 +827,73 @@ export default function ModDashboardPage() {
             </div>
           )}
 
-          {activeTab === 'reports' && (
+          {activeTab === "reports" && (
             <div className="section">
               <h2>Reports Queue</h2>
               {reports.length === 0 && !reportsLoading ? (
                 <p className="empty">No open reports</p>
               ) : (
                 <>
-                  {reports.map(report => (
+                  {reports.map((report) => (
                     <div key={report.id} className="item-card">
                       <div className="item-info">
-                        <strong>{report.target_type}</strong> - {reportReasonLabel(report.reason_code)}
+                        <strong>{report.target_type}</strong> -{" "}
+                        {reportReasonLabel(report.reason_code)}
                         <p className="item-notes">
                           {reportTargetHref(report) ? (
                             <Link href={reportTargetHref(report) as string}>
                               {report.target_type} {report.target_id}
                             </Link>
                           ) : (
-                            <span>{report.target_type} {report.target_id}</span>
+                            <span>
+                              {report.target_type} {report.target_id}
+                            </span>
                           )}
-                          {' · reported by '}
-                          {report.reporter_handle || 'anonymous'}
+                          {" · reported by "}
+                          {report.reporter_handle || "anonymous"}
                         </p>
-                        {report.notes && <p className="item-notes">{report.notes}</p>}
-                        {report.mod_notes && (
-                          <p className="item-notes">Mod notes: {report.mod_notes}</p>
+                        {report.notes && (
+                          <p className="item-notes">{report.notes}</p>
                         )}
-                        <p className="item-date">{new Date(report.created_at).toLocaleString()}</p>
+                        {report.mod_notes && (
+                          <p className="item-notes">
+                            Mod notes: {report.mod_notes}
+                          </p>
+                        )}
+                        <p className="item-date">
+                          {new Date(report.created_at).toLocaleString()}
+                        </p>
                       </div>
                       <div className="item-actions">
-                        <button onClick={() => resolveReport(report.id, 'hide')} className="action-btn">Hide</button>
-                        <button onClick={() => resolveReport(report.id, 'take_down')} className="action-btn danger" title="Remove from feeds (reversible; does not delete the post)">Take down</button>
-                        <button onClick={() => resolveReport(report.id, 'none')} className="action-btn secondary">Dismiss</button>
+                        <button
+                          onClick={() => resolveReport(report.id, "hide")}
+                          className="action-btn"
+                        >
+                          Hide
+                        </button>
+                        <button
+                          onClick={() => resolveReport(report.id, "take_down")}
+                          className="action-btn danger"
+                          title="Remove from feeds (reversible; does not delete the post)"
+                        >
+                          Take down
+                        </button>
+                        <button
+                          onClick={() => resolveReport(report.id, "none")}
+                          className="action-btn secondary"
+                        >
+                          Dismiss
+                        </button>
                       </div>
                     </div>
                   ))}
                   {reportsCursor && (
-                    <button onClick={() => loadReports(false)} disabled={reportsLoading} className="load-more">
-                      {reportsLoading ? 'Loading...' : 'Load More'}
+                    <button
+                      onClick={() => loadReports(false)}
+                      disabled={reportsLoading}
+                      className="load-more"
+                    >
+                      {reportsLoading ? "Loading..." : "Load More"}
                     </button>
                   )}
                 </>
@@ -700,52 +901,133 @@ export default function ModDashboardPage() {
             </div>
           )}
 
-          {activeTab === 'posts' && (
+          {activeTab === "posts" && (
             <div className="section">
               <h2>Recent Posts</h2>
               {posts.length === 0 && !postsLoading ? (
                 <p className="empty">No posts found</p>
               ) : (
                 <>
-                  {posts.map(post => (
+                  {posts.map((post) => (
                     <div key={post.id} className="item-card pending-card">
                       {post.art_url && (
-                        <Link href={`/p/${post.public_sqid}`} className="pending-thumbnail">
-                          <img src={ensureCompatibleArtUrl(post.art_url)} alt={post.title} className="pixel-art" style={{ width: '64px', height: '64px', maxWidth: '64px', maxHeight: '64px', objectFit: 'contain' }} />
+                        <Link
+                          href={`/p/${post.public_sqid}`}
+                          className="pending-thumbnail"
+                        >
+                          <img
+                            src={ensureCompatibleArtUrl(post.art_url)}
+                            alt={post.title}
+                            className="pixel-art"
+                            style={{
+                              width: "64px",
+                              height: "64px",
+                              maxWidth: "64px",
+                              maxHeight: "64px",
+                              objectFit: "contain",
+                            }}
+                          />
                         </Link>
                       )}
                       <div className="item-info">
                         {post.owner && (
                           <div className="post-author">
                             {post.owner.avatar_url && (
-                              <img src={post.owner.avatar_url} alt={post.owner.handle} className="author-avatar-small" />
+                              <img
+                                src={post.owner.avatar_url}
+                                alt={post.owner.handle}
+                                className="author-avatar-small"
+                              />
                             )}
-                            <Link href={`/u/${post.owner.public_sqid}`} className="author-link">
+                            <Link
+                              href={`/u/${post.owner.public_sqid}`}
+                              className="author-link"
+                            >
                               {post.owner.handle}
                             </Link>
                           </div>
                         )}
                         <h3>
-                          <Link href={`/p/${post.public_sqid}`} className="post-title-link">
+                          <Link
+                            href={`/p/${post.public_sqid}`}
+                            className="post-title-link"
+                          >
                             {post.title}
                           </Link>
                         </h3>
-                        {post.description && <p className="item-notes description-single-line">{post.description}</p>}
-                        <p className="item-date">{new Date(post.created_at).toLocaleString()}</p>
+                        {post.description && (
+                          <p className="item-notes description-single-line">
+                            {post.description}
+                          </p>
+                        )}
+                        <p className="item-date">
+                          {new Date(post.created_at).toLocaleString()}
+                        </p>
                       </div>
                       <div className="item-actions item-actions-vertical">
-                        <button onClick={() => { setStatsPostId(post.id); setShowStats(true); }} className="action-btn stats" title="View Statistics">📈</button>
-                        {!post.promoted && <button onClick={() => promotePost(post.id)} className="action-btn success" title="Promote">⭐</button>}
-                        {post.promoted && <button onClick={() => demotePost(post.id)} className="action-btn" title="Demote">⬇️</button>}
-                        {!post.hidden_by_mod && <button onClick={() => hidePost(post.id)} className="action-btn" title="Hide">🙈</button>}
-                        {post.hidden_by_mod && <button onClick={() => unhidePost(post.id)} className="action-btn success" title="Unhide">👁️</button>}
-                        <button onClick={() => deletePostPermanently(post.id)} className="action-btn danger" title="Delete">🗑️</button>
+                        <button
+                          onClick={() => {
+                            setStatsPostId(post.id);
+                            setShowStats(true);
+                          }}
+                          className="action-btn stats"
+                          title="View Statistics"
+                        >
+                          📈
+                        </button>
+                        {!post.promoted && (
+                          <button
+                            onClick={() => promotePost(post.id)}
+                            className="action-btn success"
+                            title="Promote"
+                          >
+                            ⭐
+                          </button>
+                        )}
+                        {post.promoted && (
+                          <button
+                            onClick={() => demotePost(post.id)}
+                            className="action-btn"
+                            title="Demote"
+                          >
+                            ⬇️
+                          </button>
+                        )}
+                        {!post.hidden_by_mod && (
+                          <button
+                            onClick={() => hidePost(post.id)}
+                            className="action-btn"
+                            title="Hide"
+                          >
+                            🙈
+                          </button>
+                        )}
+                        {post.hidden_by_mod && (
+                          <button
+                            onClick={() => unhidePost(post.id)}
+                            className="action-btn success"
+                            title="Unhide"
+                          >
+                            👁️
+                          </button>
+                        )}
+                        <button
+                          onClick={() => deletePostPermanently(post.id)}
+                          className="action-btn danger"
+                          title="Delete"
+                        >
+                          🗑️
+                        </button>
                       </div>
                     </div>
                   ))}
                   {postsCursor && (
-                    <button onClick={() => loadRecentPosts(false)} disabled={postsLoading} className="load-more">
-                      {postsLoading ? 'Loading...' : 'Load More'}
+                    <button
+                      onClick={() => loadRecentPosts(false)}
+                      disabled={postsLoading}
+                      className="load-more"
+                    >
+                      {postsLoading ? "Loading..." : "Load More"}
                     </button>
                   )}
                 </>
@@ -753,26 +1035,30 @@ export default function ModDashboardPage() {
             </div>
           )}
 
-          {activeTab === 'pulse' && (
+          {activeTab === "pulse" && (
             <div className="section">
               <div className="pulse-header">
                 <h2>Pulse</h2>
                 <button
-                  onClick={() => { setPulseItems([]); setPulseCursor(null); loadPulse(true); }}
+                  onClick={() => {
+                    setPulseItems([]);
+                    setPulseCursor(null);
+                    loadPulse(true);
+                  }}
                   disabled={pulseLoading}
                   className="action-btn"
                 >
-                  {pulseLoading ? 'Refreshing…' : '🔄 Refresh'}
+                  {pulseLoading ? "Refreshing…" : "🔄 Refresh"}
                 </button>
               </div>
               <p className="section-description">
                 Chronological firehose of the latest community activity.
               </p>
               <div className="pulse-chips">
-                {PULSE_TYPES.map(t => (
+                {PULSE_TYPES.map((t) => (
                   <button
                     key={t}
-                    className={`pulse-chip ${pulseTypes[t] ? 'active' : ''}`}
+                    className={`pulse-chip ${pulseTypes[t] ? "active" : ""}`}
                     onClick={() => {
                       const next = { ...pulseTypes, [t]: !pulseTypes[t] };
                       setPulseTypes(next);
@@ -803,14 +1089,36 @@ export default function ModDashboardPage() {
                 <p className="empty">No activity found</p>
               ) : (
                 <>
-                  {pulseItems.map(item => (
-                    <div key={`${item.type}-${item.id}`} className="item-card pending-card">
-                      <span className="reaction-emoji" title={PULSE_TYPE_META[item.type].label}>
-                        {item.type === 'post_reaction' && item.emoji ? item.emoji : PULSE_TYPE_META[item.type].icon}
+                  {pulseItems.map((item) => (
+                    <div
+                      key={`${item.type}-${item.id}`}
+                      className="item-card pending-card"
+                    >
+                      <span
+                        className="reaction-emoji"
+                        title={PULSE_TYPE_META[item.type].label}
+                      >
+                        {item.type === "post_reaction" && item.emoji
+                          ? item.emoji
+                          : PULSE_TYPE_META[item.type].icon}
                       </span>
                       {item.post_art_url && item.post_public_sqid && (
-                        <Link href={`/p/${item.post_public_sqid}`} className="pending-thumbnail">
-                          <img src={ensureCompatibleArtUrl(item.post_art_url)} alt={item.post_title ?? ''} className="pixel-art" style={{ width: '64px', height: '64px', maxWidth: '64px', maxHeight: '64px', objectFit: 'contain' }} />
+                        <Link
+                          href={`/p/${item.post_public_sqid}`}
+                          className="pending-thumbnail"
+                        >
+                          <img
+                            src={ensureCompatibleArtUrl(item.post_art_url)}
+                            alt={item.post_title ?? ""}
+                            className="pixel-art"
+                            style={{
+                              width: "64px",
+                              height: "64px",
+                              maxWidth: "64px",
+                              maxHeight: "64px",
+                              objectFit: "contain",
+                            }}
+                          />
                         </Link>
                       )}
                       <div className="item-info">
@@ -818,35 +1126,60 @@ export default function ModDashboardPage() {
                           {item.actor_handle ? (
                             <>
                               {item.actor_avatar_url && (
-                                <img src={item.actor_avatar_url} alt={item.actor_handle} className="author-avatar-small" />
+                                <img
+                                  src={item.actor_avatar_url}
+                                  alt={item.actor_handle}
+                                  className="author-avatar-small"
+                                />
                               )}
-                              <Link href={`/u/${item.actor_public_sqid}`} className="author-link">
+                              <Link
+                                href={`/u/${item.actor_public_sqid}`}
+                                className="author-link"
+                              >
                                 {item.actor_handle}
                               </Link>
                             </>
                           ) : (
-                            <span className="anon-reactor" title="Anonymous visitor (truncated IP)">👤 {item.anonymous_id ?? 'anonymous'}</span>
+                            <span
+                              className="anon-reactor"
+                              title="Anonymous visitor (truncated IP)"
+                            >
+                              👤 {item.anonymous_id ?? "anonymous"}
+                            </span>
                           )}
                           <span className="pulse-verb">{pulseVerb(item)}</span>
-                          {item.flags.map(flag => (
-                            <span key={flag} className="badge badge-flag">{PULSE_FLAG_LABELS[flag] ?? flag}</span>
+                          {item.flags.map((flag) => (
+                            <span key={flag} className="badge badge-flag">
+                              {PULSE_FLAG_LABELS[flag] ?? flag}
+                            </span>
                           ))}
                         </div>
-                        {item.type === 'player' ? (
+                        {item.type === "player" ? (
                           <h3>
                             {item.actor_public_sqid ? (
-                              <Link href={`/u/${item.actor_public_sqid}`} className="post-title-link">
-                                {item.player_name || 'Unnamed player'}
+                              <Link
+                                href={`/u/${item.actor_public_sqid}`}
+                                className="post-title-link"
+                              >
+                                {item.player_name || "Unnamed player"}
                               </Link>
                             ) : (
-                              item.player_name || 'Unnamed player'
+                              item.player_name || "Unnamed player"
                             )}
-                            {item.player_model && <span className="pulse-verb"> ({item.player_model})</span>}
+                            {item.player_model && (
+                              <span className="pulse-verb">
+                                {" "}
+                                ({item.player_model})
+                              </span>
+                            )}
                           </h3>
                         ) : (
                           item.post_public_sqid && (
                             <h3>
-                              <Link href={`/p/${item.post_public_sqid}`} className="post-title-link">
+                              <Link
+                                href={`/p/${item.post_public_sqid}`}
+                                className="post-title-link"
+                              >
                                 {item.post_title}
                               </Link>
                             </h3>
@@ -855,22 +1188,31 @@ export default function ModDashboardPage() {
                         {item.comment_preview && (
                           <p className="item-notes description-single-line">
                             “{item.comment_preview}”
-                            {item.type === 'comment' && item.has_original_body && (
-                              <button
-                                onClick={() => purgeCommentBody(item.id)}
-                                className="action-btn"
-                                title="Purge the preserved original text of this deleted comment (permanent — for PII etc.)"
-                              >🧹</button>
-                            )}
+                            {item.type === "comment" &&
+                              item.has_original_body && (
+                                <button
+                                  onClick={() => purgeCommentBody(item.id)}
+                                  className="action-btn"
+                                  title="Purge the preserved original text of this deleted comment (permanent — for PII etc.)"
+                                >
+                                  🧹
+                                </button>
+                              )}
                           </p>
                         )}
-                        <p className="item-date">{new Date(item.created_at).toLocaleString()}</p>
+                        <p className="item-date">
+                          {new Date(item.created_at).toLocaleString()}
+                        </p>
                       </div>
                     </div>
                   ))}
                   {pulseCursor && (
-                    <button onClick={() => loadPulse(false)} disabled={pulseLoading} className="load-more">
-                      {pulseLoading ? 'Loading...' : 'Load More'}
+                    <button
+                      onClick={() => loadPulse(false)}
+                      disabled={pulseLoading}
+                      className="load-more"
+                    >
+                      {pulseLoading ? "Loading..." : "Load More"}
                     </button>
                   )}
                 </>
@@ -878,26 +1220,37 @@ export default function ModDashboardPage() {
             </div>
           )}
 
-          {activeTab === 'audit' && (
+          {activeTab === "audit" && (
             <div className="section">
               <h2>Audit Log</h2>
               {auditLog.length === 0 && !auditLoading ? (
                 <p className="empty">No audit log entries</p>
               ) : (
                 <>
-                  {auditLog.map(entry => (
+                  {auditLog.map((entry) => (
                     <div key={entry.id} className="item-card">
                       <div className="item-info">
-                        <strong>{entry.action}</strong> - {entry.target_type || 'N/A'}
-                        {entry.reason_code && <span className="badge">{entry.reason_code}</span>}
-                        {entry.note && <p className="item-notes">{entry.note}</p>}
-                        <p className="item-date">{new Date(entry.created_at).toLocaleString()}</p>
+                        <strong>{entry.action}</strong> -{" "}
+                        {entry.target_type || "N/A"}
+                        {entry.reason_code && (
+                          <span className="badge">{entry.reason_code}</span>
+                        )}
+                        {entry.note && (
+                          <p className="item-notes">{entry.note}</p>
+                        )}
+                        <p className="item-date">
+                          {new Date(entry.created_at).toLocaleString()}
+                        </p>
                       </div>
                     </div>
                   ))}
                   {auditCursor && (
-                    <button onClick={() => loadAuditLog(false)} disabled={auditLoading} className="load-more">
-                      {auditLoading ? 'Loading...' : 'Load More'}
+                    <button
+                      onClick={() => loadAuditLog(false)}
+                      disabled={auditLoading}
+                      className="load-more"
+                    >
+                      {auditLoading ? "Loading..." : "Load More"}
                     </button>
                   )}
                 </>
@@ -905,17 +1258,22 @@ export default function ModDashboardPage() {
             </div>
           )}
 
-              {activeTab === 'notes' && (
+          {activeTab === "notes" && (
             <div className="section">
               <h2>Admin Notes</h2>
               <div className="notes-search">
                 <input
                   type="text"
                   placeholder="Enter post ID"
-                  value={selectedPostId || ''}
+                  value={selectedPostId || ""}
                   onChange={(e) => setSelectedPostId(e.target.value)}
                 />
-                <button onClick={() => selectedPostId && loadAdminNotes(selectedPostId)} className="action-btn">
+                <button
+                  onClick={() =>
+                    selectedPostId && loadAdminNotes(selectedPostId)
+                  }
+                  className="action-btn"
+                >
                   Load Notes
                 </button>
               </div>
@@ -927,8 +1285,12 @@ export default function ModDashboardPage() {
                       onChange={(e) => setNoteText(e.target.value)}
                       placeholder="Add admin note..."
                     />
-                    <button onClick={addAdminNote} disabled={addingNote || !noteText.trim()} className="action-btn success">
-                      {addingNote ? 'Adding...' : 'Add Note'}
+                    <button
+                      onClick={addAdminNote}
+                      disabled={addingNote || !noteText.trim()}
+                      className="action-btn success"
+                    >
+                      {addingNote ? "Adding..." : "Add Note"}
                     </button>
                   </div>
                   <div className="notes-list">
@@ -936,10 +1298,12 @@ export default function ModDashboardPage() {
                     {adminNotes.length === 0 ? (
                       <p className="empty">No notes yet</p>
                     ) : (
-                      adminNotes.map(note => (
+                      adminNotes.map((note) => (
                         <div key={note.id} className="item-card">
                           <p>{note.note}</p>
-                          <p className="item-date">{new Date(note.created_at).toLocaleString()}</p>
+                          <p className="item-date">
+                            {new Date(note.created_at).toLocaleString()}
+                          </p>
                         </div>
                       ))
                     )}
@@ -949,11 +1313,9 @@ export default function ModDashboardPage() {
             </div>
           )}
 
-          {activeTab === 'metrics' && (
-            <SiteMetricsPanel />
-          )}
+          {activeTab === "metrics" && <SiteMetricsPanel />}
 
-          {activeTab === 'downloads' && (
+          {activeTab === "downloads" && (
             <>
               <DownloadStatsPanel />
               <VaultShardingPanel />
@@ -967,7 +1329,10 @@ export default function ModDashboardPage() {
         <StatsPanel
           postId={statsPostId}
           isOpen={showStats}
-          onClose={() => { setShowStats(false); setStatsPostId(null); }}
+          onClose={() => {
+            setShowStats(false);
+            setStatsPostId(null);
+          }}
         />
       )}
 
