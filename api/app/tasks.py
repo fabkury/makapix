@@ -14,6 +14,7 @@ from typing import Any, List
 import requests
 from celery import Celery
 from celery.schedules import crontab
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -2448,15 +2449,20 @@ def cleanup_unverified_accounts(self) -> dict[str, Any]:
     email verification. They cannot log in and have no user-generated content
     since authentication is required for content creation.
 
-    Also cleans up any associated tokens (email verification, refresh, password reset).
+    Deletes each stale account through the same _purge_user_account helper the
+    self-serve deletion uses, so accounts that turn out to have content (the
+    "unverified users have no content" assumption is false in real data — e.g.
+    provider-provisioned accounts) are handled correctly instead of tripping a
+    FK and rolling back the whole batch. One problematic account is skipped and
+    logged; it does not abort the rest.
 
     Should run every 12 hours (configured in beat_schedule).
     """
     from datetime import datetime, timezone, timedelta
     from . import models
-    from .db import get_session
+    from .db import SessionLocal
 
-    db = next(get_session())
+    db = SessionLocal()
     try:
         logger.info("Starting unverified accounts cleanup task")
 
@@ -2464,67 +2470,48 @@ def cleanup_unverified_accounts(self) -> dict[str, Any]:
         cutoff = now - timedelta(days=3)
 
         # Find unverified accounts older than 3 days
-        stale_users = (
-            db.query(models.User)
-            .filter(
+        user_ids = [
+            uid
+            for (uid,) in db.query(models.User.id).filter(
                 models.User.email_verified == False, models.User.created_at < cutoff
             )
-            .all()
-        )
+        ]
 
-        if not stale_users:
+        if not user_ids:
             logger.info("No unverified accounts older than 3 days found")
             return {"status": "success", "deleted_accounts": 0}
 
-        user_ids = [u.id for u in stale_users]
         logger.info(f"Found {len(user_ids)} unverified accounts to delete")
 
-        # Delete associated tokens first (foreign key constraints)
-        deleted_refresh = (
-            db.query(models.RefreshToken)
-            .filter(models.RefreshToken.user_id.in_(user_ids))
-            .delete(synchronize_session=False)
-        )
-
-        deleted_verification = (
-            db.query(models.EmailVerificationToken)
-            .filter(models.EmailVerificationToken.user_id.in_(user_ids))
-            .delete(synchronize_session=False)
-        )
-
-        deleted_reset = (
-            db.query(models.PasswordResetToken)
-            .filter(models.PasswordResetToken.user_id.in_(user_ids))
-            .delete(synchronize_session=False)
-        )
-
-        # Delete the user accounts
-        deleted_users = (
-            db.query(models.User)
-            .filter(models.User.id.in_(user_ids))
-            .delete(synchronize_session=False)
-        )
-
-        db.commit()
+        deleted = 0
+        failed = 0
+        for uid in user_ids:
+            try:
+                _purge_user_account(db, uid)
+                deleted += 1
+            except Exception:
+                logger.exception(f"Failed to delete unverified account {uid}; skipping")
+                db.rollback()
+                failed += 1
 
         logger.info(
-            f"Cleaned up {deleted_users} unverified accounts "
-            f"(tokens: {deleted_refresh} refresh, {deleted_verification} verification, "
-            f"{deleted_reset} password reset)"
+            f"Cleaned up {deleted} unverified accounts ({failed} failed/skipped)"
         )
 
         return {
-            "status": "success",
-            "deleted_accounts": deleted_users,
-            "deleted_refresh_tokens": deleted_refresh,
-            "deleted_verification_tokens": deleted_verification,
-            "deleted_reset_tokens": deleted_reset,
+            "status": "success" if failed == 0 else "partial",
+            "deleted_accounts": deleted,
+            "failed_accounts": failed,
         }
 
-    except Exception as e:
-        logger.error(f"Error in cleanup_unverified_accounts task: {e}", exc_info=True)
+    except Exception:
+        # A failure here is the query/setup itself, not a single account.
+        # Raise so Celery records a real failure instead of a success-shaped
+        # error dict (which is how this task silently "worked" while doing
+        # nothing).
+        logger.error("Error in cleanup_unverified_accounts task", exc_info=True)
         db.rollback()
-        return {"status": "error", "message": str(e)}
+        raise
     finally:
         db.close()
 
@@ -3262,7 +3249,7 @@ def process_bdr_job(self, bdr_id: str) -> dict[str, Any]:
 
     from sqlalchemy import func
 
-    from . import models
+    from . import models, vault
     from .db import SessionLocal
     from .sqids_config import sqids
 
@@ -3725,10 +3712,32 @@ def renew_crl_if_needed(self) -> dict[str, Any]:
     max_retries=3,
 )
 def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
-    """
-    Permanently delete a user account and all associated data.
+    """Permanently delete a user account and all associated data.
 
-    This task handles the complete deletion of a user account:
+    Thin wrapper around ``_purge_user_account`` — the deletion steps live in
+    that helper so the unverified-account reaper can reuse the exact same
+    (FK-complete) logic instead of its own partial copy.
+    """
+    from .db import SessionLocal
+
+    db = SessionLocal()
+    try:
+        counts = _purge_user_account(db, user_id)
+    except Exception as e:
+        logger.error(f"Error deleting account for user {user_id}: {e}", exc_info=True)
+        db.rollback()
+        raise  # Re-raise to trigger Celery retry
+    finally:
+        db.close()
+
+    logger.info(f"Account deletion completed for user {user_id}: {counts}")
+    return {"status": "success", "user_id": user_id, "counts": counts}
+
+
+def _purge_user_account(db: Session, user_id: int) -> dict[str, Any]:
+    """Delete one user and every FK-dependent row, using the caller's session.
+
+    Handles the complete deletion of a user account:
     1. Reactions - delete all user's reactions on posts
     2. Comments - special handling for hierarchy:
        - Comments WITH children: Set author_id=NULL, body="[deleted comment]"
@@ -3746,22 +3755,21 @@ def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
     13. Tokens - delete RefreshToken, EmailVerificationToken, PasswordResetToken
     14. AuthIdentity - delete OAuth identities
     15. Avatar - delete avatar file from vault
+    15b. FK-blocking rows - audit_logs / admin_notes / relay_jobs / violations /
+         push_tokens (RESTRICT or NO ACTION, NOT NULL) are erased and
+         reports.reporter_id is anonymized, or the final DELETE would fail
     16. User record - final delete (frees email for reuse)
 
-    Args:
-        user_id: Integer ID of the user to delete
-
-    Returns:
-        Dictionary with deletion status and counts
+    Commits progressively (so a large account doesn't balloon memory). Returns
+    the per-table counts. On error rolls back and re-raises; the caller owns the
+    session lifecycle (open/close) and decides whether to retry or skip.
     """
     from pathlib import Path
     from sqlalchemy import func
     from . import models
-    from .db import SessionLocal
     from .vault import delete_all_artwork_formats, get_vault_location
     from .avatar_vault import try_delete_avatar_by_public_url
 
-    db = SessionLocal()
     counts = {
         "reactions": 0,
         "comments_deleted": 0,
@@ -3905,9 +3913,9 @@ def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
         vault_base = get_vault_location()
         for bdr in bdrs:
             # Delete the zip file if it exists
-            if bdr.download_path:
+            if bdr.file_path:
                 try:
-                    zip_path = vault_base / bdr.download_path.lstrip("/")
+                    zip_path = vault_base / bdr.file_path.lstrip("/")
                     if zip_path.exists():
                         zip_path.unlink()
                         logger.info(f"Deleted BDR zip file: {zip_path}")
@@ -4076,6 +4084,58 @@ def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
                 f"Avatar deletion for user {user_id}: {counts['avatar_deleted']}"
             )
 
+        # 15b. Clear rows that FK-block the final DELETE. These reference
+        # users.id with ON DELETE RESTRICT / NO ACTION and NOT NULL, so unlike
+        # the CASCADE/SET NULL tables above they are not cleaned up implicitly
+        # and would abort the whole deletion (this is why deletion previously
+        # never completed: request_account_deletion writes an audit_logs row
+        # whose actor_id is this very user).
+        #  - reports.reporter_id is RESTRICT but nullable -> anonymize (keep the
+        #    report, drop the reporter PII), matching the reporter-IP policy.
+        #  - audit_logs / admin_notes / relay_jobs / violations / push_tokens are
+        #    NOT NULL -> the rows are erased with the account.
+        counts["reports_anonymized"] = (
+            db.query(models.Report)
+            .filter(models.Report.reporter_id == user_id)
+            .update({models.Report.reporter_id: None}, synchronize_session=False)
+        )
+        counts["audit_logs"] = (
+            db.query(models.AuditLog)
+            .filter(models.AuditLog.actor_id == user_id)
+            .delete(synchronize_session=False)
+        )
+        counts["admin_notes"] = (
+            db.query(models.AdminNote)
+            .filter(models.AdminNote.created_by == user_id)
+            .delete(synchronize_session=False)
+        )
+        counts["relay_jobs"] = (
+            db.query(models.RelayJob)
+            .filter(models.RelayJob.user_id == user_id)
+            .delete(synchronize_session=False)
+        )
+        counts["violations"] = (
+            db.query(models.Violation)
+            .filter(
+                (models.Violation.user_id == user_id)
+                | (models.Violation.moderator_id == user_id)
+            )
+            .delete(synchronize_session=False)
+        )
+        counts["push_tokens"] = (
+            db.query(models.PushToken)
+            .filter(models.PushToken.user_id == user_id)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        logger.info(
+            f"Cleared FK-blocking rows for user {user_id}: "
+            f"{counts['audit_logs']} audit, {counts['admin_notes']} admin notes, "
+            f"{counts['relay_jobs']} relay, {counts['violations']} violations, "
+            f"{counts['push_tokens']} push tokens, "
+            f"{counts['reports_anonymized']} reports anonymized"
+        )
+
         # 16. Finally, delete the user record
         db.delete(user)
         db.commit()
@@ -4089,16 +4149,11 @@ def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
         except Exception as e:
             logger.warning(f"Failed to invalidate stats cache for user {user_id}: {e}")
 
-        logger.info(f"Account deletion completed for user {user_id}: {counts}")
-        return {"status": "success", "user_id": user_id, "counts": counts}
+        return counts
 
-    except Exception as e:
-        logger.error(f"Error deleting account for user {user_id}: {e}", exc_info=True)
+    except Exception:
         db.rollback()
-        raise  # Re-raise to trigger Celery retry
-
-    finally:
-        db.close()
+        raise
 
 
 # ============================================================================
