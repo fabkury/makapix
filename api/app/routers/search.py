@@ -82,6 +82,10 @@ def search_all(
             models.User.hidden_by_mod == False,
             models.User.non_conformant == False,
             models.User.deactivated == False,
+            # Banned users 404 on their profile; they must not be discoverable
+            # via search either (banned_until is non-NULL when banned, including
+            # the permanent-ban sentinel).
+            models.User.banned_until.is_(None),
             models.User.email_verified == True,
             ~models.User.roles.cast(JSONB).contains(
                 ["owner"]
@@ -290,6 +294,7 @@ async def list_hashtags(
     base_query = db.query(models.Post).filter(
         models.Post.visible == True,
         models.Post.hidden_by_mod == False,
+        models.Post.hidden_by_user == False,
         models.Post.non_conformant == False,
         models.Post.public_visibility == True,  # Only show publicly visible posts
         models.Post.deleted_by_user == False,  # Exclude user-deleted posts
@@ -488,6 +493,7 @@ async def list_hashtags_with_stats(
     base_query = db.query(models.Post).filter(
         models.Post.visible == True,
         models.Post.hidden_by_mod == False,
+        models.Post.hidden_by_user == False,
         models.Post.non_conformant == False,
         models.Post.public_visibility == True,  # Only show publicly visible posts
         models.Post.deleted_by_user == False,  # Exclude user-deleted posts
@@ -642,6 +648,7 @@ async def get_top_hashtags(
     base_query = db.query(models.Post).filter(
         models.Post.visible == True,
         models.Post.hidden_by_mod == False,
+        models.Post.hidden_by_user == False,
         models.Post.non_conformant == False,
         models.Post.public_visibility == True,
         models.Post.deleted_by_user == False,
@@ -836,6 +843,8 @@ def feed_following(
         models.Post.owner_id.in_(following_ids),
         models.Post.visible == True,
         models.Post.hidden_by_mod == False,
+        models.Post.hidden_by_user == False,  # author-hidden posts must not leak
+        models.Post.non_conformant == False,
         models.Post.public_visibility == True,  # Only show publicly visible posts
         models.Post.deleted_by_user == False,  # Exclude user-deleted posts
     )
