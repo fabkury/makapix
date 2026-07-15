@@ -38,6 +38,19 @@ export const getServerSideProps: GetServerSideProps = async ({ res, query }) => 
       if (statusEl) statusEl.textContent = 'Invalid return location.';
       return;
     }
+    // Only ever hand the access token to a Makapix-owned https origin. Without
+    // this, ?return=https://evil.example would deliver the bearer token straight
+    // into an attacker's page (the token is written into target's URL hash below).
+    const host = target.hostname;
+    const isLocal = host === 'localhost' || host === '127.0.0.1';
+    const hostAllowed = host === 'makapix.club' || host.endsWith('.makapix.club') || isLocal;
+    const protoAllowed = target.protocol === 'https:' || (isLocal && target.protocol === 'http:');
+    if (!hostAllowed || !protoAllowed) {
+      console.error('Makapix session-transfer: refusing untrusted return location', host);
+      const statusEl = document.getElementById('status');
+      if (statusEl) statusEl.textContent = 'Refusing to transfer session to an untrusted location.';
+      return;
+    }
     try {
       const hashParams = new URLSearchParams(target.hash ? target.hash.substring(1) : '');
       if (reasonParam) {

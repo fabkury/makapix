@@ -1035,17 +1035,49 @@ def _resolve_user_from_token(token: str, db: Session) -> models.User:
     return user
 
 
+_SSE_TICKET_PREFIX = "player_sse_ticket:"
+_SSE_TICKET_TTL_SECONDS = 30
+
+
+@router.post("/u/{sqid}/player/sse-ticket")
+def create_player_sse_ticket(
+    sqid: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> dict:
+    """Mint a short-lived, single-use ticket for the player SSE stream.
+
+    EventSource cannot set an Authorization header, so callers used to put the
+    60-minute access token in the SSE URL query string — where it lands in
+    access logs for its whole lifetime. Instead they authenticate here normally
+    and pass the returned ticket, which is valid for 30s and consumed on first
+    use, so a logged URL is worthless.
+    """
+    import secrets
+
+    from ..cache import cache_set
+
+    user = get_user_by_sqid(sqid, db)
+    require_ownership(user.id, current_user)
+    ticket = secrets.token_urlsafe(32)
+    cache_set(f"{_SSE_TICKET_PREFIX}{ticket}", user.id, ttl=_SSE_TICKET_TTL_SECONDS)
+    return {"ticket": ticket, "expires_in": _SSE_TICKET_TTL_SECONDS}
+
+
 @router.get("/u/{sqid}/player/sse")
 async def player_events_sse(
     sqid: str,
     request: Request,
+    ticket: str = "",
     token: str = "",
     db: Session = Depends(get_db),
 ):
     """Server-Sent Events stream of live capability/state/ack updates.
 
-    EventSource cannot set Bearer headers, so the access token must be
-    passed as a `token` query parameter.
+    Authenticate with a single-use `ticket` from POST .../player/sse-ticket.
+    The legacy `token` query param (the raw access token) is still accepted for
+    older clients during the transition, but it should not be used — it leaks the
+    token into access logs.
     """
     import asyncio
     import json as _json
@@ -1054,11 +1086,31 @@ async def player_events_sse(
 
     from ..services import player_events
 
-    if not token:
+    current_user = None
+    if ticket:
+        from ..cache import cache_delete, cache_get
+
+        ticket_key = f"{_SSE_TICKET_PREFIX}{ticket}"
+        ticket_user_id = cache_get(ticket_key)
+        cache_delete(ticket_key)  # single-use
+        if ticket_user_id is not None:
+            current_user = (
+                db.query(models.User)
+                .filter(models.User.id == int(ticket_user_id))
+                .first()
+            )
+        if current_user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired ticket",
+            )
+    elif token:
+        current_user = _resolve_user_from_token(token, db)
+    else:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token required"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Ticket required"
         )
-    current_user = _resolve_user_from_token(token, db)
+
     user = get_user_by_sqid(sqid, db)
     require_ownership(user.id, current_user)
     user_id = user.id

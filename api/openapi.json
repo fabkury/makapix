@@ -1835,17 +1835,6 @@
             ],
             "title": "Author Id"
           },
-          "author_ip": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Author Ip"
-          },
           "author_public_sqid": {
             "anyOf": [
               {
@@ -2640,37 +2629,6 @@
           }
         },
         "title": "HTTPValidationError",
-        "type": "object"
-      },
-      "HashUrlRequest": {
-        "description": "Hash URL task request.",
-        "properties": {
-          "url": {
-            "format": "uri",
-            "maxLength": 2083,
-            "minLength": 1,
-            "title": "Url",
-            "type": "string"
-          }
-        },
-        "required": [
-          "url"
-        ],
-        "title": "HashUrlRequest",
-        "type": "object"
-      },
-      "HashUrlResponse": {
-        "description": "Hash URL task response.",
-        "properties": {
-          "task_id": {
-            "title": "Task Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "task_id"
-        ],
-        "title": "HashUrlResponse",
         "type": "object"
       },
       "HashtagItem": {
@@ -9583,7 +9541,7 @@
         ]
       },
       "post": {
-        "description": "Ban user (moderator only).\n\nBanning a user prevents them from authenticating but does NOT delete their account.\nThe user profile and all associated data remain in the database.\n\n- No duration (None) = permanent ban (banned_until = None)\n- With duration = temporary ban (banned_until = current_time + duration_days)\n\nNote: There is no automatic cleanup of banned user profiles. They remain in the\ndatabase indefinitely unless manually deleted by an administrator.",
+        "description": "Ban user (moderator only).\n\nBanning a user prevents them from authenticating but does NOT delete their account.\nThe user profile and all associated data remain in the database.\n\n- No duration (None) = permanent ban (banned_until = PERMANENT_BAN_UNTIL)\n- With duration = temporary ban (banned_until = current_time + duration_days)\n\nNote: There is no automatic cleanup of banned user profiles. They remain in the\ndatabase indefinitely unless manually deleted by an administrator.",
         "operationId": "ban_user_admin_user__sqid__ban_post",
         "parameters": [
           {
@@ -11469,48 +11427,6 @@
         ]
       }
     },
-    "/tasks/hash-url": {
-      "post": {
-        "description": "Queue URL hashing task (legacy demo endpoint).\n\nTODO: Remove in production or move to /admin/tasks",
-        "operationId": "enqueue_hash_url_tasks_hash_url_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/HashUrlRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HashUrlResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Enqueue Hash Url",
-        "tags": [
-          "Legacy"
-        ]
-      }
-    },
     "/u/{sqid}/player": {
       "get": {
         "description": "List all players for a user.",
@@ -11626,7 +11542,7 @@
     },
     "/u/{sqid}/player/sse": {
       "get": {
-        "description": "Server-Sent Events stream of live capability/state/ack updates.\n\nEventSource cannot set Bearer headers, so the access token must be\npassed as a `token` query parameter.",
+        "description": "Server-Sent Events stream of live capability/state/ack updates.\n\nAuthenticate with a single-use `ticket` from POST .../player/sse-ticket.\nThe legacy `token` query param (the raw access token) is still accepted for\nolder clients during the transition, but it should not be used — it leaks the\ntoken into access logs.",
         "operationId": "player_events_sse_u__sqid__player_sse_get",
         "parameters": [
           {
@@ -11635,6 +11551,16 @@
             "required": true,
             "schema": {
               "title": "Sqid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ticket",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ticket",
               "type": "string"
             }
           },
@@ -11670,6 +11596,56 @@
           }
         },
         "summary": "Player Events Sse",
+        "tags": [
+          "Players"
+        ]
+      }
+    },
+    "/u/{sqid}/player/sse-ticket": {
+      "post": {
+        "description": "Mint a short-lived, single-use ticket for the player SSE stream.\n\nEventSource cannot set an Authorization header, so callers used to put the\n60-minute access token in the SSE URL query string — where it lands in\naccess logs for its whole lifetime. Instead they authenticate here normally\nand pass the returned ticket, which is valid for 30s and consumed on first\nuse, so a logged URL is worthless.",
+        "operationId": "create_player_sse_ticket_u__sqid__player_sse_ticket_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sqid",
+            "required": true,
+            "schema": {
+              "title": "Sqid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Player Sse Ticket U  Sqid  Player Sse Ticket Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Player Sse Ticket",
         "tags": [
           "Players"
         ]
@@ -13211,7 +13187,7 @@
         ]
       },
       "post": {
-        "description": "Ban user (moderator only).\n\nBanning a user prevents them from authenticating but does NOT delete their account.\nThe user profile and all associated data remain in the database indefinitely.\n\n- No duration (None/0) = permanent ban (banned_until = None)\n- With duration = temporary ban (banned_until = current_time + duration_days)\n\nNote: There is no automatic cleanup of banned user profiles. To completely remove\na user's data, a separate deletion process would need to be implemented.\n\nTODO: Send notification to user (currently not implemented)\nTODO: Hide all user's content (currently content visibility depends on other flags)",
+        "description": "Ban user (moderator only).\n\nBanning a user prevents them from authenticating but does NOT delete their account.\nThe user profile and all associated data remain in the database indefinitely.\n\n- No duration (None/0) = permanent ban (banned_until = PERMANENT_BAN_UNTIL)\n- With duration = temporary ban (banned_until = current_time + duration_days)\n\nNote: There is no automatic cleanup of banned user profiles. To completely remove\na user's data, a separate deletion process would need to be implemented.\n\nTODO: Send notification to user (currently not implemented)\nTODO: Hide all user's content (currently content visibility depends on other flags)",
         "operationId": "ban_user_v1_admin_user__id__ban_post",
         "parameters": [
           {

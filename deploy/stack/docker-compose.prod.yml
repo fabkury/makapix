@@ -37,7 +37,11 @@ services:
       # carries this environment's public MQTT hostname in its SANs.
       MQTT_PUBLIC_HOST: makapix.club
     ports:
-      - "1883:1883"
+      # Plaintext listener bound to loopback only: its security model is "docker
+      # network isolation", so it must not be reachable from the internet
+      # (Docker's iptables rules bypass ufw). In-container clients reach the
+      # broker over the compose network; physical players use 8883 mTLS.
+      - "127.0.0.1:1883:1883"
       - "8883:8883"
 
   # ---------------------------------------------------------------------------

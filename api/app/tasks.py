@@ -14,6 +14,7 @@ from typing import Any, List
 import requests
 from celery import Celery
 from celery.schedules import crontab
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -381,13 +382,17 @@ celery_app.conf.update(
         # low-traffic window so they don't pile onto the worker (concurrency=2)
         # at once.
         #
-        # Ordering is load-bearing for the view/site-event pipeline:
-        # rollup_view_events aggregates raw view events into post_stats_daily and
-        # then deletes the non-player ones; cleanup_old_view_events is a
-        # safety-net that also deletes non-player events, so it MUST run after the
-        # rollup, never before, or it would delete events before they're rolled
-        # up. rollup_site_events consumes the surviving player view events, so it
-        # sits between them.
+        # Ordering for the view/site-event pipeline: rollup_view_events
+        # aggregates raw view events into post_stats_daily and then deletes the
+        # non-player ones it rolled up (same cutoff, one transaction), so a
+        # failed rollup leaves its events intact for the next run to pick up.
+        # rollup_site_events consumes the surviving player view events, so it
+        # runs after. There is deliberately NO separate cleanup task: a second
+        # task with its own `now - 7d` cutoff deleted the ~90-minute band of
+        # events that were not yet 7 days old at rollup time but were by cleanup
+        # time — permanent, un-rolled-up loss — and it also deleted everything
+        # when the rollup failed. The same race already forced the removal of
+        # cleanup-old-site-events (below).
         "rollup-view-events": {
             "task": "app.tasks.rollup_view_events",
             "schedule": crontab(minute=0, hour=1),  # 01:00 ET
@@ -403,14 +408,10 @@ celery_app.conf.update(
             "schedule": crontab(minute=0, hour=2),  # 02:00 ET (after view rollup)
             "options": {"queue": "default"},
         },
-        # NOTE: cleanup-old-site-events removed — it raced with rollup-site-events,
-        # deleting raw events before they could be aggregated into site_stats_daily.
-        # The rollup task already handles deletion after aggregation.
-        "cleanup-old-view-events": {
-            "task": "app.tasks.cleanup_old_view_events",
-            "schedule": crontab(minute=30, hour=2),  # 02:30 ET (after the rollups)
-            "options": {"queue": "default"},
-        },
+        # NOTE: cleanup-old-site-events AND cleanup-old-view-events were both
+        # removed — each raced its rollup with an independent cutoff and deleted
+        # raw events before (or instead of) aggregating them. The rollups own
+        # deletion, after aggregation, in the same transaction.
         "rollup-download-stats": {
             "task": "app.tasks.rollup_download_stats",
             # 03:00 ET. 3 AM ET == 07:00 UTC (EDT) / 08:00 UTC (EST), both safely
@@ -1401,7 +1402,7 @@ def rollup_view_events(self) -> dict[str, Any]:
                 existing.unique_viewers += len(agg["unique_viewer_keys"])
 
                 # Merge country data
-                existing_countries = existing.views_by_country or {}
+                existing_countries = dict(existing.views_by_country or {})
                 for country, count in agg["views_by_country"].items():
                     existing_countries[country] = (
                         existing_countries.get(country, 0) + count
@@ -1409,13 +1410,13 @@ def rollup_view_events(self) -> dict[str, Any]:
                 existing.views_by_country = existing_countries
 
                 # Merge device data
-                existing_devices = existing.views_by_device or {}
+                existing_devices = dict(existing.views_by_device or {})
                 for device, count in agg["views_by_device"].items():
                     existing_devices[device] = existing_devices.get(device, 0) + count
                 existing.views_by_device = existing_devices
 
                 # Merge type data
-                existing_types = existing.views_by_type or {}
+                existing_types = dict(existing.views_by_type or {})
                 for vtype, count in agg["views_by_type"].items():
                     existing_types[vtype] = existing_types.get(vtype, 0) + count
                 existing.views_by_type = existing_types
@@ -1426,21 +1427,25 @@ def rollup_view_events(self) -> dict[str, Any]:
                     agg["authenticated_unique_viewer_keys"]
                 )
 
-                existing_countries_auth = existing.views_by_country_authenticated or {}
+                existing_countries_auth = dict(
+                    existing.views_by_country_authenticated or {}
+                )
                 for country, count in agg["views_by_country_authenticated"].items():
                     existing_countries_auth[country] = (
                         existing_countries_auth.get(country, 0) + count
                     )
                 existing.views_by_country_authenticated = existing_countries_auth
 
-                existing_devices_auth = existing.views_by_device_authenticated or {}
+                existing_devices_auth = dict(
+                    existing.views_by_device_authenticated or {}
+                )
                 for device, count in agg["views_by_device_authenticated"].items():
                     existing_devices_auth[device] = (
                         existing_devices_auth.get(device, 0) + count
                     )
                 existing.views_by_device_authenticated = existing_devices_auth
 
-                existing_types_auth = existing.views_by_type_authenticated or {}
+                existing_types_auth = dict(existing.views_by_type_authenticated or {})
                 for vtype, count in agg["views_by_type_authenticated"].items():
                     existing_types_auth[vtype] = (
                         existing_types_auth.get(vtype, 0) + count
@@ -1491,10 +1496,14 @@ def rollup_view_events(self) -> dict[str, Any]:
         )
         return {"status": "success", "rolled_up": rolled_up, "deleted": deleted_count}
 
-    except Exception as e:
-        logger.error(f"Error in rollup_view_events task: {e}", exc_info=True)
+    except Exception:
+        # Raise (not a success-shaped error dict) so Celery records a real
+        # failure and alerting fires. The rolled-up events are only deleted in
+        # the same transaction as the aggregation, so a failure here leaves the
+        # raw events intact for the next run — no data loss, no double count.
+        logger.error("Error in rollup_view_events task", exc_info=True)
         db.rollback()
-        return {"status": "error", "message": str(e)}
+        raise
     finally:
         db.close()
 
@@ -1588,7 +1597,7 @@ def rollup_blog_post_view_events(self) -> dict[str, Any]:
                 existing.unique_viewers += len(agg["unique_ip_hashes"])
 
                 # Merge country data
-                existing_countries = existing.views_by_country or {}
+                existing_countries = dict(existing.views_by_country or {})
                 for country, count in agg["views_by_country"].items():
                     existing_countries[country] = (
                         existing_countries.get(country, 0) + count
@@ -1596,13 +1605,13 @@ def rollup_blog_post_view_events(self) -> dict[str, Any]:
                 existing.views_by_country = existing_countries
 
                 # Merge device data
-                existing_devices = existing.views_by_device or {}
+                existing_devices = dict(existing.views_by_device or {})
                 for device, count in agg["views_by_device"].items():
                     existing_devices[device] = existing_devices.get(device, 0) + count
                 existing.views_by_device = existing_devices
 
                 # Merge type data
-                existing_types = existing.views_by_type or {}
+                existing_types = dict(existing.views_by_type or {})
                 for vtype, count in agg["views_by_type"].items():
                     existing_types[vtype] = existing_types.get(vtype, 0) + count
                 existing.views_by_type = existing_types
@@ -1948,35 +1957,35 @@ def rollup_site_events(self) -> dict[str, Any]:
                 existing.total_errors += agg["total_errors"]
 
                 # Merge JSON fields
-                existing_views_by_page = existing.views_by_page or {}
+                existing_views_by_page = dict(existing.views_by_page or {})
                 for page, count in agg["views_by_page"].items():
                     existing_views_by_page[page] = (
                         existing_views_by_page.get(page, 0) + count
                     )
                 existing.views_by_page = existing_views_by_page
 
-                existing_views_by_country = existing.views_by_country or {}
+                existing_views_by_country = dict(existing.views_by_country or {})
                 for country, count in agg["views_by_country"].items():
                     existing_views_by_country[country] = (
                         existing_views_by_country.get(country, 0) + count
                     )
                 existing.views_by_country = existing_views_by_country
 
-                existing_views_by_device = existing.views_by_device or {}
+                existing_views_by_device = dict(existing.views_by_device or {})
                 for device, count in agg["views_by_device"].items():
                     existing_views_by_device[device] = (
                         existing_views_by_device.get(device, 0) + count
                     )
                 existing.views_by_device = existing_views_by_device
 
-                existing_errors_by_type = existing.errors_by_type or {}
+                existing_errors_by_type = dict(existing.errors_by_type or {})
                 for error_type, count in agg["errors_by_type"].items():
                     existing_errors_by_type[error_type] = (
                         existing_errors_by_type.get(error_type, 0) + count
                     )
                 existing.errors_by_type = existing_errors_by_type
 
-                existing_top_referrers = existing.top_referrers or {}
+                existing_top_referrers = dict(existing.top_referrers or {})
                 for referrer, count in agg["top_referrers"].items():
                     existing_top_referrers[referrer] = (
                         existing_top_referrers.get(referrer, 0) + count
@@ -1989,14 +1998,16 @@ def rollup_site_events(self) -> dict[str, Any]:
                     agg["authenticated_unique_visitor_keys"]
                 )
 
-                existing_auth_views_by_page = existing.authenticated_views_by_page or {}
+                existing_auth_views_by_page = dict(
+                    existing.authenticated_views_by_page or {}
+                )
                 for page, count in agg["authenticated_views_by_page"].items():
                     existing_auth_views_by_page[page] = (
                         existing_auth_views_by_page.get(page, 0) + count
                     )
                 existing.authenticated_views_by_page = existing_auth_views_by_page
 
-                existing_auth_views_by_country = (
+                existing_auth_views_by_country = dict(
                     existing.authenticated_views_by_country or {}
                 )
                 for country, count in agg["authenticated_views_by_country"].items():
@@ -2005,7 +2016,7 @@ def rollup_site_events(self) -> dict[str, Any]:
                     )
                 existing.authenticated_views_by_country = existing_auth_views_by_country
 
-                existing_auth_views_by_device = (
+                existing_auth_views_by_device = dict(
                     existing.authenticated_views_by_device or {}
                 )
                 for device, count in agg["authenticated_views_by_device"].items():
@@ -2014,7 +2025,9 @@ def rollup_site_events(self) -> dict[str, Any]:
                     )
                 existing.authenticated_views_by_device = existing_auth_views_by_device
 
-                existing_auth_top_referrers = existing.authenticated_top_referrers or {}
+                existing_auth_top_referrers = dict(
+                    existing.authenticated_top_referrers or {}
+                )
                 for referrer, count in agg["authenticated_top_referrers"].items():
                     existing_auth_top_referrers[referrer] = (
                         existing_auth_top_referrers.get(referrer, 0) + count
@@ -2027,7 +2040,7 @@ def rollup_site_events(self) -> dict[str, Any]:
                     existing.total_player_views += pagg["total_player_views"]
                     existing.active_players += len(pagg["player_ids"])
 
-                    existing_views_by_player = existing.views_by_player or {}
+                    existing_views_by_player = dict(existing.views_by_player or {})
                     for player_name, count in pagg["views_by_player"].items():
                         existing_views_by_player[player_name] = (
                             existing_views_by_player.get(player_name, 0) + count
@@ -2106,10 +2119,12 @@ def rollup_site_events(self) -> dict[str, Any]:
             "deleted_player_views": deleted_player_views,
         }
 
-    except Exception as e:
-        logger.error(f"Error in rollup_site_events task: {e}", exc_info=True)
+    except Exception:
+        # Raise so a failed rollup is a visible Celery failure, not a
+        # success-shaped error dict; surviving raw events roll up next run.
+        logger.error("Error in rollup_site_events task", exc_info=True)
         db.rollback()
-        return {"status": "error", "message": str(e)}
+        raise
     finally:
         db.close()
 
@@ -2158,12 +2173,13 @@ def cleanup_old_site_events(self) -> dict[str, Any]:
 @celery_app.task(name="app.tasks.cleanup_old_view_events", bind=True)
 def cleanup_old_view_events(self) -> dict[str, Any]:
     """
-    Daily task: Clean up view events older than 7 days.
+    Manual-only cleanup of non-player view events older than 7 days.
 
-    This is a safety net - rollup_view_events should delete events after rolling them up,
-    but this ensures any stragglers are cleaned up if the rollup fails partway through.
-
-    Runs daily at 02:30 US Eastern, after the rollups (configured in beat_schedule).
+    NOT scheduled: as a nightly beat task with its own `now - 7d` cutoff it
+    deleted the band of events not yet 7 days old at rollup time (permanent,
+    un-rolled-up loss) and deleted everything when the rollup failed. The
+    rollups own deletion, after aggregation, in the same transaction. Kept only
+    as an operator tool for clearing confirmed post-rollup stragglers by hand.
     """
     from datetime import datetime, timedelta, timezone
     from . import models
@@ -2448,15 +2464,20 @@ def cleanup_unverified_accounts(self) -> dict[str, Any]:
     email verification. They cannot log in and have no user-generated content
     since authentication is required for content creation.
 
-    Also cleans up any associated tokens (email verification, refresh, password reset).
+    Deletes each stale account through the same _purge_user_account helper the
+    self-serve deletion uses, so accounts that turn out to have content (the
+    "unverified users have no content" assumption is false in real data — e.g.
+    provider-provisioned accounts) are handled correctly instead of tripping a
+    FK and rolling back the whole batch. One problematic account is skipped and
+    logged; it does not abort the rest.
 
     Should run every 12 hours (configured in beat_schedule).
     """
     from datetime import datetime, timezone, timedelta
     from . import models
-    from .db import get_session
+    from .db import SessionLocal
 
-    db = next(get_session())
+    db = SessionLocal()
     try:
         logger.info("Starting unverified accounts cleanup task")
 
@@ -2464,67 +2485,48 @@ def cleanup_unverified_accounts(self) -> dict[str, Any]:
         cutoff = now - timedelta(days=3)
 
         # Find unverified accounts older than 3 days
-        stale_users = (
-            db.query(models.User)
-            .filter(
+        user_ids = [
+            uid
+            for (uid,) in db.query(models.User.id).filter(
                 models.User.email_verified == False, models.User.created_at < cutoff
             )
-            .all()
-        )
+        ]
 
-        if not stale_users:
+        if not user_ids:
             logger.info("No unverified accounts older than 3 days found")
             return {"status": "success", "deleted_accounts": 0}
 
-        user_ids = [u.id for u in stale_users]
         logger.info(f"Found {len(user_ids)} unverified accounts to delete")
 
-        # Delete associated tokens first (foreign key constraints)
-        deleted_refresh = (
-            db.query(models.RefreshToken)
-            .filter(models.RefreshToken.user_id.in_(user_ids))
-            .delete(synchronize_session=False)
-        )
-
-        deleted_verification = (
-            db.query(models.EmailVerificationToken)
-            .filter(models.EmailVerificationToken.user_id.in_(user_ids))
-            .delete(synchronize_session=False)
-        )
-
-        deleted_reset = (
-            db.query(models.PasswordResetToken)
-            .filter(models.PasswordResetToken.user_id.in_(user_ids))
-            .delete(synchronize_session=False)
-        )
-
-        # Delete the user accounts
-        deleted_users = (
-            db.query(models.User)
-            .filter(models.User.id.in_(user_ids))
-            .delete(synchronize_session=False)
-        )
-
-        db.commit()
+        deleted = 0
+        failed = 0
+        for uid in user_ids:
+            try:
+                _purge_user_account(db, uid)
+                deleted += 1
+            except Exception:
+                logger.exception(f"Failed to delete unverified account {uid}; skipping")
+                db.rollback()
+                failed += 1
 
         logger.info(
-            f"Cleaned up {deleted_users} unverified accounts "
-            f"(tokens: {deleted_refresh} refresh, {deleted_verification} verification, "
-            f"{deleted_reset} password reset)"
+            f"Cleaned up {deleted} unverified accounts ({failed} failed/skipped)"
         )
 
         return {
-            "status": "success",
-            "deleted_accounts": deleted_users,
-            "deleted_refresh_tokens": deleted_refresh,
-            "deleted_verification_tokens": deleted_verification,
-            "deleted_reset_tokens": deleted_reset,
+            "status": "success" if failed == 0 else "partial",
+            "deleted_accounts": deleted,
+            "failed_accounts": failed,
         }
 
-    except Exception as e:
-        logger.error(f"Error in cleanup_unverified_accounts task: {e}", exc_info=True)
+    except Exception:
+        # A failure here is the query/setup itself, not a single account.
+        # Raise so Celery records a real failure instead of a success-shaped
+        # error dict (which is how this task silently "worked" while doing
+        # nothing).
+        logger.error("Error in cleanup_unverified_accounts task", exc_info=True)
         db.rollback()
-        return {"status": "error", "message": str(e)}
+        raise
     finally:
         db.close()
 
@@ -2605,39 +2607,55 @@ def cleanup_deleted_posts(self) -> dict[str, Any]:
         errors = []
 
         for post in posts_to_delete:
+            post_id = post.id
             try:
-                # Delete all artwork format variants + upscaled version
-                if post.storage_key:
-                    try:
-                        formats_to_delete = [pf.format for pf in post.files] or []
-                        vault.delete_all_artwork_formats(
-                            post.storage_key,
-                            formats_to_delete,
-                            storage_shard=post.storage_shard,
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            f"Failed to delete vault files for post {post.id}: {e}"
-                        )
+                # Capture storage info BEFORE deleting the row — we remove files
+                # only AFTER the DB delete is committed, so a failed delete can
+                # never leave a surviving row whose artwork files are gone.
+                storage_key = post.storage_key
+                storage_shard = post.storage_shard
+                formats_to_delete = [pf.format for pf in post.files] or []
+                has_mkpx = post.mkpx_file_bytes is not None
 
-                    # Attached .mkpx layers file, if any (best-effort)
-                    if post.mkpx_file_bytes is not None:
-                        vault.delete_mkpx_from_vault(
-                            post.storage_key, post.storage_shard
-                        )
+                # players.current_post_id is a NO ACTION FK, so a player still
+                # showing this post would raise and (with the old batched commit)
+                # roll back the whole uncommitted batch, orphaning files that
+                # were already unlinked. Null it first.
+                db.query(models.Player).filter(
+                    models.Player.current_post_id == post_id
+                ).update(
+                    {models.Player.current_post_id: None}, synchronize_session=False
+                )
 
-                # Delete the post (cascades to comments, reactions, admin_notes, etc.)
+                # Delete the row and commit per post (cascades to comments,
+                # reactions, admin_notes, ...). Per-post commits keep each
+                # deletion atomic with respect to its file removal.
                 db.delete(post)
+                db.commit()
                 deleted_count += 1
 
-                # Commit in batches of 100 to avoid large transactions
+                # Now remove vault files (best-effort — an orphan here is
+                # harmless and self-heals, unlike a broken row).
+                if storage_key:
+                    try:
+                        vault.delete_all_artwork_formats(
+                            storage_key,
+                            formats_to_delete,
+                            storage_shard=storage_shard,
+                        )
+                        if has_mkpx:
+                            vault.delete_mkpx_from_vault(storage_key, storage_shard)
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to delete vault files for deleted post {post_id}: {e}"
+                        )
+
                 if deleted_count % 100 == 0:
-                    db.commit()
                     logger.info(f"Deleted {deleted_count} posts so far...")
 
             except Exception as e:
-                logger.error(f"Error deleting post {post.id}: {e}")
-                errors.append({"post_id": post.id, "error": str(e)})
+                logger.error(f"Error deleting post {post_id}: {e}")
+                errors.append({"post_id": post_id, "error": str(e)})
                 db.rollback()
                 continue
 
@@ -3262,7 +3280,7 @@ def process_bdr_job(self, bdr_id: str) -> dict[str, Any]:
 
     from sqlalchemy import func
 
-    from . import models
+    from . import models, vault
     from .db import SessionLocal
     from .sqids_config import sqids
 
@@ -3725,10 +3743,32 @@ def renew_crl_if_needed(self) -> dict[str, Any]:
     max_retries=3,
 )
 def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
-    """
-    Permanently delete a user account and all associated data.
+    """Permanently delete a user account and all associated data.
 
-    This task handles the complete deletion of a user account:
+    Thin wrapper around ``_purge_user_account`` — the deletion steps live in
+    that helper so the unverified-account reaper can reuse the exact same
+    (FK-complete) logic instead of its own partial copy.
+    """
+    from .db import SessionLocal
+
+    db = SessionLocal()
+    try:
+        counts = _purge_user_account(db, user_id)
+    except Exception as e:
+        logger.error(f"Error deleting account for user {user_id}: {e}", exc_info=True)
+        db.rollback()
+        raise  # Re-raise to trigger Celery retry
+    finally:
+        db.close()
+
+    logger.info(f"Account deletion completed for user {user_id}: {counts}")
+    return {"status": "success", "user_id": user_id, "counts": counts}
+
+
+def _purge_user_account(db: Session, user_id: int) -> dict[str, Any]:
+    """Delete one user and every FK-dependent row, using the caller's session.
+
+    Handles the complete deletion of a user account:
     1. Reactions - delete all user's reactions on posts
     2. Comments - special handling for hierarchy:
        - Comments WITH children: Set author_id=NULL, body="[deleted comment]"
@@ -3746,22 +3786,21 @@ def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
     13. Tokens - delete RefreshToken, EmailVerificationToken, PasswordResetToken
     14. AuthIdentity - delete OAuth identities
     15. Avatar - delete avatar file from vault
+    15b. FK-blocking rows - audit_logs / admin_notes / relay_jobs / violations /
+         push_tokens (RESTRICT or NO ACTION, NOT NULL) are erased and
+         reports.reporter_id is anonymized, or the final DELETE would fail
     16. User record - final delete (frees email for reuse)
 
-    Args:
-        user_id: Integer ID of the user to delete
-
-    Returns:
-        Dictionary with deletion status and counts
+    Commits progressively (so a large account doesn't balloon memory). Returns
+    the per-table counts. On error rolls back and re-raises; the caller owns the
+    session lifecycle (open/close) and decides whether to retry or skip.
     """
     from pathlib import Path
     from sqlalchemy import func
     from . import models
-    from .db import SessionLocal
     from .vault import delete_all_artwork_formats, get_vault_location
     from .avatar_vault import try_delete_avatar_by_public_url
 
-    db = SessionLocal()
     counts = {
         "reactions": 0,
         "comments_deleted": 0,
@@ -3905,9 +3944,9 @@ def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
         vault_base = get_vault_location()
         for bdr in bdrs:
             # Delete the zip file if it exists
-            if bdr.download_path:
+            if bdr.file_path:
                 try:
-                    zip_path = vault_base / bdr.download_path.lstrip("/")
+                    zip_path = vault_base / bdr.file_path.lstrip("/")
                     if zip_path.exists():
                         zip_path.unlink()
                         logger.info(f"Deleted BDR zip file: {zip_path}")
@@ -4076,6 +4115,58 @@ def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
                 f"Avatar deletion for user {user_id}: {counts['avatar_deleted']}"
             )
 
+        # 15b. Clear rows that FK-block the final DELETE. These reference
+        # users.id with ON DELETE RESTRICT / NO ACTION and NOT NULL, so unlike
+        # the CASCADE/SET NULL tables above they are not cleaned up implicitly
+        # and would abort the whole deletion (this is why deletion previously
+        # never completed: request_account_deletion writes an audit_logs row
+        # whose actor_id is this very user).
+        #  - reports.reporter_id is RESTRICT but nullable -> anonymize (keep the
+        #    report, drop the reporter PII), matching the reporter-IP policy.
+        #  - audit_logs / admin_notes / relay_jobs / violations / push_tokens are
+        #    NOT NULL -> the rows are erased with the account.
+        counts["reports_anonymized"] = (
+            db.query(models.Report)
+            .filter(models.Report.reporter_id == user_id)
+            .update({models.Report.reporter_id: None}, synchronize_session=False)
+        )
+        counts["audit_logs"] = (
+            db.query(models.AuditLog)
+            .filter(models.AuditLog.actor_id == user_id)
+            .delete(synchronize_session=False)
+        )
+        counts["admin_notes"] = (
+            db.query(models.AdminNote)
+            .filter(models.AdminNote.created_by == user_id)
+            .delete(synchronize_session=False)
+        )
+        counts["relay_jobs"] = (
+            db.query(models.RelayJob)
+            .filter(models.RelayJob.user_id == user_id)
+            .delete(synchronize_session=False)
+        )
+        counts["violations"] = (
+            db.query(models.Violation)
+            .filter(
+                (models.Violation.user_id == user_id)
+                | (models.Violation.moderator_id == user_id)
+            )
+            .delete(synchronize_session=False)
+        )
+        counts["push_tokens"] = (
+            db.query(models.PushToken)
+            .filter(models.PushToken.user_id == user_id)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        logger.info(
+            f"Cleared FK-blocking rows for user {user_id}: "
+            f"{counts['audit_logs']} audit, {counts['admin_notes']} admin notes, "
+            f"{counts['relay_jobs']} relay, {counts['violations']} violations, "
+            f"{counts['push_tokens']} push tokens, "
+            f"{counts['reports_anonymized']} reports anonymized"
+        )
+
         # 16. Finally, delete the user record
         db.delete(user)
         db.commit()
@@ -4089,16 +4180,11 @@ def delete_user_account_task(self, user_id: int) -> dict[str, Any]:
         except Exception as e:
             logger.warning(f"Failed to invalidate stats cache for user {user_id}: {e}")
 
-        logger.info(f"Account deletion completed for user {user_id}: {counts}")
-        return {"status": "success", "user_id": user_id, "counts": counts}
+        return counts
 
-    except Exception as e:
-        logger.error(f"Error deleting account for user {user_id}: {e}", exc_info=True)
+    except Exception:
         db.rollback()
-        raise  # Re-raise to trigger Celery retry
-
-    finally:
-        db.close()
+        raise
 
 
 # ============================================================================

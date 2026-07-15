@@ -137,6 +137,26 @@ def _on_view_message(
                     client.publish(ack_topic, ack_payload, qos=1)
                 return
 
+            # Match the HTTP path: a banned/deactivated owner's device must not
+            # keep recording views over MQTT.
+            from ..auth import user_can_authenticate
+
+            if not user_can_authenticate(player.owner):
+                logger.warning(
+                    f"View event rejected: owner banned/deactivated for {player_key}"
+                )
+                if view_event.request_ack:
+                    ack_topic = f"makapix/player/{player_key}/view/ack"
+                    ack_payload = json.dumps(
+                        {
+                            "success": False,
+                            "error": "Owner not permitted",
+                            "error_code": "owner_not_permitted",
+                        }
+                    )
+                    client.publish(ack_topic, ack_payload, qos=1)
+                return
+
             # Record the view via the shared ingestion service (dedup, rate
             # limit, post/self-view checks, async dispatch).
             result = record_view_event(player, view_event, db)

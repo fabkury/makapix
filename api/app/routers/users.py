@@ -541,6 +541,19 @@ async def upload_user_avatar(
                 detail="You don't have permission to access this resource",
             )
 
+    # Rate-limit avatar uploads: without this a user could loop 5 MB uploads to
+    # fill the vault. Dedicated bucket so it does not consume artwork quota.
+    from ..services.rate_limit import check_rate_limit
+
+    allowed, _ = check_rate_limit(
+        f"ratelimit:avatar:{current_user.id}", limit=20, window_seconds=3600
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Avatar upload rate limit exceeded. Please try again later.",
+        )
+
     file_content = await image.read()
     if not file_content:
         raise HTTPException(
@@ -570,6 +583,33 @@ async def upload_user_avatar(
                 detail="Invalid image format. Allowed formats: PNG, JPEG, GIF, WebP",
             )
 
+    # Validate the actual bytes decode as an image — don't trust the client
+    # content-type, or arbitrary bytes get served from the vault with an image
+    # MIME. verify() handles animated GIF/WebP.
+    from io import BytesIO
+
+    from PIL import Image, UnidentifiedImageError
+
+    try:
+        Image.open(BytesIO(file_content)).verify()
+    except (UnidentifiedImageError, OSError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File is not a valid image.",
+        )
+
+    # Refuse if the vault is at its free-space floor. Avatars previously bypassed
+    # this and could push the volume to ENOSPC, breaking all artwork uploads.
+    from ..vault import VaultFullError, ensure_vault_headroom
+
+    try:
+        ensure_vault_headroom(len(file_content))
+    except VaultFullError:
+        raise HTTPException(
+            status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
+            detail="Storage is temporarily full. Please try again later.",
+        )
+
     from uuid import uuid4
 
     avatar_id = uuid4()
@@ -579,9 +619,14 @@ async def upload_user_avatar(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     extension = AVATAR_ALLOWED_MIME_TYPES[mime_type]
+    # Remove the previous avatar file (if it was one of ours) so replacing an
+    # avatar doesn't orphan a file on disk every time.
+    old_avatar_url = user.avatar_url
     user.avatar_url = get_avatar_url(avatar_id, extension)
     db.commit()
     db.refresh(user)
+    if old_avatar_url:
+        try_delete_avatar_by_public_url(old_avatar_url)
 
     return schemas.UserFull.model_validate(user)
 

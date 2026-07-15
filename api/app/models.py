@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     BigInteger,
@@ -46,6 +46,14 @@ class License(Base):
     posts = relationship("Post", back_populates="license")
 
 
+# Sentinel stored in users.banned_until for indefinite ("permanent") bans.
+# Using a far-future timestamp (rather than NULL) keeps permanent bans
+# distinguishable from "not banned" while remaining a plain future datetime, so
+# every existing `banned_until > now` / `banned_until IS NOT NULL` check treats
+# it as banned with no change.
+PERMANENT_BAN_UNTIL = datetime(9999, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+
+
 class User(Base):
     """User account with authentication and profile information."""
 
@@ -87,9 +95,12 @@ class User(Base):
     hidden_by_mod = Column(Boolean, nullable=False, default=False, index=True)
     non_conformant = Column(Boolean, nullable=False, default=False, index=True)
     deactivated = Column(Boolean, nullable=False, default=False, index=True)
-    # banned_until: NULL = not banned, None = permanently banned, future datetime = banned until that time
-    # Note: Permanent ban uses None (not a past date). Ban expiration is checked at authentication time.
-    # Banned users are NOT automatically deleted - profiles remain in database indefinitely.
+    # banned_until: NULL = not banned; a future datetime = banned until that
+    # time; PERMANENT_BAN_UNTIL (a far-future sentinel) = permanent ban.
+    # Ban expiration is checked at authentication time. Permanent bans MUST NOT
+    # use NULL — NULL is indistinguishable from "not banned", which is why
+    # permanent bans were previously a silent no-op. Banned users are NOT
+    # automatically deleted; profiles remain in the database indefinitely.
     banned_until = Column(DateTime(timezone=True), nullable=True, index=True)
 
     # Publishing privileges

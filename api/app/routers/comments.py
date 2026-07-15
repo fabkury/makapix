@@ -22,6 +22,7 @@ from ..services.social_notifications import SocialNotificationService
 from ..services.rate_limit import check_rate_limit
 from ..services.profanity import contains_profanity
 from ..utils.audit import log_moderation_action
+from ..utils.visibility import get_accessible_post_or_404
 from .comment_likes import annotate_comments_with_likes
 
 router = APIRouter(prefix="/post", tags=["Comments"])
@@ -44,6 +45,11 @@ def list_comments(
     Filters out comments with invalid depth (> 2) to prevent widget errors.
     Deleted comments are filtered out unless they have child comments (to maintain thread structure).
     """
+    # Enforce post visibility: don't leak comments of hidden/unlisted/deleted
+    # posts to anyone enumerating sequential post ids.
+    viewer = current_user if isinstance(current_user, models.User) else None
+    get_accessible_post_or_404(db, id, viewer)
+
     query = (
         db.query(models.Comment)
         .options(joinedload(models.Comment.author))
@@ -176,6 +182,12 @@ def create_comment(
             detail="Comment contains inappropriate language",
         )
 
+    # Enforce post visibility (and 404 a nonexistent id instead of later hitting
+    # an unhandled FK violation). You cannot comment on a post you cannot see;
+    # the owner can still comment on their own hidden post (can_access_post).
+    viewer = current_user if isinstance(current_user, models.User) else None
+    target_post = get_accessible_post_or_404(db, id, viewer)
+
     # Check comment count limit (1000 per post)
     comment_count = (
         db.query(func.count(models.Comment.id))
@@ -226,9 +238,7 @@ def create_comment(
     if isinstance(current_user, models.User):
         from ..utils.blocks import ensure_not_blocked
 
-        guard_post = db.query(models.Post).filter(models.Post.id == id).first()
-        if guard_post:
-            ensure_not_blocked(db, current_user.id, guard_post.owner_id)
+        ensure_not_blocked(db, current_user.id, target_post.owner_id)
         if parent is not None and parent.author_id is not None:
             ensure_not_blocked(db, current_user.id, parent.author_id)
 
@@ -245,9 +255,8 @@ def create_comment(
     db.commit()
 
     # Create notification for post owner (only for authenticated users)
-    post = None
+    post = target_post
     if isinstance(current_user, models.User):
-        post = db.query(models.Post).filter(models.Post.id == id).first()
         if post:
             SocialNotificationService.create_notification(
                 db=db,

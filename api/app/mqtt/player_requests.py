@@ -73,6 +73,14 @@ def _authenticate_player(player_key: UUID, db: Session) -> models.Player | None:
         logger.warning(f"Player {player_key} has no owner")
         return None
 
+    # Match the HTTP path (get_current_player -> check_user_can_authenticate):
+    # a banned/deactivated owner's device must not keep operating over MQTT.
+    from ..auth import user_can_authenticate
+
+    if not user_can_authenticate(player.owner):
+        logger.warning(f"Player {player_key} rejected: owner banned or deactivated")
+        return None
+
     return player
 
 

@@ -54,7 +54,9 @@ services:
       # carries this environment's public MQTT hostname in its SANs.
       MQTT_PUBLIC_HOST: development.makapix.club
     ports:
-      - "1884:1883"
+      # Plaintext listener bound to loopback only (see prod overlay) — not
+      # reachable from the internet. Players use 8884 mTLS.
+      - "127.0.0.1:1884:1883"
       - "8884:8883"
     deploy:
       resources:

@@ -64,7 +64,11 @@ restart:
 	@cd $(STACK_DIR) && $(COMPOSE) restart
 
 rebuild:
-	@cd $(STACK_DIR) && $(COMPOSE) down && $(COMPOSE) up -d --build
+	# Build first, then let `up -d` recreate only changed containers. Building
+	# before touching the running stack means a failed build leaves the current
+	# stack up instead of taking the site down for the whole build duration.
+	@cd $(STACK_DIR) && $(COMPOSE) build
+	@cd $(STACK_DIR) && $(COMPOSE) up -d
 	@docker builder prune -f --reserved-space=7GB
 
 logs:
@@ -86,8 +90,11 @@ deploy:
 ifeq ($(ENV),prod)
 	@echo "Deploying to Production..."
 	@git pull origin main
-	@cd $(STACK_DIR) && $(COMPOSE) down
-	@cd $(STACK_DIR) && $(COMPOSE) up -d --build
+	# Build before recreating so a failed build leaves the running stack up
+	# (no full-site outage for the image-build duration, and a broken build is
+	# recoverable without downtime).
+	@cd $(STACK_DIR) && $(COMPOSE) build
+	@cd $(STACK_DIR) && $(COMPOSE) up -d
 	@docker builder prune -f --reserved-space=7GB
 	@echo ""
 	@echo "Production deployment complete!"
@@ -95,8 +102,10 @@ ifeq ($(ENV),prod)
 else
 	@echo "Deploying to Development..."
 	@git pull origin develop
-	@cd $(STACK_DIR) && $(COMPOSE) down
-	@cd $(STACK_DIR) && $(COMPOSE) up -d --build
+	# Build before recreating (see prod branch) so a failed build doesn't take
+	# the environment down.
+	@cd $(STACK_DIR) && $(COMPOSE) build
+	@cd $(STACK_DIR) && $(COMPOSE) up -d
 	@docker builder prune -f --reserved-space=7GB
 	@echo ""
 	@echo "Development deployment complete!"

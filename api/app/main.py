@@ -24,7 +24,6 @@ from .routers import (
     categories,
     comment_likes,
     comments,
-    legacy,
     licenses,
     me,
     mqtt,
@@ -294,7 +293,6 @@ app.include_router(mqtt.router)
 app.include_router(pmd.router)
 app.include_router(umd.router)
 app.include_router(sitemap.router)
-app.include_router(legacy.router)
 
 
 # Register MIME types not present in all Docker base images.
