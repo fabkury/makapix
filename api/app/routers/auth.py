@@ -1815,10 +1815,13 @@ def github_callback(
             if github_email:
                 identity.email = github_email
             # IMPORTANT:
-            # Do NOT overwrite user profile fields (bio/avatar) on every login.
-            # These should be set only once at registration time.
-            if github_email:
-                user.email = github_email
+            # Do NOT overwrite user profile fields (bio/avatar) on every login,
+            # and do NOT overwrite user.email. Rotating the account email on a
+            # routine GitHub login desynced it from the password identity (so the
+            # user's next change-password failed), and if the GitHub email
+            # happened to equal another account's email the commit raised a
+            # unique-violation 500. The provider email is tracked on identity.email
+            # above; the account email stays as set at registration.
 
             db.commit()
             db.refresh(user)
