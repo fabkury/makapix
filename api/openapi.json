@@ -6078,6 +6078,11 @@
             "title": "Art Url",
             "type": "string"
           },
+          "comment_count": {
+            "default": 0,
+            "title": "Comment Count",
+            "type": "integer"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -6135,9 +6140,19 @@
             "title": "Reacted At",
             "type": "string"
           },
+          "reaction_count": {
+            "default": 0,
+            "title": "Reaction Count",
+            "type": "integer"
+          },
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "user_has_liked": {
+            "default": false,
+            "title": "User Has Liked",
+            "type": "boolean"
           },
           "width": {
             "title": "Width",

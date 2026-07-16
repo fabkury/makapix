@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import create_access_token
 from app.main import app
-from app.models import Player, Post, PostFile, Reaction, User
+from app.models import Comment, Player, Post, PostFile, Reaction, User
 from app.sqids_config import encode_id, encode_user_id
 from app.vault import compute_storage_shard
 
@@ -217,6 +217,84 @@ class TestReactedPostsPublic:
         data = response.json()
         assert [i["id"] for i in data["items"]] == [posts[0].id]
         assert data["next_cursor"] is None
+
+
+# ---------------------------------------------------------------------------
+# /u/{sqid}/reacted-posts — reaction/comment counts + user_has_liked
+# (app team request: docs/reacted-posts-counts/messages/0001)
+# ---------------------------------------------------------------------------
+
+
+def _comment(db: Session, *, post: Post, author: User, **flags) -> Comment:
+    c = Comment(post_id=post.id, author_id=author.id, body="hi", **flags)
+    db.add(c)
+    db.commit()
+    return c
+
+
+class TestReactedPostsCounts:
+    def test_counts_populated(
+        self,
+        client: TestClient,
+        db: Session,
+        reactor: User,
+        viewer: User,
+        artist: User,
+    ):
+        post = _make_post(db, owner=artist, title="counted")
+        _react(db, user=reactor, post=post)  # ❤️ puts it in the tab
+        _react(db, user=viewer, post=post, emoji="👍")
+        _comment(db, post=post, author=viewer)
+        # Hidden/deleted comments must not count
+        _comment(db, post=post, author=viewer, hidden_by_mod=True)
+        _comment(db, post=post, author=viewer, deleted_by_owner=True)
+        _comment(db, post=post, author=viewer, deleted_by_mod=True)
+
+        response = client.get(f"/user/u/{reactor.public_sqid}/reacted-posts")
+
+        assert response.status_code == 200
+        (item,) = response.json()["items"]
+        assert item["reaction_count"] == 2
+        assert item["comment_count"] == 1
+
+    def test_user_has_liked_is_viewer_relative(
+        self,
+        client: TestClient,
+        db: Session,
+        reactor: User,
+        viewer: User,
+        artist: User,
+    ):
+        liked = _make_post(db, owner=artist, title="viewer-liked")
+        not_liked = _make_post(db, owner=artist, title="viewer-not-liked")
+        # Reactor's own 👍 puts both posts in the tab but must not read as
+        # the viewer's like.
+        _react(db, user=reactor, post=liked, emoji="👍")
+        _react(db, user=reactor, post=not_liked, emoji="👍")
+        _react(db, user=viewer, post=liked, emoji="👍")
+
+        token = create_access_token(viewer)
+        response = client.get(
+            f"/user/u/{reactor.public_sqid}/reacted-posts",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 200
+        liked_map = {i["id"]: i["user_has_liked"] for i in response.json()["items"]}
+        assert liked_map == {liked.id: True, not_liked.id: False}
+
+    def test_anonymous_viewer_never_has_liked(
+        self, client: TestClient, db: Session, reactor: User, artist: User
+    ):
+        post = _make_post(db, owner=artist, title="anon-view")
+        _react(db, user=reactor, post=post, emoji="👍")
+
+        response = client.get(f"/user/u/{reactor.public_sqid}/reacted-posts")
+
+        assert response.status_code == 200
+        (item,) = response.json()["items"]
+        assert item["user_has_liked"] is False
+        assert item["reaction_count"] == 1
 
 
 # ---------------------------------------------------------------------------
