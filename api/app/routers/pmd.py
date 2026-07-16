@@ -19,9 +19,11 @@ from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
 from ..auth import get_current_user
+from ..cache import cache_invalidate
 from ..deps import get_db
 from ..services.post_stats import get_view_counts
 from ..sqids_config import decode_user_sqid
+from ..utils.audit import log_moderation_action
 
 logger = logging.getLogger(__name__)
 
@@ -234,17 +236,31 @@ def execute_batch_action(
     # Execute action
     now = datetime.now(timezone.utc)
 
+    # A moderator acting on ANOTHER user's posts must be attributed as a mod
+    # action (hidden_by_mod, which the user can't self-clear) and audit-logged —
+    # otherwise the DB claims the user hid/deleted their own content and there is
+    # no accountability trail. A user acting on their own posts is unchanged.
+    is_mod_action = target_user.id != current_user.id
+
     if request.action == schemas.BatchActionType.HIDE:
         for post in posts:
-            post.hidden_by_user = True
+            if is_mod_action:
+                post.hidden_by_mod = True
+            else:
+                post.hidden_by_user = True
         message = f"Hidden {len(posts)} post(s)"
 
     elif request.action == schemas.BatchActionType.UNHIDE:
         for post in posts:
-            post.hidden_by_user = False
+            if is_mod_action:
+                post.hidden_by_mod = False
+            else:
+                post.hidden_by_user = False
         message = f"Unhidden {len(posts)} post(s)"
 
     elif request.action == schemas.BatchActionType.DELETE:
+        # Posts have no deleted_by_mod column; the soft-delete field is shared,
+        # so accountability for a mod delete rests on the audit entry below.
         for post in posts:
             post.deleted_by_user = True
             post.deleted_by_user_date = now
@@ -253,7 +269,30 @@ def execute_batch_action(
             "They will be permanently removed after 7 days."
         )
 
+    if is_mod_action:
+        log_moderation_action(
+            db=db,
+            actor_id=current_user.id,
+            action=f"pmd_batch_{request.action.value}",
+            target_type="user",
+            target_id=target_user.id,
+            note=f"post_ids={[p.id for p in posts]}",
+        )
+
     db.commit()
+
+    # Visibility changed by a moderator — drop the feed/hashtag caches so hidden
+    # or deleted posts don't linger in cached listings for the TTL.
+    if request.action in (
+        schemas.BatchActionType.HIDE,
+        schemas.BatchActionType.DELETE,
+    ):
+        try:
+            cache_invalidate("feed:recent:*")
+            cache_invalidate("feed:promoted:*")
+            cache_invalidate("hashtags:*")
+        except Exception:
+            logger.warning("Failed to invalidate feed caches after PMD batch action")
 
     return schemas.BatchActionResponse(
         success=True,
