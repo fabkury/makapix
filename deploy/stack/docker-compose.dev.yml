@@ -134,6 +134,10 @@ services:
       caddy: development.makapix.club
       # Block search engines
       caddy.header.X-Robots-Tag: "noindex, nofollow, noarchive"
+      # Security headers (parity with prod; see prod overlay for rationale).
+      caddy.header.Content-Security-Policy: "frame-ancestors 'self'"
+      caddy.header.X-Content-Type-Options: "nosniff"
+      caddy.header.X-Frame-Options: "SAMEORIGIN"
 
       # API endpoints - NO basicauth (API has its own JWT auth)
       caddy.@api.path: /api/*
