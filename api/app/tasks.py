@@ -2838,6 +2838,35 @@ def _is_lossy_webp(file_bytes: bytes) -> bool:
     return False  # Unknown format, assume lossless
 
 
+def _sweep_vault_files_for_deleted_post(
+    storage_key, storage_shard: str, post_id: int
+) -> None:
+    """Best-effort removal of every vault file at a storage key whose post row
+    vanished mid-SSAFPP (post/account deletion race).
+
+    The deletion path removes only the formats recorded in post_files at the
+    time it ran; variants SSAFPP wrote concurrently are unreachable orphans no
+    retirement sweep ever covers (unlike the replace-artwork rotation case).
+    The post row is gone, so every file at the key is dead — sweep all
+    supported formats plus the upscaled variant.
+    """
+    from . import vault
+
+    try:
+        results = vault.delete_all_artwork_formats(
+            storage_key, list(vault.FORMAT_TO_EXT), storage_shard=storage_shard
+        )
+        removed = sorted(fmt for fmt, deleted in results.items() if deleted)
+        logger.info(
+            f"SSAFPP orphan sweep for deleted post {post_id} at {storage_key}: "
+            f"removed {removed or 'nothing'}"
+        )
+    except Exception:
+        logger.exception(
+            f"SSAFPP orphan sweep failed for post {post_id} at {storage_key}"
+        )
+
+
 @celery_app.task(
     name="app.tasks.process_ssafpp",
     bind=True,
@@ -2875,6 +2904,8 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
     from .db import get_session
 
     db = next(get_session())
+    task_storage_key = None
+    task_storage_shard = None
     try:
         logger.info(f"Starting SSAFPP for post {post_id}")
 
@@ -2894,8 +2925,10 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
             logger.error(f"Post {post_id} missing storage_key or native file")
             return {"status": "error", "message": "Missing storage info"}
 
-        # Remembered for the pre-commit rotation guard below
+        # Remembered for the pre-commit rotation guard below (the shard too:
+        # the post row may be gone by the time the guard needs it)
         task_storage_key = post.storage_key
+        task_storage_shard = post.storage_shard
 
         # Get source file path
         native_format = native_pf.format.lower()
@@ -3212,6 +3245,16 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
         )
         if current_key != task_storage_key:
             db.rollback()
+            if current_key is None:
+                # Post row deleted mid-task (post or account deletion).
+                # Unlike the rotation case there is no retirement sweep for
+                # this key, so the files written above would be orphaned
+                # forever — remove them now.
+                logger.info(f"SSAFPP for post {post_id} aborted: post deleted mid-task")
+                _sweep_vault_files_for_deleted_post(
+                    task_storage_key, task_storage_shard, post_id
+                )
+                return {"status": "skipped", "message": "post deleted mid-task"}
             logger.info(
                 f"SSAFPP for post {post_id} aborted: storage_key rotated "
                 f"mid-task ({task_storage_key} -> {current_key})"
@@ -3235,6 +3278,23 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
     except Exception as e:
         logger.error(f"SSAFPP failed for post {post_id}: {e}", exc_info=True)
         db.rollback()
+        # A mid-task post deletion can also land here (e.g. FK violation when
+        # flushing PostFile rows after the post row vanished). A retry would
+        # bail on "Post not found" without cleaning up, stranding the files
+        # this run already wrote — sweep them and skip instead.
+        if task_storage_key is not None:
+            try:
+                post_gone = (
+                    db.query(models.Post.id).filter(models.Post.id == post_id).scalar()
+                    is None
+                )
+            except Exception:
+                post_gone = False  # can't tell; leave it to the retry
+            if post_gone:
+                _sweep_vault_files_for_deleted_post(
+                    task_storage_key, task_storage_shard, post_id
+                )
+                return {"status": "skipped", "message": "post deleted mid-task"}
         raise  # Re-raise for Celery retry
 
     finally:
