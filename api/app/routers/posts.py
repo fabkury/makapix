@@ -596,6 +596,21 @@ def create_post(
     """
     Create a new post.
     """
+    # This legacy JSON path creates a post row from client-supplied metadata
+    # (including an arbitrary art_url) without the upload pipeline's AMP/quota/
+    # dedup checks. At minimum throttle it on the shared upload bucket so it
+    # can't be looped to mint unlimited pending rows (appraisal S11). Deleting or
+    # restricting art_url to vault-relative is deferred pending app-team confirmation.
+    limit, window = get_upload_rate_limit(current_user)
+    allowed, _ = check_rate_limit(
+        f"ratelimit:upload:{current_user.id}", limit=limit, window_seconds=window
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Upload rate limit exceeded. Please try again later.",
+        )
+
     # Validate dimensions using the same validation logic as image uploads
     is_valid, error = validate_image_dimensions(payload.width, payload.height)
     if not is_valid:
