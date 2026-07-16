@@ -179,6 +179,28 @@ def client(db: "Session") -> Generator["TestClient", None, None]:
 
 
 @pytest.fixture(autouse=True)
+def _no_live_celery(monkeypatch) -> None:
+    """Stop tests from enqueuing real Celery tasks.
+
+    An endpoint's fire-and-forget `task.delay(...)` would otherwise hit the
+    shared broker and be executed by the LIVE worker against the LIVE database
+    (small-int test ids collide with real rows). Neutralise .delay/.apply_async;
+    tests that need a task to run call .apply() explicitly, which is eager and
+    unaffected.
+    """
+    from celery.app.task import Task
+
+    class _NoopResult:
+        id = "test-noop"
+
+        def get(self, *a, **k):
+            return None
+
+    monkeypatch.setattr(Task, "delay", lambda self, *a, **k: _NoopResult())
+    monkeypatch.setattr(Task, "apply_async", lambda self, *a, **k: _NoopResult())
+
+
+@pytest.fixture(autouse=True)
 def _reset_rate_limits() -> Generator[None, None, None]:
     """Flush rate-limit counters before each test.
 

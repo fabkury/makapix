@@ -39,6 +39,7 @@ from ..pagination import (
     encode_cursor,
 )
 from ..services.blog_post_stats import annotate_blog_posts_with_counts
+from ..services.post_stats import annotate_posts_with_counts
 from ..services.artist_dashboard import get_artist_stats, get_posts_stats_list
 
 router = APIRouter(prefix="/user", tags=["Users"])
@@ -1912,8 +1913,14 @@ def get_user_reacted_posts(
     results = query.limit(min(limit + 1, 8192)).all()
 
     # Build response items
+    page = results[:limit]
+    annotate_posts_with_counts(
+        db,
+        [post for _, post in page],
+        current_user.id if current_user else None,
+    )
     items = []
-    for i, (reaction, post) in enumerate(results[:limit]):
+    for reaction, post in page:
         owner = db.query(models.User).filter(models.User.id == post.owner_id).first()
         items.append(
             schemas.ReactedPostItem(
@@ -1931,6 +1938,9 @@ def get_user_reacted_posts(
                 created_at=post.created_at,
                 frame_count=post.frame_count or 1,
                 files=[schemas.PostFile.model_validate(f) for f in post.files],
+                reaction_count=post.reaction_count,
+                comment_count=post.comment_count,
+                user_has_liked=post.user_has_liked,
             )
         )
 

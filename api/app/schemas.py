@@ -2520,6 +2520,9 @@ class ReactedPostItem(BaseModel):
     created_at: datetime
     frame_count: int = 1
     files: list[PostFile] = []
+    reaction_count: int = 0
+    comment_count: int = 0
+    user_has_liked: bool = False  # Whether the current user has liked (👍) this post
 
 
 class ReactedPostsResponse(BaseModel):

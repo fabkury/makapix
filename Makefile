@@ -136,7 +136,13 @@ deploy-to-prod:
 		echo "Visit: https://github.com/fabkury/makapix/compare/main...develop"
 
 test:
+ifeq ($(ENV),prod)
+	@echo "REFUSING: 'make test' runs against the PRODUCTION stack (it writes to"
+	@echo "the live DB/Redis/broker). Run tests from /opt/makapix-dev instead."
+	@exit 1
+else
 	@cd $(STACK_DIR) && $(COMPOSE) exec -T api python scripts/run_tests.py
+endif
 
 shell-api:
 	@cd $(STACK_DIR) && $(COMPOSE) exec api bash
