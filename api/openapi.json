@@ -22234,7 +22234,7 @@
     },
     "/v1/user/{id}/reputation": {
       "get": {
-        "description": "Get user reputation with history.",
+        "description": "Get user reputation with history (moderator only).\n\nThe history carries moderator-supplied `reason` text; it was previously\nserved to anonymous callers, leaking internal moderation notes.",
         "operationId": "get_reputation_v1_user__id__reputation_get",
         "parameters": [
           {
@@ -22270,13 +22270,20 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Reputation",
         "tags": [
-          "Reputation"
+          "Reputation",
+          "Reputation",
+          "Admin"
         ]
       },
       "post": {
-        "description": "Adjust user reputation (moderator only).\n\nTODO: Log in audit log\nTODO: Update User.reputation field",
+        "description": "Adjust user reputation (moderator only).",
         "operationId": "adjust_reputation_v1_user__id__reputation_post",
         "parameters": [
           {

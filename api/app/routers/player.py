@@ -96,6 +96,7 @@ CERT_RENEWAL_THRESHOLD_DAYS = int(os.getenv("CERT_RENEWAL_THRESHOLD_DAYS", "90")
     status_code=status.HTTP_201_CREATED,
 )
 def provision_player(
+    request: Request,
     payload: schemas.PlayerProvisionRequest,
     db: Session = Depends(get_db),
 ) -> schemas.PlayerProvisionResponse:
@@ -105,6 +106,18 @@ def provision_player(
     Returns player_key and 6-character registration code that expires in 15 minutes.
     """
     from uuid import uuid4
+
+    # Unauthenticated (the device has no credentials yet), so throttle per IP —
+    # otherwise it can be looped to flood the players table with pending rows.
+    client_ip = get_client_ip(request)
+    allowed, _ = check_rate_limit(
+        f"ratelimit:provision:ip:{client_ip}", limit=10, window_seconds=3600
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Provisioning rate limit exceeded. Please try again later.",
+        )
 
     player_key = uuid4()
     registration_code = generate_registration_code()
