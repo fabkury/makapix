@@ -300,8 +300,27 @@ def register(
         # Unverified + chosen password → resume sign-up (A2 §3A): update the password
         # to the one just typed, (re)send a fresh OTP, return 200.
         if chosen_password is not None:
+            # Throttle the resume path against the same per-IP register bucket:
+            # it overwrites a bcrypt-cost password and was previously unlimited.
+            resume_ip = get_client_ip(request)
+            allowed, _ = check_rate_limit(
+                f"ratelimit:register:{resume_ip}", limit=30, window_seconds=3600
+            )
+            if not allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="Too many registration attempts. Please try again later.",
+                )
             _require_strong_password(chosen_password)
             update_password(db, existing_user.id, chosen_password)
+            # Invalidate any still-valid verification link/OTP from a prior
+            # (e.g. website) registration attempt, so only the fresh OTP can
+            # verify. Otherwise an attacker resuming with their own password,
+            # then the email owner clicking their OLD link, would activate the
+            # account under the attacker's password (pre-verification takeover).
+            from ..services.email_verification import invalidate_pending_verifications
+
+            invalidate_pending_verifications(db, existing_user.id)
             _send_verification_otp(db, existing_user, email)
             response.status_code = status.HTTP_200_OK
             return schemas.RegisterResponse(
@@ -876,6 +895,18 @@ def change_password(
     Requires authentication and current password verification.
     New password must meet minimum requirements.
     """
+    # Throttle per user: the current-password check below is otherwise an
+    # unlimited online password-guessing oracle for anyone holding an access
+    # token (e.g. one stolen via XSS from localStorage).
+    allowed, _ = check_rate_limit(
+        f"ratelimit:change_password:{current_user.id}", limit=5, window_seconds=900
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many password-change attempts. Please try again later.",
+        )
+
     # Verify current password
     identity = find_identity_by_password(
         db, current_user.email, payload.current_password

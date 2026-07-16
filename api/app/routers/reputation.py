@@ -28,12 +28,7 @@ def adjust_reputation(
     db: Session = Depends(get_db),
     moderator: models.User = Depends(require_moderator),
 ) -> schemas.ReputationAdjustResponse:
-    """
-    Adjust user reputation (moderator only).
-
-    TODO: Log in audit log
-    TODO: Update User.reputation field
-    """
+    """Adjust user reputation (moderator only)."""
     user = db.query(models.User).filter(models.User.id == id).first()
     if not user:
         raise HTTPException(
@@ -75,9 +70,21 @@ def adjust_reputation(
     return schemas.ReputationAdjustResponse(new_total=user.reputation)
 
 
-@router.get("/{id}/reputation", response_model=schemas.ReputationView)
-def get_reputation(id: UUID, db: Session = Depends(get_db)) -> schemas.ReputationView:
-    """Get user reputation with history."""
+@router.get(
+    "/{id}/reputation",
+    response_model=schemas.ReputationView,
+    tags=["Reputation", "Admin"],
+)
+def get_reputation(
+    id: UUID,
+    db: Session = Depends(get_db),
+    moderator: models.User = Depends(require_moderator),
+) -> schemas.ReputationView:
+    """Get user reputation with history (moderator only).
+
+    The history carries moderator-supplied `reason` text; it was previously
+    served to anonymous callers, leaking internal moderation notes.
+    """
     user = db.query(models.User).filter(models.User.id == id).first()
     if not user:
         raise HTTPException(

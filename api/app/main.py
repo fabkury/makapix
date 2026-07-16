@@ -57,6 +57,12 @@ load_dotenv()
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
 
+# Initialise error monitoring as early as possible so import/startup failures
+# are captured too. No-op unless SENTRY_DSN is set.
+from .observability import init_sentry  # noqa: E402
+
+init_sentry("api")
+
 _STARTUP_COMPLETE = False
 
 
@@ -92,22 +98,19 @@ def run_migrations() -> None:
                     )
                     return
 
-                # If multiple heads, upgrade to the latest one (highest revision number)
+                # Multiple heads = divergent migration branches. Do NOT guess
+                # which to apply: many revision ids are random hex (they sort to
+                # 0), so the old max()-by-prefix pick was arbitrary and could
+                # deploy a schema the running code doesn't expect. Fail loudly so
+                # the operator creates an explicit merge revision.
                 if len(heads) > 1:
-                    logger.info(
-                        f"Multiple heads detected: {heads}. Upgrading to latest..."
+                    raise RuntimeError(
+                        f"Refusing to auto-migrate: multiple Alembic heads {heads}. "
+                        "Divergent migration branches must be merged explicitly. "
+                        f"Run: alembic merge -m 'merge heads' {' '.join(heads)} "
+                        "then commit the merge revision and redeploy."
                     )
-                    # Sort heads by revision number and take the latest
-                    latest_head = max(
-                        heads,
-                        key=lambda h: (
-                            int(h.split("_")[0]) if h.split("_")[0].isdigit() else 0
-                        ),
-                    )
-                    logger.info(f"Selected latest head: {latest_head}")
-                    target_rev = latest_head
-                else:
-                    target_rev = heads[0]
+                target_rev = heads[0]
 
                 logger.info(
                     f"Current revision(s): {current_heads}, Target revision: {target_rev}. Running migrations..."

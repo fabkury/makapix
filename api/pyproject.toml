@@ -32,7 +32,8 @@ dependencies = [
     "resend>=2.0.0",
     "sqids>=0.4.1",
     "better-profanity>=0.7.0",
-    "firebase-admin>=6.5.0"  # Mobile push (FCM); imported lazily in services/push.py
+    "firebase-admin>=6.5.0",  # Mobile push (FCM); imported lazily in services/push.py
+    "sentry-sdk>=2.0.0"  # Error monitoring (opt-in via SENTRY_DSN); see app/observability.py
 ]
 
 [project.optional-dependencies]

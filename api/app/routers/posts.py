@@ -596,6 +596,21 @@ def create_post(
     """
     Create a new post.
     """
+    # This legacy JSON path creates a post row from client-supplied metadata
+    # (including an arbitrary art_url) without the upload pipeline's AMP/quota/
+    # dedup checks. At minimum throttle it on the shared upload bucket so it
+    # can't be looped to mint unlimited pending rows (appraisal S11). Deleting or
+    # restricting art_url to vault-relative is deferred pending app-team confirmation.
+    limit, window = get_upload_rate_limit(current_user)
+    allowed, _ = check_rate_limit(
+        f"ratelimit:upload:{current_user.id}", limit=limit, window_seconds=window
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Upload rate limit exceeded. Please try again later.",
+        )
+
     # Validate dimensions using the same validation logic as image uploads
     is_valid, error = validate_image_dimensions(payload.width, payload.height)
     if not is_valid:
@@ -1941,6 +1956,20 @@ async def replace_artwork(
             detail="Not authorized to modify this post",
         )
 
+    # Rate-limit replacements on the shared upload bucket. Without this, replace
+    # is an unbounded disk/CPU amplification loop: each call writes up to 5 MB,
+    # parks the previous key's files for 7 days outside quota, and queues a
+    # Pillow conversion on the single worker.
+    limit, window = get_upload_rate_limit(current_user)
+    allowed, _ = check_rate_limit(
+        f"ratelimit:upload:{current_user.id}", limit=limit, window_seconds=window
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Upload rate limit exceeded. Please try again later.",
+        )
+
     file_content = await image.read()
     file_size = len(file_content)
     # NOTE: previously the return value was ignored, so oversize replacements
@@ -1952,6 +1981,20 @@ async def replace_artwork(
             size_err or "File too large.",
             413,
         )
+
+    # Charge the storage delta (new native bytes vs the current native file), so
+    # a user at quota can't grow their footprint by replacing small files with
+    # large ones.
+    old_native_bytes = next((pf.file_bytes for pf in post.files if pf.is_native), 0)
+    delta = file_size - (old_native_bytes or 0)
+    if delta > 0:
+        owner = post.owner or current_user
+        quota_allowed, used, quota = check_storage_quota(db, owner, delta)
+        if not quota_allowed:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=format_quota_error(used, quota),
+            )
 
     # Save to temporary file for AMP inspection (preserve extension if possible)
     filename = image.filename or ""

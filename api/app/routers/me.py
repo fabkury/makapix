@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..auth import get_current_user
 from ..deps import get_db
+from ..services.rate_limit import check_rate_limit
+from fastapi import HTTPException
 
 router = APIRouter(prefix="/me", tags=["Me"])
 
@@ -29,6 +31,17 @@ def register_push_token(
     current_user: models.User = Depends(get_current_user),
 ) -> models.PushToken:
     """Register a device push token (idempotent on the token value)."""
+    # Distinct token values each create a row; throttle per user so it can't be
+    # looped to flood the push_tokens table.
+    allowed, _ = check_rate_limit(
+        f"ratelimit:push_token:{current_user.id}", limit=30, window_seconds=3600
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Push-token registration rate limit exceeded.",
+        )
+
     existing = (
         db.query(models.PushToken)
         .filter(models.PushToken.token == payload.token)

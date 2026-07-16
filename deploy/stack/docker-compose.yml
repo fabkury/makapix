@@ -132,6 +132,11 @@ services:
       VAULT_PUBLIC_BASE_URL: ${VAULT_PUBLIC_BASE_URL:-}
       MAKAPIX_ADMIN_USER: ${MAKAPIX_ADMIN_USER}
       MAKAPIX_ADMIN_PASSWORD: ${MAKAPIX_ADMIN_PASSWORD}
+      # Observability (opt-in; empty = disabled). See api/app/observability.py.
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
+      SENTRY_RELEASE: ${SENTRY_RELEASE:-}
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     volumes:
       - ../../api:/workspace/api
@@ -180,6 +185,13 @@ services:
       MQTT_CRL_FILE: /certs/crl.pem
       VAULT_LOCATION: ${VAULT_LOCATION}
       VAULT_PUBLIC_BASE_URL: ${VAULT_PUBLIC_BASE_URL:-}
+      # Observability (opt-in; empty = disabled). The worker runs beat, so it
+      # also pings the healthchecks.io dead-man's-switches. See observability.py.
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
+      SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+      HEALTHCHECKS_PING_KEY: ${HEALTHCHECKS_PING_KEY:-}
     command: python /workspace/worker/worker.py
     volumes:
       - ../../api:/workspace/api
