@@ -68,6 +68,14 @@ _STARTUP_COMPLETE = False
 
 def run_migrations() -> None:
     logger.info("run_migrations: Starting...")
+    # Under pytest the schema is built directly from the models (conftest
+    # create_all) against the isolated makapix_test DB. Alembic's configured URL
+    # points at the LIVE (admin) database, so running it here would apply any
+    # unapplied working-tree migration to the live DB via admin creds — exactly
+    # the surprise the deploy flow exists to prevent. Skip entirely under test.
+    if os.getenv("TEST_DATABASE_URL"):
+        logger.info("run_migrations: TEST_DATABASE_URL set — skipping (test schema).")
+        return
     try:
         logger.info("Running Alembic migrations...")
         alembic_cfg = _alembic_config()
@@ -170,21 +178,26 @@ async def lifespan(app: FastAPI):
     logger.info("Starting application...")
     # Run startup tasks synchronously - server won't start until these complete
     run_startup_tasks()
-    # Start MQTT subscribers
-    from .mqtt.player_status import start_status_subscriber
-    from .mqtt.player_requests import start_request_subscriber
-    from .mqtt.player_views import start_view_subscriber
-    from .mqtt.player_optional import start_optional_subscriber
     from .services import player_events
 
     # Hand the running loop to the in-process bus so MQTT callbacks can
     # forward events to SSE subscribers from their worker threads.
     player_events.set_loop(asyncio.get_running_loop())
 
-    start_status_subscriber()
-    start_request_subscriber()
-    start_view_subscriber()
-    start_optional_subscriber()
+    # Skip the MQTT subscribers under pytest: every test spins up the app
+    # lifespan, so starting four real paho clients per test made the broker a
+    # hard test dependency and churned connections (the OOM the chunk runner
+    # papers over). The MQTT handlers are unit-tested directly.
+    if not os.getenv("TEST_DATABASE_URL"):
+        from .mqtt.player_status import start_status_subscriber
+        from .mqtt.player_requests import start_request_subscriber
+        from .mqtt.player_views import start_view_subscriber
+        from .mqtt.player_optional import start_optional_subscriber
+
+        start_status_subscriber()
+        start_request_subscriber()
+        start_view_subscriber()
+        start_optional_subscriber()
     logger.info("Makapix API server ready")
     yield
     # Shutdown
