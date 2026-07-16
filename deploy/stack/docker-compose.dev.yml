@@ -135,7 +135,8 @@ services:
       # Block search engines
       caddy.header.X-Robots-Tag: "noindex, nofollow, noarchive"
       # Security headers (parity with prod; see prod overlay for rationale).
-      caddy.header.Content-Security-Policy: "frame-ancestors 'self'"
+      # Value with spaces must be quoted for caddy-docker-proxy (see prod overlay).
+      caddy.header.Content-Security-Policy: "\"frame-ancestors 'self'\""
       caddy.header.X-Content-Type-Options: "nosniff"
       caddy.header.X-Frame-Options: "SAMEORIGIN"
 

@@ -96,10 +96,15 @@ services:
       # blocks clickjacking of authenticated actions; there is no external-embed
       # page (the widget is a JSON API), so 'self' is safe. HSTS + nosniff round
       # it out. Applied to every response including /api (harmless there).
-      caddy.header.Content-Security-Policy: "frame-ancestors 'self'"
+      # caddy-docker-proxy passes the label value straight into the Caddyfile,
+      # where a value with spaces/semicolons must be quoted or Caddy silently
+      # drops the directive (this is why the editors' CSP never applied either).
+      # Embed the quotes in the value; single-token values (nosniff/SAMEORIGIN)
+      # need none.
+      caddy.header.Content-Security-Policy: "\"frame-ancestors 'self'\""
       caddy.header.X-Content-Type-Options: "nosniff"
       caddy.header.X-Frame-Options: "SAMEORIGIN"
-      caddy.header.Strict-Transport-Security: "max-age=31536000; includeSubDomains"
+      caddy.header.Strict-Transport-Security: "\"max-age=31536000; includeSubDomains\""
       # Route /api/* to FastAPI backend
       caddy.@api.path: /api/*
       caddy.handle_0: "@api"
