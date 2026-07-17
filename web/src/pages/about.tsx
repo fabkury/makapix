@@ -148,11 +148,12 @@ function AboutTab() {
         </a>.
       </p>
 
-      <h2>📱 Android app (coming soon)</h2>
+      <h2>📱 Get the app</h2>
 
       <p>
-        The official Makapix Club Android app — the full animated pixel-art editor plus
-        the whole Club in one app — is <Link href="/beta">coming soon to Google Play</Link>.
+        The official Makapix Club app — the full animated pixel-art editor plus the whole
+        Club in one app — is <Link href="/app">now on the App Store for iPhone &amp; iPad</Link>,
+        with Android coming soon to Google Play.
       </p>
 
       <h2>Who is MPX for?</h2>
