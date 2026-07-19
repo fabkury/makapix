@@ -1858,11 +1858,6 @@ export default function SelectedPostOverlay({
                 Use as profile photo
               </button>
             )}
-            {/* Disabled items */}
-            <button style={menuItemDisabledStyles} disabled>
-              Add to my favorites
-            </button>
-
             <div
               style={{
                 height: 1,
