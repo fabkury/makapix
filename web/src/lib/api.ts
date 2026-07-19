@@ -833,3 +833,50 @@ export async function detachMkpx<TPost = unknown>(
   }
   return resp.json() as Promise<TPost>;
 }
+
+export interface MeResponse {
+  roles?: string[];
+  user?: {
+    id: number;
+    user_key: string;
+    public_sqid?: string;
+    handle: string;
+    avatar_url?: string | null;
+  };
+}
+
+/** Fetch the current user's identity (handle, user_key, avatar_url, roles). */
+export async function getMe(): Promise<MeResponse> {
+  return authenticatedRequestJson<MeResponse>("/api/auth/me");
+}
+
+/**
+ * Set the current user's avatar from an existing artwork post
+ * ("use as profile photo"). The server copies the artwork bytes into the
+ * avatar vault, so the avatar survives later changes to the post.
+ * Returns the updated user payload (incl. the new avatar_url).
+ * Throws an Error with a `status` property on failure so callers can
+ * tailor the message (e.g. 429 rate limit).
+ */
+export async function setAvatarFromPost(
+  userKey: string,
+  postSqid: string,
+): Promise<{ avatar_url?: string | null }> {
+  const resp = await authenticatedFetch(
+    `${publicBaseUrl}/api/user/${userKey}/avatar/from-post`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ post_sqid: postSqid }),
+    },
+  );
+  if (!resp.ok) {
+    const data = (await resp.json().catch(() => ({}))) as { detail?: string };
+    const err = new Error(
+      data.detail || `Could not set profile photo (${resp.status})`,
+    ) as Error & { status?: number };
+    err.status = resp.status;
+    throw err;
+  }
+  return resp.json();
+}

@@ -468,6 +468,22 @@
         "title": "AutoApprovalResponse",
         "type": "object"
       },
+      "AvatarFromPostRequest": {
+        "description": "Set a user's avatar from an existing artwork post (\"use as profile photo\").",
+        "properties": {
+          "post_sqid": {
+            "maxLength": 16,
+            "minLength": 1,
+            "title": "Post Sqid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "post_sqid"
+        ],
+        "title": "AvatarFromPostRequest",
+        "type": "object"
+      },
       "BDRItem": {
         "description": "Batch download request item.",
         "properties": {
@@ -22112,6 +22128,65 @@
           }
         ],
         "summary": "Upload User Avatar",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/v1/user/{id}/avatar/from-post": {
+      "post": {
+        "description": "Set a user's avatar from an existing artwork post (\"use as profile photo\").\n\nCopies the post's image bytes into the avatar vault — a snapshot, so the\navatar survives later deletion or replacement of the post. Animated\nGIF/WebP stay animated; BMP-native artworks are transcoded to PNG (avatars\ndon't allow BMP). Records attribution in users.avatar_source_post_id\n(internal-only, never exposed in API payloads).",
+        "operationId": "set_avatar_from_post_v1_user__id__avatar_from_post_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AvatarFromPostRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserFull"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Avatar From Post",
         "tags": [
           "Users"
         ]

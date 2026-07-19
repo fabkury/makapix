@@ -18,6 +18,7 @@ import {
 } from "../lib/api";
 import { PLAYER_BAR_HEIGHT } from "./PlayerBarDynamic";
 import ReportDialog from "./ReportDialog";
+import UseAsAvatarDialog from "./UseAsAvatarDialog";
 import SPOCommentsOverlay from "./SPOCommentsOverlay";
 import SPOReactionUsersOverlay from "./SPOReactionUsersOverlay";
 import { EMOJI_OPTIONS } from "./CommentsAndReactions";
@@ -493,7 +494,11 @@ const subPanelStyles: React.CSSProperties = {
 };
 
 type AnimationPhase =
-  "mounting" | "flying-in" | "selected" | "flying-out" | "swiping";
+  | "mounting"
+  | "flying-in"
+  | "selected"
+  | "flying-out"
+  | "swiping";
 
 export default function SelectedPostOverlay({
   posts,
@@ -984,6 +989,7 @@ export default function SelectedPostOverlay({
   // UGC-safety: report affordance, gated on the moderation config key.
   const [moderationEnabled, setModerationEnabled] = useState(false);
   const [showReportDialog, setShowReportDialog] = useState(false);
+  const [showAvatarDialog, setShowAvatarDialog] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -1829,10 +1835,30 @@ export default function SelectedPostOverlay({
             }}
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Use as profile photo (docs/avatar-from-post/) — any signed-in viewer */}
+            {currentUserId ? (
+              <button
+                style={menuItemStyles}
+                onClick={() => {
+                  setShowMoreMenu(false);
+                  closeSubPanelImmediate();
+                  setShowAvatarDialog(true);
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = "rgba(255,255,255,0.08)")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = "transparent")
+                }
+              >
+                Use as profile photo
+              </button>
+            ) : (
+              <button style={menuItemDisabledStyles} disabled>
+                Use as profile photo
+              </button>
+            )}
             {/* Disabled items */}
-            <button style={menuItemDisabledStyles} disabled>
-              Use as profile photo
-            </button>
             <button style={menuItemDisabledStyles} disabled>
               Add to my favorites
             </button>
@@ -2186,7 +2212,8 @@ export default function SelectedPostOverlay({
                     setShowReportDialog(true);
                   }}
                   onMouseEnter={(e) =>
-                    (e.currentTarget.style.background = "rgba(255,255,255,0.08)")
+                    (e.currentTarget.style.background =
+                      "rgba(255,255,255,0.08)")
                   }
                   onMouseLeave={(e) =>
                     (e.currentTarget.style.background = "transparent")
@@ -2206,6 +2233,15 @@ export default function SelectedPostOverlay({
           targetId={String(post.id)}
           open={showReportDialog}
           onClose={() => setShowReportDialog(false)}
+        />
+      )}
+
+      {post && (
+        <UseAsAvatarDialog
+          postSqid={post.public_sqid}
+          artUrl={ensureCompatibleArtUrl(post.art_url, post.frame_count)}
+          open={showAvatarDialog}
+          onClose={() => setShowAvatarDialog(false)}
         />
       )}
 
