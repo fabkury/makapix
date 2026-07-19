@@ -497,6 +497,34 @@ def update_user(
     return schemas.UserFull.model_validate(user)
 
 
+def _authorize_avatar_edit(current_user: models.User, user: models.User) -> None:
+    """
+    Authorize an avatar mutation (same policy as profile patch):
+    - Users can edit self
+    - Owners can edit anyone
+    - Moderators can edit anyone except other moderators/owners
+    """
+    is_actor_owner = "owner" in (current_user.roles or [])
+    is_actor_moderator = is_actor_owner or ("moderator" in (current_user.roles or []))
+    is_target_moderator = "moderator" in (user.roles or [])
+    is_target_owner = "owner" in (user.roles or [])
+
+    if user.id != current_user.id:
+        if is_actor_owner:
+            pass
+        elif is_actor_moderator:
+            if is_target_owner or is_target_moderator:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Moderators cannot edit other moderators",
+                )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to access this resource",
+            )
+
+
 @router.post(
     "/{id}/avatar", response_model=schemas.UserFull, status_code=status.HTTP_201_CREATED
 )
@@ -518,29 +546,7 @@ async def upload_user_avatar(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
 
-    # Authorization (same policy as profile patch):
-    # - Users can edit self
-    # - Owners can edit anyone
-    # - Moderators can edit anyone except other moderators/owners
-    is_actor_owner = "owner" in (current_user.roles or [])
-    is_actor_moderator = is_actor_owner or ("moderator" in (current_user.roles or []))
-    is_target_moderator = "moderator" in (user.roles or [])
-    is_target_owner = "owner" in (user.roles or [])
-
-    if user.id != current_user.id:
-        if is_actor_owner:
-            pass
-        elif is_actor_moderator:
-            if is_target_owner or is_target_moderator:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Moderators cannot edit other moderators",
-                )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to access this resource",
-            )
+    _authorize_avatar_edit(current_user, user)
 
     # Rate-limit avatar uploads: without this a user could loop 5 MB uploads to
     # fill the vault. Dedicated bucket so it does not consume artwork quota.
@@ -624,6 +630,8 @@ async def upload_user_avatar(
     # avatar doesn't orphan a file on disk every time.
     old_avatar_url = user.avatar_url
     user.avatar_url = get_avatar_url(avatar_id, extension)
+    # A manually uploaded avatar has no source post.
+    user.avatar_source_post_id = None
     db.commit()
     db.refresh(user)
     if old_avatar_url:
@@ -651,34 +659,167 @@ def delete_user_avatar(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
 
-    # Authorization (same policy as profile patch/upload):
-    is_actor_owner = "owner" in (current_user.roles or [])
-    is_actor_moderator = is_actor_owner or ("moderator" in (current_user.roles or []))
-    is_target_moderator = "moderator" in (user.roles or [])
-    is_target_owner = "owner" in (user.roles or [])
-
-    if user.id != current_user.id:
-        if is_actor_owner:
-            pass
-        elif is_actor_moderator:
-            if is_target_owner or is_target_moderator:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Moderators cannot edit other moderators",
-                )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to access this resource",
-            )
+    _authorize_avatar_edit(current_user, user)
 
     old_avatar_url = user.avatar_url
     user.avatar_url = None
+    user.avatar_source_post_id = None
     db.commit()
     db.refresh(user)
 
     # Best-effort file cleanup (non-fatal)
     try_delete_avatar_by_public_url(old_avatar_url)
+
+    return schemas.UserFull.model_validate(user)
+
+
+def _read_post_bytes_for_avatar(post: models.Post) -> tuple[bytes, str]:
+    """
+    Read an artwork post's image bytes for use as an avatar.
+
+    Prefers the native (as-uploaded) format so animated GIF/WebP stay animated.
+    Avatars don't allow BMP, so a BMP-native post falls back to its PNG variant
+    if one exists, else the bytes are transcoded to PNG in memory (BMP is never
+    animated, so nothing is lost).
+
+    Returns (bytes, mime_type). Raises HTTPException(404) if no file variant is
+    usable or the file is missing on disk.
+    """
+    from ..vault import FORMAT_TO_EXT, FORMAT_TO_MIME, get_artwork_file_path
+
+    formats = {f.format for f in post.files}
+    fmt = next((f.format for f in post.files if f.is_native), None)
+    if fmt is None:
+        fmt = "png" if "png" in formats else next(iter(sorted(formats)), None)
+    if fmt is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Artwork file unavailable"
+        )
+
+    transcode_to_png = False
+    if fmt == "bmp":
+        if "png" in formats:
+            fmt = "png"
+        else:
+            transcode_to_png = True
+
+    path = get_artwork_file_path(
+        post.storage_key, FORMAT_TO_EXT[fmt], storage_shard=post.storage_shard
+    )
+    if not path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Artwork file unavailable"
+        )
+    file_content = path.read_bytes()
+
+    if transcode_to_png:
+        from io import BytesIO
+
+        from PIL import Image
+
+        buffer = BytesIO()
+        Image.open(BytesIO(file_content)).save(buffer, "PNG")
+        file_content = buffer.getvalue()
+        fmt = "png"
+
+    return file_content, FORMAT_TO_MIME[fmt]
+
+
+@router.post(
+    "/{id}/avatar/from-post",
+    response_model=schemas.UserFull,
+    status_code=status.HTTP_201_CREATED,
+)
+def set_avatar_from_post(
+    request: Request,
+    id: UUID,
+    payload: schemas.AvatarFromPostRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.UserFull:
+    """
+    Set a user's avatar from an existing artwork post ("use as profile photo").
+
+    Copies the post's image bytes into the avatar vault — a snapshot, so the
+    avatar survives later deletion or replacement of the post. Animated
+    GIF/WebP stay animated; BMP-native artworks are transcoded to PNG (avatars
+    don't allow BMP). Records attribution in users.avatar_source_post_id
+    (internal-only, never exposed in API payloads).
+    """
+    user = db.query(models.User).filter(models.User.user_key == id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
+    _authorize_avatar_edit(current_user, user)
+
+    # Shares the avatar-upload bucket: both paths write files into the avatar
+    # vault, so they must share one budget.
+    from ..services.rate_limit import check_rate_limit
+
+    allowed, _ = check_rate_limit(
+        f"ratelimit:avatar:{current_user.id}", limit=20, window_seconds=3600
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Avatar upload rate limit exceeded. Please try again later.",
+        )
+
+    # Resolve the post. Visibility is checked against the acting user (the
+    # person choosing the artwork), not the target user.
+    from ..sqids_config import decode_sqid
+    from ..utils.visibility import can_access_post
+
+    post_id = decode_sqid(payload.post_sqid)
+    post = (
+        db.query(models.Post).filter(models.Post.id == post_id).first()
+        if post_id is not None
+        else None
+    )
+    if (
+        not post
+        or post.public_sqid != payload.post_sqid
+        or not can_access_post(post, current_user)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        )
+    if post.kind != "artwork" or post.storage_key is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This post has no artwork image",
+        )
+
+    file_content, mime_type = _read_post_bytes_for_avatar(post)
+
+    from ..vault import VaultFullError, ensure_vault_headroom
+
+    try:
+        ensure_vault_headroom(len(file_content))
+    except VaultFullError:
+        raise HTTPException(
+            status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
+            detail="Storage is temporarily full. Please try again later.",
+        )
+
+    from uuid import uuid4
+
+    avatar_id = uuid4()
+    try:
+        save_avatar_image(avatar_id, file_content, mime_type)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    extension = AVATAR_ALLOWED_MIME_TYPES[mime_type]
+    old_avatar_url = user.avatar_url
+    user.avatar_url = get_avatar_url(avatar_id, extension)
+    user.avatar_source_post_id = post.id
+    db.commit()
+    db.refresh(user)
+    if old_avatar_url:
+        try_delete_avatar_by_public_url(old_avatar_url)
 
     return schemas.UserFull.model_validate(user)
 

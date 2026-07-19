@@ -290,6 +290,12 @@ class UserUpdate(BaseModel):
     approved_hashtags: list[str] | None = None
 
 
+class AvatarFromPostRequest(BaseModel):
+    """Set a user's avatar from an existing artwork post ("use as profile photo")."""
+
+    post_sqid: str = Field(..., min_length=1, max_length=16)
+
+
 class ConformanceStatus(BaseModel):
     """GitHub Pages conformance check status."""
 

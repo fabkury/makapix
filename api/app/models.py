@@ -75,6 +75,22 @@ class User(Base):
     tagline = Column(String(48), nullable=True)  # Short one-liner under username
     website = Column(String(500), nullable=True)
     avatar_url = Column(String(500), nullable=True)
+    # Attribution for "use as profile photo": the post the current avatar was
+    # copied from. Internal-only (never exposed in API payloads); the avatar is
+    # a byte snapshot in the avatar vault, so this is not a serving dependency.
+    avatar_source_post_id = Column(
+        Integer,
+        # use_alter breaks the users<->posts FK cycle (posts.owner_id points back
+        # at users) so SQLAlchemy can still sort/create the tables.
+        ForeignKey(
+            "posts.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_users_avatar_source_post_id_posts",
+        ),
+        nullable=True,
+        index=True,
+    )
     email = Column(
         String(255), unique=True, nullable=False, index=True
     )  # Email must be unique
