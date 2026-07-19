@@ -45,6 +45,9 @@ interface Post {
   created_at: string;
   promoted?: boolean;
   hidden_by_mod?: boolean;
+  hidden_by_user?: boolean;
+  deleted_by_user?: boolean;
+  deleted_by_user_date?: string | null;
   visible?: boolean;
   public_visibility?: boolean;
 }
@@ -954,6 +957,18 @@ export default function ModDashboardPage() {
                           >
                             {post.title}
                           </Link>
+                          {post.deleted_by_user && (
+                            <span
+                              className="badge badge-flag"
+                              title={
+                                post.deleted_by_user_date
+                                  ? `Deleted by user on ${new Date(post.deleted_by_user_date).toLocaleString()}`
+                                  : "Deleted by user"
+                              }
+                            >
+                              deleted by user
+                            </span>
+                          )}
                         </h3>
                         {post.description && (
                           <p className="item-notes description-single-line">
