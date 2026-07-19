@@ -9,8 +9,9 @@
   - Prod verified post-deploy: alembic head `114d77aaf3d8`, endpoint routed (401 unauthenticated), site 200.
   - Kickoff message 0001 sent to app team (committed + pushed to app repo as `docs/club-server-cr-avatar-from-post.md`).
 
+- **2026-07-19** — Owner click-tested the web dialog on makapix.club: working as intended.
+
 ## Open items
 
-- [ ] Owner click-through of the web dialog on development.makapix.club or prod (API path fully verified; browser UI not human-tested yet).
 - [ ] App reply 0002 (integration timeline / answers to questions in 0001).
 - [ ] Optional follow-up (out of scope): surface avatar attribution in the mod dashboard.
