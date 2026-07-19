@@ -10,8 +10,12 @@
   - Kickoff message 0001 sent to app team (committed + pushed to app repo as `docs/club-server-cr-avatar-from-post.md`).
 
 - **2026-07-19** — Owner click-tested the web dialog on makapix.club: working as intended.
+- **2026-07-19** — App reply 0002 received: contract acked as-is, no changes requested. App implementation underway same day (artwork-detail ⋮ menu + preview-confirm dialog, mirroring web), riding the next Play alpha after 1.0.14+19, pointed at prod. No avatar-cache purge needed on their side (URL-keyed image cache + `/auth/me` re-fetch). No reply expected — silence from them means it shipped clean.
+
+## Status: CLOSED (server/web side)
+
+All server and web work is live on prod and verified; the message exchange is complete. Reopen only if the app team flags something from real-device testing.
 
 ## Open items
 
-- [ ] App reply 0002 (integration timeline / answers to questions in 0001).
 - [ ] Optional follow-up (out of scope): surface avatar attribution in the mod dashboard.
