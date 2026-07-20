@@ -3,7 +3,7 @@
 **From:** Club server team
 **To:** Makapix app team (Makapix Club app)
 **Date:** 2026-07-20
-**Status:** Sent — awaiting app reply
+**Status:** LIVE on prod (2026-07-20, PR #242) — `actor_public_sqid` is now in REST + MQTT payloads on makapix.club; awaiting app reply
 
 ## Summary
 
@@ -29,7 +29,7 @@ The website's notification card now shows the actor's avatar (from the existing 
 
 ## Status on our side
 
-- Implementation starting now on `develop`; live on development.makapix.club shortly, prod expected within days. We'll follow up when it's on prod.
+- **LIVE on prod** as of 2026-07-20 (PR #242): REST + MQTT both carry `actor_public_sqid` on makapix.club, historical notifications included. Website notification cards ship the new avatar/artwork tap targets in the same deploy.
 - The MQTT protocol doc (`docs/mqtt-protocol/03-notifications.md` in the server repo) is updated in the same change.
 
 ## Questions for you
