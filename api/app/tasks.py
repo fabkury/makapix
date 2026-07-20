@@ -3638,10 +3638,16 @@ def cleanup_expired_bdrs(self) -> dict[str, Any]:
     1. Find BDRs where status='ready' and expires_at < now
     2. Delete the ZIP file from vault
     3. Update status to 'expired'
+    4. Purge stale BDR rows entirely (hard delete) once they are 2 weeks
+       past their dead state: expired 2 weeks after expires_at, failed
+       2 weeks after failure, and pending/processing rows stuck for 2+
+       weeks (e.g. worker crash mid-job).
 
     Runs daily at 04:30 US Eastern (configured in beat_schedule).
     """
-    from datetime import datetime, timezone
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import and_, func, or_
 
     from . import models
     from .db import SessionLocal
@@ -3662,10 +3668,6 @@ def cleanup_expired_bdrs(self) -> dict[str, Any]:
             )
             .all()
         )
-
-        if not expired_bdrs:
-            logger.info("No expired BDRs to clean up")
-            return {"status": "success", "cleaned_up": 0}
 
         cleaned_up = 0
         errors = []
@@ -3691,6 +3693,54 @@ def cleanup_expired_bdrs(self) -> dict[str, Any]:
 
         db.commit()
 
+        # Purge stale BDR rows so they drop off the PMD list for good
+        purge_cutoff = now - timedelta(days=14)
+        stale_bdrs = (
+            db.query(models.BatchDownloadRequest)
+            .filter(
+                or_(
+                    and_(
+                        models.BatchDownloadRequest.status == "expired",
+                        models.BatchDownloadRequest.expires_at < purge_cutoff,
+                    ),
+                    and_(
+                        models.BatchDownloadRequest.status == "failed",
+                        func.coalesce(
+                            models.BatchDownloadRequest.completed_at,
+                            models.BatchDownloadRequest.created_at,
+                        )
+                        < purge_cutoff,
+                    ),
+                    and_(
+                        models.BatchDownloadRequest.status.in_(
+                            ["pending", "processing"]
+                        ),
+                        models.BatchDownloadRequest.created_at < purge_cutoff,
+                    ),
+                )
+            )
+            .all()
+        )
+
+        purged = 0
+        for bdr in stale_bdrs:
+            try:
+                # Defensive: a stuck/failed row may still have a ZIP on disk
+                if bdr.file_path:
+                    zip_path = vault_base / bdr.file_path
+                    if zip_path.exists():
+                        zip_path.unlink()
+                        logger.info(f"Deleted BDR file: {zip_path}")
+
+                db.delete(bdr)
+                purged += 1
+
+            except Exception as e:
+                logger.error(f"Error purging BDR {bdr.id}: {e}")
+                errors.append({"bdr_id": str(bdr.id), "error": str(e)})
+
+        db.commit()
+
         # Also clean up orphaned BDR directories (empty directories)
         bdr_base = vault_base / "bdr"
         if bdr_base.exists():
@@ -3704,10 +3754,11 @@ def cleanup_expired_bdrs(self) -> dict[str, Any]:
                             f"Failed to remove empty directory {user_dir}: {e}"
                         )
 
-        logger.info(f"Cleaned up {cleaned_up} expired BDRs")
+        logger.info(f"Cleaned up {cleaned_up} expired BDRs, purged {purged} stale BDRs")
         return {
             "status": "success",
             "cleaned_up": cleaned_up,
+            "purged": purged,
             "errors": errors if errors else None,
         }
 
