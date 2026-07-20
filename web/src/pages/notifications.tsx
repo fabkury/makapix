@@ -94,6 +94,57 @@ export default function NotificationsPage() {
            notification.notification_type === "reputation_change";
   };
 
+  // Avatar URLs may be relative (/api/vault/avatar/...) — prefix with the API origin
+  const resolveAvatarUrl = (url: string): string =>
+    url.startsWith("http")
+      ? url
+      : `${process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin}${url}`;
+
+  // Notification-type glyph, full-size in the icon slot or small in the avatar badge
+  const renderTypeGlyph = (
+    notification: SocialNotificationFull,
+    size: number = 20,
+  ) => {
+    if (isSystemNotification(notification)) {
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z" />
+        </svg>
+      );
+    }
+    if (notification.notification_type === "mod_hashtags_updated") {
+      return <span className="emoji">{"🛡️"}</span>;
+    }
+    if (notification.notification_type === "post_promoted") {
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+        </svg>
+      );
+    }
+    if (notification.notification_type === "reaction") {
+      return <span className="emoji">{notification.emoji || "..."}</span>;
+    }
+    if (notification.notification_type === "comment_like") {
+      return <span className="emoji">{"❤️"}</span>;
+    }
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+        <path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18z" />
+      </svg>
+    );
+  };
+
+  // Navigate to the actor's profile from inside the card link
+  const goToProfile = (
+    e: { preventDefault: () => void; stopPropagation: () => void },
+    sqid: string,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    router.push(`/u/${sqid}`);
+  };
+
   // Render notification message
   const renderNotificationMessage = (notification: SocialNotificationFull): string => {
     const actor = notification.actor_handle || "Someone";
@@ -162,53 +213,44 @@ export default function NotificationsPage() {
             <ul className="notification-list">
               {notifications.map((notification) => {
                 const isSystem = isSystemNotification(notification);
+                const actorSqid = notification.actor_public_sqid;
                 const notificationContent = (
                   <>
-                    <div className="notification-icon">
-                      {isSystem && notification.actor_avatar_url ? (
-                        <img
-                          src={notification.actor_avatar_url}
-                          alt=""
-                          width={32}
-                          height={32}
-                          className="actor-avatar"
-                        />
-                      ) : isSystem ? (
-                        <svg
-                          width="20"
-                          height="20"
-                          viewBox="0 0 24 24"
-                          fill="currentColor"
-                        >
-                          <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z" />
-                        </svg>
-                      ) : notification.notification_type ===
-                        "mod_hashtags_updated" ? (
-                        <span className="emoji">{"🛡️"}</span>
-                      ) : notification.notification_type === "post_promoted" ? (
-                        <svg
-                          width="20"
-                          height="20"
-                          viewBox="0 0 24 24"
-                          fill="currentColor"
-                        >
-                          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
-                        </svg>
-                      ) : notification.notification_type === "reaction" ? (
-                        <span className="emoji">{notification.emoji || "..."}</span>
-                      ) : notification.notification_type === "comment_like" ? (
-                        <span className="emoji">{"❤️"}</span>
-                      ) : (
-                        <svg
-                          width="20"
-                          height="20"
-                          viewBox="0 0 24 24"
-                          fill="currentColor"
-                        >
-                          <path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18z" />
-                        </svg>
-                      )}
-                    </div>
+                    {actorSqid ? (
+                      <span
+                        role="link"
+                        tabIndex={0}
+                        aria-label={`View ${notification.actor_handle || "user"}'s profile`}
+                        className="notification-icon actor-link"
+                        onClick={(e) => goToProfile(e, actorSqid)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            goToProfile(e, actorSqid);
+                          }
+                        }}
+                      >
+                        {notification.actor_avatar_url ? (
+                          <>
+                            <img
+                              src={resolveAvatarUrl(notification.actor_avatar_url)}
+                              alt=""
+                              width={32}
+                              height={32}
+                              className="actor-avatar"
+                            />
+                            <span className="type-badge" aria-hidden="true">
+                              {renderTypeGlyph(notification, 10)}
+                            </span>
+                          </>
+                        ) : (
+                          renderTypeGlyph(notification)
+                        )}
+                      </span>
+                    ) : (
+                      <div className="notification-icon">
+                        {renderTypeGlyph(notification)}
+                      </div>
+                    )}
                     <div className="notification-content">
                       <p className="notification-message">
                         {renderNotificationMessage(notification)}
@@ -227,18 +269,29 @@ export default function NotificationsPage() {
                       <div className="unread-indicator" aria-hidden="true" />
                     )}
                     {notification.content_art_url && (
-                      <img
-                        src={ensureCompatibleArtUrl(notification.content_art_url)}
-                        alt=""
-                        width={64}
-                        height={64}
-                        className="notification-artwork pixel-art"
+                      <span
+                        className="artwork-link"
                         aria-hidden="true"
-                      />
+                        onClick={(e) => {
+                          if (notification.content_sqid) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            router.push(`/p/${notification.content_sqid}`);
+                          }
+                        }}
+                      >
+                        <img
+                          src={ensureCompatibleArtUrl(notification.content_art_url)}
+                          alt=""
+                          width={64}
+                          height={64}
+                          className="notification-artwork pixel-art"
+                        />
+                      </span>
                     )}
                     {isSystem && notification.actor_avatar_url && (
                       <img
-                        src={notification.actor_avatar_url}
+                        src={resolveAvatarUrl(notification.actor_avatar_url)}
                         alt=""
                         width={64}
                         height={64}
@@ -387,6 +440,47 @@ export default function NotificationsPage() {
           border-radius: 50%;
           object-fit: cover;
           image-rendering: pixelated;
+        }
+
+        .notification-item :global(.actor-link) {
+          position: relative;
+          cursor: pointer;
+        }
+
+        .notification-item :global(.actor-link:hover .actor-avatar) {
+          box-shadow: 0 0 0 2px var(--accent-cyan);
+        }
+
+        .notification-item :global(.actor-link:focus-visible) {
+          outline: 2px solid var(--accent-cyan);
+          outline-offset: 2px;
+        }
+
+        .notification-item :global(.type-badge) {
+          position: absolute;
+          right: -3px;
+          bottom: -3px;
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background: var(--bg-secondary, #111);
+          border: 1px solid var(--border-color, #333);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 9px;
+          line-height: 1;
+          color: var(--text-secondary, #888);
+        }
+
+        .notification-item :global(.type-badge .emoji) {
+          font-size: 9px;
+        }
+
+        .notification-item :global(.artwork-link) {
+          flex-shrink: 0;
+          display: block;
+          cursor: pointer;
         }
 
         .system-notification {

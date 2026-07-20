@@ -1851,6 +1851,11 @@ class SocialNotification(Base):
     actor = relationship("User", foreign_keys=[actor_id])
     post = relationship("Post")
 
+    @property
+    def actor_public_sqid(self) -> str | None:
+        """Public sqid of the actor, for profile links; None when actor is gone."""
+        return self.actor.public_sqid if self.actor is not None else None
+
 
 # ============================================================================
 # POST MANAGEMENT DASHBOARD (PMD)

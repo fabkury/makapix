@@ -90,6 +90,7 @@ Published with QoS 1, no retention. One topic per user -- all notification types
   "post_id": 123,
   "actor_handle": "user42",
   "actor_avatar_url": "https://makapix.club/api/vault/.../avatar.png",
+  "actor_public_sqid": "t5",
   "emoji": "❤️",
   "comment_preview": null,
   "content_title": "Cool Pixel Art",
@@ -106,6 +107,7 @@ Published with QoS 1, no retention. One topic per user -- all notification types
 | `post_id` | int? | Related post ID (null for system notifications) |
 | `actor_handle` | string? | Handle of the user who performed the action (`"Anonymous"` if no actor) |
 | `actor_avatar_url` | string? | Avatar URL of the actor |
+| `actor_public_sqid` | string? | Public sqid of the actor, for `/u/{sqid}` profile links (null when anonymous or actor deleted). Same field appears on `GET /v1/social-notifications/` items. |
 | `emoji` | string? | Emoji for reaction notifications |
 | `comment_preview` | string? | First 100 characters of comment body (with `...` if truncated) |
 | `content_title` | string? | Title of the related post |

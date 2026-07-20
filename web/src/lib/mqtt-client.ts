@@ -40,6 +40,7 @@ export interface SocialNotification {
   post_id: number | null;
   actor_handle: string | null;
   actor_avatar_url: string | null;
+  actor_public_sqid: string | null;
   emoji: string | null;
   comment_preview: string | null;
   content_title: string | null;
