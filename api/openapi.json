@@ -7435,6 +7435,17 @@
             ],
             "title": "Actor Handle"
           },
+          "actor_public_sqid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Public Sqid"
+          },
           "comment_preview": {
             "anyOf": [
               {

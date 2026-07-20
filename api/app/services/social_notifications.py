@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from .. import models
 from ..cache import (
@@ -239,8 +239,10 @@ class SocialNotificationService:
         Returns:
             Tuple of (notifications, next_cursor)
         """
-        query = db.query(models.SocialNotification).filter(
-            models.SocialNotification.user_id == user_id
+        query = (
+            db.query(models.SocialNotification)
+            .options(selectinload(models.SocialNotification.actor))
+            .filter(models.SocialNotification.user_id == user_id)
         )
 
         # Hide notifications whose actor the viewer has blocked
@@ -405,6 +407,7 @@ class SocialNotificationService:
             "post_id": notification.post_id,
             "actor_handle": notification.actor_handle,
             "actor_avatar_url": notification.actor_avatar_url,
+            "actor_public_sqid": notification.actor_public_sqid,
             "emoji": notification.emoji,
             "comment_preview": notification.comment_preview,
             "content_title": notification.content_title,

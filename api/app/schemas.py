@@ -2236,6 +2236,7 @@ class SocialNotificationBase(BaseModel):
     post_id: int | None = None  # Nullable for system notifications
     actor_handle: str | None = None
     actor_avatar_url: str | None = None  # For system notifications
+    actor_public_sqid: str | None = None  # For /u/{sqid} profile links
     emoji: str | None = None
     comment_preview: str | None = None
     content_title: str | None = None
