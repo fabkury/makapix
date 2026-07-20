@@ -185,12 +185,6 @@ export default function PostManagementDashboard() {
       }
       return [updatedBdr, ...prev];
     });
-
-    if (updatedBdr.status === 'ready') {
-      alert(`Download ready! ${updatedBdr.artwork_count} artworks`);
-    } else if (updatedBdr.status === 'failed') {
-      alert(`Download failed: ${updatedBdr.error_message || 'Unknown error'}`);
-    }
   }, []);
 
   usePMDSSE({
