@@ -94,7 +94,8 @@ export default function NotificationsPage() {
            notification.notification_type === "reputation_change";
   };
 
-  // Avatar URLs may be relative (/api/vault/avatar/...) — prefix with the API origin
+  // Avatar URLs are absolute vault-subdomain URLs; the relative-path branch is
+  // legacy tolerance (the /api/vault form was retired 2026-07-22)
   const resolveAvatarUrl = (url: string): string =>
     url.startsWith("http")
       ? url

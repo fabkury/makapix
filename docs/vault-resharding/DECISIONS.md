@@ -183,6 +183,12 @@ masked to their low 6 bits, so only each component's leading hex char changes
 (`c -> c & 0x3`). No hashing, no DB access; ~1 µs per request against ~228
 requests/day on the prod vault subdomain.
 
+> **2026-07-22 addendum:** the `/api/vault/` mount (and with it
+> `LegacyShardFallbackStaticFiles` / `api/app/vault_serving.py`) was removed
+> — see `docs/remove-api-vault/`. D16 still holds, now implemented solely by
+> the `legacy_shard_remap` snippet on the vault subdomains; the "keep the two
+> implementations in sync" obligation is gone.
+
 Properties that drove the decision:
 
 - **Miss-only.** While a twin copy exists at the requested path it is served

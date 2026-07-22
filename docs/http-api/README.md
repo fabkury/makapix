@@ -204,7 +204,7 @@ Response:
       "id": 12345,
       "public_sqid": "k5fNx",
       "title": "Pixel Landscape",
-      "art_url": "https://makapix.club/api/vault/21/32/storage-key.png",
+      "art_url": "https://vault.makapix.club/21/32/storage-key.png",
       "width": 64,
       "height": 64,
       "created_at": "2024-01-15T09:00:00Z",

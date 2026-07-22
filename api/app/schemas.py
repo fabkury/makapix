@@ -203,8 +203,8 @@ class UserPublic(BaseModel):
         None  # Short one-liner displayed under username (max 48 chars)
     )
     website: str | None = None
-    # Avatar URL may be an external absolute URL (GitHub) or a site-relative vault URL
-    # (e.g. /api/vault/avatar/...). We store raw strings to support relative URLs.
+    # Avatar URL: absolute URL on the vault subdomain
+    # (e.g. https://vault.makapix.club/avatar/...). Stored as a raw string.
     avatar_url: str | None = None
     badges: list[BadgeGrant] = []
     reputation: int
@@ -348,7 +348,8 @@ class Post(BaseModel):
     # Moderator-owned subset of `hashtags`; only moderators can change these
     # (docs/mod-hashtags/API-CONTRACT.md)
     mod_hashtags: list[str] = []
-    # Vault URL: relative /api/vault/... or absolute on the vault subdomain
+    # Vault URL: absolute on the vault subdomain (vault-only invariant,
+    # utils/art_url.py)
     art_url: str
     width: int  # Canvas width in pixels
     height: int  # Canvas height in pixels

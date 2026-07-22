@@ -40,8 +40,8 @@
 # Fires only when no file exists at the requested path ("not file"), so twin
 # copies keep serving unchanged during the dual window. The access log records
 # the original (3-level) URI, so download-stats keeps measuring legacy
-# traffic. The API's /api/vault mount applies the same fallback
-# (api/app/vault_serving.py); keep the two in sync.
+# traffic. This is the sole implementation of D16 since the API's /api/vault
+# mount was removed 2026-07-22 (docs/remove-api-vault/).
 # -----------------------------------------------------------------------------
 (legacy_shard_remap) {
 	@legacy_miss {
