@@ -60,9 +60,11 @@ class TestUriRegex:
         m = _VAULT_URI_RE.match(f"/24/07/{KEY}.png")
         assert m and m.group("s3") is None
 
-    def test_api_vault_prefix(self):
-        assert _VAULT_URI_RE.match(f"/api/vault/a4/47/ee/{KEY}.gif")
-        assert _VAULT_URI_RE.match(f"/api/vault/24/07/{KEY}.gif")
+    def test_api_vault_prefix_no_longer_matches(self):
+        # The /api/vault serving mount was removed 2026-07-22
+        # (docs/remove-api-vault/); only bare vault-subdomain paths count.
+        assert not _VAULT_URI_RE.match(f"/api/vault/a4/47/ee/{KEY}.gif")
+        assert not _VAULT_URI_RE.match(f"/api/vault/24/07/{KEY}.gif")
 
     def test_avatar_and_blog_classes(self):
         m = _VAULT_URI_RE.match(f"/avatar/a4/47/ee/{KEY}.jpg")
@@ -122,24 +124,6 @@ class TestIterVaultHits:
             ],
         )
         assert len(list(_iter_vault_hits([log], DAY))) == 1
-
-    def test_host_filter_and_api_prefix(self, tmp_path):
-        log = _write_log(
-            tmp_path,
-            [
-                _entry(f"/api/vault/a4/47/ee/{KEY}.png", host="makapix.club"),
-                _entry(f"/api/vault/a4/47/ee/{KEY}.png", host="evil.example.com"),
-                # bare path on the main domain is not vault traffic
-                _entry(f"/a4/47/ee/{KEY}.png", host="makapix.club"),
-            ],
-            name="access.log",
-        )
-        hits = list(
-            _iter_vault_hits(
-                [log], DAY, hosts={"makapix.club"}, require_api_prefix=True
-            )
-        )
-        assert len(hits) == 1
 
     def test_non_access_logger_entries_skipped(self, tmp_path):
         log = _write_log(
