@@ -16697,7 +16697,7 @@
     },
     "/v1/hashtags/top": {
       "get": {
-        "description": "Get top trending hashtags for header display.\n\nReturns up to 10 randomly selected hashtags from the top 15% by artwork count.\nRequires authentication. Result is cached for 2 hours and shared across all users.",
+        "description": "Get top trending hashtags for header display.\n\nReturns up to 10 randomly selected hashtags from the top 15% by artwork count.\nMonitored hashtags are never included. Requires authentication. Result is\ncached for 2 hours and shared across all users.",
         "operationId": "get_top_hashtags_v1_hashtags_top_get",
         "responses": {
           "200": {
