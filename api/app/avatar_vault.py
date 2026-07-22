@@ -129,13 +129,12 @@ def get_avatar_url(avatar_id: UUID, extension: str) -> str:
     """
     Get the public URL for an avatar image (canonical sharding scheme).
 
-    When VAULT_PUBLIC_BASE_URL is set, returns an absolute URL on the Caddy
-    vault subdomain (e.g. https://vault.makapix.club/avatar/<...>). Otherwise
-    returns /api/vault/avatar/<...>, served by FastAPI StaticFiles via the
-    Caddy reverse proxy (which strips /api before forwarding).
+    Returns an absolute URL on the Caddy vault subdomain
+    (e.g. https://vault.makapix.club/avatar/<...>); VAULT_PUBLIC_BASE_URL
+    is required.
     """
     ext = extension.lower() if extension.startswith(".") else f".{extension.lower()}"
-    prefix = vault_public_base_url() or "/api/vault"
+    prefix = vault_public_base_url()
     shard = compute_storage_shard(avatar_id)
     return f"{prefix}/avatar/{shard}/{avatar_id}{ext}"
 

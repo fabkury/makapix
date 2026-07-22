@@ -52,6 +52,14 @@ from .vault_serving import LegacyShardFallbackStaticFiles
 
 load_dotenv()
 
+# Fail fast on missing required configuration: every generated asset URL
+# depends on VAULT_PUBLIC_BASE_URL (the /api/vault fallback mount is gone),
+# so a misconfigured deployment must refuse to start rather than mint dead
+# URLs. The call raises RuntimeError when the variable is unset.
+from .settings import vault_public_base_url  # noqa: E402
+
+vault_public_base_url()
+
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
 

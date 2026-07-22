@@ -39,12 +39,19 @@ MAKAPIX_VAULT_MIN_FREE_BYTES: int = _int_env(
 
 
 def vault_public_base_url() -> str:
-    """Return the public base URL for vault assets, or "" if unset.
+    """Return the public base URL for vault assets (required setting).
 
-    When set, URL builders (get_artwork_url / get_avatar_url /
-    get_blog_image_url) prefix it onto returned URLs so browsers fetch
-    images directly from Caddy. When empty, builders return relative
-    /api/vault/... paths (legacy behavior). Read at call time so tests
-    can monkeypatch the environment.
+    URL builders (get_artwork_url / get_avatar_url / get_blog_image_url)
+    prefix it onto returned URLs so clients fetch images directly from the
+    Caddy vault subdomain. The legacy relative /api/vault/... serving mount
+    was removed 2026-07-22 (docs/remove-api-vault/), so there is no fallback:
+    an unset value would silently mint dead URLs, hence the hard failure.
+    Read at call time so tests can monkeypatch the environment.
     """
-    return os.environ.get("VAULT_PUBLIC_BASE_URL", "").rstrip("/")
+    url = os.environ.get("VAULT_PUBLIC_BASE_URL", "").rstrip("/")
+    if not url:
+        raise RuntimeError(
+            "VAULT_PUBLIC_BASE_URL must be set (e.g. https://vault.makapix.club); "
+            "vault asset URLs cannot be generated without it"
+        )
+    return url
