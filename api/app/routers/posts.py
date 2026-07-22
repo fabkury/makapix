@@ -49,6 +49,7 @@ from ..mqtt.notifications import (
     publish_category_promotion_notification,
 )
 from ..constants import MAX_HASHTAG_LENGTH, MAX_MOD_HASHTAGS_PER_POST
+from ..utils.art_url import assert_vault_art_url
 from ..utils.audit import log_moderation_action
 from ..utils.hashtags import normalize_hashtags
 from ..utils.monitored_hashtags import (
@@ -853,7 +854,7 @@ async def upload_artwork(
         art_url = get_artwork_url(
             post.storage_key, extension, storage_shard=post.storage_shard
         )
-        post.art_url = art_url
+        post.art_url = assert_vault_art_url(art_url)
 
         # Optional .mkpx layers file (already validated above)
         if mkpx is not None:
@@ -1998,8 +1999,8 @@ async def replace_artwork(
     new_storage_key = uuid.uuid4()
     new_storage_shard = compute_storage_shard(new_storage_key)
     new_extension = FORMAT_TO_EXT[file_format]
-    new_art_url = get_artwork_url(
-        new_storage_key, new_extension, storage_shard=new_storage_shard
+    new_art_url = assert_vault_art_url(
+        get_artwork_url(new_storage_key, new_extension, storage_shard=new_storage_shard)
     )
 
     # Update post first (flush) so UNIQUE constraint blocks races before vault write
