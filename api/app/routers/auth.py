@@ -32,7 +32,6 @@ from ..auth import (
 )
 from ..deps import get_db
 from ..errors import AppError, ErrorCode
-from ..github import verify_installation_belongs_to_app
 from ..services.auth_identities import (
     create_password_identity,
     create_oauth_identity,
@@ -1567,7 +1566,6 @@ def unlink_provider(
 @router.get("/github/login")
 def github_login(
     request: Request,
-    installation_id: int = Query(None),
     redirect_uri: str | None = Query(
         None, description="Native custom-scheme redirect (server-brokered flow)"
     ),
@@ -1577,8 +1575,6 @@ def github_login(
 ):
     """
     Redirect to GitHub OAuth authorization.
-
-    If installation_id is provided, it will be preserved through the OAuth flow.
 
     Native (server-brokered) flow: pass `redirect_uri` (an allowlisted custom
     scheme) + a PKCE `code_challenge` (`code_challenge_method=S256`) + `state`.
@@ -1613,10 +1609,7 @@ def github_login(
     # Create and persist a nonce to protect OAuth state (CSRF/replay protection)
     state_nonce = secrets.token_urlsafe(24)
 
-    # Create state parameter that includes installation_id if provided
     state_data = {"nonce": state_nonce}
-    if installation_id:
-        state_data["installation_id"] = installation_id
     if native:
         state_data["native"] = native
 
@@ -1645,13 +1638,10 @@ def github_callback(
     request: Request,
     code: str = Query(...),
     state: str = Query(...),
-    installation_id: int = Query(None),
-    setup_action: str = Query(None),
     db: Session = Depends(get_db),
 ):
     """
     Handle GitHub OAuth callback and exchange code for tokens.
-    Also handles GitHub App installation if installation_id is provided.
     """
     if not GITHUB_CLIENT_ID or not GITHUB_CLIENT_SECRET:
         logger.error("GitHub OAuth callback failed: OAuth credentials not configured")
@@ -1700,11 +1690,6 @@ def github_callback(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid OAuth state. Please try again.",
             )
-
-        # Extract installation_id from state if present
-        state_installation_id = state_data.get("installation_id")
-        if state_installation_id and not installation_id:
-            installation_id = state_installation_id
 
         # Exchange code for GitHub access token
         token_data = {
@@ -1978,53 +1963,6 @@ def github_callback(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         detail="Failed to create authentication identity. Please try again.",
                     )
-
-        # Handle GitHub App installation if installation_id is provided
-        if installation_id and setup_action == "install":
-            logger.info(f"Processing GitHub App installation: {installation_id}")
-            try:
-                # Check if installation already exists
-                existing_installation = (
-                    db.query(models.GitHubInstallation)
-                    .filter(
-                        models.GitHubInstallation.installation_id == installation_id
-                    )
-                    .first()
-                )
-
-                # Don't set target_repo during installation - user will select/create repo later
-                # target_repo should be NULL until user selects a repository
-
-                if not existing_installation:
-                    # Create new installation record
-                    installation = models.GitHubInstallation(
-                        user_id=user.id,
-                        installation_id=installation_id,
-                        account_login=github_username,
-                        account_type="User",
-                        target_repo=None,  # User will select repository later
-                    )
-                    db.add(installation)
-                    db.commit()
-                    logger.info(f"Created new GitHub installation: {installation_id}")
-                elif existing_installation.user_id != user.id:
-                    # Update installation to point to this user
-                    existing_installation.user_id = user.id
-                    existing_installation.account_login = github_username
-                    # Don't overwrite existing target_repo if user has already selected one
-                    if existing_installation.target_repo is None:
-                        existing_installation.target_repo = None
-                    db.commit()
-                    logger.info(
-                        f"Updated GitHub installation {installation_id} to user {user.id}"
-                    )
-            except IntegrityError as e:
-                db.rollback()
-                logger.error(
-                    f"Database integrity error handling installation: {e}",
-                    exc_info=True,
-                )
-                # Don't fail the auth flow if installation handling fails
 
         # Native (server-brokered) flow: hand the app a short-lived Makapix code
         # at its custom scheme instead of the HTML popup. The app exchanges it at
@@ -2419,28 +2357,6 @@ def exchange_github_code(
                 },
             )
 
-    # Check if installation_id is provided (from GitHub App installation)
-    installation_id = payload.installation_id
-    setup_action = payload.setup_action
-
-    if installation_id and setup_action == "install":
-        # Bind GitHub App installation to user
-        installation = (
-            db.query(models.GitHubInstallation)
-            .filter(models.GitHubInstallation.installation_id == installation_id)
-            .first()
-        )
-
-        if not installation:
-            installation = models.GitHubInstallation(
-                user_id=user.id,
-                installation_id=installation_id,
-                account_login=github_user["login"],
-                account_type="User",
-            )
-            db.add(installation)
-            db.commit()
-
     # Generate JWT tokens
     access_token = create_access_token(user)
     refresh_token = create_refresh_token(user.user_key, db)
@@ -2649,243 +2565,3 @@ def get_me(
         ),
         needs_welcome=not bool(current_user.welcome_completed),
     )
-
-
-@router.get("/onboarding/github")
-def github_onboarding_redirect(
-    request: Request,
-    installation_id: int = Query(...),
-    setup_action: str = Query(...),
-    db: Session = Depends(get_db),
-):
-    """
-    Redirect from GitHub's onboarding URL to our setup URL.
-    This handles the case where GitHub redirects to /onboarding/github instead of /github-app-setup.
-    """
-    from fastapi.responses import RedirectResponse
-
-    # Determine the base URL from the request
-    base_url = str(request.base_url).rstrip("/")
-    # Handle both http and https
-    if request.headers.get("x-forwarded-proto") == "https":
-        base_url = base_url.replace("http://", "https://")
-
-    # Redirect to Next.js setup page (using shorter /setup route to avoid GitHub URL truncation)
-    setup_url = f"{base_url}/setup?installation_id={installation_id}&setup_action={setup_action}"
-    return RedirectResponse(url=setup_url, status_code=302)
-
-
-@router.get("/github-app/setup")
-def github_app_setup(
-    request: Request,
-    installation_id: int = Query(...),
-    setup_action: str = Query(...),
-    db: Session = Depends(get_db),
-):
-    """
-    Handle GitHub App installation completion.
-    This endpoint is called by GitHub after app installation.
-    Redirects to Next.js page for better UX.
-    """
-    from fastapi.responses import RedirectResponse
-
-    # Determine the base URL from the request
-    base_url = str(request.base_url).rstrip("/")
-    # Handle both http and https
-    if request.headers.get("x-forwarded-proto") == "https":
-        base_url = base_url.replace("http://", "https://")
-
-    # Redirect to Next.js setup page (using shorter /setup route to avoid GitHub URL truncation)
-    setup_url = f"{base_url}/setup?installation_id={installation_id}&setup_action={setup_action}"
-    return RedirectResponse(url=setup_url, status_code=302)
-
-
-@router.get("/github-app/status")
-def get_github_app_status(
-    current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)
-) -> dict:
-    """
-    Check if the current user has installed the GitHub App.
-    Returns installation status and app installation URL if not installed.
-    """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
-    installation = (
-        db.query(models.GitHubInstallation)
-        .filter(models.GitHubInstallation.user_id == current_user.id)
-        .first()
-    )
-
-    # Get GitHub App slug from environment or use default
-    app_slug = os.getenv("GITHUB_APP_SLUG", "makapix-club")
-    # Construct installation URL - users can install from this URL
-    install_url = (
-        f"https://github.com/apps/{app_slug}/installations/new" if app_slug else None
-    )
-
-    result = {
-        "installed": installation is not None,
-        "installation_id": installation.installation_id if installation else None,
-        "install_url": install_url,
-    }
-
-    logger.info(
-        f"GitHub App status check for user {current_user.id}: app_slug={app_slug}, install_url={install_url}, installed={result['installed']}"
-    )
-
-    return result
-
-
-@router.post("/github-app/clear-installation")
-def clear_github_app_installation(
-    current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)
-) -> dict:
-    """
-    Clear invalid GitHub App installation from database.
-    Useful when user needs to reinstall the app.
-    """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
-    installation = (
-        db.query(models.GitHubInstallation)
-        .filter(models.GitHubInstallation.user_id == current_user.id)
-        .first()
-    )
-
-    if not installation:
-        return {
-            "status": "no_installation",
-            "message": "No installation found to clear",
-        }
-
-    installation_id = installation.installation_id
-    db.delete(installation)
-    db.commit()
-
-    logger.info(
-        f"Cleared GitHub App installation {installation_id} for user {current_user.id}"
-    )
-
-    return {
-        "status": "cleared",
-        "message": f"Installation {installation_id} has been cleared. You can now reinstall the GitHub App.",
-    }
-
-
-@router.get("/github-app/validate")
-def validate_github_app_installation(
-    current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)
-) -> dict:
-    """
-    Validate that the GitHub App installation is working by testing access token generation.
-    Returns validation status and error details if invalid.
-    """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
-    installation = (
-        db.query(models.GitHubInstallation)
-        .filter(models.GitHubInstallation.user_id == current_user.id)
-        .first()
-    )
-
-    if not installation:
-        return {
-            "valid": False,
-            "error": "No GitHub App installation found",
-            "details": "User has not installed the GitHub App",
-        }
-
-    # Check if installation has required fields
-    if not installation.installation_id:
-        return {
-            "valid": False,
-            "error": "Invalid installation",
-            "details": "Installation ID is missing",
-        }
-
-    # target_repo is now optional - users select/create repositories via the UI
-    # Don't require it for validation
-
-    # Verify that the installation belongs to the configured GitHub App before attempting token generation
-    logger.info(
-        f"Verifying installation {installation.installation_id} belongs to configured GitHub App"
-    )
-    if not verify_installation_belongs_to_app(installation.installation_id):
-        app_slug = os.getenv("GITHUB_APP_SLUG", "makapix-club")
-        install_url = (
-            f"https://github.com/apps/{app_slug}/installations/new"
-            if app_slug
-            else None
-        )
-
-        error_details = (
-            f"Installation {installation.installation_id} belongs to a different GitHub App. "
-            f"This usually happens when you installed the wrong GitHub App (e.g., localhost app instead of VPS app).\n\n"
-        )
-
-        if install_url:
-            error_details += (
-                f"Please install the correct GitHub App from: {install_url}\n\n"
-            )
-            error_details += f"After installing, you may need to uninstall the incorrect installation first."
-
-        logger.warning(
-            f"User {current_user.id} has installation {installation.installation_id} that belongs to wrong GitHub App. "
-            f"Configured app slug: {app_slug}"
-        )
-
-        return {
-            "valid": False,
-            "error": "Installation belongs to wrong GitHub App",
-            "details": error_details,
-            "app_slug": app_slug,
-            "install_url": install_url,
-        }
-
-    # Test if we can get an access token from GitHub
-    try:
-        from app.github import get_github_app_token
-
-        access_token = get_github_app_token(installation.installation_id)
-
-        if not access_token:
-            logger.error(
-                f"Failed to get access token for installation {installation.installation_id}"
-            )
-            return {
-                "valid": False,
-                "error": "Failed to get access token",
-                "details": f"GitHub App installation {installation.installation_id} cannot authenticate. This usually means:\n1. The GITHUB_APP_ID or GITHUB_APP_PRIVATE_KEY environment variables are incorrect\n2. The private key doesn't match the GitHub App\n3. The installation was revoked on GitHub\n\nCheck your GitHub App configuration in the API environment variables.",
-            }
-
-        # If we successfully got a token, the installation is valid
-        # Installation tokens can't access /user endpoint, so we don't test it
-        # The fact that we can get a token means the installation is valid
-        logger.info(
-            f"GitHub App installation validated successfully for user {current_user.id}"
-        )
-        return {
-            "valid": True,
-            "installation_id": installation.installation_id,
-            "target_repo": installation.target_repo,  # May be NULL - user selects repo later
-            "account_login": installation.account_login,
-        }
-
-    except Exception as e:
-        error_msg = str(e)
-        logger.error(
-            f"Error validating GitHub App installation for user {current_user.id}: {error_msg}"
-        )
-
-        # Provide specific guidance based on error
-        details = f"Error: {error_msg}"
-        if "could not be decoded" in error_msg.lower() or "401" in error_msg:
-            details += "\n\nThis means the GitHub App credentials are incorrect. Please check:\n1. GITHUB_APP_ID matches your GitHub App ID\n2. GITHUB_APP_PRIVATE_KEY is the correct private key from your GitHub App\n3. The private key format is correct (should start with '-----BEGIN RSA PRIVATE KEY-----')"
-
-        return {"valid": False, "error": "Validation failed", "details": details}

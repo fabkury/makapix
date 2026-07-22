@@ -296,16 +296,6 @@ class AvatarFromPostRequest(BaseModel):
     post_sqid: str = Field(..., min_length=1, max_length=16)
 
 
-class ConformanceStatus(BaseModel):
-    """GitHub Pages conformance check status."""
-
-    conformance: Literal[
-        "ok", "missing_manifest", "invalid_manifest", "hotlinks_broken"
-    ]
-    last_checked_at: datetime | None = None
-    next_check_at: datetime | None = None
-
-
 class ReputationHistoryItem(BaseModel):
     """Single reputation change."""
 
@@ -358,7 +348,8 @@ class Post(BaseModel):
     # Moderator-owned subset of `hashtags`; only moderators can change these
     # (docs/mod-hashtags/API-CONTRACT.md)
     mod_hashtags: list[str] = []
-    art_url: str  # Can be relative URL for vault-hosted images or full URL for external
+    # Vault URL: relative /api/vault/... or absolute on the vault subdomain
+    art_url: str
     width: int  # Canvas width in pixels
     height: int  # Canvas height in pixels
     # Frames in the native file (the one art_url points to). Converted
@@ -413,20 +404,6 @@ class Post(BaseModel):
     mkpx_attached_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
-
-
-class PostCreate(BaseModel):
-    """Create post request."""
-
-    kind: Literal["artwork"] = "artwork"
-    title: str = Field(..., min_length=1, max_length=128)
-    description: str | None = Field(None, max_length=5000)
-    hashtags: list[str] = Field(default_factory=list, max_length=64)
-    art_url: str  # Can be relative URL for vault-hosted images or full URL for external
-    width: int = Field(..., gt=0, le=256)
-    height: int = Field(..., gt=0, le=256)
-    file_bytes: int = Field(..., gt=0, le=MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES)
-    hash: str = Field(..., min_length=64, max_length=64)
 
 
 class PostUpdate(BaseModel):
@@ -1242,8 +1219,6 @@ class GithubExchangeRequest(BaseModel):
 
     code: str
     redirect_uri: str
-    installation_id: int | None = None
-    setup_action: str | None = None
 
 
 class RefreshTokenRequest(BaseModel):
@@ -1254,18 +1229,6 @@ class RefreshTokenRequest(BaseModel):
     """
 
     refresh_token: str
-
-
-class ProfileConnectRequest(BaseModel):
-    """Profile connection request."""
-
-    repo_name: str
-
-
-class GitHubAppBindRequest(BaseModel):
-    """GitHub App binding request."""
-
-    installation_id: int
 
 
 class MeCapabilities(BaseModel):
@@ -1757,80 +1720,6 @@ class SearchResults(BaseModel):
 
     items: list[SearchResultUser | SearchResultPost | SearchResultPlaylist]
     next_cursor: str | None = None
-
-
-# ============================================================================
-# RELAY & VALIDATION SCHEMAS
-# ============================================================================
-
-
-class RelayJob(BaseModel):
-    """Relay job status."""
-
-    status: Literal["queued", "running", "committed", "failed"]
-    repo: str | None = None
-    commit: str | None = None
-    error: str | None = None
-
-
-class RelayUploadResponse(BaseModel):
-    """Relay upload response."""
-
-    status: Literal["committed", "queued", "failed"]
-    repo: str | None = None
-    commit: str | None = None
-    job_id: UUID | None = None
-    error: str | None = None
-
-
-class RepositoryInfo(BaseModel):
-    """GitHub repository information."""
-
-    name: str
-    full_name: str
-    description: str | None = None
-    private: bool
-    html_url: str
-
-
-class RepositoryListResponse(BaseModel):
-    """Repository list response."""
-
-    repositories: list[RepositoryInfo]
-
-
-class CreateRepositoryRequest(BaseModel):
-    """Create repository request."""
-
-    name: str
-
-
-class CreateRepositoryResponse(BaseModel):
-    """Create repository response."""
-
-    name: str
-    full_name: str
-    html_url: str
-
-
-class ManifestValidateRequest(BaseModel):
-    """Manifest validation request."""
-
-    url: HttpUrl
-
-
-class ManifestValidationResult(BaseModel):
-    """Manifest validation result."""
-
-    valid: bool
-    issues: list[str] = []
-    summary: dict[str, Any] | None = None  # {art_count, canvases, avg_kb}
-
-
-class ConformanceRecheckResponse(BaseModel):
-    """Conformance recheck response."""
-
-    job_id: UUID
 
 
 # ============================================================================

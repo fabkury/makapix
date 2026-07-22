@@ -1529,29 +1529,6 @@
         "title": "Body_attach_mkpx_v1_post__id__mkpx_post",
         "type": "object"
       },
-      "Body_relay_upload_relay_pages_upload_post": {
-        "properties": {
-          "bundle": {
-            "contentMediaType": "application/octet-stream",
-            "title": "Bundle",
-            "type": "string"
-          },
-          "commit_message": {
-            "default": "Update via Makapix",
-            "title": "Commit Message",
-            "type": "string"
-          },
-          "repository": {
-            "title": "Repository",
-            "type": "string"
-          }
-        },
-        "required": [
-          "bundle"
-        ],
-        "title": "Body_relay_upload_relay_pages_upload_post",
-        "type": "object"
-      },
       "Body_replace_artwork_v1_post__id__replace_artwork_post": {
         "properties": {
           "image": {
@@ -2261,44 +2238,6 @@
         "title": "CreateBDRResponse",
         "type": "object"
       },
-      "CreateRepositoryRequest": {
-        "description": "Create repository request.",
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "title": "CreateRepositoryRequest",
-        "type": "object"
-      },
-      "CreateRepositoryResponse": {
-        "description": "Create repository response.",
-        "properties": {
-          "full_name": {
-            "title": "Full Name",
-            "type": "string"
-          },
-          "html_url": {
-            "title": "Html Url",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "full_name",
-          "html_url"
-        ],
-        "title": "CreateRepositoryResponse",
-        "type": "object"
-      },
       "DailyCount": {
         "description": "Daily count for trends.",
         "properties": {
@@ -2579,20 +2518,6 @@
         "title": "ForgotPasswordResponse",
         "type": "object"
       },
-      "GitHubAppBindRequest": {
-        "description": "GitHub App binding request.",
-        "properties": {
-          "installation_id": {
-            "title": "Installation Id",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "installation_id"
-        ],
-        "title": "GitHubAppBindRequest",
-        "type": "object"
-      },
       "GithubExchangeRequest": {
         "description": "GitHub OAuth code exchange request.",
         "properties": {
@@ -2600,31 +2525,9 @@
             "title": "Code",
             "type": "string"
           },
-          "installation_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Installation Id"
-          },
           "redirect_uri": {
             "title": "Redirect Uri",
             "type": "string"
-          },
-          "setup_action": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Setup Action"
           }
         },
         "required": [
@@ -3138,57 +3041,6 @@
           "topic"
         ],
         "title": "MQTTPublishResponse",
-        "type": "object"
-      },
-      "ManifestValidateRequest": {
-        "description": "Manifest validation request.",
-        "properties": {
-          "url": {
-            "format": "uri",
-            "maxLength": 2083,
-            "minLength": 1,
-            "title": "Url",
-            "type": "string"
-          }
-        },
-        "required": [
-          "url"
-        ],
-        "title": "ManifestValidateRequest",
-        "type": "object"
-      },
-      "ManifestValidationResult": {
-        "description": "Manifest validation result.",
-        "properties": {
-          "issues": {
-            "default": [],
-            "items": {
-              "type": "string"
-            },
-            "title": "Issues",
-            "type": "array"
-          },
-          "summary": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Summary"
-          },
-          "valid": {
-            "title": "Valid",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "valid"
-        ],
-        "title": "ManifestValidationResult",
         "type": "object"
       },
       "MeCapabilities": {
@@ -5276,81 +5128,6 @@
         "title": "Post",
         "type": "object"
       },
-      "PostCreate": {
-        "description": "Create post request.",
-        "properties": {
-          "art_url": {
-            "title": "Art Url",
-            "type": "string"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "maxLength": 5000,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "file_bytes": {
-            "exclusiveMinimum": 0.0,
-            "maximum": 5242880.0,
-            "title": "File Bytes",
-            "type": "integer"
-          },
-          "hash": {
-            "maxLength": 64,
-            "minLength": 64,
-            "title": "Hash",
-            "type": "string"
-          },
-          "hashtags": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 64,
-            "title": "Hashtags",
-            "type": "array"
-          },
-          "height": {
-            "exclusiveMinimum": 0.0,
-            "maximum": 256.0,
-            "title": "Height",
-            "type": "integer"
-          },
-          "kind": {
-            "const": "artwork",
-            "default": "artwork",
-            "title": "Kind",
-            "type": "string"
-          },
-          "title": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Title",
-            "type": "string"
-          },
-          "width": {
-            "exclusiveMinimum": 0.0,
-            "maximum": 256.0,
-            "title": "Width",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "title",
-          "art_url",
-          "width",
-          "height",
-          "file_bytes",
-          "hash"
-        ],
-        "title": "PostCreate",
-        "type": "object"
-      },
       "PostFile": {
         "description": "File variant for a post.\n\nNon-native variants are server-side re-encodes of the native file.\nAnimated variants can contain fewer frames than the post's frame_count\n(consecutive duplicate frames merge on encode, durations are summed;\nplayback is visually identical).",
         "properties": {
@@ -5678,20 +5455,6 @@
           }
         },
         "title": "PostUpdate",
-        "type": "object"
-      },
-      "ProfileConnectRequest": {
-        "description": "Profile connection request.",
-        "properties": {
-          "repo_name": {
-            "title": "Repo Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "repo_name"
-        ],
-        "title": "ProfileConnectRequest",
         "type": "object"
       },
       "PromoteModeratorResponse": {
@@ -6462,123 +6225,6 @@
         "title": "RegisterResponse",
         "type": "object"
       },
-      "RelayJob": {
-        "description": "Relay job status.",
-        "properties": {
-          "commit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Commit"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "repo": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Repo"
-          },
-          "status": {
-            "enum": [
-              "queued",
-              "running",
-              "committed",
-              "failed"
-            ],
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "status"
-        ],
-        "title": "RelayJob",
-        "type": "object"
-      },
-      "RelayUploadResponse": {
-        "description": "Relay upload response.",
-        "properties": {
-          "commit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Commit"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "job_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Job Id"
-          },
-          "repo": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Repo"
-          },
-          "status": {
-            "enum": [
-              "committed",
-              "queued",
-              "failed"
-            ],
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "status"
-        ],
-        "title": "RelayUploadResponse",
-        "type": "object"
-      },
       "ReorderHighlightsRequest": {
         "description": "Request to reorder highlights.",
         "properties": {
@@ -6833,63 +6479,6 @@
           }
         },
         "title": "ReportUpdate",
-        "type": "object"
-      },
-      "RepositoryInfo": {
-        "description": "GitHub repository information.",
-        "properties": {
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "full_name": {
-            "title": "Full Name",
-            "type": "string"
-          },
-          "html_url": {
-            "title": "Html Url",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "private": {
-            "title": "Private",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "name",
-          "full_name",
-          "private",
-          "html_url"
-        ],
-        "title": "RepositoryInfo",
-        "type": "object"
-      },
-      "RepositoryListResponse": {
-        "description": "Repository list response.",
-        "properties": {
-          "repositories": {
-            "items": {
-              "$ref": "#/components/schemas/RepositoryInfo"
-            },
-            "title": "Repositories",
-            "type": "array"
-          }
-        },
-        "required": [
-          "repositories"
-        ],
-        "title": "RepositoryListResponse",
         "type": "object"
       },
       "ReputationAdjust": {
@@ -11278,177 +10867,6 @@
         ]
       }
     },
-    "/relay/jobs/{id}": {
-      "get": {
-        "description": "Get relay job status.",
-        "operationId": "get_relay_job_relay_jobs__id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RelayJob"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Relay Job",
-        "tags": [
-          "Relay",
-          "Validation",
-          "Relay"
-        ]
-      }
-    },
-    "/relay/pages/upload": {
-      "post": {
-        "description": "Receive client bundle and commit to GitHub Pages via GitHub App.",
-        "operationId": "relay_upload_relay_pages_upload_post",
-        "requestBody": {
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_relay_upload_relay_pages_upload_post"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RelayUploadResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Relay Upload",
-        "tags": [
-          "Relay",
-          "Validation",
-          "Relay"
-        ]
-      }
-    },
-    "/relay/repositories": {
-      "get": {
-        "description": "List user's GitHub repositories.",
-        "operationId": "list_user_repositories_relay_repositories_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RepositoryListResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "List User Repositories",
-        "tags": [
-          "Relay",
-          "Validation",
-          "Relay"
-        ]
-      },
-      "post": {
-        "description": "Create a new GitHub repository.",
-        "operationId": "create_user_repository_relay_repositories_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateRepositoryRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CreateRepositoryResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Create User Repository",
-        "tags": [
-          "Relay",
-          "Validation",
-          "Relay"
-        ]
-      }
-    },
     "/sitemap.xml": {
       "get": {
         "description": "Render the public sitemap as XML.",
@@ -13814,146 +13232,9 @@
         ]
       }
     },
-    "/v1/auth/github-app/clear-installation": {
-      "post": {
-        "description": "Clear invalid GitHub App installation from database.\nUseful when user needs to reinstall the app.",
-        "operationId": "clear_github_app_installation_v1_auth_github_app_clear_installation_post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Clear Github App Installation V1 Auth Github App Clear Installation Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Clear Github App Installation",
-        "tags": [
-          "Auth"
-        ]
-      }
-    },
-    "/v1/auth/github-app/setup": {
-      "get": {
-        "description": "Handle GitHub App installation completion.\nThis endpoint is called by GitHub after app installation.\nRedirects to Next.js page for better UX.",
-        "operationId": "github_app_setup_v1_auth_github_app_setup_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "installation_id",
-            "required": true,
-            "schema": {
-              "title": "Installation Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "setup_action",
-            "required": true,
-            "schema": {
-              "title": "Setup Action",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Github App Setup",
-        "tags": [
-          "Auth"
-        ]
-      }
-    },
-    "/v1/auth/github-app/status": {
-      "get": {
-        "description": "Check if the current user has installed the GitHub App.\nReturns installation status and app installation URL if not installed.",
-        "operationId": "get_github_app_status_v1_auth_github_app_status_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Github App Status V1 Auth Github App Status Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Get Github App Status",
-        "tags": [
-          "Auth"
-        ]
-      }
-    },
-    "/v1/auth/github-app/validate": {
-      "get": {
-        "description": "Validate that the GitHub App installation is working by testing access token generation.\nReturns validation status and error details if invalid.",
-        "operationId": "validate_github_app_installation_v1_auth_github_app_validate_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Validate Github App Installation V1 Auth Github App Validate Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Validate Github App Installation",
-        "tags": [
-          "Auth"
-        ]
-      }
-    },
     "/v1/auth/github/callback": {
       "get": {
-        "description": "Handle GitHub OAuth callback and exchange code for tokens.\nAlso handles GitHub App installation if installation_id is provided.",
+        "description": "Handle GitHub OAuth callback and exchange code for tokens.",
         "operationId": "github_callback_v1_auth_github_callback_get",
         "parameters": [
           {
@@ -13971,24 +13252,6 @@
             "required": true,
             "schema": {
               "title": "State",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "installation_id",
-            "required": false,
-            "schema": {
-              "title": "Installation Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "setup_action",
-            "required": false,
-            "schema": {
-              "title": "Setup Action",
               "type": "string"
             }
           }
@@ -14063,18 +13326,9 @@
     },
     "/v1/auth/github/login": {
       "get": {
-        "description": "Redirect to GitHub OAuth authorization.\n\nIf installation_id is provided, it will be preserved through the OAuth flow.\n\nNative (server-brokered) flow: pass `redirect_uri` (an allowlisted custom\nscheme) + a PKCE `code_challenge` (`code_challenge_method=S256`) + `state`.\nThe callback returns to that scheme with a short-lived Makapix `code` instead\nof the HTML popup; the app exchanges it at POST /auth/token.",
+        "description": "Redirect to GitHub OAuth authorization.\n\nNative (server-brokered) flow: pass `redirect_uri` (an allowlisted custom\nscheme) + a PKCE `code_challenge` (`code_challenge_method=S256`) + `state`.\nThe callback returns to that scheme with a short-lived Makapix `code` instead\nof the HTML popup; the app exchanges it at POST /auth/token.",
         "operationId": "github_login_v1_auth_github_login_get",
         "parameters": [
-          {
-            "in": "query",
-            "name": "installation_id",
-            "required": false,
-            "schema": {
-              "title": "Installation Id",
-              "type": "integer"
-            }
-          },
           {
             "description": "Native custom-scheme redirect (server-brokered flow)",
             "in": "query",
@@ -14256,56 +13510,6 @@
           }
         ],
         "summary": "Get Me",
-        "tags": [
-          "Auth"
-        ]
-      }
-    },
-    "/v1/auth/onboarding/github": {
-      "get": {
-        "description": "Redirect from GitHub's onboarding URL to our setup URL.\nThis handles the case where GitHub redirects to /onboarding/github instead of /github-app-setup.",
-        "operationId": "github_onboarding_redirect_v1_auth_onboarding_github_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "installation_id",
-            "required": true,
-            "schema": {
-              "title": "Installation Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "setup_action",
-            "required": true,
-            "schema": {
-              "title": "Setup Action",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Github Onboarding Redirect",
         "tags": [
           "Auth"
         ]
@@ -18194,51 +17398,6 @@
         "tags": [
           "Posts"
         ]
-      },
-      "post": {
-        "description": "Create a new post.",
-        "operationId": "create_post_v1_post_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PostCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Post"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Create Post",
-        "tags": [
-          "Posts"
-        ]
       }
     },
     "/v1/post/admin-notes/{noteId}": {
@@ -20116,96 +19275,6 @@
         "summary": "Get Post By Storage Key",
         "tags": [
           "Posts"
-        ]
-      }
-    },
-    "/v1/profile/bind-github-app": {
-      "post": {
-        "description": "Manually bind GitHub App installation to user account.",
-        "operationId": "bind_github_app_v1_profile_bind_github_app_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GitHubAppBindRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Bind Github App",
-        "tags": [
-          "Profiles"
-        ]
-      }
-    },
-    "/v1/profile/connect": {
-      "post": {
-        "description": "Configure GitHub repository for publishing.",
-        "operationId": "connect_profile_v1_profile_connect_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ProfileConnectRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Connect Profile",
-        "tags": [
-          "Profiles"
         ]
       }
     },
@@ -22511,50 +21580,6 @@
         "summary": "Get Artist Dashboard",
         "tags": [
           "Users"
-        ]
-      }
-    },
-    "/validation/manifest/check": {
-      "post": {
-        "description": "Validate manifest URL.\n\nTODO: Fetch manifest.json from URL\nTODO: Validate JSON schema\nTODO: Check that all art URLs are accessible\nTODO: Validate dimensions\nTODO: Calculate summary statistics",
-        "operationId": "validate_manifest_endpoint_validation_manifest_check_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ManifestValidateRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ManifestValidationResult"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Validate Manifest Endpoint",
-        "tags": [
-          "Relay",
-          "Validation",
-          "Validation"
         ]
       }
     }
