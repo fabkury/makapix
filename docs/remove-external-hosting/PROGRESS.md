@@ -26,13 +26,14 @@
   - Ops: `GITHUB_APP_ID` removed from `/opt/makapix/deploy/stack/.env.prod` and `deploy/stack/.env.dev`.
   - Message 0001 delivered to the app repo (`docs/club-server-cr-remove-external-hosting.md`, pushed to main).
 
-## Status: CLOSED (server/web side)
+- **2026-07-22** — Owner deleted the GitHub App (App ID 2198186) on github.com. The `Ov23li…` OAuth App (GitHub login) remains, untouched. **All items closed.**
 
-Everything is live on prod and verified. Reopen on app-team message 0002.
+## Status: CLOSED
+
+Everything is live on prod and verified; all ops items done. Reopen only on app-team message 0002.
 
 ## Open items
 
-- [ ] **Owner (github.com ops)**: delete the GitHub App (App ID **2198186**) at github.com — do **NOT** delete the `Ov23li…` OAuth App, which powers GitHub login.
 - [ ] Pre-existing e2e failure (profile-favourites Favourites-tab specs, 2 tests) — reproduces on prod pre-change build; separate follow-up, unrelated to this effort.
 - [ ] PR develop → main, prod deploy + verification
 - [ ] Prod avatar backfill (~38 users)
