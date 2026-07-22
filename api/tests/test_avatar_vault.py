@@ -55,7 +55,8 @@ def test_save_rejects_bad_mime(vault):
 
 def test_delete_by_v1_url_removes_both_copies(vault):
     save_avatar_image(AVATAR_ID, b"x", "image/png")
-    assert try_delete_avatar_by_public_url(f"/api/vault/avatar/{V1}/{AVATAR_ID}.png")
+    url = f"https://vault.test/avatar/{V1}/{AVATAR_ID}.png"
+    assert try_delete_avatar_by_public_url(url)
     assert not (vault / "avatar" / V1 / f"{AVATAR_ID}.png").exists()
     assert not (vault / "avatar" / V2 / f"{AVATAR_ID}.png").exists()
 
