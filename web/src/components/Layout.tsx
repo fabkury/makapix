@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { authenticatedFetch, clearLoggedOutMarker, clearTokens, logout } from '../lib/api';
+import { MONITORED_HASHTAG_SET } from '../lib/constants';
 import SocialNotificationBadge from './SocialNotificationBadge';
 import AnnouncementBanner from './AnnouncementBanner';
 
@@ -256,7 +257,13 @@ export default function Layout({ children, title, description }: LayoutProps) {
         const res = await authenticatedFetch(`${apiBaseUrl}/api/hashtags/top`);
         if (res.ok) {
           const data = await res.json();
-          setTopHashtags(data.hashtags || []);
+          // Safety net: the API already excludes monitored hashtags, but they
+          // must never render here even if a stale/buggy response includes one.
+          setTopHashtags(
+            (data.hashtags || []).filter(
+              (tag: string) => !MONITORED_HASHTAG_SET.has(tag)
+            )
+          );
         }
       } catch {
         // Silently fail - bottom row will be empty
