@@ -22,11 +22,20 @@ Commits on `develop`:
   vault-subdomain form; CLAUDE.md vault section; D16 addendum in
   `docs/vault-resharding/DECISIONS.md`; this effort folder.
 
+## 2026-07-22 — dev verification (Claude)
+
+- `make check-full`: OpenAPI drift + Black + full suite — all 6 chunks
+  passed (70 test files).
+- `make rebuild` on dev; verified live:
+  - API healthy; `/v1/post/recent` returns vault-subdomain art_urls.
+  - `https://development.makapix.club/api/vault/<real artwork path>` → 404
+    (through Caddy and container-direct); same file 200 on
+    `https://vault-dev.makapix.club/...`.
+  - Fail-fast confirmed: `python -c "import app.main"` with
+    `VAULT_PUBLIC_BASE_URL=` raises RuntimeError.
+
 ## Remaining
 
-- [ ] `make check-full` on develop
-- [ ] `make rebuild` dev; verify: API starts, artwork/avatars load on
-      development.makapix.club, `/api/vault/...` returns 404
 - [ ] PR develop → main, merge
 - [ ] Prod deploy (`cd /opt/makapix && make deploy`); same verification
       on makapix.club (no Caddy restart needed — no Caddy config change)
