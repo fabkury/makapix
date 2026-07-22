@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..auth import get_current_user, get_current_user_optional
 from ..cache import cache_get, cache_set
+from ..constants import MONITORED_HASHTAGS
 from ..deps import get_db
 from ..pagination import (
     apply_cursor_filter,
@@ -635,9 +636,10 @@ async def get_top_hashtags(
     Get top trending hashtags for header display.
 
     Returns up to 10 randomly selected hashtags from the top 15% by artwork count.
-    Requires authentication. Result is cached for 2 hours and shared across all users.
+    Monitored hashtags are never included. Requires authentication. Result is
+    cached for 2 hours and shared across all users.
     """
-    cache_key = "hashtags:top:trending"
+    cache_key = "hashtags:top:trending:v2"
 
     # Try to get from cache
     cached_result = cache_get(cache_key)
@@ -657,10 +659,13 @@ async def get_top_hashtags(
     # Get all matching posts
     matching_posts = base_query.all()
 
-    # Aggregate hashtags with counts
+    # Aggregate hashtags with counts. Monitored hashtags are excluded before
+    # counting so they never surface in the header bar nor occupy pool slots.
     hashtag_counts: dict[str, int] = {}
     for post in matching_posts:
         for hashtag in post.hashtags:
+            if hashtag in MONITORED_HASHTAGS:
+                continue
             hashtag_counts[hashtag] = hashtag_counts.get(hashtag, 0) + 1
 
     if not hashtag_counts:
