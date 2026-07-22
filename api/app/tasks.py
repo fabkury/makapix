@@ -1,328 +1,19 @@
 from __future__ import annotations
 
-import base64
 import hashlib
-import httpx
 import json
 import logging
 import os
 import uuid
 import zipfile
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
-import requests
 from celery import Celery
 from celery.schedules import crontab
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
-
-
-# MIME type to file format mapping
-_MIME_TO_FORMAT = {
-    "image/png": "png",
-    "image/gif": "gif",
-    "image/webp": "webp",
-    "image/bmp": "bmp",
-    "image/x-ms-bmp": "bmp",
-}
-
-
-def _mime_to_format(mime_type: str | None) -> str | None:
-    """Convert MIME type to file format."""
-    if not mime_type:
-        return None
-    return _MIME_TO_FORMAT.get(mime_type)
-
-
-def generate_artwork_html(
-    manifest: dict,
-    artwork_files: List[str],
-    owner: str,
-    repo: str,
-    api_base_url: str,
-    post_ids: List[str],
-    widget_base_url: str,
-) -> str:
-    """Generate standalone HTML page showcasing the artwork."""
-    artworks = manifest.get("artworks", [])
-
-    # Build artwork gallery HTML with widgets
-    artwork_html = ""
-    for idx, artwork in enumerate(artworks):
-        filename = artwork.get(
-            "filename", artwork_files[idx] if idx < len(artwork_files) else ""
-        )
-        title = artwork.get("title", "Untitled")
-        width = artwork.get("width", 0)
-        height = artwork.get("height", 0)
-        file_bytes = artwork.get("file_bytes", 0)
-        description = artwork.get("description", "")
-        hashtags = artwork.get("hashtags", [])
-
-        # Get post ID for this artwork (use empty string if not available)
-        post_id = post_ids[idx] if idx < len(post_ids) else ""
-
-        artwork_html += f"""
-        <div class="artwork-card">
-            <div class="artwork-image" id="artwork-container-{idx}">
-                <img src="{filename}" alt="{title}" class="pixel-art-image" data-width="{width}" data-height="{height}" data-artwork-idx="{idx}" />
-            </div>
-            <div class="artwork-info">
-                <h2>{title}</h2>
-                <p class="metadata">{width}x{height} • {file_bytes} bytes</p>
-                {f'<p class="description">{description}</p>' if description else ''}
-                {f'<p class="hashtags">{"".join(f"#{tag} " for tag in hashtags)}</p>' if hashtags else ''}
-            </div>
-            {f'<div class="social-section"><div id="makapix-widget-{idx}" data-post-id="{post_id}"></div></div>' if post_id else ''}
-        </div>
-        """
-
-    html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pixel Art Gallery - Makapix</title>
-    <style>
-        * {{
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }}
-        
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 40px 20px;
-        }}
-        
-        .container {{
-            max-width: 1200px;
-            margin: 0 auto;
-        }}
-        
-        header {{
-            text-align: center;
-            color: white;
-            margin-bottom: 40px;
-        }}
-        
-        header h1 {{
-            font-size: 3em;
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-        }}
-        
-        header p {{
-            font-size: 1.2em;
-            opacity: 0.9;
-        }}
-        
-        .badge {{
-            display: inline-block;
-            background: rgba(255,255,255,0.2);
-            padding: 8px 16px;
-            border-radius: 20px;
-            margin-top: 15px;
-            font-size: 0.9em;
-        }}
-        
-        .artwork-card {{
-            background: white;
-            border-radius: 12px;
-            overflow: hidden;
-            margin-bottom: 30px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-            transition: transform 0.3s ease;
-        }}
-        
-        .artwork-card:hover {{
-            transform: translateY(-5px);
-        }}
-        
-        .artwork-image {{
-            background: #2d3748;
-            padding: 80px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 300px;
-        }}
-        
-        .artwork-image img {{
-            display: block;
-            /* Safari - vendor prefix */
-            image-rendering: -webkit-optimize-contrast;
-            /* Firefox - vendor prefix */
-            image-rendering: -moz-crisp-edges;
-            /* Standard - Firefox */
-            image-rendering: crisp-edges;
-            /* Standard - Chrome/Edge */
-            image-rendering: pixelated;
-            /* IE/Edge legacy */
-            -ms-interpolation-mode: nearest-neighbor;
-        }}
-        
-        .artwork-info {{
-            padding: 30px;
-        }}
-        
-        .artwork-info h2 {{
-            color: #2d3748;
-            margin-bottom: 10px;
-            font-size: 2em;
-        }}
-        
-        .metadata {{
-            color: #718096;
-            margin-bottom: 15px;
-            font-size: 0.9em;
-        }}
-        
-        .description {{
-            color: #4a5568;
-            line-height: 1.6;
-            margin-bottom: 15px;
-        }}
-        
-        .hashtags {{
-            color: #667eea;
-            font-weight: 600;
-        }}
-        
-        .social-section {{
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            margin-top: 30px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-        }}
-        
-        footer {{
-            text-align: center;
-            color: white;
-            margin-top: 60px;
-            opacity: 0.8;
-        }}
-        
-        footer a {{
-            color: white;
-            text-decoration: none;
-            font-weight: 600;
-        }}
-        
-        footer a:hover {{
-            text-decoration: underline;
-        }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>🎨 Pixel Art Gallery</h1>
-            <p>Showcasing pixel art with Makapix</p>
-            <span class="badge">Powered by Makapix Club</span>
-        </header>
-        
-        <main>
-            {artwork_html}
-        </main>
-        
-        <footer>
-            <p>Published with <a href="https://makapix.club" target="_blank">Makapix Club</a></p>
-            <p>View on <a href="https://github.com/{owner}/{repo}" target="_blank">GitHub</a></p>
-        </footer>
-    </div>
-    
-    <!-- Makapix Widget Configuration -->
-    <script>
-        window.MAKAPIX_API_URL = '{api_base_url}';
-    </script>
-    <!-- Pixel Art Scaling Script -->
-    <script>
-        (function() {{
-            function getImageSize(img) {{
-                const width = parseInt(img.getAttribute('data-width'), 10);
-                const height = parseInt(img.getAttribute('data-height'), 10);
-                if (!width || !height) return null;
-                return {{ width: width, height: height }};
-            }}
-
-            function calculateScaledSize(originalSize, containerWidth, maxHeight, padding) {{
-                const availableWidth = containerWidth - padding;
-                const availableHeight = maxHeight - padding;
-
-                const scaleX = Math.floor(availableWidth / originalSize.width);
-                const scaleY = Math.floor(availableHeight / originalSize.height);
-                const scale = Math.max(1, Math.min(scaleX, scaleY));
-
-                return {{
-                    width: originalSize.width * scale,
-                    height: originalSize.height * scale
-                }};
-            }}
-
-            function updateImageSize(img) {{
-                const container = img.closest('.artwork-image');
-                if (!container) return;
-
-                const originalSize = getImageSize(img);
-                if (!originalSize) return;
-
-                const containerRect = container.getBoundingClientRect();
-                if (containerRect.width === 0) {{
-                    setTimeout(function() {{ updateImageSize(img); }}, 50);
-                    return;
-                }}
-
-                const maxHeight = window.innerHeight * 0.7;
-                const scaledSize = calculateScaledSize(originalSize, containerRect.width, maxHeight, 120);
-
-                if (scaledSize.width > 0 && scaledSize.height > 0) {{
-                    img.style.width = scaledSize.width + 'px';
-                    img.style.height = scaledSize.height + 'px';
-                    img.style.imageRendering = 'pixelated';
-                }}
-            }}
-
-            function initializeImages() {{
-                const images = document.querySelectorAll('.pixel-art-image');
-                images.forEach(function(img) {{
-                    updateImageSize(img);
-                    img.addEventListener('load', function() {{
-                        updateImageSize(img);
-                        img.style.imageRendering = 'pixelated';
-                    }}, {{ once: true }});
-                }});
-            }}
-
-            function handleResize() {{
-                const images = document.querySelectorAll('.pixel-art-image');
-                images.forEach(updateImageSize);
-            }}
-
-            if (document.readyState === 'loading') {{
-                document.addEventListener('DOMContentLoaded', initializeImages);
-            }} else {{
-                setTimeout(initializeImages, 0);
-            }}
-
-            let resizeTimeout;
-            window.addEventListener('resize', function() {{
-                clearTimeout(resizeTimeout);
-                resizeTimeout = setTimeout(handleResize, 100);
-            }});
-        }})();
-    </script>
-    <!-- Makapix Widget Script -->
-    <script src="{widget_base_url}/makapix-widget.js"></script>
-</body>
-</html>"""
-
-    return html
 
 
 DEFAULT_REDIS = "redis://cache:6379/0"
@@ -340,7 +31,6 @@ celery_app.conf.update(
     result_serializer="json",
     result_expires=3600,
     worker_max_tasks_per_child=100,
-    task_routes={"app.tasks.hash_url": {"queue": "default"}},
     beat_schedule={
         # --- High-frequency maintenance ----------------------------------
         # These run often enough that the exact wall-clock instant is
@@ -461,39 +151,6 @@ celery_app.conf.update(
     # second-intervals and are unaffected by this setting.
     timezone="America/New_York",
 )
-
-MAX_BYTES = 1_000_000
-
-
-def hash_url_sync(url: str) -> dict[str, Any]:
-    """Synchronously hash a URL (for use in other tasks)."""
-    logger.info("Hashing URL %s", url)
-    response = requests.get(url, stream=True, timeout=(3, 10))
-    response.raise_for_status()
-
-    total_bytes = 0
-    digest = hashlib.sha256()
-
-    for chunk in response.iter_content(chunk_size=8192):
-        if chunk:
-            total_bytes += len(chunk)
-            if total_bytes > MAX_BYTES:
-                raise ValueError("Content too large (limit 1MB for dev).")
-            digest.update(chunk)
-
-    result = {
-        "url": url,
-        "content_length": total_bytes,
-        "sha256": digest.hexdigest(),
-    }
-    logger.info("Hash computed for %s (%s bytes)", url, total_bytes)
-    return result
-
-
-@celery_app.task(name="app.tasks.hash_url", bind=True)
-def hash_url(self, url: str) -> dict[str, Any]:
-    """Celery task wrapper for hash_url_sync."""
-    return hash_url_sync(url)
 
 
 @celery_app.task(name="app.tasks.check_post_hash", bind=True)
@@ -709,303 +366,86 @@ def periodic_check_post_hashes(self) -> dict[str, Any]:
         db.close()
 
 
-@celery_app.task(name="app.tasks.process_relay_job", bind=True)
-def process_relay_job(self, job_id: str) -> dict[str, Any]:
-    """Process relay job: commit bundle to GitHub Pages."""
+GITHUB_AVATAR_HOST_MARKER = "githubusercontent"
+
+
+def mirror_github_avatar_sync(db: Session, user_id: int) -> dict[str, Any]:
+    """Fetch a user's external GitHub avatar and re-home it in the avatar vault.
+
+    Part of the closed self-hosted model (docs/remove-external-hosting/):
+    GitHub OAuth historically stored avatars.githubusercontent.com URLs; this
+    copies the image into the avatar sub-vault so no user-facing imagery is
+    served from a foreign host. No-op unless the stored URL is still external.
+    Shared by the Celery task and scripts/backfill_github_avatars.py.
+    """
+    from uuid import uuid4
+
+    import requests
+
     from . import models
-    from .db import SessionLocal
-    from .utils.hashtags import normalize_hashtags
-    from .github import (
-        create_or_update_file,
-        create_repository,
-        get_installation_access_token,
-        repository_exists,
+    from .avatar_vault import (
+        ALLOWED_MIME_TYPES,
+        MAX_AVATAR_SIZE_BYTES,
+        get_avatar_url,
+        save_avatar_image,
+        try_delete_avatar_by_public_url,
     )
+    from .vault import ensure_vault_headroom
+
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        return {"status": "skipped", "reason": "user not found"}
+    old_url = user.avatar_url or ""
+    if GITHUB_AVATAR_HOST_MARKER not in old_url:
+        return {"status": "skipped", "reason": "avatar is not externally hosted"}
+
+    response = requests.get(old_url, stream=True, timeout=(3, 10))
+    response.raise_for_status()
+    mime_type = (
+        (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+    )
+    if mime_type not in ALLOWED_MIME_TYPES:
+        return {
+            "status": "skipped",
+            "reason": f"unsupported content-type {mime_type!r}",
+        }
+
+    content = b""
+    for chunk in response.iter_content(chunk_size=8192):
+        if chunk:
+            content += chunk
+            if len(content) > MAX_AVATAR_SIZE_BYTES:
+                return {"status": "skipped", "reason": "avatar exceeds size limit"}
+
+    ensure_vault_headroom(len(content))
+    avatar_id = uuid4()
+    save_avatar_image(avatar_id, content, mime_type)
+    user.avatar_url = get_avatar_url(avatar_id, ALLOWED_MIME_TYPES[mime_type])
+    db.commit()
+    # Best-effort cleanup; a no-op for external URLs like this one, kept for
+    # symmetry with the other avatar writers.
+    try_delete_avatar_by_public_url(old_url)
+    logger.info("Mirrored GitHub avatar into vault for user %s", user_id)
+    return {"status": "mirrored", "user_id": user_id}
+
+
+@celery_app.task(name="app.tasks.mirror_github_avatar", bind=True, max_retries=1)
+def mirror_github_avatar(self, user_id: int) -> dict[str, Any]:
+    """Mirror an external GitHub avatar into the vault (fail-open).
+
+    On any failure the external URL stays in place — it keeps rendering from
+    GitHub's CDN — and the next login or the backfill script retries.
+    """
+    from .db import SessionLocal
 
     db = SessionLocal()
     try:
-        job = db.query(models.RelayJob).filter(models.RelayJob.id == job_id).first()
-        if not job:
-            logger.error("Job %s not found", job_id)
-            return {"status": "error", "message": "Job not found"}
-
-        # Update status to running
-        job.status = "running"
-        db.commit()
-
-        # Get installation
-        installation = (
-            db.query(models.GitHubInstallation)
-            .filter(models.GitHubInstallation.user_id == job.user_id)
-            .first()
-        )
-
-        if not installation:
-            job.status = "failed"
-            job.error = "GitHub App installation not found"
-            db.commit()
-            return {"status": "error", "message": "Installation not found"}
-
-        # Get access token
-        token_data = get_installation_access_token(installation.installation_id)
-        token = token_data["token"]
-
-        # Determine repository - repository is required
-        repo_name = job.repo
-        if not repo_name:
-            job.status = "failed"
-            job.error = "Repository name is required but was not provided in the job"
-            db.commit()
-            return {"status": "error", "message": "Repository name is required"}
-
-        repo_name = repo_name.strip()
-        owner = installation.account_login
-
-        logger.info(f"Processing job {job_id} for repository {owner}/{repo_name}")
-
-        # Check if repository exists, create it if it doesn't
-        if not repository_exists(token, owner, repo_name):
-            logger.info(
-                f"Repository {owner}/{repo_name} not found, attempting to create it..."
-            )
-            try:
-                create_repository(token, repo_name, auto_init=True)
-                logger.info(f"Successfully created repository {owner}/{repo_name}")
-            except Exception as e:
-                logger.error(
-                    f"Failed to create repository {owner}/{repo_name}: {e}",
-                    exc_info=True,
-                )
-                job.status = "failed"
-                job.error = f"Repository {owner}/{repo_name} not found and could not be created: {str(e)}"
-                db.commit()
-                return {
-                    "status": "error",
-                    "message": f"Repository creation failed: {str(e)}",
-                }
-
-        # Extract manifest and artwork files from bundle
-        bundle_path = Path(job.bundle_path)
-        manifest = job.manifest_data
-        artwork_files = []
-
-        with zipfile.ZipFile(bundle_path, "r") as zf:
-            for file_info in zf.infolist():
-                if file_info.is_dir():
-                    continue
-
-                content = zf.read(file_info.filename)
-
-                # Commit file to GitHub
-                import base64
-                import httpx
-
-                # Check if file exists and get its SHA
-                file_sha = None
-                with httpx.Client() as client:
-                    try:
-                        get_response = client.get(
-                            f"https://api.github.com/repos/{owner}/{repo_name}/contents/{file_info.filename}",
-                            headers={
-                                "Authorization": f"Bearer {token}",
-                                "Accept": "application/vnd.github.v3+json",
-                            },
-                            timeout=10,
-                        )
-                        if get_response.status_code == 200:
-                            file_sha = get_response.json().get("sha")
-                    except:
-                        pass  # File doesn't exist, that's okay
-
-                data = {
-                    "message": f"Update {file_info.filename} via Makapix",
-                    "content": base64.b64encode(content).decode(),
-                }
-                if file_sha:
-                    data["sha"] = file_sha
-
-                with httpx.Client() as client:
-                    response = client.put(
-                        f"https://api.github.com/repos/{owner}/{repo_name}/contents/{file_info.filename}",
-                        headers={
-                            "Authorization": f"Bearer {token}",
-                            "Accept": "application/vnd.github.v3+json",
-                        },
-                        json=data,
-                        timeout=30,
-                    )
-                    response.raise_for_status()
-
-                    # Track artwork files for HTML generation
-                    if file_info.filename != "manifest.json":
-                        artwork_files.append(file_info.filename)
-
-        # Get API base URL from environment variables
-        api_base_url = os.getenv("API_BASE_URL")
-        if not api_base_url:
-            # If API_BASE_URL is not set, try BASE_URL and append /api if needed
-            base_url = os.getenv("BASE_URL") or "https://makapix.club"
-            api_base_url = base_url if base_url.endswith("/api") else f"{base_url}/api"
-        # Ensure it doesn't have a trailing slash
-        api_base_url = api_base_url.rstrip("/")
-
-        # Get base URL for widget script (remove /api if present, or use BASE_URL)
-        widget_base_url = os.getenv("BASE_URL")
-        if not widget_base_url:
-            # Remove /api suffix if present
-            widget_base_url = (
-                api_base_url.replace("/api", "").rstrip("/") or "https://makapix.club"
-            )
-        widget_base_url = widget_base_url.rstrip("/")
-
-        # Create Post records from manifest before generating HTML
-        manifest = job.manifest_data
-        post_ids = []
-        for idx, artwork in enumerate(manifest.get("artworks", [])):
-            # Get width/height directly from manifest
-            width = artwork.get("width")
-            height = artwork.get("height")
-
-            from datetime import datetime, timezone
-
-            now = datetime.now(timezone.utc)
-
-            derived_format = _mime_to_format(artwork.get("mime_type"))
-            post = models.Post(
-                owner_id=job.user_id,
-                kind="artwork",
-                title=artwork["title"],
-                description=artwork.get("description"),
-                hashtags=normalize_hashtags(artwork.get("hashtags", []), cap=64),
-                art_url=f"https://{owner}.github.io/{repo_name}/{artwork['filename']}",
-                width=width,
-                height=height,
-                frame_count=1,
-                min_frame_duration_ms=None,
-                max_frame_duration_ms=None,
-                unique_colors=None,
-                transparency_meta=False,
-                alpha_meta=False,
-                transparency_actual=False,
-                alpha_actual=False,
-                hash=artwork.get("sha256"),  # Store hash from manifest
-                metadata_modified_at=now,
-                artwork_modified_at=now,
-                dwell_time_ms=30000,
-            )
-            db.add(post)
-            db.flush()  # Flush to get the post ID
-
-            # Create native PostFile row
-            if derived_format:
-                db.add(
-                    models.PostFile(
-                        post_id=post.id,
-                        format=derived_format,
-                        file_bytes=int(artwork["file_bytes"]),
-                        is_native=True,
-                    )
-                )
-
-            post_ids.append(str(post.id))
-
-        # Generate HTML with actual post IDs and API base URL
-        html_content = generate_artwork_html(
-            manifest,
-            artwork_files,
-            owner,
-            repo_name,
-            api_base_url,
-            post_ids,
-            widget_base_url,
-        )
-
-        # Check if index.html exists
-        html_sha = None
-        with httpx.Client() as client:
-            try:
-                get_response = client.get(
-                    f"https://api.github.com/repos/{owner}/{repo_name}/contents/index.html",
-                    headers={
-                        "Authorization": f"Bearer {token}",
-                        "Accept": "application/vnd.github.v3+json",
-                    },
-                    timeout=10,
-                )
-                if get_response.status_code == 200:
-                    html_sha = get_response.json().get("sha")
-            except:
-                pass
-
-        html_data = {
-            "message": "Update index.html via Makapix",
-            "content": base64.b64encode(html_content.encode()).decode(),
-        }
-        if html_sha:
-            html_data["sha"] = html_sha
-
-        with httpx.Client() as client:
-            response = client.put(
-                f"https://api.github.com/repos/{owner}/{repo_name}/contents/index.html",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Accept": "application/vnd.github.v3+json",
-                },
-                json=html_data,
-                timeout=30,
-            )
-            response.raise_for_status()
-
-        # Make repository public (required for GitHub Pages on free accounts)
-        from .github import make_repository_public, enable_github_pages
-
-        try:
-            repo_info = make_repository_public(token, owner, repo_name)
-            logger.info(f"Repository made public: {repo_info.get('private', True)}")
-        except Exception as e:
-            logger.warning(f"Failed to make repository public: {e}")
-            # Don't fail the job if this fails
-
-        # Enable GitHub Pages on the repository
-        try:
-            pages_info = enable_github_pages(token, owner, repo_name)
-            logger.info(f"GitHub Pages enabled: {pages_info.get('html_url', 'N/A')}")
-        except Exception as e:
-            logger.warning(f"Failed to enable GitHub Pages: {e}")
-            # Don't fail the job if Pages enablement fails
-
-        # Update job status
-        job.status = "committed"
-        job.commit = "main"  # or actual commit SHA
-        db.commit()
-
-        # Cleanup
-        bundle_path.unlink()
-
-        logger.info("Successfully processed relay job %s", job_id)
-        return {"status": "success", "repo": f"{owner}/{repo_name}"}
-
+        return mirror_github_avatar_sync(db, user_id)
     except Exception as e:
-        logger.error("Error processing relay job %s: %s", job_id, str(e), exc_info=True)
-        try:
-            # Rollback any pending transaction
-            db.rollback()
-            # Refresh the job object to ensure we have a clean state
-            job = db.query(models.RelayJob).filter(models.RelayJob.id == job_id).first()
-            if job:
-                job.status = "failed"
-                job.error = str(e)
-                db.commit()
-        except Exception as rollback_error:
-            logger.error("Failed to update job status after error: %s", rollback_error)
+        logger.warning("mirror_github_avatar failed for user %s: %s", user_id, e)
         return {"status": "error", "message": str(e)}
     finally:
         db.close()
-
-
-# ============================================================================
-# DEFERRED EVENT WRITING TASKS
-# ============================================================================
 
 
 @celery_app.task(
@@ -3504,17 +2944,6 @@ def process_bdr_job(self, bdr_id: str) -> dict[str, Any]:
                         else:
                             logger.warning(f"Vault file not found: {source_path}")
                             continue
-                    elif post.art_url and (
-                        post.art_url.startswith("http://")
-                        or post.art_url.startswith("https://")
-                    ):
-                        # Legacy: Remote URL (GitHub Pages, etc.)
-                        with httpx.Client(timeout=30) as client:
-                            response = client.get(post.art_url)
-                            response.raise_for_status()
-                            (artworks_dir / artwork_filename).write_bytes(
-                                response.content
-                            )
                     else:
                         logger.warning(f"Cannot locate artwork for post {post.id}")
                         continue
@@ -3897,7 +3326,7 @@ def _purge_user_account(db: Session, user_id: int) -> dict[str, Any]:
     13. Tokens - delete RefreshToken, EmailVerificationToken, PasswordResetToken
     14. AuthIdentity - delete OAuth identities
     15. Avatar - delete avatar file from vault
-    15b. FK-blocking rows - audit_logs / admin_notes / relay_jobs / violations /
+    15b. FK-blocking rows - audit_logs / admin_notes / violations /
          push_tokens (RESTRICT or NO ACTION, NOT NULL) are erased and
          reports.reporter_id is anonymized, or the final DELETE would fail
     16. User record - final delete (frees email for reuse)
@@ -4234,7 +3663,7 @@ def _purge_user_account(db: Session, user_id: int) -> dict[str, Any]:
         # whose actor_id is this very user).
         #  - reports.reporter_id is RESTRICT but nullable -> anonymize (keep the
         #    report, drop the reporter PII), matching the reporter-IP policy.
-        #  - audit_logs / admin_notes / relay_jobs / violations / push_tokens are
+        #  - audit_logs / admin_notes / violations / push_tokens are
         #    NOT NULL -> the rows are erased with the account.
         counts["reports_anonymized"] = (
             db.query(models.Report)
@@ -4249,11 +3678,6 @@ def _purge_user_account(db: Session, user_id: int) -> dict[str, Any]:
         counts["admin_notes"] = (
             db.query(models.AdminNote)
             .filter(models.AdminNote.created_by == user_id)
-            .delete(synchronize_session=False)
-        )
-        counts["relay_jobs"] = (
-            db.query(models.RelayJob)
-            .filter(models.RelayJob.user_id == user_id)
             .delete(synchronize_session=False)
         )
         counts["violations"] = (
@@ -4273,7 +3697,7 @@ def _purge_user_account(db: Session, user_id: int) -> dict[str, Any]:
         logger.info(
             f"Cleared FK-blocking rows for user {user_id}: "
             f"{counts['audit_logs']} audit, {counts['admin_notes']} admin notes, "
-            f"{counts['relay_jobs']} relay, {counts['violations']} violations, "
+            f"{counts['violations']} violations, "
             f"{counts['push_tokens']} push tokens, "
             f"{counts['reports_anonymized']} reports anonymized"
         )

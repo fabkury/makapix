@@ -564,56 +564,10 @@ export default function PostPage() {
     isMobile && !!navContext,
   );
 
-  // Set API URL for widget
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    if ((window as any).MAKAPIX_API_URL === undefined) {
-      (window as any).MAKAPIX_API_URL = `${API_BASE_URL}/api`;
-    }
-  }, [API_BASE_URL]);
-
   // Reset image error when post changes
   useEffect(() => {
     setImageError(false);
   }, [post?.id]);
-
-  // Initialize widget
-  useEffect(() => {
-    if (!post || !sqid || typeof sqid !== "string") return;
-
-    const initializeWidget = () => {
-      if (typeof (window as any).MakapixWidget === "undefined") {
-        setTimeout(initializeWidget, 100);
-        return;
-      }
-
-      const container = document.getElementById(
-        `makapix-widget-${post.public_sqid}`,
-      );
-      if (!container) {
-        setTimeout(initializeWidget, 100);
-        return;
-      }
-
-      if ((container as any).__makapix_initialized) {
-        return;
-      }
-
-      try {
-        new (window as any).MakapixWidget(container);
-        (container as any).__makapix_initialized = true;
-      } catch (error) {
-        console.error("Failed to initialize Makapix widget:", error);
-      }
-    };
-
-    const timer = setTimeout(initializeWidget, 100);
-
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [post, sqid]);
 
   // Fetch widget data (stats counts) once per post
   useEffect(() => {

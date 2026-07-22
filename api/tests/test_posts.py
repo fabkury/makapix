@@ -70,24 +70,6 @@ def test_post(test_user: User, db: Session) -> Post:
     return post
 
 
-def test_create_post_requires_auth():
-    """Test that creating a post requires authentication."""
-    client = TestClient(app)
-    response = client.post(
-        "/post",
-        json={
-            "title": "Test Post",
-            "art_url": "https://example.com/test.png",
-            "width": 64,
-            "height": 64,
-            "file_bytes": 32 * 1024,
-            "hash": "a" * 64,
-        },
-    )
-
-    assert response.status_code == 401
-
-
 def test_get_nonexistent_post():
     """Test getting a nonexistent post."""
     client = TestClient(app)

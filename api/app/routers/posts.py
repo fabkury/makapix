@@ -49,6 +49,7 @@ from ..mqtt.notifications import (
     publish_category_promotion_notification,
 )
 from ..constants import MAX_HASHTAG_LENGTH, MAX_MOD_HASHTAGS_PER_POST
+from ..utils.art_url import assert_vault_art_url
 from ..utils.audit import log_moderation_action
 from ..utils.hashtags import normalize_hashtags
 from ..utils.monitored_hashtags import (
@@ -64,7 +65,6 @@ from ..services.social_notifications import SocialNotificationService
 from ..errors import AppError, ErrorCode
 from ..vault import (
     ALLOWED_MIME_TYPES,
-    MAX_FILE_SIZE_BYTES,
     MKPX_SIZE_LIMIT_BYTES,
     VaultFullError,
     compute_storage_shard,
@@ -73,7 +73,6 @@ from ..vault import (
     save_artwork_to_vault,
     save_mkpx_to_vault,
     validate_file_size,
-    validate_image_dimensions,
     validate_mkpx_signature,
 )
 
@@ -584,116 +583,6 @@ def list_posts(
 
 
 @router.post(
-    "",
-    response_model=schemas.Post,
-    status_code=status.HTTP_201_CREATED,
-)
-def create_post(
-    payload: schemas.PostCreate,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-) -> schemas.Post:
-    """
-    Create a new post.
-    """
-    # This legacy JSON path creates a post row from client-supplied metadata
-    # (including an arbitrary art_url) without the upload pipeline's AMP/quota/
-    # dedup checks. At minimum throttle it on the shared upload bucket so it
-    # can't be looped to mint unlimited pending rows (appraisal S11). Deleting or
-    # restricting art_url to vault-relative is deferred pending app-team confirmation.
-    limit, window = get_upload_rate_limit(current_user)
-    allowed, _ = check_rate_limit(
-        f"ratelimit:upload:{current_user.id}", limit=limit, window_seconds=window
-    )
-    if not allowed:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Upload rate limit exceeded. Please try again later.",
-        )
-
-    # Validate dimensions using the same validation logic as image uploads
-    is_valid, error = validate_image_dimensions(payload.width, payload.height)
-    if not is_valid:
-        raise AppError(
-            ErrorCode.dimensions_invalid,
-            error or "Invalid image dimensions.",
-            status.HTTP_400_BAD_REQUEST,
-        )
-
-    # Validate file size (basic check)
-    if payload.file_bytes > MAX_FILE_SIZE_BYTES:
-        raise AppError(
-            ErrorCode.file_too_large,
-            f"File size {payload.file_bytes} bytes exceeds limit of {MAX_FILE_SIZE_BYTES} bytes.",
-            413,
-        )
-
-    normalized_hashtags = normalize_hashtags(payload.hashtags, cap=64)
-
-    # Generate UUID for storage_key
-    storage_key = uuid.uuid4()
-
-    from datetime import datetime, timezone
-
-    now = datetime.now(timezone.utc)
-
-    post = models.Post(
-        storage_key=storage_key,
-        # Set even though this route stores no vault file: storage_shard is
-        # the source of truth for vault locations, and the path builders
-        # refuse to derive it from the key (docs/vault-resharding/).
-        storage_shard=compute_storage_shard(storage_key),
-        owner_id=current_user.id,
-        kind=payload.kind,
-        title=payload.title,
-        description=payload.description,
-        hashtags=normalized_hashtags,
-        art_url=str(payload.art_url),
-        width=payload.width,
-        height=payload.height,
-        frame_count=1,
-        min_frame_duration_ms=None,
-        max_frame_duration_ms=None,
-        unique_colors=None,
-        transparency_meta=False,
-        alpha_meta=False,
-        transparency_actual=False,
-        alpha_actual=False,
-        hash=payload.hash,
-        metadata_modified_at=now,
-        artwork_modified_at=now,
-        dwell_time_ms=30000,
-    )
-    db.add(post)
-    db.flush()  # Get the post ID without committing
-
-    # Generate public_sqid from the assigned id
-    from ..sqids_config import encode_id
-
-    post.public_sqid = encode_id(post.id)
-    db.commit()
-    db.refresh(post)
-
-    # Invalidate feed caches since a new post was created
-    cache_invalidate("feed:recent:*")
-    cache_invalidate("hashtags:*")
-
-    # TODO: Queue conformance check job
-
-    # Publish MQTT notification to followers
-    try:
-        publish_new_post_notification(post.id, db)
-    except Exception as e:
-        # Log error but don't fail the request
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.error(f"Failed to publish MQTT notification for post {post.id}: {e}")
-
-    return schemas.Post.model_validate(post)
-
-
-@router.post(
     "/upload",
     response_model=schemas.ArtworkUploadResponse,
     status_code=status.HTTP_201_CREATED,
@@ -965,7 +854,7 @@ async def upload_artwork(
         art_url = get_artwork_url(
             post.storage_key, extension, storage_shard=post.storage_shard
         )
-        post.art_url = art_url
+        post.art_url = assert_vault_art_url(art_url)
 
         # Optional .mkpx layers file (already validated above)
         if mkpx is not None:
@@ -2110,8 +1999,8 @@ async def replace_artwork(
     new_storage_key = uuid.uuid4()
     new_storage_shard = compute_storage_shard(new_storage_key)
     new_extension = FORMAT_TO_EXT[file_format]
-    new_art_url = get_artwork_url(
-        new_storage_key, new_extension, storage_shard=new_storage_shard
+    new_art_url = assert_vault_art_url(
+        get_artwork_url(new_storage_key, new_extension, storage_shard=new_storage_shard)
     )
 
     # Update post first (flush) so UNIQUE constraint blocks races before vault write

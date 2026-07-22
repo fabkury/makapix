@@ -191,12 +191,6 @@ Requires authentication.
 
 Redirects to GitHub for authentication.
 
-Optional query parameter:
-
-```
-GET /auth/github/login?installation_id=12345
-```
-
 ### GET /auth/github/callback
 
 GitHub redirects here after authentication. Sets tokens and redirects to app.
@@ -208,9 +202,7 @@ Exchange GitHub code for tokens (SPA flow).
 ```json
 {
   "code": "github_auth_code",
-  "redirect_uri": "https://makapix.club/auth/callback",
-  "installation_id": null,
-  "setup_action": null
+  "redirect_uri": "https://makapix.club/auth/callback"
 }
 ```
 
@@ -382,47 +374,3 @@ Unlink an authentication provider.
 |--------|--------|
 | 400 | Cannot unlink the last authentication method |
 | 404 | Identity not found |
-
-## GitHub App Integration
-
-### GET /auth/github-app/status
-
-Check GitHub App installation status.
-
-**Response (200):**
-
-```json
-{
-  "installed": true,
-  "installation_id": 12345,
-  "install_url": "https://github.com/apps/makapix-club/installations/new"
-}
-```
-
-### GET /auth/github-app/validate
-
-Validate GitHub App installation.
-
-**Response (200):**
-
-```json
-{
-  "valid": true,
-  "installation_id": 12345,
-  "target_repo": "user/repo",
-  "account_login": "github_user"
-}
-```
-
-### POST /auth/github-app/clear-installation
-
-Clear invalid installation.
-
-**Response (200):**
-
-```json
-{
-  "status": "cleared",
-  "message": "Installation 12345 has been cleared. You can now reinstall the GitHub App."
-}
-```

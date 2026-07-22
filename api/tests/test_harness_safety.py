@@ -12,9 +12,9 @@ def test_task_delay_is_neutralised():
     Tests that genuinely need a task run call .apply() (eager), which is
     unaffected — this only neutralises fire-and-forget .delay/.apply_async.
     """
-    from app.tasks import hash_url
+    from app.tasks import send_push_notification
 
-    result = hash_url.delay("https://example.com/x")
+    result = send_push_notification.delay(0, "test")
     assert result.id == "test-noop"
 
 

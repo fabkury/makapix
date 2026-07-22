@@ -3,7 +3,7 @@
 Covers appraisal findings A1/A2/A3: permanent deletion used to fail for every
 user because request_account_deletion writes an audit_logs row (actor = the
 user) whose FK is RESTRICT + NOT NULL, plus users with batch downloads, push
-tokens, reports, violations, admin notes, or relay jobs hit further FK
+tokens, reports, violations, or admin notes hit further FK
 violations the task never handled. The unverified-account reaper had the same
 missing-FK-enumeration bug and rolled back the whole batch on any account that
 turned out to have content.
@@ -71,7 +71,6 @@ def test_deletion_completes_with_every_dependent_row(db: Session):
             models.AdminNote(
                 post_id=other_post.id, created_by=victim_id, note="mod note"
             ),
-            models.RelayJob(user_id=victim_id, status="pending"),
             # victim as offender AND victim as the moderator who issued a sanction
             models.Violation(
                 user_id=victim_id, moderator_id=other_id, reason="offense one"
@@ -118,10 +117,6 @@ def test_deletion_completes_with_every_dependent_row(db: Session):
         db.query(models.AdminNote)
         .filter(models.AdminNote.created_by == victim_id)
         .count()
-        == 0
-    )
-    assert (
-        db.query(models.RelayJob).filter(models.RelayJob.user_id == victim_id).count()
         == 0
     )
     assert (

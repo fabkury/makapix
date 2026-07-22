@@ -1084,65 +1084,6 @@ class PlayerToken(Base):
 # ============================================================================
 
 
-class ConformanceCheck(Base):
-    """GitHub Pages conformance check status."""
-
-    __tablename__ = "conformance_checks"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(
-        Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True
-    )
-
-    status = Column(
-        String(50), nullable=False, default="ok"
-    )  # ok, missing_manifest, invalid_manifest, hotlinks_broken
-    last_checked_at = Column(DateTime(timezone=True), nullable=True)
-    next_check_at = Column(DateTime(timezone=True), nullable=True, index=True)
-
-
-class RelayJob(Base):
-    """GitHub Pages relay job status."""
-
-    __tablename__ = "relay_jobs"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-
-    status = Column(
-        String(20), nullable=False, default="queued", index=True
-    )  # queued, running, committed, failed
-    repo = Column(String(200), nullable=True)
-    commit = Column(String(100), nullable=True)
-    error = Column(Text, nullable=True)
-    bundle_path = Column(String(500), nullable=True)
-    manifest_data = Column(JSON, nullable=True)
-
-    created_at = Column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
-    )
-    updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
-
-
-class GitHubInstallation(Base):
-    """GitHub App installation binding."""
-
-    __tablename__ = "github_installations"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    installation_id = Column(BigInteger, nullable=False, unique=True, index=True)
-    account_login = Column(String(100), nullable=False)
-    account_type = Column(String(20), nullable=False)
-    target_repo = Column(String(200), nullable=True)
-    access_token = Column(Text, nullable=True)
-    token_expires_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-
-    user = relationship("User", backref="github_installation")
-
-
 class AuditLog(Base):
     """Audit log for admin actions."""
 

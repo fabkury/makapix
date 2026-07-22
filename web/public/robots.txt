@@ -16,13 +16,10 @@ Disallow: /forgot-password
 Disallow: /reset-password
 Disallow: /verify-email
 Disallow: /session-transfer
-Disallow: /setup
 Disallow: /new-account-welcome
 Disallow: /notifications
 Disallow: /mod-dashboard
 Disallow: /owner-dashboard
-Disallow: /debug-env
-Disallow: /github-app-setup
 Disallow: /submit
 Disallow: /editor
 Disallow: /pixelc

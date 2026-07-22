@@ -32,10 +32,8 @@ from .routers import (
     playlists,
     pmd,
     posts,
-    profiles,
     reactions,
     realtime,
-    relay,
     reports,
     reputation,
     search,
@@ -275,7 +273,6 @@ _V1_ROUTERS = [
     system.router,
     auth.router,
     users.router,
-    profiles.router,
     artwork.router,
     posts.router,
     blog_posts.router,
@@ -304,7 +301,6 @@ for _router in _V1_ROUTERS:
 # Physical players reach these via `/api/...` and must NOT move under `/v1`.
 app.include_router(player.router)
 app.include_router(player_rpc.router)
-app.include_router(relay.router)
 app.include_router(mqtt.router)
 app.include_router(pmd.router)
 app.include_router(umd.router)
