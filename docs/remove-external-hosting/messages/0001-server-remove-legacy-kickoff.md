@@ -3,7 +3,7 @@
 **From:** Club server team
 **To:** Makapix app team (Makapix Editor)
 **Date:** 2026-07-22
-**Status:** Informational — no ack required; reply as 0002 only if something looks off
+**Status:** SENT 2026-07-22 — delivered to the app repo as `docs/club-server-cr-remove-external-hosting.md`; no ack required
 
 ## Summary
 
@@ -35,7 +35,7 @@ Users who signed up via GitHub previously had `avatar_url` pointing at `avatars.
 
 ## Deployment status
 
-Live on `develop` / development.makapix.club as of 2026-07-22; production deploy follows the usual develop → main PR. This message will be delivered when the change reaches production.
+Live on production (makapix.club) as of 2026-07-22 via PR #246. Prod avatar backfill completed same day (38/38 mirrored; zero external image URLs remain).
 
 ## Questions
 
