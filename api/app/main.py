@@ -48,7 +48,6 @@ from .routers import (
 from .seed import ensure_seed_data
 from .errors import register_exception_handlers
 from .middleware import RequestIdMiddleware, SecurityHeadersMiddleware
-from .vault_serving import LegacyShardFallbackStaticFiles
 
 load_dotenv()
 
@@ -316,29 +315,12 @@ app.include_router(sitemap.router)
 
 
 # Register MIME types not present in all Docker base images.
-# Without this, StaticFiles serves unknown extensions as text/plain, which browsers
-# reject when X-Content-Type-Options: nosniff is set.
+# Without this, FileResponse serves unknown extensions as text/plain, which
+# browsers reject when X-Content-Type-Options: nosniff is set.
 mimetypes.add_type("image/webp", ".webp")
 
-# Mount vault directory for serving uploaded artwork images
-# Note: Caddy strips /api prefix, so mount at /vault (requests arrive as /vault/...)
-# LegacyShardFallbackStaticFiles keeps legacy 3-level URLs valid (D16).
-vault_location = os.environ.get("VAULT_LOCATION")
-if vault_location:
-    vault_path = Path(vault_location)
-    if vault_path.exists():
-        app.mount(
-            "/vault",
-            LegacyShardFallbackStaticFiles(directory=str(vault_path)),
-            name="vault",
-        )
-        logger.info(f"Mounted vault at /vault from {vault_location}")
-    else:
-        # Create the vault directory if it doesn't exist
-        vault_path.mkdir(parents=True, exist_ok=True)
-        app.mount(
-            "/vault",
-            LegacyShardFallbackStaticFiles(directory=str(vault_path)),
-            name="vault",
-        )
-        logger.info(f"Created and mounted vault at /vault from {vault_location}")
+# Vault assets are served exclusively by Caddy on the vault subdomains
+# (vault.makapix.club / vault-dev.makapix.club, Caddyfile.global). The
+# legacy /api/vault StaticFiles mount was removed 2026-07-22 — zero real
+# traffic in 9 months of access logs and no stored URLs reference it
+# (docs/remove-api-vault/).

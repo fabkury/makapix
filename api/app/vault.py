@@ -44,8 +44,8 @@ MAX_FILE_SIZE_BYTES = MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES
 # --- .mkpx layers-file attachments (docs/mkpx-upload/) -----------------------
 # Stored under a sibling namespace {vault}/mkpx/{storage_shard}/{key}.mkpx,
 # outside the artwork/avatar trees (no resharding dual-write involvement).
-# The mkpx/ prefix must never be publicly served: vault_serving.py guards the
-# /api/vault mount and Caddyfile.global 404s /mkpx/* on the vault subdomains.
+# The mkpx/ prefix must never be publicly served: Caddyfile.global 404s
+# /mkpx/* on the vault subdomains (the only public vault serving surface).
 MKPX_SUBDIR = "mkpx"
 MKPX_EXTENSION = ".mkpx"
 MKPX_MIME = "application/x-mkpx"
