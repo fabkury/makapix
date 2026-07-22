@@ -129,13 +129,12 @@ def get_avatar_url(avatar_id: UUID, extension: str) -> str:
     """
     Get the public URL for an avatar image (canonical sharding scheme).
 
-    When VAULT_PUBLIC_BASE_URL is set, returns an absolute URL on the Caddy
-    vault subdomain (e.g. https://vault.makapix.club/avatar/<...>). Otherwise
-    returns /api/vault/avatar/<...>, served by FastAPI StaticFiles via the
-    Caddy reverse proxy (which strips /api before forwarding).
+    Returns an absolute URL on the Caddy vault subdomain
+    (e.g. https://vault.makapix.club/avatar/<...>); VAULT_PUBLIC_BASE_URL
+    is required.
     """
     ext = extension.lower() if extension.startswith(".") else f".{extension.lower()}"
-    prefix = vault_public_base_url() or "/api/vault"
+    prefix = vault_public_base_url()
     shard = compute_storage_shard(avatar_id)
     return f"{prefix}/avatar/{shard}/{avatar_id}{ext}"
 
@@ -144,8 +143,9 @@ def try_delete_avatar_by_public_url(avatar_url: str | None) -> bool:
     """
     Best-effort delete of an avatar file referenced by its public URL.
 
-    Accepts both URL prefixes (/api/vault/avatar/... and the vault subdomain)
-    and both sharding depths (v1 <c1>/<c2>/<c3> and v2 <c1>/<c2>). Deletes
+    Accepts vault-subdomain URLs (stored avatar_url values are always
+    absolute) and both sharding depths (v1 <c1>/<c2>/<c3> and v2 <c1>/<c2>).
+    Deletes
     the path literally encoded in the URL plus both scheme-derived candidate
     paths, so a replacement during the dual-location window never leaves a
     stale copy serving the old image.
@@ -158,13 +158,8 @@ def try_delete_avatar_by_public_url(avatar_url: str | None) -> bool:
     try:
         from urllib.parse import urlparse
 
-        # Accept absolute URLs as well; normalize to just the path.
+        # Normalize an absolute URL to just its path.
         path = urlparse(avatar_url).path if "://" in avatar_url else avatar_url
-
-        # Strip the legacy /api/vault prefix so both forms collapse to
-        # /avatar/<shard components>/<filename>.
-        if path.startswith("/api/vault/avatar/"):
-            path = path[len("/api/vault") :]
         if not path.startswith("/avatar/"):
             return False
 

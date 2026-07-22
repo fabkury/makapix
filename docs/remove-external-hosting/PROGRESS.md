@@ -18,12 +18,23 @@
   - `make e2e`: 34/36 pass. The 2 failures (`profile-favourites.spec.ts` Favourites-tab fetch) are **pre-existing**: the identical failures reproduce against production (`BASE_URL=https://makapix.club`), which runs the pre-change build. Unrelated to this effort; needs its own follow-up.
   - Not machine-verifiable: a real GitHub OAuth round-trip (needs live GitHub credentials) — owner click-test on development.makapix.club requested before prod deploy.
 
-## Status: IN PROGRESS (implemented + dev-verified; awaiting owner OAuth click-test, then prod)
+- **2026-07-22** — Owner click-tested GitHub login on development.makapix.club: **working**. PR #246 merged to `main`; **deployed to prod** (`make deploy`). Post-deploy verification all green:
+  - Migration `e7a1c9d0b2f4` applied on prod; `pg_tables` shows 0 of the 3 relay tables; api/worker logs clean.
+  - Site 200; `/api/auth/github/login` 307-redirects to github.com with the `Ov23li…` OAuth client (login intact).
+  - All removed endpoints/pages 404 on prod; JSON `POST /post` → 405; `GET /post` list → 200.
+  - **Prod avatar backfill**: dry-run 38 → real run **38/38 mirrored**; `avatar_url LIKE '%githubusercontent%'` = 0 and **zero external image URLs remain anywhere** (posts already 0); spot-checked 3 mirrored avatars serving 200 from vault.makapix.club.
+  - Ops: `GITHUB_APP_ID` removed from `/opt/makapix/deploy/stack/.env.prod` and `deploy/stack/.env.dev`.
+  - Message 0001 delivered to the app repo (`docs/club-server-cr-remove-external-hosting.md`, pushed to main).
+
+- **2026-07-22** — Owner deleted the GitHub App (App ID 2198186) on github.com. The `Ov23li…` OAuth App (GitHub login) remains, untouched. **All items closed.**
+
+## Status: CLOSED
+
+Everything is live on prod and verified; all ops items done. Reopen only on app-team message 0002.
 
 ## Open items
 
-- [ ] Owner click-test: GitHub login on development.makapix.club (fresh signup if convenient; an existing GitHub-user login is enough — its avatar should self-heal into the vault)
-- [ ] Pre-existing e2e failure (profile-favourites Favourites-tab specs) — reproduces on prod pre-change; separate follow-up
+- [x] Pre-existing e2e failure (profile-favourites Favourites-tab specs, 2 tests) — root-caused and fixed 2026-07-22 (spec drift from commit `2f87aa8`, which moved the Favourites tab to `/api/post?reacted_by=`; spec repointed, 36/36 e2e green). Unrelated to this effort; noted here only because it surfaced during its verification.
 - [ ] PR develop → main, prod deploy + verification
 - [ ] Prod avatar backfill (~38 users)
 - [ ] Ops: remove GITHUB_APP_ID from both env files; owner deletes GitHub App ID 2198186 on github.com (NOT the Ov23li… OAuth App — that powers login)

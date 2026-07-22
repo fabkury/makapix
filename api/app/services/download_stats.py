@@ -12,14 +12,10 @@ produces two outputs:
    (2 = new, 3 = legacy) and asset class (artwork/avatar/blog_image), with
    deliberately wider semantics: GET/HEAD with status 200/206/304 all count
    (a 304 revalidation is a live reference to the URL), and 404s are counted
-   separately as ``misses``. Reads BOTH log feeds:
-
-   - the vault-subdomain log (``vault-access.log`` / ``vault-dev-access.log``)
-   - the shared default log (``access.log``), which captures main-domain
-     ``/api/vault/...`` requests served by FastAPI StaticFiles — these never
-     appear in the vault-subdomain log, and the legacy URL form demonstrably
-     exists in stored data. Entries are filtered by ``request.host`` so each
-     environment only counts its own traffic.
+   separately as ``misses``. Reads the vault-subdomain log
+   (``vault-access.log`` / ``vault-dev-access.log``) — the only vault
+   serving surface since the /api/vault FastAPI mount was removed
+   2026-07-22 (docs/remove-api-vault/).
 
    Aggregate rows (post_id NULL) are upserted for every (class, level)
    combination INCLUDING all-zero days — a missing day means "rollup did not
@@ -58,10 +54,9 @@ logger = logging.getLogger(__name__)
 #   /<s1>/<s2>/<uuid>(<_upscaled>)?.<ext>                  (v2, artwork)
 #   /<s1>/<s2>/<s3>/<uuid>(<_upscaled>)?.<ext>             (v1, artwork)
 #   /avatar/<...>/<uuid>.<ext>, /blog_image/<...>/<uuid>.<ext>
-# plus an optional /api/vault prefix for main-domain requests served by
-# FastAPI StaticFiles. Query strings must be stripped before matching.
+# Query strings must be stripped before matching.
 _VAULT_URI_RE = re.compile(
-    r"^/(?:api/vault/)?"
+    r"^/"
     r"(?:(?P<cls>avatar|blog_image)/)?"
     r"(?P<s1>[0-9a-f]{2})/(?P<s2>[0-9a-f]{2})(?:/(?P<s3>[0-9a-f]{2}))?"
     r"/(?P<uuid>[0-9a-f-]{36})(?P<upscaled>_upscaled)?\.(?P<ext>png|gif|webp|bmp|jpg)$",
@@ -84,15 +79,6 @@ _LOG_BY_ENV = {
     "production": "vault-access.log",
     "development": "vault-dev-access.log",
 }
-
-# Map ENVIRONMENT -> main-domain host whose /api/vault/... requests belong to
-# this environment. These land in the shared default log (access.log).
-_MAIN_HOST_BY_ENV = {
-    "production": "makapix.club",
-    "development": "development.makapix.club",
-}
-
-_MAIN_LOG_BASE = "access.log"
 
 _LOG_DIR = Path("/var/log/caddy")
 
@@ -172,20 +158,8 @@ def _open_log(path: Path) -> io.TextIOBase:
 def _iter_vault_hits(
     files: Iterable[Path],
     target_date: date,
-    *,
-    hosts: set[str] | None = None,
-    require_api_prefix: bool = False,
 ) -> Iterable[VaultHit]:
-    """Yield a :class:`VaultHit` for each vault asset request in target_date.
-
-    Args:
-        hosts: if given, only count entries whose request.host (port
-            stripped) is in this set — used for the shared default log,
-            which mixes every site that lacks its own log file.
-        require_api_prefix: only count URIs starting with /api/vault/ —
-            on the main domain a bare /<aa>/<bb>/... path is not vault
-            traffic.
-    """
+    """Yield a :class:`VaultHit` for each vault asset request in target_date."""
     day_start = datetime.combine(
         target_date, datetime.min.time(), tzinfo=timezone.utc
     ).timestamp()
@@ -224,14 +198,7 @@ def _iter_vault_hits(
                 if method not in ("GET", "HEAD"):
                     continue
 
-                if hosts is not None:
-                    host = (request.get("host") or "").split(":")[0].lower()
-                    if host not in hosts:
-                        continue
-
                 uri = (request.get("uri") or "").split("?", 1)[0]
-                if require_api_prefix and not uri.startswith("/api/vault/"):
-                    continue
                 m = _VAULT_URI_RE.match(uri)
                 if not m:
                     continue
@@ -309,18 +276,14 @@ def rollup_download_stats(target_date: date) -> dict[str, object]:
     """
     env = _environment()
     vault_base = _LOG_BY_ENV.get(env, _LOG_BY_ENV["development"])
-    main_host = _MAIN_HOST_BY_ENV.get(env, _MAIN_HOST_BY_ENV["development"])
 
     vault_files = _select_log_files(vault_base, target_date)
-    main_files = _select_log_files(_MAIN_LOG_BASE, target_date)
     logger.info(
-        "rollup_download_stats(date=%s): scanning %d vault + %d main log file(s)",
+        "rollup_download_stats(date=%s): scanning %d vault log file(s)",
         target_date,
         len(vault_files),
-        len(main_files),
     )
 
-    # --- Pass 1: vault-subdomain feed -------------------------------------
     # legacy_counts keeps the pre-existing download_stats_daily semantics:
     # artwork only, GET + 200 only. sharded_* uses the wider D8 semantics.
     legacy_counts: dict[UUID, list[int]] = defaultdict(lambda: [0, 0])
@@ -344,12 +307,6 @@ def rollup_download_stats(target_date: date) -> dict[str, object]:
         _tally(hit)
         if hit.asset_class == "artwork" and hit.method == "GET" and hit.status == 200:
             legacy_counts[hit.storage_key][1 if hit.bot else 0] += 1
-
-    # --- Pass 2: main-domain /api/vault feed (sharding stats only) --------
-    for hit in _iter_vault_hits(
-        main_files, target_date, hosts={main_host}, require_api_prefix=True
-    ):
-        _tally(hit)
 
     db = SessionLocal()
     try:

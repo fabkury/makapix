@@ -97,17 +97,6 @@ async function installStubs(page: Page, stubs: Stubs = {}): Promise<void> {
     });
   }
 
-  await page.route('**/api/user/u/*/reacted-posts*', async (route: Route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        items: stubs.reactedItems ?? [],
-        next_cursor: null,
-      }),
-    });
-  });
-
   await page.route('**/api/user/u/*/badge-grants*', async (route: Route) => {
     await route.fulfill({
       status: 200,
@@ -141,12 +130,18 @@ async function installStubs(page: Page, stubs: Stubs = {}): Promise<void> {
     );
   }
 
-  // Catch-all for /api/post etc. so the gallery tab doesn't hang on real data.
+  // Catch-all for /api/post so the gallery tab doesn't hang on real data.
+  // The Favourites tab feeds from the same endpoint with a reacted_by filter
+  // (since 2f87aa8) — serve stubs.reactedItems there, empty items otherwise.
   await page.route('**/api/post*', async (route: Route) => {
+    const isReactedFeed = route.request().url().includes('reacted_by=');
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ items: [], next_cursor: null }),
+      body: JSON.stringify({
+        items: isReactedFeed ? (stubs.reactedItems ?? []) : [],
+        next_cursor: null,
+      }),
     });
   });
 }
@@ -181,7 +176,7 @@ test.describe('profile Favourites tab', () => {
     await installStubs(page, { reactedItems: items });
 
     const waitForReacted = page.waitForResponse(
-      (r) => /\/reacted-posts/.test(r.url()) && r.status() === 200,
+      (r) => /\/api\/post\?.*reacted_by=/.test(r.url()) && r.status() === 200,
     );
     await page.goto(`/u/${TARGET_SQID}`);
     await page.getByRole('button', { name: '⚡' }).click();
@@ -194,7 +189,7 @@ test.describe('profile Favourites tab', () => {
     await installStubs(page, { reactedItems: [] });
 
     const waitForReacted = page.waitForResponse(
-      (r) => /\/reacted-posts/.test(r.url()) && r.status() === 200,
+      (r) => /\/api\/post\?.*reacted_by=/.test(r.url()) && r.status() === 200,
     );
     await page.goto(`/u/${TARGET_SQID}`);
     await page.getByRole('button', { name: '⚡' }).click();

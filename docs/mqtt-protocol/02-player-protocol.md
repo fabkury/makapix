@@ -139,7 +139,7 @@ Query posts from various channels with optional filtering, sorting, and paginati
       "kind": "artwork",
       "created_at": "2025-12-09T01:30:00Z",
       "storage_key": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-      "art_url": "https://makapix.club/api/vault/23/16/7c9e6679.png",
+      "art_url": "https://vault.makapix.club/23/16/7c9e6679.png",
       "storage_shard": "23/16",
       "native_format": "png"
     }
@@ -283,7 +283,7 @@ Fetch a single post by ID.
     "kind": "artwork",
     "created_at": "2025-12-09T01:30:00Z",
     "storage_key": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-    "art_url": "https://makapix.club/api/vault/23/16/7c9e6679.png",
+    "art_url": "https://vault.makapix.club/23/16/7c9e6679.png",
     "storage_shard": "23/16",
     "native_format": "png",
     "owner_handle": "artist123",

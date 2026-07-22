@@ -25,7 +25,7 @@ All published with QoS 1, no retention.
   "owner_sqid": "t5",
   "owner_handle": "artist123",
   "title": "Cool Pixel Art",
-  "art_url": "https://makapix.club/api/vault/23/16/7c9e6679.png",
+  "art_url": "https://vault.makapix.club/23/16/7c9e6679.png",
   "width": 64,
   "height": 64,
   "promoted_category": null,
@@ -89,13 +89,13 @@ Published with QoS 1, no retention. One topic per user -- all notification types
   "notification_type": "reaction",
   "post_id": 123,
   "actor_handle": "user42",
-  "actor_avatar_url": "https://makapix.club/api/vault/.../avatar.png",
+  "actor_avatar_url": "https://vault.makapix.club/.../avatar.png",
   "actor_public_sqid": "t5",
   "emoji": "❤️",
   "comment_preview": null,
   "content_title": "Cool Pixel Art",
   "content_sqid": "abc123",
-  "content_art_url": "https://makapix.club/api/vault/.../art.png",
+  "content_art_url": "https://vault.makapix.club/.../art.png",
   "created_at": "2025-12-09T02:00:00Z"
 }
 ```

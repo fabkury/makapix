@@ -14,10 +14,6 @@ import pytest
 from app.utils.art_url import assert_vault_art_url, is_vault_art_url
 
 
-def test_accepts_relative_vault_url():
-    assert is_vault_art_url("/api/vault/0a/1b/deadbeef.png")
-
-
 def test_accepts_vault_subdomain_url(monkeypatch):
     from app import settings
 
@@ -43,6 +39,8 @@ def test_accepts_vault_subdomain_url(monkeypatch):
         "http://vault.makapix.club/0a/1b/x.png",  # wrong scheme vs configured base
         "//evil.example/art.png",
         "vault/relative-ish.png",
+        # legacy relative form — mount removed 2026-07-22 (docs/remove-api-vault/)
+        "/api/vault/0a/1b/deadbeef.png",
         "",
     ],
 )

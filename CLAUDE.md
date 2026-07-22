@@ -158,8 +158,8 @@ Images stored in hash-based folder structure:
 - Path format: `/vault/{a}/{b}/{artwork_id}.{ext}` (2-level, 4,096 shards)
 - `a`/`b` = low 6 bits of the first two bytes of SHA-256(artwork ID), hex-rendered (`00`–`3f`); see `api/app/vault.py:compute_storage_shard_v2`
 - `posts.storage_shard` stores the shard as an opaque relative path — never derive paths from the key; always pass the stored shard
-- Legacy 3-level paths (`{h1}/{h2}/{h3}`, first 6 hex chars of the hash) remain served from twin copies during the resharding dual window, and permanently via a miss-only serving-layer remap (D16: Caddy `legacy_shard_remap` snippet + `api/app/vault_serving.py`) — **read `docs/vault-resharding/` before any vault work**
-- Served via `/api/vault/` (HTTPS) and the env-specific vault subdomain (HTTP for physical players) — see Environments table
+- Legacy 3-level paths (`{h1}/{h2}/{h3}`, first 6 hex chars of the hash) remain served from twin copies during the resharding dual window, and permanently via a miss-only serving-layer remap (D16: Caddy `legacy_shard_remap` snippet in `Caddyfile.global`) — **read `docs/vault-resharding/` before any vault work**
+- Served exclusively by Caddy on the env-specific vault subdomain (HTTPS for browsers/apps, plain HTTP for physical players) — see Environments table. The legacy `/api/vault/` FastAPI mount was removed 2026-07-22 (`docs/remove-api-vault/`); `VAULT_PUBLIC_BASE_URL` is a required setting (API fails fast without it)
 - Supported formats: PNG, GIF, WebP, BMP (max 5 MiB by default, configurable via `MAKAPIX_ARTWORK_SIZE_LIMIT`)
 - Dimension rules (`api/app/vault.py:validate_image_dimensions`):
   - 128×128 through 256×256 (inclusive): any size, square or rectangular

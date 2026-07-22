@@ -27,7 +27,7 @@ Common sizes: 8x8, 16x16, 32x32, 64x64, 128x128, 256x256
 Images are served from the vault via HTTPS:
 
 ```
-https://makapix.club/api/vault/{storage_shard}/{storage_key}.{format}
+https://vault.makapix.club/{storage_shard}/{storage_key}.{format}
 ```
 
 For physical players over HTTP (no TLS overhead):
@@ -52,7 +52,7 @@ From the query response:
   "storage_key": "abc123-def456-789",
   "storage_shard": "21/32",
   "native_format": "png",
-  "art_url": "https://makapix.club/api/vault/21/32/abc123-def456-789.png"
+  "art_url": "https://vault.makapix.club/21/32/abc123-def456-789.png"
 }
 ```
 

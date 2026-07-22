@@ -20,6 +20,11 @@ if TYPE_CHECKING:
 
 def pytest_configure(config):
     """Set TEST_DATABASE_URL before any test modules are imported."""
+    # VAULT_PUBLIC_BASE_URL is required (app.settings.vault_public_base_url
+    # raises when unset). Inside the dev/prod containers the real value is
+    # present; give bare local runs a deterministic stand-in.
+    os.environ.setdefault("VAULT_PUBLIC_BASE_URL", "https://vault.test")
+
     api_user = os.getenv("DB_API_WORKER_USER")
     api_pass = os.getenv("DB_API_WORKER_PASSWORD")
     db_host = os.getenv("DB_HOST", "db")

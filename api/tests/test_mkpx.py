@@ -13,9 +13,6 @@ from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy.orm import Session
-from starlette.applications import Starlette
-from starlette.routing import Mount
-from starlette.testclient import TestClient as StarletteTestClient
 
 from app.auth import create_access_token
 from app.models import Post, PostFile, User
@@ -26,7 +23,6 @@ from app.vault import (
     compute_storage_shard,
     get_mkpx_file_path,
 )
-from app.vault_serving import LegacyShardFallbackStaticFiles
 
 # --- helpers -----------------------------------------------------------------
 
@@ -526,33 +522,7 @@ def test_feed_payload_has_mkpx_field(client, db, vault_tmp):
     assert match and match[0]["has_mkpx"] is True
 
 
-# --- public static-mount guard -------------------------------------------------
-
-
-class TestStaticMountGuard:
-    def _app_and_files(self, tmp_path):
-        # a real artwork file (must keep serving) and a private mkpx file
-        (tmp_path / "24" / "07").mkdir(parents=True)
-        (tmp_path / "24" / "07" / "art.png").write_bytes(b"png-bytes")
-        (tmp_path / "mkpx" / "24" / "07").mkdir(parents=True)
-        (tmp_path / "mkpx" / "24" / "07" / "secret.mkpx").write_bytes(b"secret")
-        app = Starlette(
-            routes=[
-                Mount(
-                    "/vault",
-                    app=LegacyShardFallbackStaticFiles(directory=str(tmp_path)),
-                )
-            ]
-        )
-        return StarletteTestClient(app)
-
-    def test_mkpx_prefix_refused_artwork_still_served(self, tmp_path):
-        c = self._app_and_files(tmp_path)
-        assert c.get("/vault/24/07/art.png").status_code == 200
-        assert c.get("/vault/mkpx/24/07/secret.mkpx").status_code == 404
-
-    def test_encoded_and_dot_segment_variants_refused(self, tmp_path):
-        c = self._app_and_files(tmp_path)
-        assert c.get("/vault/%6dkpx/24/07/secret.mkpx").status_code == 404
-        assert c.get("/vault/./mkpx/24/07/secret.mkpx").status_code == 404
-        assert c.get("/vault/24/../mkpx/24/07/secret.mkpx").status_code == 404
+# The former public static-mount guard tests (mkpx/ never served via the
+# /api/vault mount) went with the mount itself (docs/remove-api-vault/).
+# The remaining public serving surface — the Caddy vault subdomains — 404s
+# /mkpx/* via Caddyfile.global.

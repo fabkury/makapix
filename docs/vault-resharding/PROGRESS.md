@@ -400,3 +400,15 @@ Open items carried forward:
 - D16 is now fully active: legacy 3-level URLs remain valid on
   vault.makapix.club, vault-dev.makapix.club, and /api/vault/ in both
   environments, independent of the twin copies' existence.
+
+### 2026-07-22 — /api/vault mount removed; D16 now subdomain-only (Claude)
+
+- The main-domain `/api/vault/` serving path was removed entirely
+  (`docs/remove-api-vault/`): StaticFiles mount, `vault_serving.py`
+  (the API-side D16 remap + mkpx guard), and the download-stats
+  main-domain feed (pass 2). Evidence: zero stored `/api/vault` URLs in
+  either environment; prod access.log since 2025-10-20 shows only 19
+  such requests, all 404s, last one 2026-01-15.
+- D16 remains in force via the `legacy_shard_remap` snippet on the
+  vault subdomains; the keep-in-sync note in `Caddyfile.global` about
+  `vault_serving.py` no longer applies (addendum in DECISIONS.md).

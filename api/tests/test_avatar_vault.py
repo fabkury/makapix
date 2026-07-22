@@ -20,7 +20,7 @@ V2 = "24/07"  # compute_storage_shard_v2(AVATAR_ID)
 @pytest.fixture()
 def vault(tmp_path, monkeypatch):
     monkeypatch.setenv("VAULT_LOCATION", str(tmp_path))
-    monkeypatch.setenv("VAULT_PUBLIC_BASE_URL", "")
+    monkeypatch.setenv("VAULT_PUBLIC_BASE_URL", "https://vault.test")
     return tmp_path
 
 
@@ -55,7 +55,8 @@ def test_save_rejects_bad_mime(vault):
 
 def test_delete_by_v1_url_removes_both_copies(vault):
     save_avatar_image(AVATAR_ID, b"x", "image/png")
-    assert try_delete_avatar_by_public_url(f"/api/vault/avatar/{V1}/{AVATAR_ID}.png")
+    url = f"https://vault.test/avatar/{V1}/{AVATAR_ID}.png"
+    assert try_delete_avatar_by_public_url(url)
     assert not (vault / "avatar" / V1 / f"{AVATAR_ID}.png").exists()
     assert not (vault / "avatar" / V2 / f"{AVATAR_ID}.png").exists()
 
@@ -80,5 +81,5 @@ def test_url_builder_matches_canonical_save_location(vault):
     save_avatar_image(AVATAR_ID, b"x", "image/png")
     url = get_avatar_url(AVATAR_ID, ".png")
     # The URL must point at a file that exists (the canonical copy).
-    rel = url.removeprefix("/api/vault/")
+    rel = url.removeprefix("https://vault.test/")
     assert (vault / rel).exists()

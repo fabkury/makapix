@@ -116,15 +116,23 @@ class TestPathAndUrlBuilders:
         assert p == vault / "24/07" / f"{WORKED_KEY}.png"
 
     def test_url_uses_shard_opaquely(self, vault, monkeypatch):
-        monkeypatch.setenv("VAULT_PUBLIC_BASE_URL", "")
+        monkeypatch.setenv("VAULT_PUBLIC_BASE_URL", "https://vault.test")
         assert (
             get_artwork_url(WORKED_KEY, ".gif", "24/07")
-            == f"/api/vault/24/07/{WORKED_KEY}.gif"
+            == f"https://vault.test/24/07/{WORKED_KEY}.gif"
         )
         assert (
             get_artwork_url(WORKED_KEY, ".gif", "a4/47/ee")
-            == f"/api/vault/a4/47/ee/{WORKED_KEY}.gif"
+            == f"https://vault.test/a4/47/ee/{WORKED_KEY}.gif"
         )
+
+    def test_url_requires_public_base_url(self, vault, monkeypatch):
+        """VAULT_PUBLIC_BASE_URL is required — no /api/vault fallback
+        (docs/remove-api-vault/): unset must fail loudly, not mint dead
+        relative URLs."""
+        monkeypatch.delenv("VAULT_PUBLIC_BASE_URL", raising=False)
+        with pytest.raises(RuntimeError, match="VAULT_PUBLIC_BASE_URL"):
+            get_artwork_url(WORKED_KEY, ".gif", "24/07")
 
 
 class TestAtomicWrite:

@@ -44,8 +44,8 @@ MAX_FILE_SIZE_BYTES = MAKAPIX_ARTWORK_SIZE_LIMIT_BYTES
 # --- .mkpx layers-file attachments (docs/mkpx-upload/) -----------------------
 # Stored under a sibling namespace {vault}/mkpx/{storage_shard}/{key}.mkpx,
 # outside the artwork/avatar trees (no resharding dual-write involvement).
-# The mkpx/ prefix must never be publicly served: vault_serving.py guards the
-# /api/vault mount and Caddyfile.global 404s /mkpx/* on the vault subdomains.
+# The mkpx/ prefix must never be publicly served: Caddyfile.global 404s
+# /mkpx/* on the vault subdomains (the only public vault serving surface).
 MKPX_SUBDIR = "mkpx"
 MKPX_EXTENSION = ".mkpx"
 MKPX_MIME = "application/x-mkpx"
@@ -521,9 +521,8 @@ def get_artwork_url(artwork_id: UUID, extension: str, storage_shard: str) -> str
     """
     Get the URL for accessing an artwork.
 
-    When VAULT_PUBLIC_BASE_URL is set, returns an absolute URL pointing at
-    the Caddy vault subdomain so browsers fetch images directly. Otherwise
-    returns a relative /api/vault/... path served by FastAPI StaticFiles.
+    Returns an absolute URL pointing at the Caddy vault subdomain
+    (VAULT_PUBLIC_BASE_URL, required) so clients fetch images directly.
 
     Args:
         artwork_id: The UUID of the artwork
@@ -531,12 +530,11 @@ def get_artwork_url(artwork_id: UUID, extension: str, storage_shard: str) -> str
         storage_shard: The stored shard path (required)
 
     Returns:
-        URL like https://vault.makapix.club/a1/b2/c3/<uuid>.png
-        or       /api/vault/a1/b2/<uuid>.png
+        URL like https://vault.makapix.club/a1/b2/<uuid>.png
     """
     shard = _require_shard(storage_shard)
     ext = extension.lower() if extension.startswith(".") else f".{extension.lower()}"
-    prefix = vault_public_base_url() or "/api/vault"
+    prefix = vault_public_base_url()
 
     return f"{prefix}/{shard}/{artwork_id}{ext}"
 

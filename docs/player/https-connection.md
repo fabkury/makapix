@@ -104,7 +104,7 @@ Response (HTTP 200):
       "kind": "artwork",
       "created_at": "2024-01-15T09:00:00Z",
       "storage_key": "abc123-def456",
-      "art_url": "https://makapix.club/api/vault/21/32/abc123-def456.png",
+      "art_url": "https://vault.makapix.club/21/32/abc123-def456.png",
       "storage_shard": "21/32",
       "native_format": "png",
       "width": 64,

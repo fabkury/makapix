@@ -189,20 +189,18 @@ def get_blog_image_url(image_id: UUID, extension: str) -> str:
     """
     Get the URL for accessing a blog image (canonical sharding scheme).
 
-    When VAULT_PUBLIC_BASE_URL is set, returns an absolute URL on the Caddy
-    vault subdomain. Otherwise returns /api/vault/blog_image/<...>, served by
-    FastAPI StaticFiles via the Caddy reverse proxy.
+    Returns an absolute URL on the Caddy vault subdomain
+    (VAULT_PUBLIC_BASE_URL, required).
 
     Args:
         image_id: The UUID of the image
         extension: The file extension
 
     Returns:
-        URL like https://vault.makapix.club/blog_image/a1/b2/c3/<uuid>.png
-        or       /api/vault/blog_image/a1/b2/<uuid>.png
+        URL like https://vault.makapix.club/blog_image/a1/b2/<uuid>.png
     """
     ext = extension.lower() if extension.startswith(".") else f".{extension.lower()}"
-    prefix = vault_public_base_url() or "/api/vault"
+    prefix = vault_public_base_url()
     shard = compute_storage_shard(image_id)
     return f"{prefix}/blog_image/{shard}/{image_id}{ext}"
 
