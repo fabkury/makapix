@@ -87,8 +87,6 @@ Key environment variables in `deploy/stack/.env.prod` (or `.env.dev`):
 | MQTT | `MQTT_WEBCLIENT_PASSWORD` | Web client MQTT password |
 | OAuth | `GITHUB_OAUTH_CLIENT_ID` | GitHub OAuth app client ID |
 | OAuth | `GITHUB_OAUTH_CLIENT_SECRET` | GitHub OAuth app client secret |
-| GitHub App | `GITHUB_APP_ID` | GitHub App numeric ID |
-| GitHub App | `GITHUB_APP_PRIVATE_KEY` | GitHub App private key (PEM) |
 | Email | `RESEND_API_KEY` | Resend transactional email key |
 | Email | `RESEND_FROM_EMAIL` | Sender address |
 | Admin | `MAKAPIX_ADMIN_USER` | Site owner account handle |

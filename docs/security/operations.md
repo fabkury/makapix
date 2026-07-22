@@ -15,7 +15,6 @@ Secret management, rotation procedures, hardening, and maintenance checklists.
 | `MQTT_WEBCLIENT_PASSWORD` | MQTT web client auth | 90 days |
 | `MAKAPIX_ADMIN_PASSWORD` | Site owner account | 90 days |
 | `GITHUB_OAUTH_CLIENT_SECRET` | GitHub OAuth login | 180 days |
-| `GITHUB_APP_PRIVATE_KEY` | GitHub App integration | 365 days |
 | `RESEND_API_KEY` | Transactional email (Resend) | 180 days |
 
 ### File-Based Secrets

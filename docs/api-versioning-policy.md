@@ -7,7 +7,7 @@ Status: adopted with the native-app contract work (2026-06).
 | Surface | Path | Versioned? |
 |---|---|---|
 | App-facing JSON API (web + native app) | `/api/v1/...` | **Yes** |
-| Hardware player / device | `/api/player/...`, `/api/relay`, `/api/pmd`, `/api/umd`, `/mqtt` | No (separate contract) |
+| Hardware player / device | `/api/player/...`, `/api/pmd`, `/api/umd`, `/mqtt` | No (separate contract) |
 | Web-infra (sitemap, legacy redirects) | unversioned | No |
 
 Caddy strips the public `/api` prefix (`handle_path /api/*`), so the FastAPI app
