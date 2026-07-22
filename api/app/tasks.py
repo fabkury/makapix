@@ -366,6 +366,88 @@ def periodic_check_post_hashes(self) -> dict[str, Any]:
         db.close()
 
 
+GITHUB_AVATAR_HOST_MARKER = "githubusercontent"
+
+
+def mirror_github_avatar_sync(db: Session, user_id: int) -> dict[str, Any]:
+    """Fetch a user's external GitHub avatar and re-home it in the avatar vault.
+
+    Part of the closed self-hosted model (docs/remove-external-hosting/):
+    GitHub OAuth historically stored avatars.githubusercontent.com URLs; this
+    copies the image into the avatar sub-vault so no user-facing imagery is
+    served from a foreign host. No-op unless the stored URL is still external.
+    Shared by the Celery task and scripts/backfill_github_avatars.py.
+    """
+    from uuid import uuid4
+
+    import requests
+
+    from . import models
+    from .avatar_vault import (
+        ALLOWED_MIME_TYPES,
+        MAX_AVATAR_SIZE_BYTES,
+        get_avatar_url,
+        save_avatar_image,
+        try_delete_avatar_by_public_url,
+    )
+    from .vault import ensure_vault_headroom
+
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        return {"status": "skipped", "reason": "user not found"}
+    old_url = user.avatar_url or ""
+    if GITHUB_AVATAR_HOST_MARKER not in old_url:
+        return {"status": "skipped", "reason": "avatar is not externally hosted"}
+
+    response = requests.get(old_url, stream=True, timeout=(3, 10))
+    response.raise_for_status()
+    mime_type = (
+        (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+    )
+    if mime_type not in ALLOWED_MIME_TYPES:
+        return {
+            "status": "skipped",
+            "reason": f"unsupported content-type {mime_type!r}",
+        }
+
+    content = b""
+    for chunk in response.iter_content(chunk_size=8192):
+        if chunk:
+            content += chunk
+            if len(content) > MAX_AVATAR_SIZE_BYTES:
+                return {"status": "skipped", "reason": "avatar exceeds size limit"}
+
+    ensure_vault_headroom(len(content))
+    avatar_id = uuid4()
+    save_avatar_image(avatar_id, content, mime_type)
+    user.avatar_url = get_avatar_url(avatar_id, ALLOWED_MIME_TYPES[mime_type])
+    db.commit()
+    # Best-effort cleanup; a no-op for external URLs like this one, kept for
+    # symmetry with the other avatar writers.
+    try_delete_avatar_by_public_url(old_url)
+    logger.info("Mirrored GitHub avatar into vault for user %s", user_id)
+    return {"status": "mirrored", "user_id": user_id}
+
+
+@celery_app.task(name="app.tasks.mirror_github_avatar", bind=True, max_retries=1)
+def mirror_github_avatar(self, user_id: int) -> dict[str, Any]:
+    """Mirror an external GitHub avatar into the vault (fail-open).
+
+    On any failure the external URL stays in place — it keeps rendering from
+    GitHub's CDN — and the next login or the backfill script retries.
+    """
+    from .db import SessionLocal
+
+    db = SessionLocal()
+    try:
+        return mirror_github_avatar_sync(db, user_id)
+    except Exception as e:
+        logger.warning("mirror_github_avatar failed for user %s: %s", user_id, e)
+        return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
+
+
 @celery_app.task(
     name="app.tasks.write_view_event",
     bind=True,

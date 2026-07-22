@@ -1964,6 +1964,14 @@ def github_callback(
                         detail="Failed to create authentication identity. Please try again.",
                     )
 
+        # Self-hosted avatars (docs/remove-external-hosting/): while the stored
+        # avatar still points at GitHub's CDN (fresh signup, or an earlier
+        # mirror attempt failed), mirror it into the avatar vault off-request.
+        if user.avatar_url and "githubusercontent" in user.avatar_url:
+            from ..tasks import mirror_github_avatar
+
+            mirror_github_avatar.delay(user.id)
+
         # Native (server-brokered) flow: hand the app a short-lived Makapix code
         # at its custom scheme instead of the HTML popup. The app exchanges it at
         # POST /auth/token (grant_type=authorization_code) with its code_verifier.
@@ -2356,6 +2364,14 @@ def exchange_github_code(
                     "avatar_url": github_user.get("avatar_url"),
                 },
             )
+
+    # Self-hosted avatars (docs/remove-external-hosting/): while the stored
+    # avatar still points at GitHub's CDN (fresh signup, or an earlier mirror
+    # attempt failed), mirror it into the avatar vault off-request.
+    if user.avatar_url and "githubusercontent" in user.avatar_url:
+        from ..tasks import mirror_github_avatar
+
+        mirror_github_avatar.delay(user.id)
 
     # Generate JWT tokens
     access_token = create_access_token(user)
