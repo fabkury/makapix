@@ -1,4 +1,10 @@
-"""Tests for typed upload error codes (F remainder: dimensions_invalid)."""
+"""Tests for upload dimension-rule rejection.
+
+Historically this covered the typed `dimensions_invalid` code on the legacy
+JSON create endpoint (removed 2026-07-22, docs/remove-external-hosting/). On
+the surviving upload path, dimension failures are detected by the AMP
+inspector and surface as a generic 400 with a descriptive message.
+"""
 
 from __future__ import annotations
 
@@ -21,20 +27,22 @@ def _auth(db):
     return {"Authorization": f"Bearer {create_access_token(u)}"}
 
 
-def test_create_post_invalid_dimensions(client, db):
-    # 100x100 passes the schema bounds (<=256) but is not a whitelisted size
+def test_upload_invalid_dimensions(client, db):
+    # 100x100 is inside the schema bounds (<=256) but is not a whitelisted size
     # below the 128 free-form band -> typed dimensions_invalid.
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGBA", (100, 100), (200, 30, 90, 255)).save(buf, format="PNG")
     r = client.post(
-        "/v1/post",
-        json={
-            "title": "t",
-            "art_url": "/vault/x.png",
-            "width": 100,
-            "height": 100,
-            "file_bytes": 1000,
-            "hash": "a" * 64,
-        },
+        "/v1/post/upload",
+        files={"image": ("bad-dims.png", buf.getvalue(), "image/png")},
+        data={"title": "t"},
         headers=_auth(db),
     )
     assert r.status_code == 400
-    assert r.json()["error"]["code"] == "dimensions_invalid"
+    body = r.json()
+    assert body["error"]["code"] == "bad_request"
+    assert "100x100 is not allowed" in body["error"]["message"]

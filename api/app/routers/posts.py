@@ -64,7 +64,6 @@ from ..services.social_notifications import SocialNotificationService
 from ..errors import AppError, ErrorCode
 from ..vault import (
     ALLOWED_MIME_TYPES,
-    MAX_FILE_SIZE_BYTES,
     MKPX_SIZE_LIMIT_BYTES,
     VaultFullError,
     compute_storage_shard,
@@ -73,7 +72,6 @@ from ..vault import (
     save_artwork_to_vault,
     save_mkpx_to_vault,
     validate_file_size,
-    validate_image_dimensions,
     validate_mkpx_signature,
 )
 
