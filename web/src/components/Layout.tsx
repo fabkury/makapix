@@ -387,7 +387,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
         <link rel="icon" href="/logo.png" />
       </Head>
 
-      <div className="app-container" style={{ '--header-offset': showBottomRow ? 'calc(var(--header-height) + var(--header-bottom-row-height))' : 'var(--header-height)' } as React.CSSProperties}>
+      <div className="app-container" style={{ '--header-offset': showBottomRow ? 'calc(var(--header-height) + var(--header-bottom-row-height) + var(--banner-height, 0px))' : 'calc(var(--header-height) + var(--banner-height, 0px))' } as React.CSSProperties}>
         <header className={`header ${isHeaderHidden ? 'header-hidden' : ''} ${showBottomRow ? 'header-with-bottom-row' : ''}`}>
           <div className="header-top-row">
             <div className="header-left">
@@ -555,10 +555,10 @@ export default function Layout({ children, title, description }: LayoutProps) {
               </div>
             </div>
           )}
+          <AnnouncementBanner />
         </header>
 
-        <main className="main-content" style={{ paddingTop: showBottomRow ? 'calc(var(--header-height) + var(--header-bottom-row-height))' : 'var(--header-height)' }}>
-          <AnnouncementBanner />
+        <main className="main-content" style={{ paddingTop: showBottomRow ? 'calc(var(--header-height) + var(--header-bottom-row-height) + var(--banner-height, 0px))' : 'calc(var(--header-height) + var(--banner-height, 0px))' }}>
           {children}
         </main>
       </div>
