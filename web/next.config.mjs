@@ -41,6 +41,12 @@ const nextConfig = {
   eslint: {
     dirs: ["src"],
   },
+  async redirects() {
+    return [
+      // The pre-launch Android beta page; the app is live on both stores now.
+      { source: "/beta", destination: "/app", permanent: true },
+    ];
+  },
   async headers() {
     // SharedArrayBuffer is required by parts of the client-side decode stack (WASM modules / Pyodide).
     // Browsers only expose SharedArrayBuffer in cross-origin isolated contexts, which requires COOP+COEP.

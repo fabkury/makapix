@@ -6,7 +6,7 @@ import { useRouter } from 'next/router';
 // BANNER_ID to null. To publish a new one, change BANNER_ID (a new id makes
 // the banner reappear for users who dismissed the previous one) and update
 // the message/link below.
-const BANNER_ID: string | null = 'ios-launch-2026-07';
+const BANNER_ID: string | null = 'android-launch-2026-07';
 const BANNER_HREF = '/app';
 
 export default function AnnouncementBanner() {
@@ -38,7 +38,7 @@ export default function AnnouncementBanner() {
   return (
     <div className="announcement-banner" role="region" aria-label="Announcement">
       <Link href={BANNER_HREF} className="announcement-link">
-        🎉 Makapix Club is now on the App Store — get it for iPhone &amp; iPad&nbsp;→
+        🎉 Makapix Club is now on Android &amp; iOS — get the app&nbsp;→
       </Link>
       <button
         type="button"

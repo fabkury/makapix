@@ -47,7 +47,7 @@ MAX_POSTS = 45_000
 MAX_USERS = 5_000
 
 # Public, indexable, non-auth pages worth advertising explicitly.
-STATIC_PATHS = ["/", "/about", "/players", "/recommended", "/size_rules"]
+STATIC_PATHS = ["/", "/about", "/app", "/players", "/recommended", "/size_rules"]
 
 
 def _iso(dt) -> str | None:

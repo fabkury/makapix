@@ -152,8 +152,8 @@ function AboutTab() {
 
       <p>
         The official Makapix Club app — the full animated pixel-art editor plus the whole
-        Club in one app — is <Link href="/app">now on the App Store for iPhone &amp; iPad</Link>,
-        with Android coming soon to Google Play.
+        Club in one app — is <Link href="/app">now on the App Store and Google Play</Link>,
+        free for iPhone, iPad &amp; Android.
       </p>
 
       <h2>Who is MPX for?</h2>

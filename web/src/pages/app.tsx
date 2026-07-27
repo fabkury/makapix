@@ -4,7 +4,34 @@ import Link from "next/link";
 import Layout from "../components/Layout";
 
 const APP_STORE_URL = "https://apps.apple.com/us/app/makapix-club/id6788845118";
+const PLAY_STORE_URL =
+  "https://play.google.com/store/apps/details?id=club.makapix.app";
 const OG_IMAGE_URL = "https://makapix.club/app/og-app.jpg";
+
+const stores = [
+  {
+    key: "ios",
+    href: APP_STORE_URL,
+    badge: "/app/appstore-badge.svg",
+    badgeAlt: "Download on the App Store",
+    badgeWidth: 168,
+    badgeHeight: 56,
+    qr: "/app/appstore-qr.svg",
+    qrAlt: "QR code to the App Store listing",
+    hint: "Scan with your iPhone camera",
+  },
+  {
+    key: "android",
+    href: PLAY_STORE_URL,
+    badge: "/app/play-badge.svg",
+    badgeAlt: "Get it on Google Play",
+    badgeWidth: 189,
+    badgeHeight: 56,
+    qr: "/app/play-qr.svg",
+    qrAlt: "QR code to the Google Play listing",
+    hint: "Scan with your Android camera",
+  },
+];
 
 const screenshots = [
   {
@@ -56,35 +83,41 @@ const features = [
 ];
 
 export default function AppPage() {
-  const [isIOS, setIsIOS] = useState(false);
+  const [platform, setPlatform] = useState<"ios" | "android" | null>(null);
 
   useEffect(() => {
     try {
       const ua = navigator.userAgent || "";
       // iPadOS 13+ reports as Mac; detect the touch-capable Mac case too.
-      const iOS =
+      if (
         /iPad|iPhone|iPod/.test(ua) ||
-        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-      setIsIOS(iOS);
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+      ) {
+        setPlatform("ios");
+      } else if (/Android/i.test(ua)) {
+        setPlatform("android");
+      }
     } catch {
-      // ignore — fall back to the default (badge + QR) layout
+      // ignore — fall back to the default (badges + QR codes) layout
     }
   }, []);
+
+  const deviceStore = platform && stores.find((s) => s.key === platform);
 
   return (
     <Layout
       title="Get the App"
-      description="Makapix Club is now on iPhone & iPad — the full animated pixel-art editor and the whole Club, in one app. Download free on the App Store."
+      description="Makapix Club is now on iOS & Android — the full animated pixel-art editor and the whole Club, in one app. Download free on the App Store or Google Play."
     >
       <Head>
         <meta
           property="og:title"
-          content="Makapix Club — now on iPhone & iPad"
+          content="Makapix Club — now on iOS & Android"
           key="og:title"
         />
         <meta
           property="og:description"
-          content="The full animated pixel-art editor and the whole Club, in one app. Download free on the App Store."
+          content="The full animated pixel-art editor and the whole Club, in one app. Download free on the App Store or Google Play."
           key="og:description"
         />
         <meta property="og:image" content={OG_IMAGE_URL} key="og:image" />
@@ -113,7 +146,7 @@ export default function AppPage() {
           />
           <h1>
             Makapix Club is now on{" "}
-            <span className="grad">iPhone &amp; iPad</span>
+            <span className="grad">iOS &amp; Android</span>
           </h1>
           <p className="lead">
             The full animated pixel-art editor and the whole Club — feeds,
@@ -121,38 +154,52 @@ export default function AppPage() {
             one free app.
           </p>
 
-          <div className="cta">
-            <a
-              href={APP_STORE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="badge-link"
-              aria-label="Download Makapix Club on the App Store"
-            >
-              <img
-                src="/app/appstore-badge.svg"
-                alt="Download on the App Store"
-                width={168}
-                height={56}
-              />
-            </a>
-
-            {isIOS ? (
-              <p className="cta-hint cta-hint-ios">
+          {deviceStore ? (
+            <div className="cta">
+              <a
+                href={deviceStore.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="badge-link"
+                aria-label={deviceStore.badgeAlt}
+              >
+                <img
+                  src={deviceStore.badge}
+                  alt={deviceStore.badgeAlt}
+                  width={deviceStore.badgeWidth}
+                  height={deviceStore.badgeHeight}
+                />
+              </a>
+              <p className="cta-hint cta-hint-device">
                 👆 Tap to install on this device
               </p>
-            ) : (
-              <div className="qr">
-                <img
-                  src="/app/appstore-qr.svg"
-                  alt="QR code to the App Store listing"
-                  width={112}
-                  height={112}
-                />
-                <span className="cta-hint">Scan with your iPhone camera</span>
-              </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="stores">
+              {stores.map((s) => (
+                <div key={s.key} className="store">
+                  <a
+                    href={s.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="badge-link"
+                    aria-label={s.badgeAlt}
+                  >
+                    <img
+                      src={s.badge}
+                      alt={s.badgeAlt}
+                      width={s.badgeWidth}
+                      height={s.badgeHeight}
+                    />
+                  </a>
+                  <div className="qr">
+                    <img src={s.qr} alt={s.qrAlt} width={112} height={112} />
+                    <span className="cta-hint">{s.hint}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         {/* Feature graphic */}
@@ -183,23 +230,6 @@ export default function AppPage() {
               <figcaption>{s.caption}</figcaption>
             </figure>
           ))}
-        </section>
-
-        {/* Android */}
-        <section className="android">
-          <h2>🤖 Android is on the way</h2>
-          <p>
-            The Android version is in closed testing right now and heading to
-            Google Play soon. Follow along on{" "}
-            <a
-              href="https://discord.gg/xk9umcujXV"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Discord
-            </a>{" "}
-            — we&apos;ll announce it here and there the moment it&apos;s live.
-          </p>
         </section>
 
         <p className="see-also">
@@ -264,6 +294,21 @@ export default function AppPage() {
           gap: 16px;
         }
 
+        .stores {
+          display: flex;
+          justify-content: center;
+          align-items: flex-start;
+          gap: 40px;
+          flex-wrap: wrap;
+        }
+
+        .store {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 16px;
+        }
+
         .badge-link {
           display: inline-block;
           transition: transform var(--transition-fast);
@@ -274,8 +319,8 @@ export default function AppPage() {
         }
 
         .badge-link img {
-          width: 168px;
-          height: auto;
+          height: 56px;
+          width: auto;
           display: block;
         }
 
@@ -299,7 +344,7 @@ export default function AppPage() {
           color: var(--text-secondary);
         }
 
-        .cta-hint-ios {
+        .cta-hint-device {
           font-size: 0.95rem;
           color: var(--accent-cyan);
           font-weight: 500;
@@ -380,26 +425,6 @@ export default function AppPage() {
           margin-top: 8px;
           font-size: 0.78rem;
           color: var(--text-secondary);
-        }
-
-        .android {
-          padding: 20px 22px;
-          background: rgba(0, 212, 255, 0.06);
-          border-left: 3px solid var(--accent-cyan);
-          border-radius: 0 12px 12px 0;
-          margin-bottom: 32px;
-        }
-
-        .android h2 {
-          font-size: 1.1rem;
-          font-weight: 600;
-          color: var(--text-primary);
-          margin: 0 0 8px;
-        }
-
-        .android p {
-          margin: 0;
-          font-size: 0.95rem;
         }
 
         .see-also {

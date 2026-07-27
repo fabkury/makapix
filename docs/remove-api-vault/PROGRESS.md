@@ -34,8 +34,18 @@ Commits on `develop`:
   - Fail-fast confirmed: `python -c "import app.main"` with
     `VAULT_PUBLIC_BASE_URL=` raises RuntimeError.
 
-## Remaining
+## 2026-07-22 — LIVE on prod (Claude)
 
-- [ ] PR develop → main, merge
-- [ ] Prod deploy (`cd /opt/makapix && make deploy`); same verification
-      on makapix.club (no Caddy restart needed — no Caddy config change)
+- PR #247 (develop → main) merged 19:30 UTC; `make deploy` in
+  /opt/makapix; api/worker/web recreated, all healthy.
+- Prod live verification:
+  - `https://makapix.club/api/vault/<real artwork path>` → 404;
+    same file 200 on `https://vault.makapix.club/...`.
+  - `/api/health` 200; `/api/v1/post/recent` returns vault-subdomain
+    art_urls; homepage 200.
+  - D16 regression check: synthetic legacy 3-level path
+    (`/5b/5b/aa/<key>.png` → masked `1b/1b`) serves 200 via the Caddy
+    remap; `mkpx/` namespace still 404s on the subdomain.
+
+**Effort complete — nothing remaining.** Reopen only if a straggler
+/api/vault consumer surfaces (none expected; see README evidence).
