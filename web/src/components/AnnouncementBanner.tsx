@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 
@@ -12,6 +12,7 @@ const BANNER_HREF = '/app';
 export default function AnnouncementBanner() {
   const router = useRouter();
   const [visible, setVisible] = useState(false);
+  const bannerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!BANNER_ID) return;
@@ -23,6 +24,32 @@ export default function AnnouncementBanner() {
     setVisible(true);
   }, []);
 
+  // Don't show the banner on the page it links to.
+  const shown = Boolean(BANNER_ID) && visible && router.pathname !== BANNER_HREF;
+
+  // The banner renders inside the fixed header, so the space it occupies must
+  // be pushed onto everything positioned off the header: --banner-height feeds
+  // --header-offset and the main-content padding (see Layout.tsx). Track the
+  // rendered height (the text can wrap on narrow screens) and zero it whenever
+  // the banner is hidden.
+  useEffect(() => {
+    const root = document.documentElement;
+    const el = bannerRef.current;
+    if (!shown || !el) {
+      root.style.setProperty('--banner-height', '0px');
+      return;
+    }
+    const update = () =>
+      root.style.setProperty('--banner-height', `${el.offsetHeight}px`);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      root.style.setProperty('--banner-height', '0px');
+    };
+  }, [shown]);
+
   const dismiss = () => {
     setVisible(false);
     try {
@@ -32,11 +59,15 @@ export default function AnnouncementBanner() {
     }
   };
 
-  // Don't show the banner on the page it links to.
-  if (!BANNER_ID || !visible || router.pathname === BANNER_HREF) return null;
+  if (!shown) return null;
 
   return (
-    <div className="announcement-banner" role="region" aria-label="Announcement">
+    <div
+      ref={bannerRef}
+      className="announcement-banner"
+      role="region"
+      aria-label="Announcement"
+    >
       <Link href={BANNER_HREF} className="announcement-link">
         🎉 Makapix Club is now on Android &amp; iOS — get the app&nbsp;→
       </Link>
@@ -61,7 +92,9 @@ export default function AnnouncementBanner() {
             rgba(255, 110, 180, 0.15),
             rgba(0, 212, 255, 0.15)
           );
-          border-bottom: 1px solid rgba(0, 212, 255, 0.35);
+          /* Last row inside the fixed header: the header's own bottom border
+             closes the strip below, so only separate from the row above. */
+          border-top: 1px solid rgba(0, 212, 255, 0.35);
           position: relative;
           text-align: center;
         }

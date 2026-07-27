@@ -29,6 +29,9 @@
   /* Layout */
   --header-height: 56px;
   --header-bottom-row-height: 34px;
+  /* Measured height of the AnnouncementBanner row inside the fixed header;
+     set on <html> by the banner component, 0 when hidden/dismissed. */
+  --banner-height: 0px;
   /* Dynamic header offset: equals header height when visible, 0 when hidden */
   --header-offset: var(--header-height);
   --content-max-width: 1400px;
