@@ -86,7 +86,29 @@ def test_github_callback_rejects_invalid_state_before_network_call():
         f"/auth/github/callback?code=test_code&state={state}", follow_redirects=False
     )
     assert resp.status_code == 400
-    assert resp.json().get("detail") == "Invalid OAuth state. Please try again."
+    # Web-flow errors render as a branded HTML page, not JSON
+    assert "text/html" in resp.headers["content-type"]
+    assert "Invalid OAuth state" in resp.text
+
+
+def test_github_callback_web_flow_error_page_is_branded():
+    """Web-flow OAuth errors should render the branded Makapix error page."""
+    auth_router.GITHUB_CLIENT_ID = "test_client_id"
+    auth_router.GITHUB_CLIENT_SECRET = "test_client_secret"
+    auth_router.GITHUB_REDIRECT_URI = "http://localhost/auth/github/callback"
+
+    from app.main import app
+    from fastapi.testclient import TestClient
+
+    client = TestClient(app)
+
+    resp = client.get(
+        "/auth/github/callback?code=test_code&state=garbage", follow_redirects=False
+    )
+    assert resp.status_code == 400
+    assert "text/html" in resp.headers["content-type"]
+    assert "Makapix" in resp.text
+    assert "Sign-in didn" in resp.text
 
 
 def test_me_endpoint_requires_auth():
