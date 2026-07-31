@@ -13,6 +13,7 @@ from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.responses import HTMLResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -32,6 +33,7 @@ from ..auth import (
 )
 from ..deps import get_db
 from ..errors import AppError, ErrorCode
+from ..oauth_pages import oauth_error_page, oauth_success_page
 from ..services.auth_identities import (
     create_password_identity,
     create_oauth_identity,
@@ -1582,23 +1584,27 @@ def github_login(
     of the HTML popup; the app exchanges it at POST /auth/token.
     """
     if not GITHUB_CLIENT_ID:
-        raise HTTPException(
+        return HTMLResponse(
+            oauth_error_page("GitHub sign-in is not configured on this server."),
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="GitHub OAuth not configured",
         )
 
     # Validate the native flow inputs up front (open-redirect + PKCE guards).
+    # This endpoint always renders in a browser (popup or system browser), so
+    # errors are branded HTML pages, not JSON.
     native = None
     if redirect_uri is not None:
         if redirect_uri not in NATIVE_OAUTH_REDIRECT_URIS:
-            raise HTTPException(
+            return HTMLResponse(
+                oauth_error_page("Unregistered redirect_uri."),
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Unregistered redirect_uri.",
             )
         if (code_challenge_method or "").upper() != "S256" or not code_challenge:
-            raise HTTPException(
+            return HTMLResponse(
+                oauth_error_page(
+                    "A PKCE S256 code_challenge is required for the native flow."
+                ),
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="A PKCE S256 code_challenge is required for the native flow.",
             )
         native = {
             "redirect_uri": redirect_uri,
@@ -1645,9 +1651,9 @@ def github_callback(
     """
     if not GITHUB_CLIENT_ID or not GITHUB_CLIENT_SECRET:
         logger.error("GitHub OAuth callback failed: OAuth credentials not configured")
-        raise HTTPException(
+        return HTMLResponse(
+            oauth_error_page("GitHub sign-in is not configured on this server."),
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="GitHub OAuth not configured",
         )
 
     # Native (server-brokered) flow params — set once state is decoded; pre-init
@@ -2026,14 +2032,8 @@ def github_callback(
         # Check if user needs to go through welcome flow
         needs_welcome = not user.welcome_completed
 
-        # Create a simple HTML page that shows success and stores tokens
-        from fastapi.responses import HTMLResponse
-        import html
-
-        # Escape user-provided data to prevent XSS
-        safe_handle = html.escape(user.handle)
-        safe_user_id = html.escape(str(user.id))
-        safe_site_origin = html.escape(site_origin)
+        # Branded popup page (see app/oauth_pages.py): stores tokens, notifies
+        # the opener via postMessage, and closes itself.
 
         # Determine redirect URL based on whether user needs welcome flow
         if needs_welcome:
@@ -2041,107 +2041,16 @@ def github_callback(
         else:
             redirect_url = site_origin
 
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Makapix - Authentication Success</title>
-            <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline';">
-            <style>
-                body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
-                .success {{ color: #22c55e; font-size: 24px; margin-bottom: 20px; }}
-                .info {{ color: #666; margin-bottom: 30px; }}
-                .debug {{ color: #888; font-size: 12px; margin-top: 20px; }}
-                .button {{
-                    background: #0070f3;
-                    color: white;
-                    padding: 12px 24px;
-                    border: none;
-                    border-radius: 6px;
-                    cursor: pointer;
-                    text-decoration: none;
-                    display: inline-block;
-                    margin: 10px;
-                }}
-                .button:hover {{ background: #0051a2; }}
-            </style>
-        </head>
-        <body>
-            <div class="success">✅ Authentication Successful!</div>
-            <div class="info">Welcome to Makapix, {safe_handle}!</div>
-            <div class="info">You can now close this window and return to the main application.</div>
-            <a href="{safe_site_origin}" class="button">Go to Makapix</a>
-            <a href="{safe_site_origin}/publish" class="button">Publish Artwork</a>
-            
-            <div class="debug">
-                <p>Debug Info:</p>
-                <p>User ID: {safe_user_id}</p>
-                <p>Handle: {safe_handle}</p>
-                <p>Token: [hidden for security]</p>
-            </div>
-            
-            <script>
-                // Use secure data passing via JSON to prevent XSS
-                // Note: refresh_token is now stored in HttpOnly cookie, not in localStorage
-                const authData = {{
-                    access_token: {json.dumps(makapix_access_token)},
-                    user_id: {json.dumps(str(user.id))},
-                    user_handle: {json.dumps(user.handle)},
-                    needs_welcome: {json.dumps(needs_welcome)}
-                }};
-                
-                console.log('OAuth Callback - Storing tokens...');
-                console.log('User ID:', authData.user_id);
-                console.log('Handle:', authData.user_handle);
-                console.log('Needs welcome:', authData.needs_welcome);
-                
-                // Store access token in localStorage (refresh token is in HttpOnly cookie)
-                try {{
-                    localStorage.setItem('access_token', authData.access_token);
-                    localStorage.setItem('user_id', authData.user_id);
-                    localStorage.setItem('user_handle', authData.user_handle);
-                }} catch (error) {{
-                    console.error('Error storing tokens:', error);
-                }}
-
-                // Determine redirect URL
-                const redirectUrl = {json.dumps(redirect_url)};
-
-                // Close popup and notify parent window (fallback to redirect)
-                try {{
-                    if (window.opener) {{
-                        // Send message to parent window with redirect info
-                        window.opener.postMessage({{
-                            type: 'OAUTH_SUCCESS',
-                            tokens: authData,
-                            redirectUrl: redirectUrl
-                        }}, {json.dumps(site_origin)});
-                        // Close the popup immediately
-                        window.close();
-                    }} else {{
-                        // Not a popup - redirect this window
-                        window.location.href = redirectUrl;
-                    }}
-                }} catch (error) {{
-                    console.error('Error finalizing OAuth flow:', error);
-                    // If postMessage fails, try to close and let parent handle it
-                    if (window.opener) {{
-                        try {{
-                            window.close();
-                        }} catch (closeError) {{
-                            // If close fails, redirect this window as fallback
-                            window.location.href = redirectUrl;
-                        }}
-                    }} else {{
-                        window.location.href = redirectUrl;
-                    }}
-                }}
-            </script>
-        </body>
-        </html>
-        """
-
-        html_response = HTMLResponse(content=html_content)
+        html_response = HTMLResponse(
+            content=oauth_success_page(
+                access_token=makapix_access_token,
+                user_id=str(user.id),
+                user_handle=user.handle,
+                needs_welcome=needs_welcome,
+                site_origin=site_origin,
+                redirect_url=redirect_url,
+            )
+        )
         # Set refresh token as HttpOnly cookie on the ACTUAL returned response
         set_refresh_token_cookie(html_response, makapix_refresh_token, request)
         # Clear OAuth state cookie now that the flow is complete
@@ -2159,7 +2068,12 @@ def github_callback(
                 "access_denied",
                 str(he.detail) if he.detail else "Authentication failed",
             )
-        raise
+        # Web flow: the popup is a browser window, so render a branded HTML
+        # error page instead of the framework's JSON.
+        return HTMLResponse(
+            oauth_error_page(str(he.detail) if he.detail else "Authentication failed."),
+            status_code=he.status_code,
+        )
     except Exception as e:
         logger.error(f"Unexpected error in GitHub OAuth callback: {e}", exc_info=True)
         db.rollback()
@@ -2171,9 +2085,11 @@ def github_callback(
                 "server_error",
                 "An unexpected error occurred during authentication.",
             )
-        raise HTTPException(
+        return HTMLResponse(
+            oauth_error_page(
+                "An unexpected error occurred during authentication. Please try again."
+            ),
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred during authentication. Please try again.",
         )
 
 
