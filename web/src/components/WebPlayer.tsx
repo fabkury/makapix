@@ -829,12 +829,6 @@ export function WebPlayer({
     router.push(`/editor?edit=${displayedArtwork.public_sqid}`);
   }, [displayedArtwork, closeMenu, router]);
 
-  const handleEditInPixelc = useCallback(() => {
-    if (!displayedArtwork) return;
-    closeMenu();
-    router.push(`/pixelc?edit=${displayedArtwork.public_sqid}`);
-  }, [displayedArtwork, closeMenu, router]);
-
   const handleDownloadNative = useCallback(async () => {
     if (!displayedArtwork) return;
     closeMenu();
@@ -1571,22 +1565,6 @@ export function WebPlayer({
                   >
                     In Piskel
                   </button>
-                  {["png", "webp", "gif", "bmp"].includes(
-                    (
-                      art.files?.find((f) => f.is_native)?.format || ""
-                    ).toLowerCase(),
-                  ) ? (
-                    <button
-                      className="wp-menu-item"
-                      onClick={handleEditInPixelc}
-                    >
-                      In Pixelc
-                    </button>
-                  ) : (
-                    <button className="wp-menu-item wp-menu-disabled">
-                      In Pixelc
-                    </button>
-                  )}
                 </div>
               )}
             </div>

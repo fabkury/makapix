@@ -13,7 +13,7 @@ Scratch notes on how deeply the `/submit` artwork upload page (`web/src/pages/su
 - **Upload flow** — intercept `POST /api/post/upload`, inspect the intercepted FormData (title/hashtags/license/file), return a fake 200, assert the success screen, the "awaiting moderator approval" notice when `public_visibility=false`, and the View/Upload-Another buttons.
 - **401 handling** — stub upload with 401; assert tokens cleared and redirect to `/auth`.
 - **Draft persistence** (`lib/submit-draft-storage`) — pick a file, fill fields, reload page, assert state restored (500 ms debounce means wait or advance time).
-- **Editor import** — seed `sessionStorage.pixelc_export` (or `piskel_export`) before navigation, visit `/submit?from=pixelc`, assert the image and pre-filled title appear.
+- **Editor import** — seed `sessionStorage.piskel_export` before navigation, visit `/submit?from=piskel`, assert the image appears.
 - **Clear-all dialog** — cancel vs confirm paths.
 
 ## What's awkward but doable
@@ -49,7 +49,7 @@ Two tiers:
 2. Validation errors — PNG at disallowed size (e.g., 24×24); assert warning, assert scaling auto-opens with nearest valid size, adjust, verify Submit disabled until output is valid.
 3. Oversize file — fake 6 MiB file; assert size error.
 4. Draft persistence — pick a file, fill fields, reload page, verify state restored.
-5. Editor import — seed `pixelc_export` in sessionStorage, visit `/submit?from=pixelc`, verify image and title preloaded.
+5. Editor import — seed `piskel_export` in sessionStorage, visit `/submit?from=piskel`, verify image preloaded.
 6. License selection — fetched licenses render; pick one; verify ID appears in FormData on submit.
 7. Clear-all dialog — cancel vs confirm paths.
 8. 401 on upload — mock `/api/post/upload` to 401; assert redirect to `/auth`.

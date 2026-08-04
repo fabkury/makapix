@@ -708,12 +708,6 @@ export default function PostPage() {
     router.push(`/editor?edit=${post.public_sqid}`);
   };
 
-  const handleEditInPixelc = () => {
-    if (!post) return;
-    closeMoreMenu();
-    router.push(`/pixelc?edit=${post.public_sqid}`);
-  };
-
   const handleDownloadNative = async () => {
     if (!post) return;
     closeMoreMenu();
@@ -1753,19 +1747,6 @@ export default function PostPage() {
                   <button className="menu-item" onClick={handleEditInPiskel}>
                     In Piskel
                   </button>
-                  {["png", "webp", "gif", "bmp"].includes(
-                    (
-                      post.files?.find((f) => f.is_native)?.format || ""
-                    ).toLowerCase(),
-                  ) ? (
-                    <button className="menu-item" onClick={handleEditInPixelc}>
-                      In Pixelc
-                    </button>
-                  ) : (
-                    <button className="menu-item disabled" disabled>
-                      In Pixelc
-                    </button>
-                  )}
                 </div>
               )}
             </div>
