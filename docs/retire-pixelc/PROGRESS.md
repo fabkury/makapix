@@ -7,5 +7,6 @@
   - [x] `make check-full` green (6/6 chunks, 70 files), pushed `develop`, PR #251 → `main`, merged
   - [x] Prod deploy + verification (makapix.club/pixelc 404, contribute chunk clean, robots.txt clean)
   - [x] Teardown: both containers + images removed; Caddy routes dropped automatically (subdomains no longer served); `/opt/Pixelc` + `/opt/Pixelc-dev` contents deleted (incl. the on-disk PAT copy); `/opt/CLAUDE.md` updated
-  - [ ] Owner: `sudo rmdir /opt/Pixelc /opt/Pixelc-dev` (empty dir entries remain; /opt is root-owned)
-  - [ ] Owner: revoke the leaked GitHub PAT, delete DNS A records `pixelc.makapix.club` + `pixelc-dev.makapix.club` (see README follow-ups)
+  - [x] Owner (same day): removed the empty `/opt/Pixelc` + `/opt/Pixelc-dev` dir entries, revoked the leaked GitHub PAT, deleted both DNS A records (verified NXDOMAIN)
+
+Effort fully closed 2026-08-04 — no open items.
