@@ -22,7 +22,6 @@ Disallow: /mod-dashboard
 Disallow: /owner-dashboard
 Disallow: /submit
 Disallow: /editor
-Disallow: /pixelc
 Disallow: /divoom-import
 
 # ---------------------------------------------------------------------------

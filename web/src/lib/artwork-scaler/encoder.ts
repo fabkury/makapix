@@ -12,7 +12,7 @@ import type { WebPOptions } from '@saschazar/wasm-webp';
  * Build the static-encoder config for @saschazar/wasm-webp.
  *
  * Lossless uses `exact: 1` so RGB values beneath fully-transparent pixels
- * survive the round-trip — important because Pixelc/Piskel layers sometimes
+ * survive the round-trip — important because editor layers sometimes
  * leave colored data under alpha-0 regions.
  */
 function buildStaticWebpOptions(lossless: boolean): WebPOptions {

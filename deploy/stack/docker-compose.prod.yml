@@ -150,20 +150,6 @@ services:
       caddy.reverse_proxy: "{{upstreams 80}}"
 
   # ---------------------------------------------------------------------------
-  # Pixelc Editor
-  # ---------------------------------------------------------------------------
-  pixelc:
-    container_name: makapix-prod-pixelc
-    labels:
-      caddy: pixelc.makapix.club
-      caddy.encode: "gzip zstd"
-      caddy.header.X-Content-Type-Options: "nosniff"
-      caddy.header.Cross-Origin-Opener-Policy: "same-origin"
-      caddy.header.Cross-Origin-Embedder-Policy: "require-corp"
-      caddy.header.Content-Security-Policy: "frame-ancestors 'self' https://makapix.club"
-      caddy.reverse_proxy: "{{upstreams 80}}"
-
-  # ---------------------------------------------------------------------------
   # Redis (rate limiting)
   # ---------------------------------------------------------------------------
   redis:

@@ -1079,12 +1079,6 @@ export default function SelectedPostOverlay({
     router.push(`/editor?edit=${post.public_sqid}`);
   }, [post, router]);
 
-  const handleEditInPixelc = useCallback(() => {
-    if (!post) return;
-    setShowMoreMenu(false);
-    router.push(`/pixelc?edit=${post.public_sqid}`);
-  }, [post, router]);
-
   const handleDownloadNative = useCallback(async () => {
     if (!post) return;
     setShowMoreMenu(false);
@@ -1911,29 +1905,6 @@ export default function SelectedPostOverlay({
                   >
                     In Piskel
                   </button>
-                  {["png", "webp", "gif", "bmp"].includes(
-                    (
-                      post.files?.find((f) => f.is_native)?.format || ""
-                    ).toLowerCase(),
-                  ) ? (
-                    <button
-                      style={menuItemStyles}
-                      onClick={handleEditInPixelc}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.background =
-                          "rgba(255,255,255,0.08)")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = "transparent")
-                      }
-                    >
-                      In Pixelc
-                    </button>
-                  ) : (
-                    <button style={menuItemDisabledStyles} disabled>
-                      In Pixelc
-                    </button>
-                  )}
                 </div>
               )}
             </div>

@@ -111,30 +111,24 @@ export default function ContributePage() {
 
             {activeTab === 'mobile' && (
               <>
-                <Link href="/submit" className="option-card">
-                  <div className="option-icon option-icon-emoji">➕</div>
-                  <h2 className="option-title">Upload File</h2>
-                  <p className="option-description">Upload PNG, GIF, WebP, or BMP directly</p>
-                </Link>
-
-                <Link href="/pixelc" className="option-card">
-                  <div className="option-icon option-icon-emoji">🖌️</div>
-                  <h2 className="option-title">Draw in Pixelc</h2>
-                  <p className="option-description">Create pixel art using the Pixelc editor</p>
-                </Link>
-
-                <Link href="/divoom-import" className="option-card">
-                  <div className="option-icon option-icon-emoji">☁️</div>
-                  <h2 className="option-title">Import from Divoom</h2>
-                  <p className="option-description">Import artworks from your Divoom account</p>
-                </Link>
-
                 <Link href="/app" className="option-card">
                   <div className="option-icon option-icon-emoji">📱</div>
                   <h2 className="option-title">Get the app</h2>
                   <p className="option-description">
                     Draw and post from the official app — free on iOS &amp; Android
                   </p>
+                </Link>
+
+                <Link href="/submit" className="option-card">
+                  <div className="option-icon option-icon-emoji">➕</div>
+                  <h2 className="option-title">Upload File</h2>
+                  <p className="option-description">Upload PNG, GIF, WebP, or BMP directly</p>
+                </Link>
+
+                <Link href="/divoom-import" className="option-card">
+                  <div className="option-icon option-icon-emoji">☁️</div>
+                  <h2 className="option-title">Import from Divoom</h2>
+                  <p className="option-description">Import artworks from your Divoom account</p>
                 </Link>
               </>
             )}

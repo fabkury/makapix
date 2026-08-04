@@ -326,7 +326,7 @@ function FeaturesTab() {
     {
       icon: '🎨',
       title: 'Integrated Editors',
-      description: 'Create art using Pixelc or Piskel directly in browser, or upload files',
+      description: 'Create art in the app or the in-browser Piskel editor, or upload files',
     },
     {
       icon: '🔄',

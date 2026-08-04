@@ -270,7 +270,7 @@ function SubmitPageContent() {
     fetchLicenses();
   }, [API_BASE_URL]);
 
-  // Track if we've processed Piskel/Pixelc import
+  // Track if we've processed the Piskel import
   const [editorImportProcessed, setEditorImportProcessed] = useState(false);
 
   // Draft persistence state
@@ -393,16 +393,16 @@ function SubmitPageContent() {
     }
   }, []);
 
-  // Handle imports from Piskel or Pixelc editors, or restore saved draft
+  // Handle imports from the Piskel editor, or restore saved draft
   useEffect(() => {
     if (editorImportProcessed) return;
     if (!router.isReady) return;
 
     const from = router.query.from as string | undefined;
-    const hasEditorImport = from === 'piskel' || from === 'pixelc';
+    const hasEditorImport = from === 'piskel';
 
     if (hasEditorImport) {
-      const storageKey = from === 'piskel' ? 'piskel_export' : 'pixelc_export';
+      const storageKey = 'piskel_export';
       const exportData = sessionStorage.getItem(storageKey);
 
       if (exportData) {
@@ -412,7 +412,6 @@ function SubmitPageContent() {
         try {
           const data = JSON.parse(exportData);
 
-          // Get the data URL - both Piskel and Pixelc use 'imageData'
           const dataUrl = data.imageData;
 
           if (!dataUrl || typeof dataUrl !== 'string') {
@@ -435,19 +434,12 @@ function SubmitPageContent() {
 
           // Generate filename
           const extension = mimeType === 'image/gif' ? 'gif' : mimeType === 'image/webp' ? 'webp' : 'png';
-          const fileName = from === 'pixelc' && data.name
-            ? `${data.name}.${extension}`
-            : `${from}-export.${extension}`;
+          const fileName = `${from}-export.${extension}`;
 
           const file = new File([blob], fileName, { type: mimeType });
 
           // Store data URL for draft persistence
           setImageDataUrl(dataUrl);
-
-          // Pre-fill title from Pixelc name if available
-          if (from === 'pixelc' && data.name) {
-            setTitle(data.name);
-          }
 
           // Process the file
           handleFileSelect(file);

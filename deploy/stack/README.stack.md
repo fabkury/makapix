@@ -7,7 +7,6 @@ This directory contains the Docker Compose configuration for deploying the Makap
 - **Web (production)**: https://makapix.club (builds from `web/`)
 - **Vault (HTTP)**: http://vault.makapix.club (artwork files for physical players)
 - **Piskel Editor**: https://piskel.makapix.club
-- **PixelC Editor**: https://pixelc.makapix.club
 - **Reverse Proxy**: lucaslorentz/caddy-docker-proxy
 - **Compose dir**: `deploy/stack/` (run commands from here)
 

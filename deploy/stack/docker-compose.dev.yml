@@ -207,24 +207,6 @@ services:
       caddy.reverse_proxy: "{{upstreams 80}}"
 
   # ---------------------------------------------------------------------------
-  # Pixelc Editor - Development (allow framing from dev domain)
-  # ---------------------------------------------------------------------------
-  pixelc:
-    container_name: makapix-dev-pixelc
-    build:
-      context: /opt/Pixelc-dev
-      dockerfile: Dockerfile
-    labels:
-      caddy: pixelc-dev.makapix.club
-      caddy.encode: "gzip zstd"
-      caddy.header.X-Content-Type-Options: "nosniff"
-      caddy.header.Cross-Origin-Opener-Policy: "same-origin"
-      caddy.header.Cross-Origin-Embedder-Policy: "require-corp"
-      caddy.header.Content-Security-Policy: "frame-ancestors 'self' https://development.makapix.club"
-      caddy.header.X-Robots-Tag: "noindex, nofollow"
-      caddy.reverse_proxy: "{{upstreams 80}}"
-
-  # ---------------------------------------------------------------------------
   # Redis (rate limiting) - Development
   # ---------------------------------------------------------------------------
   redis:

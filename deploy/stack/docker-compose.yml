@@ -316,18 +316,6 @@ services:
       - caddy_net
 
   # ---------------------------------------------------------------------------
-  # Pixelc Editor
-  # Labels set in environment-specific override files
-  # ---------------------------------------------------------------------------
-  pixelc:
-    build:
-      context: /opt/Pixelc
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    networks:
-      - caddy_net
-
-  # ---------------------------------------------------------------------------
   # Redis (public-facing) - For rate limiting at edge
   # ---------------------------------------------------------------------------
   redis:

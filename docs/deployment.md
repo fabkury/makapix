@@ -22,8 +22,6 @@ Production deployment, dual-environment setup, backups, monitoring, and troubles
 | `vault-dev.makapix.club` | VPS IP | Artwork serving for players (dev, HTTP) |
 | `piskel.makapix.club` | VPS IP | Piskel editor (prod) |
 | `piskel-dev.makapix.club` | VPS IP | Piskel editor (dev) |
-| `pixelc.makapix.club` | VPS IP | Pixelc editor (prod) |
-| `pixelc-dev.makapix.club` | VPS IP | Pixelc editor (dev) |
 
 ---
 
@@ -116,7 +114,6 @@ All services are defined in `deploy/stack/docker-compose.yml` with environment-s
 | vault | `alpine:latest` | Dummy container for Caddy file_server labels | caddy_net |
 | www-redirect | `alpine:latest` | www -> apex redirect (prod only) | caddy_net |
 | piskel | `apps/piskel/Dockerfile` | Piskel pixel art editor | caddy_net |
-| pixelc | `/opt/Pixelc/Dockerfile` | Pixelc pixel art editor | caddy_net |
 | redis | `redis:7-alpine` | Edge rate limiting | caddy_net |
 
 ### Networks
