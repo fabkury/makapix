@@ -19009,7 +19009,7 @@
     },
     "/v1/post/{id}/replace-artwork": {
       "post": {
-        "description": "Replace the artwork of an existing post (Piskel edit feature)",
+        "description": "Replace the artwork of an existing post (app edit feature)",
         "operationId": "replace_artwork_v1_post__id__replace_artwork_post",
         "parameters": [
           {

@@ -270,8 +270,8 @@ function SubmitPageContent() {
     fetchLicenses();
   }, [API_BASE_URL]);
 
-  // Track if we've processed the Piskel import
-  const [editorImportProcessed, setEditorImportProcessed] = useState(false);
+  // Track if we've attempted the initial draft restore
+  const [draftRestoreProcessed, setDraftRestoreProcessed] = useState(false);
 
   // Draft persistence state
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
@@ -393,81 +393,19 @@ function SubmitPageContent() {
     }
   }, []);
 
-  // Handle imports from the Piskel editor, or restore saved draft
+  // Restore saved draft on first load
   useEffect(() => {
-    if (editorImportProcessed) return;
+    if (draftRestoreProcessed) return;
     if (!router.isReady) return;
 
-    const from = router.query.from as string | undefined;
-    const hasEditorImport = from === 'piskel';
-
-    if (hasEditorImport) {
-      const storageKey = 'piskel_export';
-      const exportData = sessionStorage.getItem(storageKey);
-
-      if (exportData) {
-        // New artwork from editor takes priority - clear any saved draft
-        clearDraft();
-
-        try {
-          const data = JSON.parse(exportData);
-
-          const dataUrl = data.imageData;
-
-          if (!dataUrl || typeof dataUrl !== 'string') {
-            console.error(`Invalid ${from} export data: missing data URL`);
-            setEditorImportProcessed(true);
-            setInitComplete(true);
-            return;
-          }
-
-          // Convert data URL to File
-          const byteString = atob(dataUrl.split(',')[1]);
-          const mimeMatch = dataUrl.match(/^data:([^;]+);/);
-          const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
-          const arrayBuffer = new ArrayBuffer(byteString.length);
-          const uint8Array = new Uint8Array(arrayBuffer);
-          for (let i = 0; i < byteString.length; i++) {
-            uint8Array[i] = byteString.charCodeAt(i);
-          }
-          const blob = new Blob([arrayBuffer], { type: mimeType });
-
-          // Generate filename
-          const extension = mimeType === 'image/gif' ? 'gif' : mimeType === 'image/webp' ? 'webp' : 'png';
-          const fileName = `${from}-export.${extension}`;
-
-          const file = new File([blob], fileName, { type: mimeType });
-
-          // Store data URL for draft persistence
-          setImageDataUrl(dataUrl);
-
-          // Process the file
-          handleFileSelect(file);
-
-          // Clear the editor export from sessionStorage
-          sessionStorage.removeItem(storageKey);
-
-          setEditorImportProcessed(true);
-          setInitComplete(true);
-          return;
-        } catch (err) {
-          console.error(`Failed to process ${from} export:`, err);
-          setEditorImportProcessed(true);
-          setInitComplete(true);
-          return;
-        }
-      }
-    }
-
-    // No editor import - try to restore saved draft
     const draft = loadDraft();
     if (draft) {
       restoreFromDraft(draft);
     }
 
-    setEditorImportProcessed(true);
+    setDraftRestoreProcessed(true);
     setInitComplete(true);
-  }, [router.isReady, router.query.from, editorImportProcessed, handleFileSelect, restoreFromDraft]);
+  }, [router.isReady, draftRestoreProcessed, restoreFromDraft]);
 
   // Fallback for image info when scaler is not available
   const fallbackImageInfo = useCallback((file: File, objectUrl: string) => {

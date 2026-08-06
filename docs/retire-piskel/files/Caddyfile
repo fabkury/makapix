@@ -1,0 +1,14 @@
+:80 {
+	root * /srv
+	encode gzip
+	file_server
+	header X-Content-Type-Options nosniff
+	header Access-Control-Allow-Origin "*"
+	
+	# Prevent caching of HTML to ensure users always get latest version
+	@html {
+		path *.html /
+	}
+	header @html Cache-Control "no-cache, no-store, must-revalidate"
+}
+

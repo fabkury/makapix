@@ -325,8 +325,8 @@ function FeaturesTab() {
     },
     {
       icon: '🎨',
-      title: 'Integrated Editors',
-      description: 'Create art in the app or the in-browser Piskel editor, or upload files',
+      title: 'Integrated Editor',
+      description: 'Create art in the official app, or upload files from any device',
     },
     {
       icon: '🔄',

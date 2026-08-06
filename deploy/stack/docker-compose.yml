@@ -304,18 +304,6 @@ services:
       - caddy_net
 
   # ---------------------------------------------------------------------------
-  # Piskel Editor
-  # Labels set in environment-specific override files
-  # ---------------------------------------------------------------------------
-  piskel:
-    build:
-      context: ../../apps/piskel
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    networks:
-      - caddy_net
-
-  # ---------------------------------------------------------------------------
   # Redis (public-facing) - For rate limiting at edge
   # ---------------------------------------------------------------------------
   redis:

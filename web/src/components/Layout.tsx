@@ -32,7 +32,7 @@ const navItems: NavItem[] = [
     iconSrc: '/button/contribute/btn004-contribute-32px-1x.png',
     iconSrcSet: '/button/contribute/btn004-contribute-32px-1x.png 1x, /button/contribute/btn004-contribute-40px-1_25x.png 1.25x, /button/contribute/btn004-contribute-48px-1_5x.png 1.5x, /button/contribute/btn004-contribute-56px-1_75x.png 1.75x, /button/contribute/btn004-contribute-64px-2x.png 2x, /button/contribute/btn004-contribute-72px-2_25x.png 2.25x, /button/contribute/btn004-contribute-80px-2_5x.png 2.5x, /button/contribute/btn004-contribute-88px-2_75x.png 2.75x, /button/contribute/btn004-contribute-96px-3x.png 3x, /button/contribute/btn004-contribute-104px-3_25x.png 3.25x, /button/contribute/btn004-contribute-112px-3_5x.png 3.5x, /button/contribute/btn004-contribute-128px-4x.png 4x',
     label: 'Contribute',
-    matchPaths: ['/contribute', '/editor', '/submit', '/divoom-import']
+    matchPaths: ['/contribute', '/submit', '/divoom-import']
   },
   {
     href: '/recommended',

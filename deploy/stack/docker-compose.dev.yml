@@ -194,19 +194,6 @@ services:
       - disabled
 
   # ---------------------------------------------------------------------------
-  # Piskel Editor - Development (allow framing from dev domain)
-  # ---------------------------------------------------------------------------
-  piskel:
-    container_name: makapix-dev-piskel
-    labels:
-      caddy: piskel-dev.makapix.club
-      caddy.encode: "gzip zstd"
-      caddy.header.X-Content-Type-Options: "nosniff"
-      caddy.header.Content-Security-Policy: "frame-ancestors 'self' https://development.makapix.club"
-      caddy.header.X-Robots-Tag: "noindex, nofollow"
-      caddy.reverse_proxy: "{{upstreams 80}}"
-
-  # ---------------------------------------------------------------------------
   # Redis (rate limiting) - Development
   # ---------------------------------------------------------------------------
   redis:

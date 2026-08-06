@@ -2,26 +2,6 @@
 
 This document lists the third-party software components used in Makapix Club and their respective licenses.
 
-## Major Components
-
-### Piskel - Pixel Art Editor
-
-**Repository:** https://github.com/piskelapp/piskel  
-**License:** Apache License 2.0  
-**Copyright:** Copyright (c) 2013 Julian Descottes  
-
-Makapix Club integrates Piskel as an embedded pixel art editor. The integration includes modifications to:
-- Add custom export functionality for publishing directly to Makapix
-- Integrate UI elements for seamless workflow between editor and platform
-- Enable editing of existing Makapix artwork
-- Configure dimension limits appropriate for the platform
-
-Piskel is hosted as a separate service at `piskel.makapix.club` and communicates with the main Makapix application via the postMessage API.
-
-**License Text:** See https://github.com/piskelapp/piskel/blob/master/LICENSE
-
----
-
 ## Core Framework Dependencies
 
 ### Frontend (Next.js / React)
