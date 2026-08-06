@@ -29,8 +29,7 @@ API (`api/`): none — the `/posts/{id}/replace-artwork` endpoint stays (the nat
 Deploy & repo:
 - `piskel` service removed from `deploy/stack/docker-compose.yml`, `docker-compose.prod.yml`, `docker-compose.dev.yml`.
 - Containers `makapix-prod-piskel` / `makapix-dev-piskel` stopped and removed, images deleted. Caddy routes were label-driven, so they disappeared with the containers — no Caddyfile change, no Caddy restart.
-- `apps/piskel/` checkouts deleted from both `/opt/makapix-dev` and `/opt/makapix` (owner-run; the path was gitignored, never tracked).
-- `.gitignore` — `apps/piskel/` entry removed.
+- `.gitignore` — `apps/piskel/` entry removed (the path was gitignored, never tracked).
 - `NOTICE` + `THIRD_PARTY_LICENSES.md` — Piskel attribution sections removed (code no longer shipped).
 - Docs: `deploy/stack/README.stack.md`, `docs/deployment.md` (DNS + services tables), `docs/submit-page-playwright-testing.md` (editor-import scenario).
 
@@ -38,6 +37,7 @@ Not touched (historical records): `_docs/legacy/piskel/`, `docs/appraisal-2026-0
 
 ## Manual follow-ups (owner)
 
+- [ ] Delete the `apps/piskel/` checkouts: `sudo rm -rf /opt/makapix-dev/apps/piskel /opt/makapix/apps/piskel`
 - [ ] Delete DNS A records `piskel.makapix.club` and `piskel-dev.makapix.club`.
 
 ## Reopen trigger
