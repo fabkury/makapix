@@ -37,8 +37,10 @@ Not touched (historical records): `_docs/legacy/piskel/`, `docs/appraisal-2026-0
 
 ## Manual follow-ups (owner)
 
-- [ ] Delete the `apps/piskel/` checkouts: `sudo rm -rf /opt/makapix-dev/apps/piskel /opt/makapix/apps/piskel`
-- [ ] Delete DNS A records `piskel.makapix.club` and `piskel-dev.makapix.club`.
+All completed 2026-08-06:
+
+- [x] Delete the `apps/piskel/` checkouts: `sudo rm -rf /opt/makapix-dev/apps/piskel /opt/makapix/apps/piskel`
+- [x] Delete DNS A records `piskel.makapix.club` and `piskel-dev.makapix.club`.
 
 ## Reopen trigger
 
