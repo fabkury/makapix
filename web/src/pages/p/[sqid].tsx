@@ -701,13 +701,7 @@ export default function PostPage() {
     }
   };
 
-  // Kebab action handlers (Edit-in-editor, Share, Download — visible to all)
-  const handleEditInPiskel = () => {
-    if (!post) return;
-    closeMoreMenu();
-    router.push(`/editor?edit=${post.public_sqid}`);
-  };
-
+  // Kebab action handlers (Share, Download — visible to all)
   const handleDownloadNative = async () => {
     if (!post) return;
     closeMoreMenu();
@@ -1723,33 +1717,6 @@ export default function PostPage() {
             </button>
 
             <div className="menu-divider" />
-
-            {/* Edit submenu */}
-            <div
-              onMouseEnter={() => openSubMenu("edit")}
-              onMouseLeave={() => closeSubMenuDelayed()}
-            >
-              <button
-                className="menu-item submenu-trigger"
-                onClick={() =>
-                  activeSubMenu === "edit"
-                    ? setActiveSubMenu(null)
-                    : openSubMenu("edit")
-                }
-              >
-                <span>Edit</span>
-                <span className="submenu-arrow">
-                  {activeSubMenu === "edit" ? "▼" : "▶"}
-                </span>
-              </button>
-              {activeSubMenu === "edit" && (
-                <div className="submenu">
-                  <button className="menu-item" onClick={handleEditInPiskel}>
-                    In Piskel
-                  </button>
-                </div>
-              )}
-            </div>
 
             {/* Share submenu */}
             <div

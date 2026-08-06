@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
-import Head from 'next/head';
 import Layout from '../components/Layout';
 
 type DeviceTab = 'desktop' | 'mobile';
@@ -44,13 +43,6 @@ export default function ContributePage() {
 
   return (
     <Layout title="Contribute" description="Submit your pixel art">
-      <Head>
-        <link
-          rel="preload"
-          href="/piskel/piskel_logo_transparent_small_compact.png"
-          as="image"
-        />
-      </Head>
       <div className="contribute-container">
         <h1 className="page-title">Contribute</h1>
         <p className="page-subtitle">
@@ -87,18 +79,6 @@ export default function ContributePage() {
                   <div className="option-icon option-icon-emoji">➕</div>
                   <h2 className="option-title">Upload File</h2>
                   <p className="option-description">Upload PNG, GIF, WebP, or BMP directly</p>
-                </Link>
-
-                <Link href="/editor" className="option-card">
-                  <div className="option-icon">
-                    <img
-                      src="/piskel/piskel_logo_transparent_small_compact.png"
-                      alt="Piskel"
-                      className="piskel-logo"
-                    />
-                  </div>
-                  <h2 className="option-title">Draw in Piskel</h2>
-                  <p className="option-description">Create pixel art using the Piskel editor</p>
                 </Link>
 
                 <Link href="/divoom-import" className="option-card">
@@ -281,17 +261,6 @@ export default function ContributePage() {
         .option-icon-emoji {
           font-size: 4rem;
           line-height: 1;
-        }
-
-        .piskel-logo {
-          width: 100%;
-          height: 100%;
-          object-fit: contain;
-          image-rendering: -webkit-optimize-contrast;
-          image-rendering: -moz-crisp-edges;
-          image-rendering: crisp-edges;
-          image-rendering: pixelated;
-          -ms-interpolation-mode: nearest-neighbor;
         }
 
         .option-title {

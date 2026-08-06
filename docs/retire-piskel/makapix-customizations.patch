@@ -1,0 +1,152 @@
+diff --git a/src/css/settings-export.css b/src/css/settings-export.css
+index 089bf76..ca92341 100644
+--- a/src/css/settings-export.css
++++ b/src/css/settings-export.css
+@@ -137,6 +137,12 @@
+   flex-shrink: 0;
+ }
+ 
++.gif-makapix-button {
++  height: 48px;
++  width: auto !important;
++  padding: 0 12px;
++}
++
+ .export-panel-png .textfield {
+   width: 50px;
+ }
+diff --git a/src/js/Constants.js b/src/js/Constants.js
+index 6739abc..68960cb 100644
+--- a/src/js/Constants.js
++++ b/src/js/Constants.js
+@@ -9,8 +9,9 @@ var Constants = {
+ 
+   MODEL_VERSION : 2,
+ 
+-  MAX_HEIGHT : 1024,
+-  MAX_WIDTH : 1024,
++  // Makapix Club limits artwork to 256x256
++  MAX_HEIGHT : 256,
++  MAX_WIDTH : 256,
+ 
+   MAX_PALETTE_COLORS : 256,
+   // allow current colors service to get up to 256 colors.
+diff --git a/src/js/app.js b/src/js/app.js
+index 3e0d97d..d8c2c6c 100644
+--- a/src/js/app.js
++++ b/src/js/app.js
+@@ -160,6 +160,15 @@
+       this.fileDropperService = new pskl.service.FileDropperService(this.piskelController);
+       this.fileDropperService.init();
+ 
++      // Makapix Integration
++      this.makapixStorageService = new pskl.service.storage.MakapixStorageService(this.piskelController);
++      this.makapixStorageService.init();
++
++      // Initialize Makapix communication (if in iframe)
++      if (window.parent !== window) {
++        pskl.makapix.MakapixIntegration.init();
++      }
++
+       this.userWarningController = new pskl.controller.UserWarningController(this.piskelController);
+       this.userWarningController.init();
+ 
+diff --git a/src/js/controller/settings/exportimage/GifExportController.js b/src/js/controller/settings/exportimage/GifExportController.js
+index 73bb23b..7185e5d 100644
+--- a/src/js/controller/settings/exportimage/GifExportController.js
++++ b/src/js/controller/settings/exportimage/GifExportController.js
+@@ -17,12 +17,24 @@
+     this.uploadStatusContainerEl = document.querySelector('.gif-upload-status');
+     this.downloadButton = document.querySelector('.gif-download-button');
+     this.repeatCheckbox = document.querySelector('.gif-repeat-checkbox');
++    this.makapixButton = document.querySelector('.gif-makapix-button');
++    this.makapixReplaceButton = document.querySelector('.gif-makapix-replace-button');
+ 
+     // Initialize repeatCheckbox state
+     this.repeatCheckbox.checked = this.getRepeatSetting_();
+ 
+     this.addEventListener(this.downloadButton, 'click', this.onDownloadButtonClick_);
+     this.addEventListener(this.repeatCheckbox, 'change', this.onRepeatCheckboxChange_);
++    
++    if (this.makapixButton) {
++      this.addEventListener(this.makapixButton, 'click', this.onMakapixButtonClick_);
++    }
++    if (this.makapixReplaceButton) {
++      this.addEventListener(this.makapixReplaceButton, 'click', this.onMakapixReplaceButtonClick_);
++    }
++    
++    // Show/hide replace button based on edit mode
++    this.updateMakapixButtons_();
+ 
+     var currentColors = pskl.app.currentColorsService.getCurrentColors();
+     var tooManyColors = currentColors.length >= MAX_GIF_COLORS;
+@@ -131,4 +143,27 @@
+   ns.GifExportController.prototype.getRepeatSetting_ = function () {
+     return pskl.UserSettings.get(pskl.UserSettings.EXPORT_GIF_REPEAT);
+   };
++
++  ns.GifExportController.prototype.updateMakapixButtons_ = function () {
++    var isEditMode = pskl.makapix && pskl.makapix.MakapixIntegration.isEditMode();
++    if (this.makapixReplaceButton) {
++      this.makapixReplaceButton.style.display = isEditMode ? 'inline-block' : 'none';
++    }
++  };
++
++  ns.GifExportController.prototype.onMakapixButtonClick_ = function () {
++    var zoom = this.getZoom_();
++    pskl.app.makapixStorageService.save(pskl.app.piskelController.getPiskel(), {
++      zoom: zoom,
++      replace: false
++    });
++  };
++
++  ns.GifExportController.prototype.onMakapixReplaceButtonClick_ = function () {
++    var zoom = this.getZoom_();
++    pskl.app.makapixStorageService.save(pskl.app.piskelController.getPiskel(), {
++      zoom: zoom,
++      replace: true
++    });
++  };
+ })();
+diff --git a/src/piskel-script-list.js b/src/piskel-script-list.js
+index 11352a0..9a72e6c 100644
+--- a/src/piskel-script-list.js
++++ b/src/piskel-script-list.js
+@@ -183,6 +183,7 @@
+   "js/service/storage/LocalStorageService.js",
+   "js/service/storage/GalleryStorageService.js",
+   "js/service/storage/DesktopStorageService.js",
++  "js/service/storage/MakapixStorageService.js",
+   "js/service/BackupService.js",
+   "js/service/BeforeUnloadService.js",
+   "js/service/HistoryService.js",
+@@ -263,6 +264,9 @@
+   "js/worker/imageprocessor/ImageProcessorWorker.js",
+   "js/worker/imageprocessor/ImageProcessor.js",
+ 
++  // Makapix Integration
++  "js/makapix/MakapixIntegration.js",
++
+   // Application controller and initialization
+   "js/app.js",
+ 
+diff --git a/src/templates/settings/export/gif.html b/src/templates/settings/export/gif.html
+index 0de2562..d164388 100644
+--- a/src/templates/settings/export/gif.html
++++ b/src/templates/settings/export/gif.html
+@@ -20,5 +20,14 @@
+       <button type="button" class="button button-primary gif-download-button">Download</button>
+       <div class="export-info">Download as an animated GIF.</div>
+     </div>
++    <div class="export-panel-section export-panel-row makapix-export-section">
++      <button type="button" class="button button-primary gif-makapix-button">
++        🚀 Send to<br>Makapix Club
++      </button>
++      <button type="button" class="button button-secondary gif-makapix-replace-button" style="display:none;">
++        🔄 Replace Original
++      </button>
++      <div class="export-info">Send directly to Makapix Club for posting.</div>
++    </div>
+   </div>
+ </script>
+\ No newline at end of file

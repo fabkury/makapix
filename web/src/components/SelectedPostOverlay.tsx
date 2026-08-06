@@ -1073,12 +1073,6 @@ export default function SelectedPostOverlay({
     }
   }, [post]);
 
-  const handleEditInPiskel = useCallback(() => {
-    if (!post) return;
-    setShowMoreMenu(false);
-    router.push(`/editor?edit=${post.public_sqid}`);
-  }, [post, router]);
-
   const handleDownloadNative = useCallback(async () => {
     if (!post) return;
     setShowMoreMenu(false);
@@ -1859,55 +1853,6 @@ export default function SelectedPostOverlay({
                 margin: "4px 0",
               }}
             />
-
-            {/* Edit submenu */}
-            <div
-              onMouseEnter={() => openSubMenu("edit")}
-              onMouseLeave={() => closeSubMenuDelayed()}
-            >
-              <button
-                style={{
-                  ...menuItemStyles,
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  activeSubMenu === "edit"
-                    ? setActiveSubMenu(null)
-                    : openSubMenu("edit");
-                }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.background = "rgba(255,255,255,0.08)")
-                }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.background = "transparent")
-                }
-              >
-                <span>Edit</span>
-                <span style={{ marginLeft: "8px" }}>
-                  {activeSubMenu === "edit" ? "▼" : "▶"}
-                </span>
-              </button>
-              {activeSubMenu === "edit" && (
-                <div style={subPanelStyles}>
-                  <button
-                    style={menuItemStyles}
-                    onClick={handleEditInPiskel}
-                    onMouseEnter={(e) =>
-                      (e.currentTarget.style.background =
-                        "rgba(255,255,255,0.08)")
-                    }
-                    onMouseLeave={(e) =>
-                      (e.currentTarget.style.background = "transparent")
-                    }
-                  >
-                    In Piskel
-                  </button>
-                </div>
-              )}
-            </div>
 
             {/* Share submenu */}
             <div

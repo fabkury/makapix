@@ -1834,7 +1834,7 @@ async def replace_artwork(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Replace the artwork of an existing post (Piskel edit feature)"""
+    """Replace the artwork of an existing post (app edit feature)"""
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post or post.kind != "artwork":
         raise HTTPException(status_code=404, detail="Post not found")

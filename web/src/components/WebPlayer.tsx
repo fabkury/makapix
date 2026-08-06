@@ -823,12 +823,6 @@ export function WebPlayer({
     [closeMenu],
   );
 
-  const handleEditInPiskel = useCallback(() => {
-    if (!displayedArtwork) return;
-    closeMenu();
-    router.push(`/editor?edit=${displayedArtwork.public_sqid}`);
-  }, [displayedArtwork, closeMenu, router]);
-
   const handleDownloadNative = useCallback(async () => {
     if (!displayedArtwork) return;
     closeMenu();
@@ -1539,35 +1533,6 @@ export function WebPlayer({
             </button>
 
             <div className="wp-menu-sep" />
-
-            {/* Edit submenu */}
-            <div
-              className="wp-menu-sub-wrap"
-              onMouseEnter={() => openSubMenu("edit")}
-              onMouseLeave={() => closeSubMenuDelayed()}
-            >
-              <button
-                className="wp-menu-item wp-menu-item-sub"
-                onClick={() =>
-                  activeSubMenu === "edit"
-                    ? setActiveSubMenu(null)
-                    : openSubMenu("edit")
-                }
-              >
-                <span>Edit</span>
-                <span>{activeSubMenu === "edit" ? "\u25BC" : "\u25B6"}</span>
-              </button>
-              {activeSubMenu === "edit" && (
-                <div className="wp-submenu">
-                  <button
-                    className="wp-menu-item"
-                    onClick={handleEditInPiskel}
-                  >
-                    In Piskel
-                  </button>
-                </div>
-              )}
-            </div>
 
             {/* Share submenu */}
             <div

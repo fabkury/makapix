@@ -32,9 +32,11 @@ Not touched (historical records): `_docs/`, `docs/appraisal-2026-07/`, `docs/cod
 
 ## Manual follow-ups (owner)
 
-- [ ] Revoke the GitHub PAT that was embedded in `/opt/Pixelc-dev/.git/config` (`github_pat_11ACITPCY0…`).
-- [ ] Delete DNS A records `pixelc.makapix.club` and `pixelc-dev.makapix.club`.
-- [ ] Optional: archive the fork repo <https://github.com/fabkury/Pixelc>.
+All completed 2026-08-04:
+
+- [x] Revoke the GitHub PAT that was embedded in `/opt/Pixelc-dev/.git/config`.
+- [x] Delete DNS A records `pixelc.makapix.club` and `pixelc-dev.makapix.club` (verified NXDOMAIN).
+- Optional, still open: archive the fork repo <https://github.com/fabkury/Pixelc>.
 
 ## Reopen trigger
 
