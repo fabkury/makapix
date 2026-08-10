@@ -15,7 +15,7 @@ Security documentation for the Makapix Club platform.
 | Authentication | Excellent | JWT + bcrypt + OAuth, HttpOnly cookies |
 | API Security | Excellent | ORM, Pydantic validation, rate limiting, security headers |
 | Infrastructure | Good | Docker network isolation, auto-TLS, mTLS for players |
-| MQTT/IoT | Good | 1 open high-priority finding (shared webclient credentials) |
+| MQTT/IoT | Excellent | Device plane only (mTLS + CRL); the shared-webclient finding (H1) was resolved 2026-08 by deleting the browser MQTT path |
 | Data Protection | Excellent | Hashed IPs, parameterized queries, file validation |
 | Secrets Management | Good | Env-based, startup validation, rotation procedures documented |
 

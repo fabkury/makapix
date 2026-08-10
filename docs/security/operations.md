@@ -12,7 +12,6 @@ Secret management, rotation procedures, hardening, and maintenance checklists.
 | `DB_ADMIN_PASSWORD` | PostgreSQL admin user | 90 days |
 | `DB_API_WORKER_PASSWORD` | PostgreSQL application user | 90 days |
 | `MQTT_PASSWORD` | MQTT backend service auth | 90 days |
-| `MQTT_WEBCLIENT_PASSWORD` | MQTT web client auth | 90 days |
 | `MAKAPIX_ADMIN_PASSWORD` | Site owner account | 90 days |
 | `GITHUB_OAUTH_CLIENT_SECRET` | GitHub OAuth login | 180 days |
 | `RESEND_API_KEY` | Transactional email (Resend) | 180 days |
@@ -27,12 +26,6 @@ Secret management, rotation procedures, hardening, and maintenance checklists.
 | `mqtt/certs/server.key` | MQTT server private key | 365 days |
 | `mqtt/certs/server.crt` | MQTT server certificate | 365 days |
 | `mqtt/certs/crl.pem` | Certificate revocation list | Auto-renewed within 7 days of expiry |
-
-### Hardcoded Values (Require Code Change)
-
-| Location | What | Notes |
-|----------|------|-------|
-| `web/src/lib/mqtt-client.ts` | MQTT webclient credentials | Open finding H1 -- should migrate to per-session tokens |
 
 ### Critical: DO NOT ROTATE
 
@@ -102,22 +95,12 @@ docker compose restart mqtt api worker
 
 ### MQTT Webclient Password
 
-Requires code change and frontend rebuild:
-
-```bash
-NEW_WC=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
-
-# 1. Update password file
-mosquitto_passwd -b /opt/makapix/mqtt/config/passwords webclient "$NEW_WC"
-
-# 2. Update env var (used by Next.js at build time)
-sed -i "s/MQTT_WEBCLIENT_PASSWORD=.*/MQTT_WEBCLIENT_PASSWORD=$NEW_WC/" .env
-
-# 3. Rebuild web service and restart
-cd /opt/makapix/deploy/stack
-docker compose build --no-cache web
-docker compose restart web mqtt
-```
+**Removed 2026-08** — the browser MQTT path was retired
+(docs/notification-architecture/): the `webclient` broker account, the
+WebSocket listener, and the bundled `NEXT_PUBLIC_MQTT_WEBCLIENT_PASSWORD`
+were all deleted; the web consumes the bearer-authenticated SSE stream
+instead. The old shared password is worthless (the account no longer
+exists), so no rotation is required. This closes finding H1 by deletion.
 
 ### OAuth Client Secret (GitHub)
 
@@ -213,7 +196,7 @@ Unresolved findings from the January 2026 security audit:
 
 | ID | Severity | Finding | Status | Remediation |
 |----|----------|---------|--------|-------------|
-| H1 | High | Shared webclient MQTT credentials | Open | Implement per-session MQTT tokens via Redis |
+| H1 | High | Shared webclient MQTT credentials | **Resolved 2026-08** | Browser MQTT path deleted; web on bearer-auth SSE (docs/notification-architecture/) |
 | M1 | Medium | JWT refresh tokens 30-day expiry | Open | Consider reducing to 7-14 days |
 | M2 | Medium | MQTT certs 365-day validity | Open | Consider reducing to 180 days |
 | M3 | Medium | Player cert private keys stored in DB | Open | Consider filesystem or HSM storage |
@@ -224,7 +207,10 @@ Unresolved findings from the January 2026 security audit:
 
 ### Webclient Privacy Concern
 
-The `webclient` MQTT account can subscribe to `makapix/social-notifications/#`, which covers ALL users' social notifications. The ACL restricts webclient to read-only, but the wildcard scope is broader than necessary. Per-session tokens (H1 fix) would also resolve this by scoping subscriptions per user.
+**Resolved 2026-08 by deletion**: the `webclient` account and the
+`makapix/social-notifications/*` topics no longer exist. Social notifications
+are delivered per-user over the bearer-authenticated SSE stream
+(`docs/http-api/notifications.md`).
 
 ---
 

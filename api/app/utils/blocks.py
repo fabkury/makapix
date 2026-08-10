@@ -65,6 +65,20 @@ def filter_items_by_blocks(items: list, db: Session, viewer_id: int | None) -> l
     return [item for item in items if item.owner_id not in blocked]
 
 
+def viewer_has_blocked(db: Session, viewer_id: int, author_id: int) -> bool:
+    """True if the viewer has blocked the author (one-way, D10). Used to gate
+    live notification delivery (SSE bus + push) — the row is still created so
+    unblocking reveals history, matching `apply_block_filter` on the list."""
+    return db.query(
+        db.query(models.UserBlock)
+        .filter(
+            models.UserBlock.blocker_id == viewer_id,
+            models.UserBlock.blocked_id == author_id,
+        )
+        .exists()
+    ).scalar()
+
+
 def block_exists_between(db: Session, a_id: int, b_id: int) -> bool:
     """True if a block exists between the two users in either direction (D11)."""
     return db.query(

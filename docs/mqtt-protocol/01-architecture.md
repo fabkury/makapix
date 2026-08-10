@@ -18,7 +18,6 @@ Capabilities:
 ┌──────────────────────────────────────────────────────────┐
 │                   Client Devices                         │
 │  - Physical Players (ESP32-P4, etc.) ── mTLS :8883      │
-│  - Web Browsers ── WebSocket via Caddy at /mqtt          │
 └─────────────────────────┬────────────────────────────────┘
                           │
                           ▼
@@ -26,7 +25,6 @@ Capabilities:
 │              Mosquitto MQTT Broker                        │
 │  Listener 1883: Internal (password auth, Docker network) │
 │  Listener 8883: mTLS (physical players, CRL-checked)     │
-│  Listener 9001: WebSocket (password auth, Caddy-proxied) │
 └──────────┬──────────────┬──────────────┬─────────────────┘
            │              │              │
   ┌────────▼────────┐ ┌──▼───────────┐ ┌▼────────────────┐
@@ -80,19 +78,11 @@ Used by the backend API server and Celery workers within the Docker network. Not
 | Username | `svc_backend` |
 | Password | Set via `MQTT_PASSWORD` env var |
 
-### 3. WebSocket (Port 9001 via Caddy) -- Web Browsers
-
-WebSocket transport proxied through Caddy at the `/mqtt` path. Web clients use a shared `webclient` account with read-only access.
-
-| Setting | Value |
-|---------|-------|
-| URL | `wss://makapix.club/mqtt` (prod) |
-| URL (dev) | `wss://development.makapix.club/mqtt` |
-| Username | `webclient` |
-| Password | Set via `NEXT_PUBLIC_MQTT_WEBCLIENT_PASSWORD` env var |
-| Client ID | `web-{userId}-{timestamp}` |
-
-Caddy routes `/mqtt` to the Mosquitto WebSocket listener on container port 9001. The port is not exposed directly to the host.
+> There is no browser connection method. The former WebSocket listener
+> (9001, shared `webclient` account, Caddy `/mqtt` route) was removed 2026-08:
+> browsers receive social notifications over the authenticated SSE stream
+> (`docs/http-api/notifications.md`); MQTT is the device plane only
+> (`docs/notification-architecture/`).
 
 ## Authentication
 
@@ -104,10 +94,6 @@ Physical players use a provisioning and registration process:
 2. **Register** -- Owner calls `POST /player/register` with the registration code and a display name. Binds the player to their account.
 3. **Download certificates** -- Device calls `GET /player/{player_key}/credentials` to obtain CA cert, client cert, and private key.
 4. **MQTT connect** -- Device connects via mTLS on port 8883 using the downloaded certificates.
-
-### Web Client Authentication
-
-Web clients connect to `wss://{domain}/mqtt` using the shared `webclient` credentials. The `webclient` account has read-only ACL access, so web clients can only subscribe to notification topics -- they cannot publish.
 
 ### Backend Authentication
 
@@ -127,16 +113,10 @@ makapix/
 │       ├── status                 # Player → Server (heartbeat/state)
 │       ├── view                   # Player → Server (fire-and-forget)
 │       └── view/ack              # Server → Player (optional ack)
-│
-├── post/
-│   └── new/
-│       ├── {post_id}                      # Generic (monitoring)
-│       ├── user/{follower_id}/{post_id}   # Per-follower new post
-│       └── category/{category}/{post_id}  # Category promotion
-│
-└── social-notifications/
-    └── user/{user_id}                     # Social events (reactions, etc.)
 ```
+
+(The former `makapix/post/new/*` and `makapix/social-notifications/*` topics
+were removed 2026-08 — social notifications are HTTP-only.)
 
 ### Topic Details
 
@@ -148,10 +128,6 @@ makapix/
 | `makapix/player/{key}/status` | Player → Server | 1 | No | Heartbeat and state updates |
 | `makapix/player/{key}/view` | Player → Server | 1 | No | Fire-and-forget view events |
 | `makapix/player/{key}/view/ack` | Server → Player | 1 | No | Optional view acknowledgment |
-| `makapix/post/new/{post_id}` | Server → Any | 1 | No | Generic new post (monitoring) |
-| `makapix/post/new/user/{fid}/{pid}` | Server → Web | 1 | No | New post from followed user |
-| `makapix/post/new/category/{cat}/{pid}` | Server → Web | 1 | No | Category promotion |
-| `makapix/social-notifications/user/{uid}` | Server → Web | 1 | No | Reactions, comments, follows, etc. |
 
 Server subscribes to wildcard patterns:
 - `makapix/player/+/request/+` (request subscriber)
@@ -180,14 +156,11 @@ require_certificate true
 use_identity_as_username true
 tls_version tlsv1.2
 crlfile /mosquitto/certs/crl.pem
-
-listener 9001 0.0.0.0                    # WebSocket (web clients)
-protocol websockets
 ```
 
 ### ACL Rules
 
-Defined in `mqtt/config/acls`. Three principal types:
+Defined in `mqtt/config/acls`. Two principal types:
 
 **`svc_backend`** (API server) -- full read/write:
 
@@ -199,10 +172,6 @@ Defined in `mqtt/config/acls`. Three principal types:
 | write | `makapix/player/+/response/+` |
 | read | `makapix/player/+/view` |
 | write | `makapix/player/+/view/ack` |
-| write | `makapix/post/new/#` |
-| write | `makapix/post/new/user/#` |
-| write | `makapix/post/new/category/#` |
-| write | `makapix/social-notifications/#` |
 | read | `$SYS/#` |
 
 **Registered players** (pattern `%u` = player_key from cert CN):
@@ -216,15 +185,6 @@ Defined in `mqtt/config/acls`. Three principal types:
 | write | `makapix/player/%u/view` |
 | read | `makapix/player/%u/view/ack` |
 
-**`webclient`** (web browsers) -- read-only:
-
-| Access | Topic |
-|--------|-------|
-| read | `makapix/post/new/user/#` |
-| read | `makapix/post/new/category/#` |
-| read | `makapix/social-notifications/#` |
-| read | `$SYS/#` |
-
 ### Password Management
 
 Passwords are generated at container startup by `mqtt/config/scripts/gen-passwd.sh`:
@@ -233,7 +193,6 @@ Passwords are generated at container startup by `mqtt/config/scripts/gen-passwd.
 |----------|---------------|
 | `svc_backend` | `BACKEND_PASSWORD` (from `MQTT_PASSWORD`) |
 | `player_client` | `PLAYER_PASSWORD` |
-| `webclient` | `WEBCLIENT_PASSWORD` (from `MQTT_WEBCLIENT_PASSWORD`) |
 
 ### Certificate Management
 
@@ -249,7 +208,6 @@ Passwords are generated at container startup by `mqtt/config/scripts/gen-passwd.
 
 - **mTLS (port 8883)**: Full mutual TLS with CRL checking. Certificate CN becomes the MQTT username.
 - **Internal (port 1883)**: No encryption; relies on Docker network isolation. Not exposed to the host in production.
-- **WebSocket (via Caddy)**: TLS termination at Caddy (HTTPS/WSS). Mosquitto WebSocket listener itself is plain, but Caddy provides the TLS layer.
 
 ### Authorization
 

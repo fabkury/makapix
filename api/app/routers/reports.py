@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..auth import get_current_user_optional, get_trusted_client_ip, require_moderator
+from ..constants import NotificationType
 from ..deps import get_db
 from ..errors import AppError, ErrorCode
 from ..pagination import apply_cursor_filter, create_page_response
@@ -117,7 +118,7 @@ def _fire_moderator_alerts(
             SocialNotificationService.create_system_notification(
                 db,
                 user_id=mod.id,
-                notification_type="new_report",
+                notification_type=NotificationType.NEW_REPORT,
                 actor=system_user,
                 content_title=f"New {report.target_type} report: {report.reason_code}",
             )
@@ -413,7 +414,7 @@ def update_report(
                 SocialNotificationService.create_system_notification(
                     db,
                     user_id=report.reporter_id,
-                    notification_type="report_resolved",
+                    notification_type=NotificationType.REPORT_RESOLVED,
                     actor=ensure_system_user(db),
                     content_title="Thanks — we've reviewed your report.",
                 )

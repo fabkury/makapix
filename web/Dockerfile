@@ -58,11 +58,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # NEXT_PUBLIC_* env vars must be present at build time (baked into JS bundles).
 # Override these with --build-arg when building for different environments.
 ARG NEXT_PUBLIC_API_BASE_URL=https://makapix.club
-ARG NEXT_PUBLIC_MQTT_WS_URL=wss://makapix.club/mqtt
-ARG NEXT_PUBLIC_MQTT_WEBCLIENT_PASSWORD
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
-ENV NEXT_PUBLIC_MQTT_WS_URL=$NEXT_PUBLIC_MQTT_WS_URL
-ENV NEXT_PUBLIC_MQTT_WEBCLIENT_PASSWORD=$NEXT_PUBLIC_MQTT_WEBCLIENT_PASSWORD
 
 RUN npm run build
 

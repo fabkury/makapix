@@ -124,12 +124,8 @@ services:
       dockerfile: web/Dockerfile
       args:
         - NEXT_PUBLIC_API_BASE_URL=https://development.makapix.club
-        - NEXT_PUBLIC_MQTT_WS_URL=wss://development.makapix.club/mqtt
-        - NEXT_PUBLIC_MQTT_WEBCLIENT_PASSWORD=${MQTT_WEBCLIENT_PASSWORD}
     environment:
       - NEXT_PUBLIC_API_BASE_URL=https://development.makapix.club
-      - NEXT_PUBLIC_MQTT_WS_URL=wss://development.makapix.club/mqtt
-      - NEXT_PUBLIC_MQTT_WEBCLIENT_PASSWORD=${MQTT_WEBCLIENT_PASSWORD}
     labels:
       caddy: development.makapix.club
       # Block search engines
@@ -149,20 +145,15 @@ services:
       caddy.handle_0.handle_path.request_body.max_size: 64MB
       caddy.handle_0.handle_path.reverse_proxy: makapix-dev-api:8000
 
-      # MQTT WebSocket proxy - NO basicauth (for player devices)
-      caddy.@mqtt.path: /mqtt
-      caddy.handle_1: "@mqtt"
-      caddy.handle_1.reverse_proxy: makapix-dev-mqtt:9001
-
       # Frontend pages require Basic Auth (except auth-related pages)
       caddy.@noauth.path: /new-account-welcome /login /welcome /verify-email /players
-      caddy.handle_2: "@noauth"
-      caddy.handle_2.reverse_proxy: "{{upstreams 3000}}"
+      caddy.handle_1: "@noauth"
+      caddy.handle_1.reverse_proxy: "{{upstreams 3000}}"
 
       # All other frontend pages require Basic Auth
-      caddy.handle_3.basicauth: "*"
-      caddy.handle_3.basicauth.developer: "$$2a$$14$$HuDhfHqjGJJ3Mm9pamHDwum90R/HrCWVDRuTrc92pk.gy83XHCT.a"
-      caddy.handle_3.reverse_proxy: "{{upstreams 3000}}"
+      caddy.handle_2.basicauth: "*"
+      caddy.handle_2.basicauth.developer: "$$2a$$14$$HuDhfHqjGJJ3Mm9pamHDwum90R/HrCWVDRuTrc92pk.gy83XHCT.a"
+      caddy.handle_2.reverse_proxy: "{{upstreams 3000}}"
     deploy:
       resources:
         limits:

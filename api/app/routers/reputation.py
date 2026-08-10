@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..auth import require_moderator
+from ..constants import NotificationType
 from ..deps import get_db
 from ..services.social_notifications import SocialNotificationService
 from ..utils.audit import log_moderation_action
@@ -51,7 +52,7 @@ def adjust_reputation(
     SocialNotificationService.create_system_notification(
         db=db,
         user_id=user.id,
-        notification_type="reputation_change",
+        notification_type=NotificationType.REPUTATION_CHANGE,
         actor=moderator,
         content_title=f"{payload.delta:+d} reputation",
     )

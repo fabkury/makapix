@@ -32,6 +32,7 @@ BEAT_HEARTBEATS: dict[str, str] = {
     "app.tasks.cleanup_deleted_posts": "cleanup-deleted-posts",
     "app.tasks.cleanup_unverified_accounts": "cleanup-unverified-accounts",
     "app.tasks.cleanup_report_ips": "cleanup-report-ips",
+    "app.tasks.cleanup_social_notifications": "cleanup-social-notifications",
     "app.tasks.cleanup_retired_artwork": "cleanup-retired-artwork",
     "app.tasks.renew_crl_if_needed": "renew-crl",
 }

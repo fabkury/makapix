@@ -1,8 +1,13 @@
 /**
  * Social Notifications Context.
  *
- * Provides shared notification state across all components.
- * This ensures real-time updates from MQTT are reflected everywhere.
+ * Provides shared notification state across all components. Real-time
+ * updates arrive over the bearer-authenticated SSE stream
+ * (GET /api/v1/realtime/notifications) — browsers do not talk to the MQTT
+ * broker (docs/notification-architecture/). The SSE `connected` greeting
+ * carries the authoritative unread count, so the badge re-syncs on every
+ * (re)connect; live items are deduped by id against everything already
+ * fetched or shown.
  */
 
 import {
@@ -15,22 +20,21 @@ import {
   ReactNode,
 } from "react";
 import { authenticatedFetch } from "@/lib/api";
-import { MQTTClient, SocialNotification } from "@/lib/mqtt-client";
+import {
+  useNotificationsSSE,
+  SocialNotificationItem,
+} from "@/hooks/useNotificationsSSE";
 
-const MQTT_URL = process.env.NEXT_PUBLIC_MQTT_WS_URL || "ws://localhost:9001";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
-export interface SocialNotificationFull extends SocialNotification {
-  user_id: number;
-  is_read: boolean;
-}
+export type SocialNotificationFull = SocialNotificationItem;
 
 interface SocialNotificationsContextValue {
   /** Unread count for badge display */
   unreadCount: number;
   /** List of recent notifications */
   notifications: SocialNotificationFull[];
-  /** Whether the MQTT connection is active */
+  /** Whether the SSE stream is open */
   connected: boolean;
   /** Loading state for initial fetch */
   loading: boolean;
@@ -40,36 +44,36 @@ interface SocialNotificationsContextValue {
   fetchNotifications: (cursor?: string) => Promise<{ nextCursor: string | null }>;
   /** Mark all notifications as read */
   markAllAsRead: () => Promise<void>;
-  /** Mark specific notification as read */
-  markAsRead: (notificationId: string) => Promise<void>;
-  /** Clear local notifications state */
-  clearNotifications: () => void;
 }
 
 const SocialNotificationsContext = createContext<SocialNotificationsContextValue | null>(null);
 
 interface SocialNotificationsProviderProps {
-  userId: string | null;
+  /** True when an authenticated session exists (the server derives the user
+   *  from the bearer token; no client-side user id is needed). */
+  enabled: boolean;
   children: ReactNode;
 }
 
 export function SocialNotificationsProvider({
-  userId,
+  enabled,
   children,
 }: SocialNotificationsProviderProps) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<SocialNotificationFull[]>([]);
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(false);
-  const clientRef = useRef<MQTTClient | null>(null);
+  // Every notification id ever fetched or received this session — a superset
+  // of the visible list (which is capped), so live duplicates never re-count.
+  const knownIdsRef = useRef<Set<string>>(new Set());
 
   // Fetch unread count from API
   const fetchUnreadCount = useCallback(async () => {
-    if (!userId) return;
+    if (!enabled) return;
 
     try {
       const response = await authenticatedFetch(
-        `${API_BASE}/api/social-notifications/unread-count`
+        `${API_BASE}/api/v1/social-notifications/unread-count`
       );
       if (response.ok) {
         const data = await response.json();
@@ -78,16 +82,16 @@ export function SocialNotificationsProvider({
     } catch (error) {
       console.error("Failed to fetch unread count:", error);
     }
-  }, [userId]);
+  }, [enabled]);
 
   // Fetch notifications list from API
   const fetchNotifications = useCallback(
     async (cursor?: string): Promise<{ nextCursor: string | null }> => {
-      if (!userId) return { nextCursor: null };
+      if (!enabled) return { nextCursor: null };
 
       setLoading(true);
       try {
-        const url = new URL(`${API_BASE}/api/social-notifications/`);
+        const url = new URL(`${API_BASE}/api/v1/social-notifications/`);
         url.searchParams.set("limit", "50");
         if (cursor) {
           url.searchParams.set("cursor", cursor);
@@ -100,9 +104,11 @@ export function SocialNotificationsProvider({
 
           if (cursor) {
             // Appending more notifications
+            newNotifications.forEach((n) => knownIdsRef.current.add(n.id));
             setNotifications((prev) => [...prev, ...newNotifications]);
           } else {
             // Initial fetch
+            knownIdsRef.current = new Set(newNotifications.map((n) => n.id));
             setNotifications(newNotifications);
           }
 
@@ -116,16 +122,16 @@ export function SocialNotificationsProvider({
 
       return { nextCursor: null };
     },
-    [userId]
+    [enabled]
   );
 
   // Mark all notifications as read
   const markAllAsRead = useCallback(async () => {
-    if (!userId) return;
+    if (!enabled) return;
 
     try {
       const response = await authenticatedFetch(
-        `${API_BASE}/api/social-notifications/mark-all-read`,
+        `${API_BASE}/api/v1/social-notifications/mark-all-read`,
         { method: "POST" }
       );
       if (response.ok || response.status === 204) {
@@ -137,92 +143,61 @@ export function SocialNotificationsProvider({
     } catch (error) {
       console.error("Failed to mark all as read:", error);
     }
-  }, [userId]);
+  }, [enabled]);
 
-  // Mark specific notification as read
-  const markAsRead = useCallback(
-    async (notificationId: string) => {
-      if (!userId) return;
-
-      try {
-        const response = await authenticatedFetch(
-          `${API_BASE}/api/social-notifications/mark-read`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify([notificationId]),
-          }
-        );
-        if (response.ok || response.status === 204) {
-          setUnreadCount((prev) => Math.max(0, prev - 1));
-          setNotifications((prev) =>
-            prev.map((n) =>
-              n.id === notificationId ? { ...n, is_read: true } : n
-            )
-          );
-        }
-      } catch (error) {
-        console.error("Failed to mark as read:", error);
-      }
-    },
-    [userId]
-  );
-
-  // Clear local notifications
-  const clearNotifications = useCallback(() => {
-    setNotifications([]);
-    setUnreadCount(0);
+  // Incoming live notification: dedupe by id, prepend, bump the badge.
+  const handleIncoming = useCallback((item: SocialNotificationItem) => {
+    if (knownIdsRef.current.has(item.id)) return;
+    knownIdsRef.current.add(item.id);
+    setNotifications((prev) => [item, ...prev].slice(0, 100));
+    if (!item.is_read) {
+      setUnreadCount((c) => c + 1);
+    }
   }, []);
 
-  // Set up MQTT connection and subscribe to real-time notifications
+  // Real-time stream (no-ops while disabled).
+  useNotificationsSSE({
+    enabled,
+    onConnected: (unread) => setUnreadCount(unread),
+    onNotification: handleIncoming,
+    onConnect: () => setConnected(true),
+    onDisconnect: () => setConnected(false),
+  });
+
+  // Session lifecycle: seed the badge on login, clear state on logout.
   useEffect(() => {
-    if (!userId) {
-      // Clear state when user logs out
+    if (!enabled) {
       setUnreadCount(0);
       setNotifications([]);
       setConnected(false);
+      knownIdsRef.current.clear();
       return;
     }
-
-    // Initial fetch
+    // Fast first paint (and resilience if the SSE stream can't connect);
+    // the `connected` greeting overwrites this moments later.
     fetchUnreadCount();
+  }, [enabled, fetchUnreadCount]);
 
-    // Create MQTT client
-    const client = new MQTTClient(MQTT_URL);
-    clientRef.current = client;
+  // Keep the badge honest when the tab regains attention, even if the SSE
+  // stream has exhausted its reconnect attempts in the background.
+  useEffect(() => {
+    if (!enabled) return;
 
-    // Connect
-    client
-      .connect(userId)
-      .then(() => {
-        setConnected(true);
-      })
-      .catch((error) => {
-        console.error("Failed to connect to MQTT:", error);
-        setConnected(false);
-      });
-
-    // Register social notification callback
-    const unsubscribe = client.onSocialNotification((notification) => {
-      // Increment unread count
-      setUnreadCount((prev) => prev + 1);
-
-      // Add to notifications list (prepend, keep max 100)
-      const fullNotification: SocialNotificationFull = {
-        ...notification,
-        user_id: parseInt(userId, 10),
-        is_read: false,
-      };
-      setNotifications((prev) => [fullNotification, ...prev].slice(0, 100));
-    });
-
-    // Cleanup on unmount
-    return () => {
-      unsubscribe();
-      client.disconnect();
-      setConnected(false);
+    const refetch = () => fetchUnreadCount();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") refetch();
     };
-  }, [userId, fetchUnreadCount]);
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", refetch);
+    window.addEventListener("online", refetch);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", refetch);
+      window.removeEventListener("online", refetch);
+    };
+  }, [enabled, fetchUnreadCount]);
 
   const value: SocialNotificationsContextValue = {
     unreadCount,
@@ -232,8 +207,6 @@ export function SocialNotificationsProvider({
     fetchUnreadCount,
     fetchNotifications,
     markAllAsRead,
-    markAsRead,
-    clearNotifications,
   };
 
   return (
@@ -263,7 +236,7 @@ export function useSocialNotificationsContext(): SocialNotificationsContextValue
  */
 export function useSocialNotificationsSafe(): SocialNotificationsContextValue {
   const context = useContext(SocialNotificationsContext);
-  
+
   // Return no-op defaults if not in provider
   if (!context) {
     return {
@@ -274,11 +247,8 @@ export function useSocialNotificationsSafe(): SocialNotificationsContextValue {
       fetchUnreadCount: async () => {},
       fetchNotifications: async () => ({ nextCursor: null }),
       markAllAsRead: async () => {},
-      markAsRead: async () => {},
-      clearNotifications: () => {},
     };
   }
-  
+
   return context;
 }
-

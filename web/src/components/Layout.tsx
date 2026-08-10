@@ -130,7 +130,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
               const oldUserId = localStorage.getItem('user_id');
               localStorage.setItem('user_id', newUserId);
               setUserId(newUserId);
-              // Dispatch custom event if userId changed (for MQTT reconnection)
+              // Dispatch custom event if userId changed (so auth-gated providers re-check)
               if (oldUserId !== newUserId) {
                 window.dispatchEvent(new Event('localStorageUpdated'));
               }
@@ -291,7 +291,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
           localStorage.setItem('user_key', tokens.user_key || '');
           localStorage.setItem('public_sqid', tokens.public_sqid || '');
           localStorage.setItem('user_handle', tokens.user_handle || '');
-          // Dispatch custom event to trigger MQTT reconnection with new userId
+          // Dispatch custom event so auth-gated providers (notifications SSE) pick up the new session
           window.dispatchEvent(new Event('localStorageUpdated'));
 
           // Use redirectUrl from message if provided, otherwise check needs_welcome

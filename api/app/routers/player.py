@@ -1097,7 +1097,7 @@ async def player_events_sse(
 
     from fastapi.responses import StreamingResponse
 
-    from ..services import player_events
+    from ..services.event_bus import player_bus
 
     current_user = None
     if ticket:
@@ -1129,7 +1129,7 @@ async def player_events_sse(
     user_id = user.id
 
     async def gen():
-        queue = await player_events.subscribe(user_id)
+        queue = await player_bus.subscribe(user_id)
         try:
             yield ": connected\n\n"
             while True:
@@ -1142,7 +1142,7 @@ async def player_events_sse(
                     continue
                 yield f"event: {event['type']}\ndata: {_json.dumps(event)}\n\n"
         finally:
-            await player_events.unsubscribe(user_id, queue)
+            await player_bus.unsubscribe(user_id, queue)
 
     return StreamingResponse(
         gen(),

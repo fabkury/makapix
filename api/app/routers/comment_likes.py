@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..auth import get_current_user, get_current_user_or_anonymous, AnonymousUser
+from ..constants import NotificationType
 from ..deps import get_db
 from ..services.social_notifications import SocialNotificationService
 from ..services.rate_limit import check_rate_limit
@@ -122,7 +123,7 @@ def like_comment(
                 SocialNotificationService.create_notification(
                     db,
                     user_id=comment.author_id,
-                    notification_type="comment_like",
+                    notification_type=NotificationType.COMMENT_LIKE,
                     post=post,
                     actor=current_user,
                     comment=comment,

@@ -26,7 +26,7 @@ from ..auth import (
     require_moderator,
     require_ownership,
 )
-from ..constants import MONITORED_HASHTAGS
+from ..constants import MONITORED_HASHTAGS, NotificationType
 from ..avatar_vault import ALLOWED_MIME_TYPES as AVATAR_ALLOWED_MIME_TYPES
 from ..avatar_vault import get_avatar_url, save_avatar_image
 from ..avatar_vault import try_delete_avatar_by_public_url
@@ -1419,7 +1419,7 @@ def follow_user(
     SocialNotificationService.create_system_notification(
         db=db,
         user_id=target_user.id,
-        notification_type="follow",
+        notification_type=NotificationType.FOLLOW,
         actor=current_user,
     )
 

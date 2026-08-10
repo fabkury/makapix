@@ -63,45 +63,43 @@ export default function App({ Component, pageProps }: AppProps) {
   const router = useRouter();
   // Use ref to prevent duplicate refresh attempts
   const isCheckingRef = useRef(false);
-  // Track userId for social notifications
-  const [userId, setUserId] = useState<string | null>(null);
+  // Auth gate for the social-notifications provider (the SSE stream derives
+  // the user from the bearer token; only "is there a session" matters here).
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
   // Track page views for analytics
   usePageViewTracking();
 
-  // Track userId from localStorage
+  // Track the session from localStorage
   useEffect(() => {
-    const checkUserId = () => {
-      const storedUserId = localStorage.getItem('user_id');
-      const token = getAccessToken();
-      // Only set userId if we have both token and userId
-      setUserId(token && storedUserId ? storedUserId : null);
+    const checkAuth = () => {
+      setNotificationsEnabled(Boolean(getAccessToken()));
     };
 
-    checkUserId();
+    checkAuth();
 
     // Listen for storage changes (login/logout in other tabs)
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === 'user_id' || event.key === 'access_token') {
-        checkUserId();
+      if (event.key === 'access_token') {
+        checkAuth();
       }
     };
 
     // Custom event for same-tab localStorage changes
     const handleLocalStorageUpdate = () => {
-      checkUserId();
+      checkAuth();
     };
 
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('localStorageUpdated', handleLocalStorageUpdate);
-    
+
     // Also check on route changes in case login happens
-    router.events.on('routeChangeComplete', checkUserId);
+    router.events.on('routeChangeComplete', checkAuth);
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('localStorageUpdated', handleLocalStorageUpdate);
-      router.events.off('routeChangeComplete', checkUserId);
+      router.events.off('routeChangeComplete', checkAuth);
     };
   }, [router.events]);
 
@@ -241,7 +239,7 @@ export default function App({ Component, pageProps }: AppProps) {
         <meta name="twitter:description" content={DEFAULT_DESCRIPTION} key="twitter:description" />
         <meta name="twitter:image" content={OG_IMAGE} key="twitter:image" />
       </Head>
-      <SocialNotificationsProvider userId={userId}>
+      <SocialNotificationsProvider enabled={notificationsEnabled}>
         <PlayerBarProvider>
           <Component {...pageProps} />
         </PlayerBarProvider>

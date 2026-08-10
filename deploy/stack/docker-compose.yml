@@ -87,7 +87,6 @@ services:
       - .env
     environment:
       BACKEND_PASSWORD: ${MQTT_PASSWORD:-}
-      WEBCLIENT_PASSWORD: ${MQTT_WEBCLIENT_PASSWORD:-}
     volumes:
       - ../../mqtt/certs:/mosquitto/certs
       - ../../mqtt/config:/mosquitto/config

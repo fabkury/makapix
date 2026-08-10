@@ -16,6 +16,7 @@ from ..auth import (
     require_moderator,
     require_ownership,
 )
+from ..constants import NotificationType
 from ..deps import get_db
 from ..errors import AppError, ErrorCode
 from ..services.social_notifications import SocialNotificationService
@@ -261,7 +262,7 @@ def create_comment(
             SocialNotificationService.create_notification(
                 db=db,
                 user_id=post.owner_id,
-                notification_type="comment",
+                notification_type=NotificationType.COMMENT,
                 post=post,
                 actor=current_user,
                 comment=comment,
@@ -279,7 +280,7 @@ def create_comment(
                 SocialNotificationService.create_notification(
                     db=db,
                     user_id=parent.author_id,
-                    notification_type="comment_reply",
+                    notification_type=NotificationType.COMMENT_REPLY,
                     post=post,
                     actor=actor,
                     comment=comment,
@@ -397,6 +398,15 @@ def delete_comment(
     else:
         comment.deleted_by_mod = True
         comment.body = "[deleted by moderator]"
+
+    # A deleted comment's text must not survive verbatim in notification
+    # previews (covers both comment and comment_reply rows). Not restored on
+    # undelete — the snapshot is gone.
+    db.query(models.SocialNotification).filter(
+        models.SocialNotification.comment_id == commentId,
+        models.SocialNotification.comment_preview.isnot(None),
+    ).update({"comment_preview": None}, synchronize_session=False)
+
     db.commit()
 
     if not is_author:

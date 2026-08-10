@@ -140,6 +140,14 @@ celery_app.conf.update(
             "schedule": crontab(minute=30, hour=4),  # 04:30 ET
             "options": {"queue": "default"},
         },
+        # Notification retention (docs/notification-architecture/ N5): delete
+        # read rows older than 90 days and all rows older than 365 days.
+        # No ordering dependency.
+        "cleanup-social-notifications": {
+            "task": "app.tasks.cleanup_social_notifications",
+            "schedule": crontab(minute=45, hour=4),  # 04:45 ET
+            "options": {"queue": "default"},
+        },
         "renew-crl-if-needed": {
             "task": "app.tasks.renew_crl_if_needed",
             "schedule": crontab(minute=0, hour=5),  # 05:00 ET
@@ -1689,6 +1697,61 @@ def cleanup_report_ips(self) -> dict[str, Any]:
 
     except Exception as e:
         logger.error(f"Error in cleanup_report_ips task: {e}", exc_info=True)
+        db.rollback()
+        return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.cleanup_social_notifications", bind=True)
+def cleanup_social_notifications(self) -> dict[str, Any]:
+    """
+    Daily task: social-notification retention (docs/notification-architecture/ N5).
+
+    Deletes read notifications older than 90 days and ALL notifications older
+    than 365 days (owner decision 2026-08-10 — includes unread). Cutoffs use
+    created_at (row age), matching the created_at index. Runs at 04:45 US
+    Eastern.
+    """
+    from datetime import datetime, timedelta, timezone
+    from . import models
+    from .db import SessionLocal
+
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+
+        deleted_read = (
+            db.query(models.SocialNotification)
+            .filter(
+                models.SocialNotification.is_read == True,  # noqa: E712
+                models.SocialNotification.created_at < now - timedelta(days=90),
+            )
+            .delete(synchronize_session=False)
+        )
+
+        deleted_old = (
+            db.query(models.SocialNotification)
+            .filter(models.SocialNotification.created_at < now - timedelta(days=365))
+            .delete(synchronize_session=False)
+        )
+
+        db.commit()
+
+        if deleted_read or deleted_old:
+            logger.info(
+                f"Social-notification retention: {deleted_read} read>90d, "
+                f"{deleted_old} all>365d"
+            )
+
+        return {
+            "status": "success",
+            "deleted_read": deleted_read,
+            "deleted_old": deleted_old,
+        }
+
+    except Exception as e:
+        logger.error(f"Error in cleanup_social_notifications task: {e}", exc_info=True)
         db.rollback()
         return {"status": "error", "message": str(e)}
     finally:

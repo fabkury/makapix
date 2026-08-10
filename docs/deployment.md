@@ -80,7 +80,6 @@ Key environment variables in `deploy/stack/.env.prod` (or `.env.dev`):
 | Auth | `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | Access token TTL (default: 60) |
 | Auth | `JWT_REFRESH_TOKEN_EXPIRE_DAYS` | Refresh token TTL (default: 30) |
 | MQTT | `MQTT_PASSWORD` | Backend service MQTT password |
-| MQTT | `MQTT_WEBCLIENT_PASSWORD` | Web client MQTT password |
 | OAuth | `GITHUB_OAUTH_CLIENT_ID` | GitHub OAuth app client ID |
 | OAuth | `GITHUB_OAUTH_CLIENT_SECRET` | GitHub OAuth app client secret |
 | Email | `RESEND_API_KEY` | Resend transactional email key |
@@ -104,7 +103,7 @@ All services are defined in `deploy/stack/docker-compose.yml` with environment-s
 |---------|---------------|---------|----------|
 | db | `postgres:17-alpine` | Primary database | internal |
 | cache | `redis:7-alpine` | API cache, Celery broker | internal |
-| mqtt | `mqtt/Dockerfile` | Mosquitto broker (MQTT + WebSocket) | internal, caddy_net |
+| mqtt | `mqtt/Dockerfile` | Mosquitto broker (device plane, mTLS) | internal, caddy_net |
 | api | `api/Dockerfile` | FastAPI backend | internal, caddy_net |
 | worker | `worker/Dockerfile` | Celery background tasks | internal |
 | web | `web/Dockerfile` | Next.js frontend | caddy_net |
@@ -123,8 +122,8 @@ All services are defined in `deploy/stack/docker-compose.yml` with environment-s
 | Port | Service | Environment |
 |------|---------|-------------|
 | 80, 443 | Caddy | Shared (both envs) |
-| 1883, 8883 | MQTT | Production |
-| 1884, 8884 | MQTT | Development |
+| 1883, 8883 | MQTT (players only) | Production |
+| 1884, 8884 | MQTT (players only) | Development |
 | 5433 | PostgreSQL | Development (localhost only) |
 
 ---
