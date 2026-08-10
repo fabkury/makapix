@@ -76,23 +76,35 @@ security README/operations (H1 → Resolved by deletion), appraisal BACKLOG
 S1/D24/D27 annotated; openapi.json regenerated (bootstrap/demo removed).
 
 **Owner follow-ups:**
-- [ ] Remove `MQTT_WEBCLIENT_PASSWORD=` from `/opt/makapix/deploy/stack/.env`
-      (prod) and `/opt/makapix-dev/deploy/stack/.env.dev` (harmless until
-      then — nothing reads it anymore).
-- [ ] healthchecks.io: confirm the auto-created `cleanup-social-notifications`
-      check after first prod run; set period 1 day + grace.
+- [x] Remove `MQTT_WEBCLIENT_PASSWORD=` from host env files — DONE 2026-08-10:
+      stripped (var + comment line) from `/opt/makapix/deploy/stack/.env.prod`
+      (the live prod env file; the decoy `.env` never had it) and
+      `/opt/makapix-dev/deploy/stack/.env.dev`. Zero webclient refs remain;
+      no restarts needed (nothing reads it).
+- [x] healthchecks.io heartbeat — first run TRIGGERED MANUALLY 2026-08-10
+      ~22:25 UTC on prod (task `34ddd619`): dry-count matched execution
+      exactly, **335 read>90d deleted, 0 >365d** (796 → 461 rows, site
+      younger than a year), success in 8 ms; ping fired via the same signal
+      path as the 8 existing heartbeats, auto-creating the check.
+      **Remaining (owner, UI-only):** confirm the `cleanup-social-notifications`
+      check appeared in healthchecks.io; set period 1 day + grace. Scheduled
+      runs continue nightly 04:45 ET.
 - [x] After prod deploy: restart `makapix-prod-mqtt` — DONE 2026-08-10
       (recreated by the deploy itself; 9001 verified closed, webclient
       verified purged, fleet reconnected).
-- [ ] Optional hygiene: the `web_next_static` named volume accumulates chunks
-      from every historical build (dev copies date to 2026-01), so old bundles
-      containing the now-dead webclient password remain fetchable by hash on
-      both envs. The served HTML references only the current build. The
-      password is worthless (account deleted); prune the volume's stale
-      chunks at leisure on prod + dev.
+- [x] `web_next_static` volume prune — DONE 2026-08-10 on both envs: the
+      volume is a *deliberate* merge-don't-delete mechanism (see
+      `web/entrypoint.sh` — old chunks kept so cached HTML survives deploys),
+      so the prune was generational, not total: files older than 24 h removed
+      (dev 967 → 86 files, prod 861 → 86; all pre-dating today's
+      credential-free build). Zero files containing the webclient string
+      remain in either volume; both sites verified serving their current
+      `_app` chunk with 200 afterward. Residual note: chunks already cached
+      in end-user *browsers* still contain the dead password — unfixable
+      server-side and worthless (account deleted).
 
 **Awaiting:** app team reply to messages/0001 (SSE adoption + FCM
-build-or-drop).
+build-or-drop) — the only open item besides the healthchecks UI confirmation.
 
 ## 2026-08-10 — Assessment delivered (no implementation decided)
 
