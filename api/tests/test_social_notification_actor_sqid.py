@@ -1,7 +1,7 @@
 """
 Tests for `actor_public_sqid` on social notification payloads
-(docs/notification-actor-sqid/): present on REST list items and MQTT
-broadcasts when the actor exists, null for actor-less rows.
+(docs/notification-actor-sqid/): present on REST list items and on the live
+SSE-bus dispatch when the actor exists, null for actor-less rows.
 """
 
 from __future__ import annotations
@@ -90,20 +90,21 @@ def post(db: Session, recipient: User) -> Post:
 
 
 @pytest.fixture
-def captured_publishes(monkeypatch) -> list[tuple[str, dict]]:
-    captured: list[tuple[str, dict]] = []
+def captured_events(monkeypatch) -> list[tuple[int, dict]]:
+    """Capture live dispatches onto the notification bus as (user_id, event)."""
+    captured: list[tuple[int, dict]] = []
 
-    def fake_publish(topic, payload, qos=1, retain=False):
-        captured.append((topic, payload))
-        return True
-
-    monkeypatch.setattr(sn_module, "publish", fake_publish)
+    monkeypatch.setattr(
+        sn_module.notification_bus,
+        "publish_threadsafe",
+        lambda user_id, event: captured.append((user_id, event)),
+    )
     return captured
 
 
 class TestNotificationActorPublicSqid:
     def test_list_includes_actor_public_sqid(
-        self, client, db, recipient, actor, post, captured_publishes
+        self, client, db, recipient, actor, post, captured_events
     ):
         SocialNotificationService.create_notification(
             db,
@@ -137,8 +138,8 @@ class TestNotificationActorPublicSqid:
         assert len(items) == 1
         assert items[0]["actor_public_sqid"] is None
 
-    def test_mqtt_broadcast_includes_actor_public_sqid(
-        self, db, recipient, actor, post, captured_publishes
+    def test_dispatch_event_includes_actor_public_sqid(
+        self, db, recipient, actor, post, captured_events
     ):
         SocialNotificationService.create_notification(
             db,
@@ -148,13 +149,19 @@ class TestNotificationActorPublicSqid:
             actor=actor,
         )
 
-        assert len(captured_publishes) == 1
-        topic, payload = captured_publishes[0]
-        assert topic == f"makapix/social-notifications/user/{recipient.id}"
-        assert payload["actor_public_sqid"] == actor.public_sqid
+        assert len(captured_events) == 1
+        user_id, event = captured_events[0]
+        assert user_id == recipient.id
+        assert event["actor_public_sqid"] == actor.public_sqid
+        # The bus event carries the full REST item shape (SSE clients treat
+        # both sources uniformly and dedupe by id).
+        for field in ("id", "user_id", "is_read", "created_at", "notification_type"):
+            assert field in event
+        assert event["user_id"] == recipient.id
+        assert event["is_read"] is False
 
-    def test_system_notification_broadcast_includes_actor_public_sqid(
-        self, db, recipient, actor, captured_publishes
+    def test_system_notification_dispatch_includes_actor_public_sqid(
+        self, db, recipient, actor, captured_events
     ):
         SocialNotificationService.create_system_notification(
             db,
@@ -163,12 +170,12 @@ class TestNotificationActorPublicSqid:
             actor=actor,
         )
 
-        assert len(captured_publishes) == 1
-        _, payload = captured_publishes[0]
-        assert payload["actor_public_sqid"] == actor.public_sqid
+        assert len(captured_events) == 1
+        _, event = captured_events[0]
+        assert event["actor_public_sqid"] == actor.public_sqid
 
-    def test_anonymous_broadcast_has_null_actor_public_sqid(
-        self, db, recipient, post, captured_publishes
+    def test_anonymous_dispatch_has_null_actor_public_sqid(
+        self, db, recipient, post, captured_events
     ):
         SocialNotificationService.create_notification(
             db,
@@ -179,6 +186,6 @@ class TestNotificationActorPublicSqid:
             emoji="👍",
         )
 
-        assert len(captured_publishes) == 1
-        _, payload = captured_publishes[0]
-        assert payload["actor_public_sqid"] is None
+        assert len(captured_events) == 1
+        _, event = captured_events[0]
+        assert event["actor_public_sqid"] is None

@@ -4,7 +4,6 @@ const nextConfig = {
   // Transpile npm packages that ship ES2020+ syntax (e.g. ?., ??) so older
   // browsers like Safari 12 (iPad Mini 2 / iOS 12) can parse the bundles.
   transpilePackages: [
-    'mqtt',
     'lucide-react',
     // wasm-webp ships its Emscripten glue as raw ESM, with Node-only `createRequire`
     // and `import.meta.url` branches that Next.js/Terser can't consume unparsed.

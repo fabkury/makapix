@@ -4,22 +4,13 @@ import base64
 import json
 from typing import Any
 
-# TODO: Implement cursor-based pagination
-# Cursor format: base64-encoded JSON with {id: last_record_id, sort: sort_field_value}
-# This allows efficient pagination without OFFSET (which is slow for large datasets)
+# Cursor format: base64-encoded JSON {"id": last_record_id, "sort": sort_field_value}.
+# Keyset pagination without OFFSET; cursors are opaque strings to clients.
 
 
 def encode_cursor(last_id: str, sort_value: Any = None) -> str:
     """
     Encode a pagination cursor from the last record's ID and sort value.
-
-    PLACEHOLDER: Currently just base64-encodes the ID.
-
-    TODO: Production implementation should:
-    1. Create a dict with {id: last_id, sort: sort_value}
-    2. JSON-encode the dict
-    3. Base64-encode the JSON
-    4. Return the encoded string
 
     Example:
         cursor = encode_cursor("abc-123", 1698765432)
@@ -45,14 +36,7 @@ def decode_cursor(cursor: str | None) -> tuple[str, Any] | None:
     """
     Decode a pagination cursor to extract the last record's ID and sort value.
 
-    PLACEHOLDER: Currently just base64-decodes and extracts ID.
-
-    TODO: Production implementation should:
-    1. Base64-decode the cursor string
-    2. JSON-decode to get the dict
-    3. Extract id and sort values
-    4. Return tuple (id, sort_value)
-    5. Handle invalid cursors gracefully
+    Invalid or foreign-format cursors return None (callers decide fallback).
 
     Args:
         cursor: Base64-encoded cursor string, or None

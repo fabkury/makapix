@@ -1,6 +1,8 @@
 # MQTT API Reference
 
-Real-time messaging protocol for player devices and notifications.
+Real-time messaging protocol for player devices. (Social notifications are
+HTTP-only — REST + SSE, see [Notifications](../http-api/notifications.md);
+browsers do not connect to the broker.)
 
 ## Broker Connection
 
@@ -8,7 +10,6 @@ Real-time messaging protocol for player devices and notifications.
 |---------|------------|-------------|
 | Host | `makapix.club` | `development.makapix.club` |
 | TLS Port | 8883 | 8884 |
-| WebSocket | wss://makapix.club:8884/mqtt | wss://development.makapix.club:8884/mqtt |
 | Protocol | MQTT 5.0 | MQTT 5.0 |
 
 ## Authentication Methods
@@ -24,17 +25,6 @@ Password: (empty)
 ```
 
 Both the certificate and username must match. See [Registration](../player/registration.md) for certificate provisioning.
-
-### Web Clients (Username/Password)
-
-Browser clients connect via WebSocket with username/password:
-
-```
-Username: webclient
-Password: (configured in environment)
-```
-
-Web clients have read-only access to notification topics.
 
 ### Internal Services (Username/Password)
 
@@ -66,13 +56,6 @@ makapix/{domain}/{identifier}/{action}[/{suffix}]
 | `makapix/player/{player_key}/view/ack` | Server -> Device | View acknowledgments |
 | `makapix/player/{player_key}/command` | Server -> Device | Commands from web |
 
-### Notification Topics
-
-| Topic | Description |
-|-------|-------------|
-| `makapix/posts/new` | New post notifications |
-| `makapix/posts/promoted` | Promoted post notifications |
-
 ## QoS Levels
 
 | Topic Type | QoS | Rationale |
@@ -82,7 +65,6 @@ makapix/{domain}/{identifier}/{action}[/{suffix}]
 | Commands | 1 | Ensure delivery |
 | Status | 1 | Track connection state |
 | View events | 1 | Server deduplicates |
-| Notifications | 0 | Best effort |
 
 QoS 1 provides at-least-once delivery. The server handles duplicate detection for view events.
 

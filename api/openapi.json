@@ -2991,58 +2991,6 @@
         "title": "LoginRequest",
         "type": "object"
       },
-      "MQTTBootstrap": {
-        "description": "MQTT broker bootstrap info.",
-        "properties": {
-          "host": {
-            "title": "Host",
-            "type": "string"
-          },
-          "port": {
-            "title": "Port",
-            "type": "integer"
-          },
-          "tls": {
-            "title": "Tls",
-            "type": "boolean"
-          },
-          "topics": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "title": "Topics",
-            "type": "object"
-          }
-        },
-        "required": [
-          "host",
-          "port",
-          "tls",
-          "topics"
-        ],
-        "title": "MQTTBootstrap",
-        "type": "object"
-      },
-      "MQTTPublishResponse": {
-        "description": "MQTT publish response.",
-        "properties": {
-          "status": {
-            "const": "sent",
-            "title": "Status",
-            "type": "string"
-          },
-          "topic": {
-            "title": "Topic",
-            "type": "string"
-          }
-        },
-        "required": [
-          "status",
-          "topic"
-        ],
-        "title": "MQTTPublishResponse",
-        "type": "object"
-      },
       "MeCapabilities": {
         "description": "What the current user is allowed to do (lets the app gate UI upfront).",
         "properties": {
@@ -9825,59 +9773,6 @@
         ]
       }
     },
-    "/mqtt/bootstrap": {
-      "get": {
-        "description": "MQTT broker bootstrap info.\n\nTODO: Load from environment variables",
-        "operationId": "mqtt_bootstrap_mqtt_bootstrap_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MQTTBootstrap"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Mqtt Bootstrap",
-        "tags": [
-          "MQTT",
-          "RateLimit",
-          "MQTT"
-        ]
-      }
-    },
-    "/mqtt/demo": {
-      "post": {
-        "description": "Publish demo MQTT message.\n\nRequires authentication. Should only be used in development/testing.",
-        "operationId": "mqtt_demo_mqtt_demo_post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MQTTPublishResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Mqtt Demo",
-        "tags": [
-          "MQTT",
-          "RateLimit",
-          "MQTT"
-        ]
-      }
-    },
     "/player/events/view": {
       "post": {
         "description": "Report a fire-and-forget view event (HTTPS equivalent of the MQTT view topic).\n\nIdentity comes from the bearer token, so ``player_key`` is not part of the\nbody; the HTTP status is the acknowledgement (there is no ack channel).",
@@ -10861,7 +10756,6 @@
         ],
         "summary": "Get Rate Limit",
         "tags": [
-          "MQTT",
           "RateLimit",
           "RateLimit"
         ]
@@ -19663,7 +19557,7 @@
             }
           },
           {
-            "description": "ISO timestamp cursor for pagination",
+            "description": "Opaque pagination cursor",
             "in": "query",
             "name": "cursor",
             "required": false,
@@ -19676,7 +19570,7 @@
                   "type": "null"
                 }
               ],
-              "description": "ISO timestamp cursor for pagination",
+              "description": "Opaque pagination cursor",
               "title": "Cursor"
             }
           },

@@ -1,43 +1,50 @@
-"""Authenticated real-time stream for app clients (SSE) — change-request §5.
+"""Authenticated real-time stream for web and app clients (SSE).
 
 A single bearer-authenticated Server-Sent Events stream that pushes the user's
-social notifications as they arrive. Decoupled from the hardware-player MQTT
-(which stays mTLS); no broker credentials reach the client. If the socket drops,
-the client falls back to polling `GET /api/v1/social-notifications/unread-count`.
+social notifications as they arrive. This is the human plane's live channel
+(docs/notification-architecture/): browsers and apps consume it over HTTPS via
+fetch-streaming (EventSource cannot send an Authorization header); the MQTT
+broker is the device plane and carries no social notifications.
 
-Implementation mirrors the proven polling-SSE pattern used by `/bdr/sse`: poll
-the notifications table on a short interval, emit new rows, send keepalives, and
-close after a bounded lifetime so clients reconnect.
+Delivery is push-based: `SocialNotificationService._dispatch_notification`
+publishes each committed row onto the in-process `notification_bus`
+(services/event_bus.py) and this endpoint forwards it. No polling, and the
+pooled DB connection is released right after the greeting — the stream itself
+never touches the database. Missed events (disconnects, multi-worker futures)
+are reconciled by the `connected` greeting's unread_count and the paginated
+list endpoint; clients dedupe by notification id.
+
+Events: `connected` {"unread_count": N} → `notification` (full REST item
+shape) → `: keepalive` comments → `timeout` then close at the bounded
+lifetime (clients reconnect; the bound re-gates auth and reaps dead streams).
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timezone
+import time
 from typing import AsyncGenerator
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
-from .. import models, schemas
+from .. import models
 from ..auth import get_current_user
 from ..deps import get_db
+from ..services.event_bus import notification_bus
 from ..services.social_notifications import SocialNotificationService
 
 router = APIRouter(prefix="/realtime", tags=["Realtime"])
 
 _STREAM_TIMEOUT_SECONDS = 300  # client reconnects after this
-_POLL_INTERVAL_SECONDS = 3
+_KEEPALIVE_SECONDS = 15.0
 
 
 def _sse(event: str, data: object) -> str:
     return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
-
-
-def _notification_payload(n: models.SocialNotification) -> dict:
-    return schemas.SocialNotification.model_validate(n).model_dump(mode="json")
 
 
 @router.get("/notifications")
@@ -50,38 +57,37 @@ async def stream_notifications(
     user_id = current_user.id
 
     async def event_generator() -> AsyncGenerator[str, None]:
-        # Greet with the current unread count so the client can sync its badge.
-        unread = SocialNotificationService.get_unread_count(db, user_id)
-        yield _sse("connected", {"unread_count": unread})
-
-        # Only stream notifications created after the connection opens; the client
-        # backfills history via the paginated list endpoint.
-        last_seen = datetime.now(timezone.utc)
-        deadline = datetime.now(timezone.utc).timestamp() + _STREAM_TIMEOUT_SECONDS
-
-        while datetime.now(timezone.utc).timestamp() < deadline:
-            if await request.is_disconnected():
-                break
-            await asyncio.sleep(_POLL_INTERVAL_SECONDS)
-            db.expire_all()
-
-            new_rows = (
-                db.query(models.SocialNotification)
-                .filter(
-                    models.SocialNotification.user_id == user_id,
-                    models.SocialNotification.created_at > last_seen,
-                )
-                .order_by(models.SocialNotification.created_at.asc())
-                .all()
+        # Subscribe BEFORE reading the count: an event landing in between is
+        # delivered AND counted (clients dedupe by id) — never missed.
+        queue = await notification_bus.subscribe(user_id)
+        try:
+            # Greet with the current unread count so the client can sync its
+            # badge on every (re)connect.
+            unread = await run_in_threadpool(
+                SocialNotificationService.get_unread_count, db, user_id
             )
-            for n in new_rows:
-                if n.created_at:
-                    last_seen = n.created_at
-                yield _sse("notification", _notification_payload(n))
+            # Release the pooled DB connection for the stream's lifetime; the
+            # push loop below never touches the database. (get_db's teardown
+            # close() after the response is idempotent.)
+            await run_in_threadpool(db.close)
+            yield _sse("connected", {"unread_count": unread})
 
-            yield ": keepalive\n\n"
+            deadline = time.monotonic() + _STREAM_TIMEOUT_SECONDS
+            while (remaining := deadline - time.monotonic()) > 0:
+                if await request.is_disconnected():
+                    return
+                try:
+                    event = await asyncio.wait_for(
+                        queue.get(), timeout=min(_KEEPALIVE_SECONDS, remaining)
+                    )
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+                    continue
+                yield _sse("notification", event)
 
-        yield _sse("timeout", {"message": "Connection timeout, please reconnect"})
+            yield _sse("timeout", {"message": "Connection timeout, please reconnect"})
+        finally:
+            await notification_bus.unsubscribe(user_id, queue)
 
     return StreamingResponse(
         event_generator(),

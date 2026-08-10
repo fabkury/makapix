@@ -150,6 +150,7 @@ Content-Type: application/json
 | [Users](users.md) | Profiles, follows, highlights |
 | [Reactions](reactions.md) | Emoji reactions and comments |
 | [Playlists](playlists.md) | Curated artwork collections |
+| [Notifications](notifications.md) | Social notification inbox and SSE stream |
 | [Player](player.md) | Device management and commands |
 | [Player RPC](player-rpc.md) | HTTPS query/reaction/view protocol for player devices |
 | [Admin](admin.md) | Moderation, bans, trust, audit log |

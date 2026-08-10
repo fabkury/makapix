@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..db import get_session
-from ..services import player_events
+from ..services.event_bus import player_bus
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +176,7 @@ def _handle_capabilities(player_key: UUID, payload: dict[str, Any]) -> None:
         db.commit()
 
         if player.owner_id is not None:
-            player_events.publish_threadsafe(
+            player_bus.publish_threadsafe(
                 player.owner_id,
                 {
                     "type": "capabilities",
@@ -217,7 +217,7 @@ def _handle_state(player_key: UUID, payload: dict[str, Any]) -> None:
         db.commit()
 
         if player.owner_id is not None and clean:
-            player_events.publish_threadsafe(
+            player_bus.publish_threadsafe(
                 player.owner_id,
                 {
                     "type": "state",

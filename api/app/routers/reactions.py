@@ -17,6 +17,7 @@ from ..auth import (
     get_current_user_optional,
     get_current_user_or_anonymous,
 )
+from ..constants import NotificationType
 from ..deps import get_db
 from ..errors import AppError, ErrorCode
 from ..services.social_notifications import SocialNotificationService
@@ -265,7 +266,7 @@ def add_reaction(
         SocialNotificationService.create_notification(
             db=db,
             user_id=target_post.owner_id,
-            notification_type="reaction",
+            notification_type=NotificationType.REACTION,
             post=target_post,
             actor=current_user,
             emoji=emoji,

@@ -20,6 +20,7 @@ import os
 from sqlalchemy.orm import Session
 
 from .. import models
+from ..constants import NotificationType
 
 logger = logging.getLogger(__name__)
 
@@ -28,18 +29,21 @@ FCM_CREDENTIALS_FILE = os.getenv("FCM_CREDENTIALS_FILE")
 _fcm_app = None
 _fcm_unavailable = False
 
-# Human-readable push titles per notification type.
+# Human-readable push titles per notification type (one entry per
+# NotificationType member; StrEnum keys compare equal to plain strings).
 _TITLES = {
-    "reaction": "New reaction",
-    "comment": "New comment",
-    "comment_reply": "New reply",
-    "comment_like": "Someone liked your comment",
-    "follow": "New follower",
-    "post_promoted": "Your post was promoted",
-    "mod_hashtags_updated": "A moderator updated tags on your artwork",
-    "reputation_change": "Reputation update",
-    "moderator_granted": "You're now a moderator",
-    "moderator_revoked": "Moderator role removed",
+    NotificationType.REACTION: "New reaction",
+    NotificationType.COMMENT: "New comment",
+    NotificationType.COMMENT_REPLY: "New reply",
+    NotificationType.COMMENT_LIKE: "Someone liked your comment",
+    NotificationType.FOLLOW: "New follower",
+    NotificationType.POST_PROMOTED: "Your post was promoted",
+    NotificationType.MOD_HASHTAGS_UPDATED: "A moderator updated tags on your artwork",
+    NotificationType.REPUTATION_CHANGE: "Reputation update",
+    NotificationType.MODERATOR_GRANTED: "You're now a moderator",
+    NotificationType.MODERATOR_REVOKED: "Moderator role removed",
+    NotificationType.NEW_REPORT: "New report to review",
+    NotificationType.REPORT_RESOLVED: "Your report was resolved",
 }
 
 

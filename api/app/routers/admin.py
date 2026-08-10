@@ -17,6 +17,7 @@ from ..auth import (
     ensure_not_owner,
     ensure_authenticated_user,
 )
+from ..constants import NotificationType
 from ..deps import get_db
 from ..utils.audit import log_moderation_action
 from ..utils.view_tracking import truncate_ip
@@ -187,7 +188,7 @@ def promote_moderator(
         SocialNotificationService.create_system_notification(
             db=db,
             user_id=user.id,
-            notification_type="moderator_granted",
+            notification_type=NotificationType.MODERATOR_GRANTED,
             actor=_owner,
         )
 
@@ -243,7 +244,7 @@ def demote_moderator(
         SocialNotificationService.create_system_notification(
             db=db,
             user_id=user.id,
-            notification_type="moderator_revoked",
+            notification_type=NotificationType.MODERATOR_REVOKED,
             actor=_owner,
         )
 

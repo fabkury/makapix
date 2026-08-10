@@ -11,15 +11,45 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..auth import get_current_user
 from ..deps import get_db
+from ..pagination import decode_cursor
 from ..services.social_notifications import SocialNotificationService
 
 router = APIRouter(prefix="/social-notifications", tags=["Social Notifications"])
 
 
+def _parse_cursor(cursor: str) -> tuple[datetime, UUID | None]:
+    """Parse a pagination cursor into a (created_at, id) keyset tuple.
+
+    Two formats are accepted:
+    - New opaque cursors (base64 JSON {"id": ..., "sort": ...}) issued since
+      the (created_at, id) tiebreaker landed.
+    - Legacy bare ISO timestamps — deployed app clients echo next_cursor
+      verbatim, so timestamps issued before the change must keep working.
+      They get the old strict created_at < semantics (id=None).
+    """
+    decoded = decode_cursor(cursor)
+    if decoded is not None:
+        last_id, sort_value = decoded
+        try:
+            return (
+                datetime.fromisoformat(str(sort_value).replace("Z", "+00:00")),
+                UUID(str(last_id)),
+            )
+        except (ValueError, TypeError):
+            pass
+    try:
+        return (datetime.fromisoformat(cursor.replace("Z", "+00:00")), None)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid cursor.",
+        )
+
+
 @router.get("/", response_model=schemas.Page[schemas.SocialNotification])
 def list_notifications(
     limit: int = Query(50, ge=1, le=200),
-    cursor: str | None = Query(None, description="ISO timestamp cursor for pagination"),
+    cursor: str | None = Query(None, description="Opaque pagination cursor"),
     unread_only: bool = Query(False, description="Only return unread notifications"),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
@@ -29,28 +59,19 @@ def list_notifications(
 
     Returns notifications in reverse chronological order with cursor-based pagination.
     """
-    # Parse cursor timestamp if provided
-    cursor_dt = None
-    if cursor:
-        try:
-            cursor_dt = datetime.fromisoformat(cursor.replace("Z", "+00:00"))
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid cursor format. Expected ISO timestamp.",
-            )
+    parsed_cursor = _parse_cursor(cursor) if cursor else None
 
     notifications, next_cursor = SocialNotificationService.list_notifications(
         db=db,
         user_id=current_user.id,
         limit=limit,
-        cursor=cursor_dt,
+        cursor=parsed_cursor,
         unread_only=unread_only,
     )
 
     return schemas.Page(
         items=[schemas.SocialNotification.model_validate(n) for n in notifications],
-        next_cursor=next_cursor.isoformat() if next_cursor else None,
+        next_cursor=next_cursor,
     )
 
 

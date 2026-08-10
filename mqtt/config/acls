@@ -2,10 +2,9 @@
 # Format: user <username> or pattern <pattern>
 # Format: topic [read|write|readwrite] <topic>
 
-# API Server - publish commands, read status, publish notifications
+# API Server - publish commands, read status
 # Also: read player requests, write player responses
 # Also: read player view events, write view acks
-# Also: publish social notifications (reactions/comments)
 user svc_backend
 topic write makapix/player/+/command
 topic read makapix/player/+/status
@@ -16,10 +15,6 @@ topic write makapix/player/+/view/ack
 topic read makapix/player/+/capabilities
 topic read makapix/player/+/state
 topic read makapix/player/+/command/ack
-topic write makapix/post/new/#
-topic write makapix/post/new/user/#
-topic write makapix/post/new/category/#
-topic write makapix/social-notifications/#
 topic read $SYS/#
 
 # Registered players - use player_key (UUID) as MQTT username
@@ -34,18 +29,11 @@ pattern write makapix/player/%u/capabilities
 pattern write makapix/player/%u/state
 pattern write makapix/player/%u/command/ack
 
-# Web clients - can only subscribe (read) to topics
-# Username: webclient (shared password for all web browser clients)
-user webclient
-topic read makapix/post/new/user/#
-topic read makapix/post/new/category/#
-topic read makapix/social-notifications/#
-
-# NOTE: mosquitto denies by default — any topic not granted above is already
-# refused. The previous "topic read #" line here (mislabelled "deny all") in
-# fact GRANTED this shared, browser-shipped account read access to EVERY topic,
-# including all physical-player command/status/RPC traffic. Do not reintroduce
-# a wildcard grant. The remaining social-notifications/# grant is a known
-# cross-user exposure of a shared credential and is tracked for migration to
-# the authenticated SSE stream (appraisal S1); a shared password cannot scope
-# social-notifications/user/{id} per user.
+# NOTE: mosquitto denies by default — any topic not granted above is refused.
+# The shared-password `webclient` browser account and the makapix/post/new/* +
+# makapix/social-notifications/* topics were DELETED 2026-08
+# (docs/notification-architecture/): browsers receive social notifications
+# over the authenticated SSE stream; MQTT is the device plane only. This
+# closes appraisal S1 by deletion. Do not reintroduce shared-password
+# accounts or wildcard grants here — a shared credential can never scope
+# per-user topics.

@@ -44,11 +44,7 @@ from ..pagination import (
     decode_cursor,
     encode_cursor,
 )
-from ..mqtt.notifications import (
-    publish_new_post_notification,
-    publish_category_promotion_notification,
-)
-from ..constants import MAX_HASHTAG_LENGTH, MAX_MOD_HASHTAGS_PER_POST
+from ..constants import MAX_HASHTAG_LENGTH, MAX_MOD_HASHTAGS_PER_POST, NotificationType
 from ..utils.art_url import assert_vault_art_url
 from ..utils.audit import log_moderation_action
 from ..utils.hashtags import normalize_hashtags
@@ -906,12 +902,6 @@ async def upload_artwork(
         cache_invalidate("feed:recent:*")
     cache_invalidate("hashtags:*")
 
-    # Publish MQTT notification to followers
-    try:
-        publish_new_post_notification(post.id, db)
-    except Exception as e:
-        logger.error(f"Failed to publish MQTT notification for post {post.id}: {e}")
-
     message = "Artwork uploaded successfully"
     if not public_visibility:
         message += ". Awaiting moderator approval for public visibility."
@@ -1286,7 +1276,7 @@ def update_mod_hashtags(
         SocialNotificationService.create_notification(
             db=db,
             user_id=post.owner_id,
-            notification_type="mod_hashtags_updated",
+            notification_type=NotificationType.MOD_HASHTAGS_UPDATED,
             post=post,
             actor=moderator,
             extra_preview=diff,
@@ -1683,24 +1673,11 @@ def promote_post(
     SocialNotificationService.create_notification(
         db=db,
         user_id=post.owner_id,
-        notification_type="post_promoted",
+        notification_type=NotificationType.POST_PROMOTED,
         post=post,
         actor=_moderator,
         extra_preview=_CATEGORY_DISPLAY.get(payload.category, payload.category),
     )
-
-    # Publish MQTT notification if promoted to "daily's-best"
-    if payload.category == "daily's-best":
-        try:
-            publish_category_promotion_notification(post.id, payload.category, db)
-        except Exception as e:
-            # Log error but don't fail the request
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.error(
-                f"Failed to publish MQTT notification for category promotion: {e}"
-            )
 
     return schemas.PromotePostResponse(promoted=True, category=payload.category)
 

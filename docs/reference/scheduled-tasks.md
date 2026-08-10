@@ -21,6 +21,7 @@ All tasks are defined in `api/app/tasks.py` via the `beat_schedule` configuratio
 | `cleanup-unverified-accounts` | Every 12 hours | Delete unverified accounts older than 3 days (with all associated data) |
 | `cleanup-deleted-posts` | Daily | Hard-delete soft-deleted posts older than 7 days (cascades to comments, reactions, stats, notifications) |
 | `cleanup-expired-bdrs` | Daily | Remove expired batch download request ZIP files and records |
+| `cleanup-social-notifications` | Daily | Delete read social notifications older than 90 days and all older than 365 days |
 | `renew-crl-if-needed` | Daily | Regenerate the MQTT Certificate Revocation List if it expires within 7 days |
 
 ## Data Retention Summary

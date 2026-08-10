@@ -1724,27 +1724,6 @@ class SearchResults(BaseModel):
 
 
 # ============================================================================
-# MQTT SCHEMAS
-# ============================================================================
-
-
-class MQTTBootstrap(BaseModel):
-    """MQTT broker bootstrap info."""
-
-    host: str
-    port: int
-    tls: bool
-    topics: dict[str, str]  # {new_posts: "posts/new/#"}
-
-
-class MQTTPublishResponse(BaseModel):
-    """MQTT publish response."""
-
-    status: Literal["sent"]
-    topic: str
-
-
-# ============================================================================
 # RATE LIMIT SCHEMAS
 # ============================================================================
 

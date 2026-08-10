@@ -13,17 +13,12 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import func
+from sqlalchemy import func, or_, and_
 from sqlalchemy.orm import Session, selectinload
 
-from .. import models
-from ..cache import (
-    cache_get_int,
-    cache_incr,
-    cache_set_int,
-    rate_limit_check,
-)
-from ..mqtt.publisher import publish
+from .. import models, schemas
+from ..cache import rate_limit_check
+from ..services.event_bus import notification_bus
 
 if TYPE_CHECKING:
     pass
@@ -31,7 +26,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Cache key patterns
-UNREAD_COUNT_KEY = "social_notif:unread:{user_id}"
 RATE_LIMIT_KEY = "social_notif:rate:{actor_id}:{recipient_id}"
 
 # Rate limits
@@ -53,7 +47,7 @@ class SocialNotificationService:
         extra_preview: str | None = None,
     ) -> models.SocialNotification | None:
         """
-        Create a social notification and broadcast via MQTT.
+        Create a social notification and dispatch it live (SSE bus + push).
 
         Args:
             db: Database session
@@ -119,11 +113,8 @@ class SocialNotificationService:
             f"Created {notification_type} notification {notification.id} for user {user_id}"
         )
 
-        # Update Redis unread counter
-        SocialNotificationService._increment_unread_count(user_id)
-
-        # Broadcast via MQTT for real-time delivery
-        SocialNotificationService._broadcast_notification(notification)
+        # Live delivery (in-process SSE bus + optional FCM enqueue)
+        SocialNotificationService._dispatch_notification(db, notification)
 
         return notification
 
@@ -174,11 +165,8 @@ class SocialNotificationService:
             f"Created system notification {notification.id} ({notification_type}) for user {user_id}"
         )
 
-        # Update Redis unread counter
-        SocialNotificationService._increment_unread_count(user_id)
-
-        # Broadcast via MQTT for real-time delivery
-        SocialNotificationService._broadcast_notification(notification)
+        # Live delivery (in-process SSE bus + optional FCM enqueue)
+        SocialNotificationService._dispatch_notification(db, notification)
 
         return notification
 
@@ -187,7 +175,9 @@ class SocialNotificationService:
         """
         Get unread notification count for a user.
 
-        Uses Redis cache with database fallback.
+        Computed directly from the database (rides the partial index
+        ix_social_notifications_user_unread), block-filtered to match the
+        list surface — the count is always consistent, no counter to drift.
 
         Args:
             db: Database session
@@ -196,36 +186,23 @@ class SocialNotificationService:
         Returns:
             Unread notification count
         """
-        # Try Redis cache first
-        cache_key = UNREAD_COUNT_KEY.format(user_id=user_id)
-        cached = cache_get_int(cache_key)
-        if cached is not None:
-            return cached
+        from ..utils.blocks import apply_block_filter
 
-        # Fallback to database query
-        count = (
-            db.query(func.count(models.SocialNotification.id))
-            .filter(
-                models.SocialNotification.user_id == user_id,
-                models.SocialNotification.is_read == False,
-            )
-            .scalar()
-            or 0
+        query = db.query(func.count(models.SocialNotification.id)).filter(
+            models.SocialNotification.user_id == user_id,
+            models.SocialNotification.is_read == False,
         )
-
-        # Cache the result
-        cache_set_int(cache_key, count)
-
-        return count
+        query = apply_block_filter(query, models.SocialNotification.actor_id, user_id)
+        return query.scalar() or 0
 
     @staticmethod
     def list_notifications(
         db: Session,
         user_id: int,
         limit: int = 50,
-        cursor: datetime | None = None,
+        cursor: tuple[datetime, UUID | None] | None = None,
         unread_only: bool = False,
-    ) -> tuple[list[models.SocialNotification], datetime | None]:
+    ) -> tuple[list[models.SocialNotification], str | None]:
         """
         List notifications for a user with cursor-based pagination.
 
@@ -233,11 +210,12 @@ class SocialNotificationService:
             db: Database session
             user_id: User ID
             limit: Maximum number of notifications to return
-            cursor: Timestamp cursor for pagination (exclusive)
+            cursor: (created_at, id) keyset cursor, exclusive. A None id
+                    means a legacy timestamp-only cursor (strict created_at <).
             unread_only: If True, only return unread notifications
 
         Returns:
-            Tuple of (notifications, next_cursor)
+            Tuple of (notifications, opaque next_cursor string)
         """
         query = (
             db.query(models.SocialNotification)
@@ -255,10 +233,27 @@ class SocialNotificationService:
             query = query.filter(models.SocialNotification.is_read == False)
 
         if cursor:
-            query = query.filter(models.SocialNotification.created_at < cursor)
+            cursor_ts, cursor_id = cursor
+            if cursor_id is None:
+                # Legacy timestamp-only cursor (pre-tiebreaker app clients).
+                query = query.filter(models.SocialNotification.created_at < cursor_ts)
+            else:
+                query = query.filter(
+                    or_(
+                        models.SocialNotification.created_at < cursor_ts,
+                        and_(
+                            models.SocialNotification.created_at == cursor_ts,
+                            models.SocialNotification.id < cursor_id,
+                        ),
+                    )
+                )
 
-        # Order by created_at descending (newest first)
-        query = query.order_by(models.SocialNotification.created_at.desc())
+        # Newest first; id tiebreaker makes the keyset total (rows sharing a
+        # created_at no longer skip across page boundaries).
+        query = query.order_by(
+            models.SocialNotification.created_at.desc(),
+            models.SocialNotification.id.desc(),
+        )
 
         # Fetch limit + 1 to determine if there are more results
         notifications = query.limit(limit + 1).all()
@@ -269,7 +264,11 @@ class SocialNotificationService:
 
         next_cursor = None
         if has_more and items:
-            next_cursor = items[-1].created_at
+            from ..pagination import encode_cursor
+
+            next_cursor = encode_cursor(
+                str(items[-1].id), items[-1].created_at.isoformat()
+            )
 
         return items, next_cursor
 
@@ -301,10 +300,6 @@ class SocialNotificationService:
 
         db.commit()
 
-        # Update Redis counter
-        if count > 0:
-            SocialNotificationService._decrement_unread_count(user_id, count)
-
         return count
 
     @staticmethod
@@ -333,11 +328,6 @@ class SocialNotificationService:
 
         db.commit()
 
-        # Reset Redis counter to 0
-        if count > 0:
-            cache_key = UNREAD_COUNT_KEY.format(user_id=user_id)
-            cache_set_int(cache_key, 0)
-
         return count
 
     @staticmethod
@@ -365,14 +355,8 @@ class SocialNotificationService:
         if not notification:
             return False
 
-        was_unread = not notification.is_read
-
         db.delete(notification)
         db.commit()
-
-        # Update Redis counter if was unread
-        if was_unread:
-            SocialNotificationService._decrement_unread_count(user_id, 1)
 
         return True
 
@@ -381,53 +365,34 @@ class SocialNotificationService:
     # =========================================================================
 
     @staticmethod
-    def _increment_unread_count(user_id: int) -> None:
-        """Increment the unread count in Redis cache."""
-        cache_key = UNREAD_COUNT_KEY.format(user_id=user_id)
-        cache_incr(cache_key)
-
-    @staticmethod
-    def _decrement_unread_count(user_id: int, amount: int = 1) -> None:
-        """Decrement the unread count in Redis cache."""
-        from ..cache import cache_decr
-
-        cache_key = UNREAD_COUNT_KEY.format(user_id=user_id)
-        cache_decr(cache_key, amount)
-
-    @staticmethod
-    def _broadcast_notification(notification: models.SocialNotification) -> None:
+    def _dispatch_notification(
+        db: Session, notification: models.SocialNotification
+    ) -> None:
         """
-        Broadcast notification via MQTT for real-time delivery.
+        Live-delivery dispatch: in-process SSE bus + optional FCM enqueue.
 
-        Publishes to topic: makapix/social-notifications/user/{user_id}
+        Runs post-commit in the request thread; a crash here loses only the
+        live event — the inbox row survives and the next SSE `connected`
+        greeting / list backfill reconciles the client.
+
+        Both channels are gated on the recipient's blocks (D10): the row is
+        always created (unblock reveals history), but a blocked actor's
+        activity must not reach the recipient live.
         """
-        payload = {
-            "id": str(notification.id),
-            "notification_type": notification.notification_type,
-            "post_id": notification.post_id,
-            "actor_handle": notification.actor_handle,
-            "actor_avatar_url": notification.actor_avatar_url,
-            "actor_public_sqid": notification.actor_public_sqid,
-            "emoji": notification.emoji,
-            "comment_preview": notification.comment_preview,
-            "content_title": notification.content_title,
-            "content_sqid": notification.content_sqid,
-            "content_art_url": notification.content_art_url,
-            "created_at": notification.created_at.isoformat(),
-        }
+        from ..utils.blocks import viewer_has_blocked
 
-        topic = f"makapix/social-notifications/user/{notification.user_id}"
+        if notification.actor_id is not None and viewer_has_blocked(
+            db, viewer_id=notification.user_id, author_id=notification.actor_id
+        ):
+            return
 
-        success = publish(topic, payload, qos=1, retain=False)
-
-        if success:
-            logger.debug(
-                f"Broadcast notification {notification.id} to MQTT topic {topic}"
-            )
-        else:
-            logger.warning(
-                f"Failed to broadcast notification {notification.id} to MQTT"
-            )
+        # Full REST shape (resolves actor_public_sqid while the session is
+        # open); identical to GET /v1/social-notifications/ items so SSE
+        # clients can treat both sources uniformly and dedupe by id.
+        payload = schemas.SocialNotification.model_validate(notification).model_dump(
+            mode="json"
+        )
+        notification_bus.publish_threadsafe(notification.user_id, payload)
 
         # Mobile push (best-effort, async). Only enqueue when push delivery is
         # configured; the worker task also re-checks per-type preferences.

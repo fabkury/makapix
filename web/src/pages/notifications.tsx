@@ -308,7 +308,7 @@ export default function NotificationsPage() {
                     key={notification.id}
                     className={`notification-item ${!notification.is_read ? "unread" : ""}`}
                   >
-                    {isSystem ? (
+                    {isSystem || !notification.content_sqid ? (
                       <div className="notification-link system-notification">
                         {notificationContent}
                       </div>

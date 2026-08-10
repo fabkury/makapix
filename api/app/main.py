@@ -26,12 +26,12 @@ from .routers import (
     comments,
     licenses,
     me,
-    mqtt,
     player,
     player_rpc,
     playlists,
     pmd,
     posts,
+    rate_limit,
     reactions,
     realtime,
     reports,
@@ -183,11 +183,11 @@ async def lifespan(app: FastAPI):
     logger.info("Starting application...")
     # Run startup tasks synchronously - server won't start until these complete
     run_startup_tasks()
-    from .services import player_events
+    from .services import event_bus
 
-    # Hand the running loop to the in-process bus so MQTT callbacks can
-    # forward events to SSE subscribers from their worker threads.
-    player_events.set_loop(asyncio.get_running_loop())
+    # Hand the running loop to the in-process buses so threaded publishers
+    # (MQTT callbacks, request handlers) can forward events to SSE subscribers.
+    event_bus.set_loop(asyncio.get_running_loop())
 
     # Skip the MQTT subscribers under pytest: every test spins up the app
     # lifespan, so starting four real paho clients per test made the broker a
@@ -308,7 +308,7 @@ for _router in _V1_ROUTERS:
 # Physical players reach these via `/api/...` and must NOT move under `/v1`.
 app.include_router(player.router)
 app.include_router(player_rpc.router)
-app.include_router(mqtt.router)
+app.include_router(rate_limit.router)
 app.include_router(pmd.router)
 app.include_router(umd.router)
 app.include_router(sitemap.router)

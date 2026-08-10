@@ -83,12 +83,8 @@ services:
       dockerfile: web/Dockerfile
       args:
         - NEXT_PUBLIC_API_BASE_URL=https://makapix.club
-        - NEXT_PUBLIC_MQTT_WS_URL=wss://makapix.club/mqtt
-        - NEXT_PUBLIC_MQTT_WEBCLIENT_PASSWORD=${MQTT_WEBCLIENT_PASSWORD}
     environment:
       - NEXT_PUBLIC_API_BASE_URL=https://makapix.club
-      - NEXT_PUBLIC_MQTT_WS_URL=wss://makapix.club/mqtt
-      - NEXT_PUBLIC_MQTT_WEBCLIENT_PASSWORD=${MQTT_WEBCLIENT_PASSWORD}
     labels:
       caddy: makapix.club
       # Security headers on the primary (session-holding) surface — the editors
@@ -113,12 +109,8 @@ services:
       # this stops larger bodies from ever spooling to the API container).
       caddy.handle_0.handle_path.request_body.max_size: 64MB
       caddy.handle_0.handle_path.reverse_proxy: makapix-prod-api:8000
-      # MQTT WebSocket proxy
-      caddy.@mqtt.path: /mqtt
-      caddy.handle_1: "@mqtt"
-      caddy.handle_1.reverse_proxy: makapix-prod-mqtt:9001
       # Default: proxy to Next.js
-      caddy.handle_2.reverse_proxy: "{{upstreams 3000}}"
+      caddy.handle_1.reverse_proxy: "{{upstreams 3000}}"
 
   # ---------------------------------------------------------------------------
   # Vault HTTP - Production (placeholder)
