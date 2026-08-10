@@ -1,5 +1,26 @@
 # Progress — Notification Architecture
 
+## 2026-08-10 — DEPLOYED TO PROD (PR #253, merge 4e7ddb3)
+
+Pushed (rebased onto the 0003 actor-sqid docs commit → feature commit
+`03a59aa`), PR #253 merged same day, `make deploy` on `/opt/makapix` ran
+clean. `up -d` recreated mqtt/api/worker/web (mqtt env changed, so the
+broker restart + gen-passwd self-heal happened as part of the deploy).
+
+Prod verification, all green:
+- Broker: listener 9001 gone; `webclient` purged from the persisted
+  passwords file; all 4 svc_backend subscribers reconnected; physical p3a
+  fleet devices re-attached over mTLS within seconds.
+- HTTP: `/api/v1/realtime/notifications` → 401 unauthenticated; old
+  `/mqtt` path → 404 via the Next catch-all (Caddy label removal live);
+  homepage 200; api log error-free.
+- Served `_app` chunk credential-free and carries the SSE path; the
+  stubbed Playwright badge spec passes against the prod-served bundle.
+
+The prod-broker-restart follow-up below is DONE; remaining follow-ups
+unchanged (host `.env` cleanup ×2, healthchecks check, optional
+`web_next_static` prune, app-team reply).
+
 ## 2026-08-10 — Plane separation IMPLEMENTED (Phases 1+2, one change set)
 
 Owner approved implementing the principle "HTTPS = human plane, MQTT = device
@@ -60,9 +81,9 @@ S1/D24/D27 annotated; openapi.json regenerated (bootstrap/demo removed).
       then — nothing reads it anymore).
 - [ ] healthchecks.io: confirm the auto-created `cleanup-social-notifications`
       check after first prod run; set period 1 day + grace.
-- [ ] After prod deploy: restart `makapix-prod-mqtt` (bind-mounted config;
-      entrypoint self-heal removes the `webclient` passwd entry), then verify
-      9001 closed.
+- [x] After prod deploy: restart `makapix-prod-mqtt` — DONE 2026-08-10
+      (recreated by the deploy itself; 9001 verified closed, webclient
+      verified purged, fleet reconnected).
 - [ ] Optional hygiene: the `web_next_static` named volume accumulates chunks
       from every historical build (dev copies date to 2026-01), so old bundles
       containing the now-dead webclient password remain fetchable by hash on
