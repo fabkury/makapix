@@ -1,5 +1,27 @@
 # Progress — Notification Architecture
 
+## 2026-08-11 — App team replied (0002 + 0003): SSE adopted & device-verified, FCM = DROP
+
+- **0002:** SSE implemented same-day in the app (their commit `bf93f50`) —
+  foreground-only stream, greeting reconciliation, id-dedupe, immediate
+  reconnect on `timeout`, backoff on errors, 60 s-silence dead-link detection;
+  their 60 s poll remains as fallback but skips ticks while the stream is
+  healthy. Opaque cursors confirmed echoed verbatim. MQTT topic removal: no
+  objection (grep-verified never adopted); their C5 roadmap item retired,
+  SPEC-CLUB §31.1 dissolved.
+- **0002 decision — FCM: DROP.** They explicitly request deletion of the
+  server half (push-token endpoints, notification preferences, delivery
+  task); if push ever becomes a priority, a fresh exchange will build both
+  halves properly.
+- **0003:** end-to-end verified **on prod with a physical device** — reaction
+  from the permanent test account lit a real phone's bell immediately via
+  SSE. Shipping as Android 1.0.22; iOS follows. Exchange closed on their side.
+- **Open on our side:** execute the FCM server-half deletion (push.py,
+  /v1/me/push-tokens + notification-preferences endpoints, Celery task,
+  PushToken model + migration, users.notification_prefs, firebase-admin dep,
+  FCM_CREDENTIALS_FILE plumbing, the enqueue in _dispatch_notification,
+  tests, openapi, docs) — awaiting owner go-ahead.
+
 ## 2026-08-11 — Healthchecks follow-up closed; latent O8 defect found and fixed
 
 The owner's screenshot showed the `cleanup-social-notifications` check missing
