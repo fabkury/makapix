@@ -3389,8 +3389,8 @@ def _purge_user_account(db: Session, user_id: int) -> dict[str, Any]:
     13. Tokens - delete RefreshToken, EmailVerificationToken, PasswordResetToken
     14. AuthIdentity - delete OAuth identities
     15. Avatar - delete avatar file from vault
-    15b. FK-blocking rows - audit_logs / admin_notes / violations /
-         push_tokens (RESTRICT or NO ACTION, NOT NULL) are erased and
+    15b. FK-blocking rows - audit_logs / admin_notes / violations
+         (RESTRICT or NO ACTION, NOT NULL) are erased and
          reports.reporter_id is anonymized, or the final DELETE would fail
     16. User record - final delete (frees email for reuse)
 
@@ -3726,7 +3726,7 @@ def _purge_user_account(db: Session, user_id: int) -> dict[str, Any]:
         # whose actor_id is this very user).
         #  - reports.reporter_id is RESTRICT but nullable -> anonymize (keep the
         #    report, drop the reporter PII), matching the reporter-IP policy.
-        #  - audit_logs / admin_notes / violations / push_tokens are
+        #  - audit_logs / admin_notes / violations are
         #    NOT NULL -> the rows are erased with the account.
         counts["reports_anonymized"] = (
             db.query(models.Report)
@@ -3751,17 +3751,11 @@ def _purge_user_account(db: Session, user_id: int) -> dict[str, Any]:
             )
             .delete(synchronize_session=False)
         )
-        counts["push_tokens"] = (
-            db.query(models.PushToken)
-            .filter(models.PushToken.user_id == user_id)
-            .delete(synchronize_session=False)
-        )
         db.commit()
         logger.info(
             f"Cleared FK-blocking rows for user {user_id}: "
             f"{counts['audit_logs']} audit, {counts['admin_notes']} admin notes, "
             f"{counts['violations']} violations, "
-            f"{counts['push_tokens']} push tokens, "
             f"{counts['reports_anonymized']} reports anonymized"
         )
 
@@ -4052,23 +4046,5 @@ def rollup_download_stats(self, target_date_iso: str | None = None) -> dict[str,
         raise
 
 
-@celery_app.task(name="app.tasks.send_push_notification", bind=True)
-def send_push_notification(self, user_id, notification_type, data=None):
-    """Deliver a social notification as a mobile push (FCM). Best-effort.
-
-    No-ops cleanly when push is not configured (see services/push.py).
-    """
-    from .db import SessionLocal
-    from .services.push import send_push_to_user
-
-    db = SessionLocal()
-    try:
-        sent = send_push_to_user(db, user_id, notification_type, data or {})
-        if sent:
-            logger.info(f"Sent {sent} push(es) to user {user_id} ({notification_type})")
-        return sent
-    except Exception as e:
-        logger.error(f"send_push_notification failed: {e}", exc_info=True)
-        return 0
-    finally:
-        db.close()
+# (send_push_notification was deleted 2026-08-11 with the FCM server half —
+# docs/notification-architecture/messages/0002: the app team chose "drop".)

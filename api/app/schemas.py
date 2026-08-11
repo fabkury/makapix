@@ -1390,29 +1390,6 @@ class OtpMessageResponse(BaseModel):
     message: str
 
 
-class PushTokenRegister(BaseModel):
-    """Register (or refresh) a mobile push token (§4)."""
-
-    platform: Literal["fcm", "apns"]
-    token: str = Field(..., min_length=1, max_length=512)
-    device_label: str | None = Field(None, max_length=120)
-
-
-class PushTokenResponse(BaseModel):
-    id: UUID
-    platform: str
-    device_label: str | None = None
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class NotificationPreferences(BaseModel):
-    """Per-notification-type push preferences ({type: bool}); absent => on."""
-
-    preferences: dict[str, bool] = Field(default_factory=dict)
-
-
 class AuthIdentityResponse(BaseModel):
     """Authentication identity response."""
 

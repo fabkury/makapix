@@ -128,27 +128,9 @@ def captured_events(monkeypatch) -> list[tuple[int, dict]]:
     return captured
 
 
-@pytest.fixture
-def captured_pushes(monkeypatch, tmp_path) -> list[tuple]:
-    """Enable the FCM enqueue guard and record .delay() calls."""
-    cred = tmp_path / "fcm.json"
-    cred.write_text("{}")
-    monkeypatch.setenv("FCM_CREDENTIALS_FILE", str(cred))
-
-    captured: list[tuple] = []
-    from app.tasks import send_push_notification
-
-    monkeypatch.setattr(
-        send_push_notification,
-        "delay",
-        lambda *args, **kwargs: captured.append((args, kwargs)),
-    )
-    return captured
-
-
 class TestDispatchBlockGating:
     def test_row_created_but_live_delivery_gated_for_blocked_actor(
-        self, db, recipient, actor, post, captured_events, captured_pushes
+        self, db, recipient, actor, post, captured_events
     ):
         db.add(UserBlock(blocker_id=recipient.id, blocked_id=actor.id))
         db.commit()
@@ -172,10 +154,9 @@ class TestDispatchBlockGating:
         )
         # ...but nothing was delivered live.
         assert captured_events == []
-        assert captured_pushes == []
 
-    def test_unblocked_actor_dispatches_bus_and_push(
-        self, db, recipient, actor, post, captured_events, captured_pushes
+    def test_unblocked_actor_dispatches_bus(
+        self, db, recipient, actor, post, captured_events
     ):
         SocialNotificationService.create_notification(
             db,
@@ -188,10 +169,6 @@ class TestDispatchBlockGating:
 
         assert len(captured_events) == 1
         assert captured_events[0][0] == recipient.id
-        assert len(captured_pushes) == 1
-        args, _ = captured_pushes[0]
-        assert args[0] == recipient.id
-        assert args[1] == "reaction"
 
 
 class TestUnreadCount:

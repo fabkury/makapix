@@ -1,5 +1,33 @@
 # Progress — Notification Architecture
 
+## 2026-08-11 — FCM server half DELETED (app team's "drop", messages/0002)
+
+Removed per the app team's explicit request: `services/push.py`, the four
+`/v1/me/push-tokens` + `/v1/me/notification-preferences` endpoints (me.py
+keeps only `/me/blocks`), the `send_push_notification` Celery task, the
+`PushToken` model and `users.notification_prefs` column (hand-written drop
+migration `a9b8c7d6e5f4`; **verified 0 rows / 0 non-default prefs on BOTH
+envs pre-drop** — lossless), the FCM enqueue in `_dispatch_notification`
+(dispatch is now purely the SSE bus), the `firebase-admin` dependency, the
+`FCM_CREDENTIALS_FILE` compose plumbing on api+worker (both overlays), the
+`FCM_CREDENTIALS_HOST_PATH` pointers in both host env files, the push
+schemas, and the account-purge push-token step. Tests: `test_push_tokens.py`
+deleted; harness-safety probe re-pointed at `cleanup_social_notifications`;
+p1-security push test dropped (endpoint gone); account-deletion +
+notification-architecture tests trimmed; `test_observability` updated for
+the `?create=1` URL (missed by the morning's fix). OpenAPI: −245 lines.
+
+Orphaned by design (owner decision — untouched, decommission at leisure):
+the service-account JSON in `~/secrets/makapix/` and the Firebase cloud
+project itself.
+
+Verified on dev: migration applied at startup (head `a9b8c7d6e5f4`,
+table+column gone), deleted endpoints 404, `/me/blocks` + SSE intact, full
+suite green (70 files), live SSE push re-verified end-to-end post-edit.
+
+If push ever returns: fresh message exchange, both halves built together
+(per 0002's own framing).
+
 ## 2026-08-11 — App team replied (0002 + 0003): SSE adopted & device-verified, FCM = DROP
 
 - **0002:** SSE implemented same-day in the app (their commit `bf93f50`) —

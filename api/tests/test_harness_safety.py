@@ -12,9 +12,9 @@ def test_task_delay_is_neutralised():
     Tests that genuinely need a task run call .apply() (eager), which is
     unaffected — this only neutralises fire-and-forget .delay/.apply_async.
     """
-    from app.tasks import send_push_notification
+    from app.tasks import cleanup_social_notifications
 
-    result = send_push_notification.delay(0, "test")
+    result = cleanup_social_notifications.delay()
     assert result.id == "test-noop"
 
 
