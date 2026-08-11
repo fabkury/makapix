@@ -2,7 +2,8 @@
 
 - S9:  GET /user/{id}/reputation was public and leaked moderator reason text.
 - S18: POST /player/provision was unauthenticated + unthrottled (row flood).
-- S20: POST /me/push-tokens was authed but unthrottled (row flood).
+- S20: POST /me/push-tokens was authed but unthrottled (row flood; endpoint
+       deleted 2026-08-11 with the FCM server half).
 - S21: POST /auth/change-password had no throttle on the current-password check
        (an online password-guessing oracle for a stolen access token).
 """
@@ -55,16 +56,6 @@ def test_provision_is_rate_limited(client, monkeypatch):
     r = client.post(
         "/player/provision",
         json={"device_model": "d", "firmware_version": "1.0"},
-    )
-    assert r.status_code == 429, r.text
-
-
-def test_push_token_register_is_rate_limited(client, db, monkeypatch):
-    monkeypatch.setattr("app.routers.me.check_rate_limit", _deny)
-    r = client.post(
-        "/me/push-tokens",
-        json={"platform": "fcm", "token": f"tok_{uuid.uuid4()}"},
-        headers=_auth(_user(db)),
     )
     assert r.status_code == 429, r.text
 

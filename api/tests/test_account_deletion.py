@@ -78,9 +78,6 @@ def test_deletion_completes_with_every_dependent_row(db: Session):
             models.Violation(
                 user_id=other_id, moderator_id=victim_id, reason="offense two"
             ),
-            models.PushToken(
-                user_id=victim_id, platform="fcm", token=f"tok_{uuid.uuid4()}"
-            ),
             models.BatchDownloadRequest(
                 user_id=victim_id,
                 post_ids=[other_post.id],
@@ -126,10 +123,6 @@ def test_deletion_completes_with_every_dependent_row(db: Session):
             | (models.Violation.moderator_id == victim_id)
         )
         .count()
-        == 0
-    )
-    assert (
-        db.query(models.PushToken).filter(models.PushToken.user_id == victim_id).count()
         == 0
     )
     assert (

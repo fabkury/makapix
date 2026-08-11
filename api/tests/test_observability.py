@@ -56,4 +56,8 @@ def test_hc_ping_hits_expected_url_when_configured(monkeypatch):
 
     monkeypatch.setattr(requests, "get", _capture)
     obs._hc_ping("rollup-view-events", "/start")
-    assert seen["url"] == "https://hc-ping.com/testkey123/rollup-view-events/start"
+    # ?create=1: auto-create the check on first ping (see _hc_ping)
+    assert (
+        seen["url"]
+        == "https://hc-ping.com/testkey123/rollup-view-events/start?create=1"
+    )

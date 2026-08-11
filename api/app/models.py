@@ -124,9 +124,6 @@ class User(Base):
         Boolean, nullable=False, default=False, index=True
     )  # Auto-approve public visibility for uploads
 
-    # Per-notification-type push preferences ({type: bool}); absent type => push on.
-    notification_prefs = Column(JSON, nullable=False, default=dict)
-
     # ToS version (effective-date string, constants.TERMS_VERSION) accepted at
     # self-signup (docs/ugc-safety/ D26). NULL = pre-ToS account or an account
     # not created through self-signup (continued use = acceptance).
@@ -308,28 +305,6 @@ class PasswordResetToken(Base):
 
     # Relationships
     user = relationship("User", back_populates="password_reset_tokens")
-
-
-class PushToken(Base):
-    """A mobile push target (APNs/FCM) registered by a native app client.
-
-    Distinct from `Player`/`devices` (physical art players). One row per device
-    token; the token is unique so re-registering updates the same row.
-    """
-
-    __tablename__ = "push_tokens"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    platform = Column(String(8), nullable=False)  # "fcm" | "apns"
-    token = Column(String(512), nullable=False, unique=True, index=True)
-    device_label = Column(String(120), nullable=True)
-    failure_count = Column(Integer, nullable=False, default=0)
-    revoked = Column(Boolean, nullable=False, default=False, index=True)
-    created_at = Column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
-    last_used_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class Post(Base):

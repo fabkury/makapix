@@ -8,7 +8,6 @@ for reactions and comments on artwork.
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -47,7 +46,7 @@ class SocialNotificationService:
         extra_preview: str | None = None,
     ) -> models.SocialNotification | None:
         """
-        Create a social notification and dispatch it live (SSE bus + push).
+        Create a social notification and dispatch it live over the SSE bus.
 
         Args:
             db: Database session
@@ -113,7 +112,7 @@ class SocialNotificationService:
             f"Created {notification_type} notification {notification.id} for user {user_id}"
         )
 
-        # Live delivery (in-process SSE bus + optional FCM enqueue)
+        # Live delivery (in-process SSE bus)
         SocialNotificationService._dispatch_notification(db, notification)
 
         return notification
@@ -165,7 +164,7 @@ class SocialNotificationService:
             f"Created system notification {notification.id} ({notification_type}) for user {user_id}"
         )
 
-        # Live delivery (in-process SSE bus + optional FCM enqueue)
+        # Live delivery (in-process SSE bus)
         SocialNotificationService._dispatch_notification(db, notification)
 
         return notification
@@ -369,13 +368,13 @@ class SocialNotificationService:
         db: Session, notification: models.SocialNotification
     ) -> None:
         """
-        Live-delivery dispatch: in-process SSE bus + optional FCM enqueue.
+        Live-delivery dispatch: in-process SSE bus.
 
         Runs post-commit in the request thread; a crash here loses only the
         live event — the inbox row survives and the next SSE `connected`
         greeting / list backfill reconciles the client.
 
-        Both channels are gated on the recipient's blocks (D10): the row is
+        Live delivery is gated on the recipient's blocks (D10): the row is
         always created (unblock reveals history), but a blocked actor's
         activity must not reach the recipient live.
         """
@@ -393,22 +392,3 @@ class SocialNotificationService:
             mode="json"
         )
         notification_bus.publish_threadsafe(notification.user_id, payload)
-
-        # Mobile push (best-effort, async). Only enqueue when push delivery is
-        # configured; the worker task also re-checks per-type preferences.
-        if os.getenv("FCM_CREDENTIALS_FILE"):
-            try:
-                from ..tasks import send_push_notification
-
-                send_push_notification.delay(
-                    notification.user_id,
-                    notification.notification_type,
-                    {
-                        "id": str(notification.id),
-                        "actor_handle": notification.actor_handle,
-                        "content_title": notification.content_title,
-                        "content_sqid": notification.content_sqid,
-                    },
-                )
-            except Exception as e:  # never let push break the notification path
-                logger.warning(f"Failed to enqueue push for {notification.id}: {e}")
