@@ -1,5 +1,33 @@
 # Progress — Notification Architecture
 
+## 2026-08-11 — Healthchecks follow-up closed; latent O8 defect found and fixed
+
+The owner's screenshot showed the `cleanup-social-notifications` check missing
+— and so were ALL nine beat heartbeats. Root cause (verified on prod): the O8
+observability effort shipped only the code half — `HEALTHCHECKS_PING_KEY` was
+wired in compose (`${HEALTHCHECKS_PING_KEY:-}`) but present in no env file, so
+the worker got an empty string and `register_beat_heartbeats()` no-op'd. The
+dead-man's-switch was itself silently dead. Second latent defect: `_hc_ping`
+lacked `?create=1`, so even with a key, first pings to nonexistent slugs would
+have 404'd silently (the code comment claimed auto-create; the API disagrees).
+
+Fixed 2026-08-11:
+- Owner added the project Ping Key to `/opt/makapix/deploy/stack/.env.prod`
+  (prod only — dev stays silent by design); worker recreated via compose
+  (plain restart would keep the old env), key verified non-empty in-container.
+- All nine checks created via one-time `?create=1` pings (9× HTTP 201).
+- Signal path proven live: `cleanup_social_notifications` triggered → the
+  check's ping log shows the distinct start+success pair.
+- Code hardened: `_hc_ping` now always appends `?create=1` (future slugs
+  self-create); `HEALTHCHECKS_PING_KEY` + `SENTRY_DSN` documented in
+  `.env.example`; appraisal O8 row annotated.
+- Beat schedule independently verified: the first scheduled 04:45 ET run
+  fired on time 2026-08-11 (0 deletions, as expected after the manual run).
+
+**Remaining (owner, optional):** tune each check's grace in the UI (defaults
+1 d period / 1 h grace are correct for these daily tasks; the backup check
+uses 3 h grace as a reference). Delete the placeholder "My First Check".
+
 ## 2026-08-10 — DEPLOYED TO PROD (PR #253, merge 4e7ddb3)
 
 Pushed (rebased onto the 0003 actor-sqid docs commit → feature commit

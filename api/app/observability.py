@@ -22,9 +22,11 @@ logger = logging.getLogger(__name__)
 _HC_BASE = "https://hc-ping.com"
 
 # Celery task name -> healthchecks.io check slug. The critical data tasks: a
-# silent stop here loses or corrupts data. Slugs auto-create the check on first
-# ping when a project Ping Key is used; set each check's period + grace in the
-# healthchecks.io UI to match beat_schedule.
+# silent stop here loses or corrupts data. Slug pings carry ?create=1 so a
+# missing check is auto-created on first ping (without it, healthchecks
+# returns 404 and the check never materializes — the defect that kept this
+# whole mechanism inert until 2026-08-11); set each check's period + grace in
+# the healthchecks.io UI to match beat_schedule.
 BEAT_HEARTBEATS: dict[str, str] = {
     "app.tasks.rollup_view_events": "rollup-view-events",
     "app.tasks.rollup_site_events": "rollup-site-events",
@@ -83,7 +85,9 @@ def _hc_ping(slug: str, suffix: str = "") -> None:
     key = os.getenv("HEALTHCHECKS_PING_KEY", "").strip()
     if not key:
         return
-    url = f"{_HC_BASE}/{key}/{slug}{suffix}"
+    # ?create=1: auto-create the check on first ping (default 1 d period /
+    # 1 h grace — right for these daily tasks); a no-op once it exists.
+    url = f"{_HC_BASE}/{key}/{slug}{suffix}?create=1"
     try:
         import requests
 
