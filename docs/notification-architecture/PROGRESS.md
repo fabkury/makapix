@@ -1,5 +1,18 @@
 # Progress — Notification Architecture
 
+> **EFFORT CLOSED 2026-08-11.** Everything shipped and verified end to end:
+> assessment (2026-08-10) → plane separation live on prod (PR #253) →
+> follow-ups closed → app team adopted SSE and device-verified it on prod
+> (0002/0003, Android 1.0.22) → FCM server half deleted at their request
+> (PR #254, migration `a9b8c7d6e5f4` applied on prod 2026-08-11; deleted
+> endpoints 404, SSE intact, zero post-deploy errors).
+> **Reopen triggers:** mobile push becomes a priority (fresh message
+> exchange, both halves built together); multi-worker uvicorn (the
+> in-process SSE bus must move to Redis pub/sub — see
+> `services/event_bus.py`); new-post notifications for humans (would be an
+> HTTPS-plane feature, not MQTT). Orphaned by owner decision: the Firebase
+> project + service-account JSON in `~/secrets/makapix/`.
+
 ## 2026-08-11 — FCM server half DELETED (app team's "drop", messages/0002)
 
 Removed per the app team's explicit request: `services/push.py`, the four
