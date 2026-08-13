@@ -100,6 +100,13 @@ celery_app.conf.update(
             "schedule": crontab(minute=0, hour=2),  # 02:00 ET (after view rollup)
             "options": {"queue": "default"},
         },
+        # After the 01:00 view rollup: alerts on 422s at the /view door and on
+        # a stale watermark (docs/artwork-views/ D15).
+        "check-view-ingestion-health": {
+            "task": "app.tasks.check_view_ingestion_health",
+            "schedule": crontab(minute=30, hour=2),  # 02:30 ET
+            "options": {"queue": "default"},
+        },
         # NOTE: cleanup-old-site-events AND cleanup-old-view-events were both
         # removed — each raced its rollup with an independent cutoff and deleted
         # raw events before (or instead of) aggregating them. The rollups own
@@ -2074,6 +2081,77 @@ def cleanup_unverified_accounts(self) -> dict[str, Any]:
         raise
     finally:
         db.close()
+
+
+@celery_app.task(bind=True, name="app.tasks.check_view_ingestion_health")
+def check_view_ingestion_health(self) -> dict[str, Any]:
+    """
+    Watchdog for the view-ingestion pipeline (docs/artwork-views/ D15).
+
+    Errors when the /view door rejected requests with 422 (a client is
+    speaking a contract we don't accept — the failure mode that silently
+    swallowed every mobile-app view registration from launch until the
+    2026-08 audit) or when the rollup watermark is stale (> 2 days behind,
+    i.e. the 01:00 rollup missed at least one night). Info-logs the routine
+    drop counters (bots, dedup, rate limits). Runs daily at 02:30 ET, after
+    the 01:00 rollup should have advanced the watermark.
+    """
+    from datetime import timedelta
+    from .db import SessionLocal
+    from .services.view_metrics import (
+        get_view_counter,
+        get_view_watermark,
+        utc_today,
+    )
+
+    today = utc_today()
+    yesterday = today - timedelta(days=1)
+
+    level = "ok"
+    problems: list[str] = []
+
+    rejected = get_view_counter("contract_rejected", today) + get_view_counter(
+        "contract_rejected", yesterday
+    )
+    if rejected > 0:
+        problems.append(f"{rejected} contract-rejected (422) view registrations")
+        level = "critical"
+
+    db = SessionLocal()
+    try:
+        watermark = get_view_watermark(db)
+    finally:
+        db.close()
+
+    if watermark is None:
+        problems.append("view-events watermark missing (rollup never ran?)")
+        level = "critical"
+    elif watermark < today - timedelta(days=2):
+        problems.append(f"view-events watermark stale: {watermark}")
+        level = "critical"
+
+    counters = {
+        name: get_view_counter(name, today) + get_view_counter(name, yesterday)
+        for name in (
+            "bot_dropped",
+            "site_bot_dropped",
+            "dedup_suppressed",
+            "rate_limited",
+        )
+    }
+
+    if problems:
+        logger.error(f"View ingestion health: {'; '.join(problems)} | {counters}")
+    else:
+        logger.info(f"View ingestion health OK (watermark {watermark}) | {counters}")
+
+    return {
+        "status": "success",
+        "level": level,
+        "problems": problems,
+        "watermark": str(watermark),
+        "counters": counters,
+    }
 
 
 @celery_app.task(bind=True, name="app.tasks.check_vault_free_space")

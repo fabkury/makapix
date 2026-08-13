@@ -199,6 +199,17 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def _handle_validation_error(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
+        # Count contract rejections on the view-registration door
+        # (docs/artwork-views/ D15): the mobile app's channel:'artwork' 422
+        # went unnoticed from launch until the 2026-08 audit precisely for
+        # lack of this signal. check_view_ingestion_health alerts on > 0.
+        route = request.scope.get("route")
+        route_path = getattr(route, "path_format", "") or ""
+        if route_path.endswith("/post/{id}/view"):
+            from .services.view_metrics import incr_view_counter
+
+            incr_view_counter("contract_rejected")
+
         errors = jsonable_encoder(exc.errors())
         if not _is_v1(request):
             return JSONResponse(
