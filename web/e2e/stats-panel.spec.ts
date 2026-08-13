@@ -118,11 +118,29 @@ async function stubPage(page: Page, viewsByType: Record<string, number>) {
       body: JSON.stringify(postFixture),
     }),
   );
+  // Navigation-context fetch (/api/post?owner_id=...) — must return items,
+  // the page maps over them unguarded.
+  await page.route(/\/api\/post\?/, (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ items: [], next_cursor: null, total: 0 }),
+    }),
+  );
   await page.route('**/api/post/*/widget-data', (route: Route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ reactions: null, comments: [], views_count: 40 }),
+      body: JSON.stringify({
+        reactions: {
+          totals: {},
+          authenticated_totals: {},
+          anonymous_totals: {},
+          mine: [],
+        },
+        comments: [],
+        views_count: 40,
+      }),
     }),
   );
   await page.route('**/api/post/*/view', (route: Route) =>
@@ -152,7 +170,9 @@ test('shows Views and Impressions as separate KPIs with canonical payload', asyn
 
   await expect(page.getByText('Views (30d)')).toBeVisible();
   await expect(page.getByText('Impressions (30d)')).toBeVisible();
-  await expect(page.getByText('400', { exact: true })).toBeVisible();
+  // Scope to the Impressions KPI tile (the raw number also appears in the
+  // chart's accessible data table).
+  await expect(page.locator('[title*="Passive exposure"]')).toContainText('400');
   // The approximate-uniques disclaimer (D13) rides the KpiCard title attr.
   await expect(
     page.locator('[title*="Approximate"]').first(),
@@ -166,7 +186,7 @@ test('auth toggle swaps to authenticated-only figures', async ({ page }) => {
   await openStatsPanel(page);
 
   await page.getByLabel('Include unauthenticated traffic').uncheck();
-  await expect(page.getByText('200', { exact: true })).toBeVisible(); // 400/2
+  await expect(page.locator('[title*="Passive exposure"]')).toContainText('200'); // 400/2
 });
 
 test('legacy views_by_type keys render without the old taxonomy', async ({

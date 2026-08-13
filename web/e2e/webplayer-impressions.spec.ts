@@ -52,11 +52,27 @@ async function stubApis(page: Page, viewRequests: Request[]) {
       }),
     }),
   );
-  await page.route('**/api/post?**', (route: Route) =>
+  await page.route(/\/api\/post\?/, (route: Route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({ items: [ARTWORK], next_cursor: null, total: 1 }),
+    }),
+  );
+  await page.route('**/api/post/*/widget-data', (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        reactions: {
+          totals: {},
+          authenticated_totals: {},
+          anonymous_totals: {},
+          mine: [],
+        },
+        comments: [],
+        views_count: 3,
+      }),
     }),
   );
   // Registered last so it outranks the /api/post?** and catch-all globs.
@@ -85,6 +101,18 @@ test('web player fires one impression per appearance, no 30s re-fire', async ({
 
   await page.goto('/');
   await page.getByRole('button', { name: 'Open Web Player' }).click();
+  // Wait for the artwork to display, ticking the fake clock as we poll —
+  // image loading runs in real time but any UI transition timers are frozen
+  // until the clock advances.
+  await expect
+    .poll(
+      async () => {
+        await page.clock.runFor(500);
+        return page.getByText('Rotation Piece').first().isVisible();
+      },
+      { timeout: 20_000 },
+    )
+    .toBe(true);
 
   // Past the 2s appearance guard: exactly one POST, explicit impression intent.
   await page.clock.runFor(4000);
@@ -128,6 +156,19 @@ test('permalink visit registers a body-less View after the dwell', async ({
   );
 
   await page.goto(`/p/${ARTWORK.public_sqid}`);
+  // Wait for the post to render, ticking the fake clock as we poll — the 2s
+  // dwell debounce only starts once the post state is set.
+  await expect
+    .poll(
+      async () => {
+        await page.clock.runFor(500);
+        return page
+          .getByRole('heading', { name: 'Rotation Piece' })
+          .isVisible();
+      },
+      { timeout: 20_000 },
+    )
+    .toBe(true);
   await page.clock.runFor(4000);
 
   await expect.poll(() => viewPosts(views).length).toBe(1);

@@ -112,7 +112,9 @@ test('renders KPI tiles, impressions, and flagged countries', async ({
 
   await expect(page.getByText('Views (30d)')).toBeVisible();
   await expect(page.getByText('Impressions (30d)')).toBeVisible();
-  await expect(page.getByText('900', { exact: true })).toBeVisible();
+  // Scope to the Impressions KPI tile (the raw number also appears in the
+  // chart's accessible data table).
+  await expect(page.locator('[title*="Passive exposure"]')).toContainText('900');
   await expect(page.locator('[title*="Approximate"]').first()).toBeAttached();
   await expect(page.getByText('🇧🇷 Brazil')).toBeVisible();
 
@@ -120,7 +122,7 @@ test('renders KPI tiles, impressions, and flagged countries', async ({
   const link = page.getByRole('link', { name: 'Artwork 1' });
   await expect(link).toHaveAttribute('href', '/p/post-1');
   await expect(
-    page.getByText('Impressions', { exact: true }).first(),
+    page.locator('.table-header').getByText('Impressions', { exact: true }),
   ).toBeVisible();
 });
 
