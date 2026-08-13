@@ -40,8 +40,20 @@
   self-clears; expect one dev alert log at the next 02:30 ET run).
 - `make e2e`: 46/46 after stub-shape fixes (`c65a9ab`).
 
+## 2026-08-13 — SHIPPED TO PRODUCTION
+- PR #256 develop→main merged 18:13 UTC; `MAKAPIX_IP_HASH_SALT` added to
+  /opt/makapix/.env.prod; `make deploy` clean, all containers healthy.
+- Prod migration verified: head `c1d2e3f4a5b6`, watermark seeded 2026-08-05
+  (oldest surviving raw day − 1 — tonight's 01:00 rollup processes the ~7-day
+  backlog, per-day loop bounds memory), view_count backfilled: 3,209 Views
+  across 559 posts; >7d player backlog hygiene-deleted, 6,966 raw events retained.
+- Prod door checks: GET /p/ records nothing; body-less POST 201 (view_count
+  3→4, one event) → dedup 204; bot UA 204. Site 200, worker+beat ready.
+  (422 probe deliberately NOT run on prod — it would trip the watchdog.)
+
 ## Pending
-- [ ] PR develop→main, merge, prod deploy (salt into .env.prod first).
-- [ ] Post-deploy: next-morning check of the 01:00 rollup + 02:30 watchdog;
-      healthchecks slug auto-created.
-- [ ] App team ack of message/0001 (no action required on their side).
+- [ ] Next-morning check: 01:00 ET rollup processed the Aug 6–12 backlog clean;
+      02:30 ET watchdog OK; healthchecks auto-created `check-view-ingestion-health`
+      (set period/grace in the UI). NOTE: dev's watchdog will alert once at its
+      next 02:30 run from the 422 injected during dev verification — expected.
+- [ ] App team ack of messages/0001 (no action required on their side).
