@@ -31,6 +31,9 @@ def record_site_event(
     Zero database interaction in the request path - all data is
     serialized and dispatched to the Celery task queue.
 
+    Known bots are never recorded (docs/artwork-views/ D9) — dropped events
+    increment the viewobs:site_bot_dropped counter instead.
+
     Args:
         request: FastAPI Request object
         event_type: Type of event (page_view, signup, upload, api_call, error)
@@ -44,13 +47,20 @@ def record_site_event(
             detect_device_type,
             extract_referrer_domain,
         )
+        from ..utils.bot_detection import is_bot
         from ..geoip import get_country_code
+        from ..services.view_metrics import incr_view_counter
         from ..tasks import write_site_event
 
         # Extract request metadata synchronously
         client_ip = get_client_ip(request)
         user_agent = request.headers.get("User-Agent")
         referrer = request.headers.get("Referer")
+
+        # Known bots are never recorded (D9)
+        if is_bot(user_agent):
+            incr_view_counter("site_bot_dropped")
+            return
 
         # Use client-provided path if available (for frontend tracking), otherwise use request path
         if event_data and "client_path" in event_data:

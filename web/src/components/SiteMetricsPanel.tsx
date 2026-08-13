@@ -7,6 +7,8 @@ import BarList, { BarListItem } from './metrics/BarList';
 import ChartCard from './metrics/ChartCard';
 import DeviceGrid from './metrics/DeviceGrid';
 import KpiCard from './metrics/KpiCard';
+import KpiGrid from './metrics/KpiGrid';
+import ChartGrid from './metrics/ChartGrid';
 import OnlinePlayersGrid from './metrics/OnlinePlayersGrid';
 import TrendChart from './metrics/TrendChart';
 
@@ -273,7 +275,7 @@ export default function SiteMetricsPanel() {
       </div>
 
       {/* KPI row */}
-      <div className="kpi-grid">
+      <KpiGrid>
         <KpiCard label="Page views (14d)" value={displayedStats.total_page_views_14d.toLocaleString()} />
         <KpiCard
           label="Visitor-days (14d)"
@@ -284,10 +286,10 @@ export default function SiteMetricsPanel() {
         <KpiCard label="New posts (14d)" value={stats.new_posts_14d.toLocaleString()} />
         <KpiCard label="API calls (14d)" value={stats.total_api_calls_14d.toLocaleString()} />
         <KpiCard label="Errors (14d)" value={stats.total_errors_14d.toLocaleString()} />
-      </div>
+      </KpiGrid>
 
       {/* Traffic + growth charts */}
-      <div className="chart-grid">
+      <ChartGrid>
         <ChartCard title="Daily traffic" subtitle="Last 14 days">
           <TrendChart
             data={dailyTraffic}
@@ -352,7 +354,7 @@ export default function SiteMetricsPanel() {
             <BarList items={errorItems} variant="error" />
           </ChartCard>
         )}
-      </div>
+      </ChartGrid>
 
       {/* Player activity */}
       <ChartCard
@@ -439,28 +441,6 @@ export default function SiteMetricsPanel() {
         .controls-hint {
           font-size: 0.75rem;
           color: var(--text-muted, #6a6a80);
-        }
-
-        .kpi-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-          gap: 12px;
-        }
-
-        .chart-grid {
-          display: grid;
-          grid-template-columns: 1fr;
-          gap: 16px;
-        }
-
-        @media (min-width: 1024px) {
-          .chart-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-        }
-
-        .chart-grid > :global(*) {
-          min-width: 0;
         }
 
         .player-kpis {

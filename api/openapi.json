@@ -147,6 +147,22 @@
             "title": "Computed At",
             "type": "string"
           },
+          "daily_views": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DailyViewCount"
+            },
+            "title": "Daily Views",
+            "type": "array"
+          },
+          "daily_views_authenticated": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DailyViewCount"
+            },
+            "title": "Daily Views Authenticated",
+            "type": "array"
+          },
           "first_post_at": {
             "anyOf": [
               {
@@ -191,6 +207,16 @@
           },
           "total_comments_authenticated": {
             "title": "Total Comments Authenticated",
+            "type": "integer"
+          },
+          "total_impressions": {
+            "default": 0,
+            "title": "Total Impressions",
+            "type": "integer"
+          },
+          "total_impressions_authenticated": {
+            "default": 0,
+            "title": "Total Impressions Authenticated",
             "type": "integer"
           },
           "total_posts": {
@@ -2258,11 +2284,16 @@
         "type": "object"
       },
       "DailyViewCount": {
-        "description": "Daily view count for trends.",
+        "description": "Daily view/impression counts for trends (docs/artwork-views/ D2).",
         "properties": {
           "date": {
             "title": "Date",
             "type": "string"
+          },
+          "impressions": {
+            "default": 0,
+            "title": "Impressions",
+            "type": "integer"
           },
           "unique_viewers": {
             "title": "Unique Viewers",
@@ -5114,6 +5145,16 @@
             "title": "Total Comments Authenticated",
             "type": "integer"
           },
+          "total_impressions": {
+            "default": 0,
+            "title": "Total Impressions",
+            "type": "integer"
+          },
+          "total_impressions_authenticated": {
+            "default": 0,
+            "title": "Total Impressions Authenticated",
+            "type": "integer"
+          },
           "total_reactions": {
             "title": "Total Reactions",
             "type": "integer"
@@ -5157,7 +5198,7 @@
         "type": "object"
       },
       "PostStatsResponse": {
-        "description": "Statistics for a single post.\n\nIncludes both \"all\" (including unauthenticated) and \"authenticated-only\" statistics.\nFrontend can toggle between the two without additional API calls.",
+        "description": "Statistics for a single post (30-day window).\n\nIncludes both \"all\" (including unauthenticated) and \"authenticated-only\" statistics.\nFrontend can toggle between the two without additional API calls.\nViews and Impressions are separate metrics, never summed (docs/artwork-views/ D2).",
         "properties": {
           "computed_at": {
             "format": "date-time",
@@ -5226,6 +5267,16 @@
           },
           "total_comments_authenticated": {
             "title": "Total Comments Authenticated",
+            "type": "integer"
+          },
+          "total_impressions": {
+            "default": 0,
+            "title": "Total Impressions",
+            "type": "integer"
+          },
+          "total_impressions_authenticated": {
+            "default": 0,
+            "title": "Total Impressions Authenticated",
             "type": "integer"
           },
           "total_reactions": {
@@ -8564,7 +8615,7 @@
         "type": "object"
       },
       "ViewRegisterPayload": {
-        "description": "Optional body for POST /post/{id}/view.\n\nWhen absent (body-less request), the view is recorded as\nview_type=INTENTIONAL, view_source=WEB with no channel metadata\n(used by the Selected Post Overlay).\n\nWhen present, the view is recorded as view_type=LISTING (auto-play)\nwith the supplied channel metadata (used by the Web Player).",
+        "description": "Optional body for POST /post/{id}/view (docs/artwork-views/ D4).\n\nIntent resolution: an explicit `intent` wins; otherwise a body-less\nrequest or channel=\"artwork\" (a deliberate single-artwork open — how the\nmobile app registers views) means an Artwork View, and any other channel\nmeans an Impression (auto-play exposure, e.g. the Web Player).\n\nResponse: 201 when a View was counted; 204 when the request was accepted\nbut not counted (per-day dedup, bot, self-view, or an Impression).",
         "properties": {
           "channel": {
             "anyOf": [
@@ -8574,7 +8625,8 @@
                   "promoted",
                   "by_user",
                   "hashtag",
-                  "reactions"
+                  "reactions",
+                  "artwork"
                 ],
                 "type": "string"
               },
@@ -8595,6 +8647,21 @@
               }
             ],
             "title": "Channel Context"
+          },
+          "intent": {
+            "anyOf": [
+              {
+                "enum": [
+                  "view",
+                  "impression"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intent"
           },
           "play_order": {
             "anyOf": [
@@ -18774,7 +18841,7 @@
     },
     "/v1/post/{id}/view": {
       "post": {
-        "description": "Register a view on a post.\n\nBody-less requests come from the Selected Post Overlay and are recorded\nas INTENTIONAL views. Requests with a body come from the Web Player and\nare recorded as LISTING views with channel/play_order metadata.",
+        "description": "Register an Artwork View or Impression (docs/artwork-views/ D2/D4).\n\nThe single human door for view recording. Intent resolution: explicit\n`intent` wins; body-less or channel=\"artwork\" means View; any other\nchannel means Impression.\n\nViews are guarded by per-day dedup (once per Visitor per artwork per UTC\nday) — deliberately no request rate limit, so fast legitimate browsing\nnever loses first views. Impressions are a rate-limited volume metric.\n\nReturns 201 when a View was counted, 204 when accepted but not counted\n(dedup, bot, self-view, or an Impression).",
         "operationId": "register_view_v1_post__id__view_post",
         "parameters": [
           {

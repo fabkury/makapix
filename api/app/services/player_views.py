@@ -82,18 +82,35 @@ def record_view_event(
         return ViewIngestResult(SELF_VIEW)
 
     from ..tasks import write_view_event
-    from ..utils.view_tracking import ViewSource, ViewType, hash_ip
+    from ..utils.view_tracking import ViewSource, hash_ip, visitor_key
+    from .rate_limit import check_and_set_daily_view_dedup
+    from .view_metrics import IMPRESSION, VIEW
 
-    # Map p3a's intent to our view_type.
+    # Map p3a's intent to the canonical model (docs/artwork-views/ D6):
+    # an explicit artwork request is an Artwork View, channel playback is an
+    # Impression.
     if event.intent == "artwork":
-        view_type = ViewType.INTENTIONAL
+        view_type = VIEW
     elif event.intent == "channel":
-        view_type = ViewType.LISTING
+        view_type = IMPRESSION
     else:
         logger.warning(
-            f"Unexpected intent value: {event.intent}, defaulting to LISTING"
+            f"Unexpected intent value: {event.intent}, defaulting to impression"
         )
-        view_type = ViewType.LISTING
+        view_type = IMPRESSION
+
+    # Views count once per (Visitor, artwork, UTC day). The player's owner is
+    # the Visitor (same identity space as their web sessions), so an owner's
+    # web View and their player's View of the same artwork collapse to one.
+    if view_type == VIEW:
+        if check_and_set_daily_view_dedup(
+            visitor_key(player.owner_id, ""), event.post_id
+        ):
+            logger.debug(
+                f"Daily-deduped player view: owner={player.owner_id}, "
+                f"post={event.post_id}"
+            )
+            return ViewIngestResult(DUPLICATE)
 
     # Reject "1970-01-01T00:00:00Z" (unsynced device) -> store NULL local time.
     local_datetime = event.timestamp if event.timestamp != UNSYNC_TIMESTAMP else None
@@ -115,7 +132,7 @@ def record_view_event(
         "country_code": None,  # Players don't have geographic info
         "device_type": "player",
         "view_source": ViewSource.PLAYER.value,
-        "view_type": view_type.value,
+        "view_type": view_type,
         "user_agent_hash": None,
         "referrer_domain": None,
         "created_at": datetime.now(timezone.utc).isoformat(),

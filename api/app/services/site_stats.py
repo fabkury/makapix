@@ -284,14 +284,30 @@ class SiteStatsService:
 
         fourteen_days_ago_date = (now - timedelta(days=14)).date()
 
-        # Find where daily aggregates end so we can query raw events from that point.
-        # This avoids a data gap if the rollup task is delayed — raw events that
-        # haven't been rolled up yet will still appear in the charts.
-        latest_rollup_date = (
-            self.db.query(func.max(models.SiteStatsDaily.date))
-            .filter(models.SiteStatsDaily.date >= fourteen_days_ago_date)
-            .scalar()
-        )
+        # Find where daily aggregates end so we can query raw events from that
+        # point. The boundary is the site-events watermark maintained by
+        # rollup_site_events — max(SiteStatsDaily.date) no longer works because
+        # rollup_view_events also writes rows (player fields) up to yesterday,
+        # which would make this reader skip a week of un-rolled site events.
+        from .view_metrics import SITE_EVENTS_WATERMARK, get_watermark
+
+        latest_rollup_date = get_watermark(self.db, SITE_EVENTS_WATERMARK)
+        if latest_rollup_date is None:
+            # Transition fallback (first deploy, before rollup_site_events has
+            # run once): the latest daily row that actually carries site-event
+            # data.
+            latest_rollup_date = (
+                self.db.query(func.max(models.SiteStatsDaily.date))
+                .filter(
+                    models.SiteStatsDaily.date >= fourteen_days_ago_date,
+                    (models.SiteStatsDaily.total_page_views > 0)
+                    | (models.SiteStatsDaily.total_api_calls > 0)
+                    | (models.SiteStatsDaily.new_signups > 0)
+                    | (models.SiteStatsDaily.new_posts > 0)
+                    | (models.SiteStatsDaily.total_errors > 0),
+                )
+                .scalar()
+            )
 
         if latest_rollup_date is not None:
             # Query raw events starting the day after the last rollup
@@ -783,41 +799,65 @@ class SiteStatsService:
         )
 
         # ===== PLAYER ACTIVITY (from view_events table + daily aggregates) =====
+        # The player slice of site_stats_daily is written by rollup_view_events
+        # (docs/artwork-views/ D10), so its boundary is the VIEW-events
+        # watermark — daily rows for dates <= it, raw player events after it.
+        from .view_metrics import get_view_watermark
 
-        # Query view_events for player device views (from day after last rollup)
-        # Events older than that are already rolled up into daily_stats
+        view_watermark = get_view_watermark(self.db)
+
+        player_daily_stats: list = []
+        if view_watermark is not None:
+            player_daily_stats = (
+                self.db.query(models.SiteStatsDaily)
+                .filter(
+                    models.SiteStatsDaily.date >= fourteen_days_ago_date,
+                    models.SiteStatsDaily.date <= view_watermark,
+                )
+                .all()
+            )
+
+        player_raw_start_date = fourteen_days_ago_date
+        if (
+            view_watermark is not None
+            and view_watermark + timedelta(days=1) > player_raw_start_date
+        ):
+            player_raw_start_date = view_watermark + timedelta(days=1)
         player_view_events = (
             self.db.query(models.ViewEvent)
             .filter(
                 models.ViewEvent.device_type == "player",
-                models.ViewEvent.created_at >= events_start,
+                models.ViewEvent.created_at
+                >= datetime.combine(
+                    player_raw_start_date, time.min, tzinfo=timezone.utc
+                ),
             )
             .all()
         )
 
         # Total player artwork views (14 days) - combine recent events + daily aggregates
         total_player_artwork_views_14d = len(player_view_events) + sum(
-            ds.total_player_views or 0 for ds in daily_stats
+            ds.total_player_views or 0 for ds in player_daily_stats
         )
 
         # Active players (unique player_ids from recent events + sum from aggregates)
         # Note: We can't deduplicate across days with aggregates, so this is approximate
         active_player_ids = set(v.player_id for v in player_view_events if v.player_id)
         active_players_14d = len(active_player_ids) + sum(
-            ds.active_players or 0 for ds in daily_stats
+            ds.active_players or 0 for ds in player_daily_stats
         )
 
         # Daily player views trend (last 14 days)
         daily_player_views: list[DailyCount] = []
         player_views_by_day: dict[str, int] = {}
 
-        # From recent view events (last 7 days)
+        # From raw (post-watermark) view events
         for v in player_view_events:
-            day_str = v.created_at.date().isoformat()
+            day_str = v.created_at.astimezone(timezone.utc).date().isoformat()
             player_views_by_day[day_str] = player_views_by_day.get(day_str, 0) + 1
 
-        # From daily aggregates (days 8-14)
-        for ds in daily_stats:
+        # From daily aggregates (rolled days)
+        for ds in player_daily_stats:
             day_str = ds.date.isoformat()
             player_views_by_day[day_str] = ds.total_player_views or 0
 
@@ -859,7 +899,7 @@ class SiteStatsService:
                 )
 
         # Add views from daily aggregates (already keyed by player name)
-        for ds in daily_stats:
+        for ds in player_daily_stats:
             for player_name, count in (ds.views_by_player or {}).items():
                 views_by_player[player_name] = (
                     views_by_player.get(player_name, 0) + count

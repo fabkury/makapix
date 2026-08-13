@@ -439,17 +439,21 @@ class PostRead(Post):
 
 class ViewRegisterPayload(BaseModel):
     """
-    Optional body for POST /post/{id}/view.
+    Optional body for POST /post/{id}/view (docs/artwork-views/ D4).
 
-    When absent (body-less request), the view is recorded as
-    view_type=INTENTIONAL, view_source=WEB with no channel metadata
-    (used by the Selected Post Overlay).
+    Intent resolution: an explicit `intent` wins; otherwise a body-less
+    request or channel="artwork" (a deliberate single-artwork open — how the
+    mobile app registers views) means an Artwork View, and any other channel
+    means an Impression (auto-play exposure, e.g. the Web Player).
 
-    When present, the view is recorded as view_type=LISTING (auto-play)
-    with the supplied channel metadata (used by the Web Player).
+    Response: 201 when a View was counted; 204 when the request was accepted
+    but not counted (per-day dedup, bot, self-view, or an Impression).
     """
 
-    channel: Literal["all", "promoted", "by_user", "hashtag", "reactions"] | None = None
+    intent: Literal["view", "impression"] | None = None
+    channel: (
+        Literal["all", "promoted", "by_user", "hashtag", "reactions", "artwork"] | None
+    ) = None
     channel_context: str | None = Field(None, max_length=100)
     play_order: Literal[0, 1, 2] | None = None
 
@@ -1724,29 +1728,32 @@ class RateLimitStatus(BaseModel):
 
 
 class DailyViewCount(BaseModel):
-    """Daily view count for trends."""
+    """Daily view/impression counts for trends (docs/artwork-views/ D2)."""
 
     date: str  # ISO format date (YYYY-MM-DD)
-    views: int
-    unique_viewers: int
+    views: int  # deduped Artwork Views
+    unique_viewers: int  # == views for post-redesign days
+    impressions: int = 0  # playback exposure (never summed with views)
 
 
 class PostStatsResponse(BaseModel):
-    """Statistics for a single post.
+    """Statistics for a single post (30-day window).
 
     Includes both "all" (including unauthenticated) and "authenticated-only" statistics.
     Frontend can toggle between the two without additional API calls.
+    Views and Impressions are separate metrics, never summed (docs/artwork-views/ D2).
     """
 
     post_id: int  # Changed from UUID to int
     # "All" statistics (including unauthenticated)
     total_views: int
     unique_viewers: int
+    total_impressions: int = 0
     views_by_country: dict[str, int]  # Top 10 countries: {"US": 50, "BR": 30, ...}
     views_by_device: dict[
         str, int
     ]  # {"desktop": 40, "mobile": 35, "tablet": 10, "player": 5}
-    views_by_type: dict[str, int]  # {"intentional": 60, "listing": 30, "search": 10}
+    views_by_type: dict[str, int]  # canonical: {"view": 60, "impression": 30}
     daily_views: list[DailyViewCount]  # Last 30 days
     total_reactions: int
     reactions_by_emoji: dict[str, int]  # {"❤️": 10, "🔥": 5, ...}
@@ -1754,11 +1761,10 @@ class PostStatsResponse(BaseModel):
     # Authenticated-only statistics
     total_views_authenticated: int
     unique_viewers_authenticated: int
+    total_impressions_authenticated: int = 0
     views_by_country_authenticated: dict[str, int]  # Top 10 countries
     views_by_device_authenticated: dict[str, int]  # {"desktop": 40, "mobile": 35, ...}
-    views_by_type_authenticated: dict[
-        str, int
-    ]  # {"intentional": 60, "listing": 30, ...}
+    views_by_type_authenticated: dict[str, int]  # canonical keys
     daily_views_authenticated: list[DailyViewCount]  # Last 30 days
     total_reactions_authenticated: int
     reactions_by_emoji_authenticated: dict[str, int]  # {"❤️": 10, "🔥": 5, ...}
@@ -1997,11 +2003,13 @@ class ArtistStatsResponse(BaseModel):
     user_id: int
     user_key: str
     total_posts: int
-    # Aggregated view statistics (all)
+    # Aggregated view statistics (all), 30-day window
     total_views: int
     unique_viewers: int
+    total_impressions: int = 0
     views_by_country: dict[str, int]  # Top 10 countries
     views_by_device: dict[str, int]  # desktop, mobile, tablet, player
+    daily_views: list[DailyViewCount] = []  # Last 30 days
     # Aggregated reactions and comments
     total_reactions: int
     reactions_by_emoji: dict[str, int]
@@ -2009,8 +2017,10 @@ class ArtistStatsResponse(BaseModel):
     # Authenticated-only statistics
     total_views_authenticated: int
     unique_viewers_authenticated: int
+    total_impressions_authenticated: int = 0
     views_by_country_authenticated: dict[str, int]
     views_by_device_authenticated: dict[str, int]
+    daily_views_authenticated: list[DailyViewCount] = []  # Last 30 days
     total_reactions_authenticated: int
     reactions_by_emoji_authenticated: dict[str, int]
     total_comments_authenticated: int
@@ -2027,15 +2037,17 @@ class PostStatsListItem(BaseModel):
     public_sqid: str
     title: str
     created_at: datetime
-    # View statistics (all)
+    # View statistics (all), 30-day window
     total_views: int
     unique_viewers: int
+    total_impressions: int = 0
     # Reactions and comments
     total_reactions: int
     total_comments: int
     # Authenticated-only statistics
     total_views_authenticated: int
     unique_viewers_authenticated: int
+    total_impressions_authenticated: int = 0
     total_reactions_authenticated: int
     total_comments_authenticated: int
 

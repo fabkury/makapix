@@ -316,6 +316,21 @@ export async function authenticatedFetch(
 }
 
 /**
+ * Error thrown by the typed JSON helpers, carrying the HTTP status so
+ * callers can switch on it (401 -> clearTokens+redirect, 403/404 -> message)
+ * instead of parsing it out of the message string.
+ */
+export class ApiRequestError extends Error {
+  constructor(
+    public status: number,
+    body: string,
+  ) {
+    super(`Request failed (${status}): ${body}`);
+    this.name = "ApiRequestError";
+  }
+}
+
+/**
  * Make an authenticated JSON request with automatic token refresh
  */
 export async function authenticatedRequestJson<TResponse>(
@@ -336,7 +351,7 @@ export async function authenticatedRequestJson<TResponse>(
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`Request failed (${response.status}): ${body}`);
+    throw new ApiRequestError(response.status, body);
   }
 
   return response.json() as Promise<TResponse>;
@@ -879,4 +894,30 @@ export async function setAvatarFromPost(
     throw err;
   }
   return resp.json();
+}
+
+/**
+ * Fetch owner/moderator statistics for a post (docs/artwork-views/).
+ * `refresh` invalidates the server-side cache and recomputes.
+ */
+export async function getPostStats(
+  postId: string | number,
+  refresh = false,
+): Promise<import("../types/stats").PostStatsResponse> {
+  return authenticatedRequestJson(
+    `/api/post/${postId}/stats${refresh ? "?refresh=true" : ""}`,
+  );
+}
+
+/**
+ * Fetch the artist dashboard (aggregate stats + paginated per-post list).
+ */
+export async function getArtistDashboard(
+  sqid: string,
+  page = 1,
+  pageSize = 20,
+): Promise<import("../types/stats").ArtistDashboardResponse> {
+  return authenticatedRequestJson(
+    `/api/user/${sqid}/artist-dashboard?page=${page}&page_size=${pageSize}`,
+  );
 }

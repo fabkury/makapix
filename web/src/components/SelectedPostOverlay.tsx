@@ -800,8 +800,9 @@ export default function SelectedPostOverlay({
         const res = hasToken
           ? await authenticatedFetch(url, { method: "POST" })
           : await fetch(url, { method: "POST", credentials: "include" });
-        // Optimistically increment view count on success (204)
-        if (res.ok) {
+        // 201 = the server counted a View; 204 = accepted but not counted
+        // (per-day dedup / self-view). Only increment when it counted.
+        if (res.status === 201) {
           setWidgetData((prev) =>
             prev ? { ...prev, views_count: prev.views_count + 1 } : prev,
           );

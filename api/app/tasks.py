@@ -72,17 +72,19 @@ celery_app.conf.update(
         # low-traffic window so they don't pile onto the worker (concurrency=2)
         # at once.
         #
-        # Ordering for the view/site-event pipeline: rollup_view_events
-        # aggregates raw view events into post_stats_daily and then deletes the
-        # non-player ones it rolled up (same cutoff, one transaction), so a
-        # failed rollup leaves its events intact for the next run to pick up.
-        # rollup_site_events consumes the surviving player view events, so it
-        # runs after. There is deliberately NO separate cleanup task: a second
-        # task with its own `now - 7d` cutoff deleted the ~90-minute band of
-        # events that were not yet 7 days old at rollup time but were by cleanup
-        # time — permanent, un-rolled-up loss — and it also deleted everything
-        # when the rollup failed. The same race already forced the removal of
-        # cleanup-old-site-events (below).
+        # Ownership for the view/site-event pipeline (docs/artwork-views/ D10):
+        # rollup_view_events is the SOLE owner of view_events. It rolls complete
+        # UTC days past a persisted watermark (rollup_watermarks.view_events)
+        # into post_stats_daily AND writes the site-level player slice of
+        # site_stats_daily, reconciles posts.view_count, advances the watermark,
+        # and deletes rolled events past the 7-day retention — all in one
+        # transaction, so a failed run leaves everything intact for the next.
+        # rollup_site_events consumes site_events ONLY (it previously consumed
+        # player view events with its own later cutoff, which permanently lost
+        # a 1-hour band of player views from post stats daily). There is
+        # deliberately NO separate cleanup task: an independent `now - 7d`
+        # cutoff deleted un-rolled-up events — the race that forced the removal
+        # of cleanup-old-site-events and cleanup-old-view-events (below).
         "rollup-view-events": {
             "task": "app.tasks.rollup_view_events",
             "schedule": crontab(minute=0, hour=1),  # 01:00 ET
@@ -96,6 +98,13 @@ celery_app.conf.update(
         "rollup-site-events": {
             "task": "app.tasks.rollup_site_events",
             "schedule": crontab(minute=0, hour=2),  # 02:00 ET (after view rollup)
+            "options": {"queue": "default"},
+        },
+        # After the 01:00 view rollup: alerts on 422s at the /view door and on
+        # a stale watermark (docs/artwork-views/ D15).
+        "check-view-ingestion-health": {
+            "task": "app.tasks.check_view_ingestion_health",
+            "schedule": crontab(minute=30, hour=2),  # 02:30 ET
             "options": {"queue": "default"},
         },
         # NOTE: cleanup-old-site-events AND cleanup-old-view-events were both
@@ -541,6 +550,16 @@ def write_view_event(self, event_data: dict) -> None:
         )
 
         db.add(view_event)
+
+        # Accepted Artwork Views bump the denormalized public counter in the
+        # same transaction (docs/artwork-views/ D11). The nightly rollup
+        # recomputes the exact value, so any drift self-heals.
+        if event_data["view_type"] == "view":
+            db.query(models.Post).filter(models.Post.id == post_id).update(
+                {models.Post.view_count: models.Post.view_count + 1},
+                synchronize_session=False,
+            )
+
         db.commit()
 
         logger.debug(f"Wrote deferred view event for post {post_id}")
@@ -564,6 +583,10 @@ def write_view_event(self, event_data: dict) -> None:
 def write_blog_post_view_event(self, event_data: dict) -> None:
     """
     Async Celery task to write a blog post view event to the database.
+
+    DEPRECATED (docs/artwork-views/ D16): the Blog subsystem is legacy and
+    will eventually be deleted. This pipeline deliberately stays on the old
+    view model — do not port it to the view/impression redesign.
 
     This task receives serialized event data and creates a BlogPostViewEvent record.
     Called asynchronously from record_blog_post_view() to avoid blocking request handlers.
@@ -701,24 +724,58 @@ def write_site_event(self, event_data: dict) -> None:
 # ============================================================================
 
 
+def _merge_count_dict(existing: dict | None, new: dict) -> dict:
+    """Key-wise sum returning a NEW dict (JSON dirty-tracking, appraisal A6)."""
+    merged = dict(existing or {})
+    for key, value in new.items():
+        if value:
+            merged[key] = merged.get(key, 0) + value
+    return merged
+
+
 @celery_app.task(name="app.tasks.rollup_view_events", bind=True)
 def rollup_view_events(self) -> dict[str, Any]:
     """
-    Daily task: Roll up view events older than 7 days into daily aggregates.
+    Daily task: roll complete UTC days of artwork view events into daily
+    aggregates (docs/artwork-views/ D10).
 
-    This task:
-    1. Selects view events older than 7 days (in batches to avoid memory issues)
-    2. Aggregates them by (post_id, date)
-    3. Upserts into post_stats_daily table
-    4. Deletes the old raw events
+    Single owner of the view_events table. For each complete UTC day past
+    the persisted watermark (rollup_watermarks.view_events) up to yesterday:
 
-    Uses batched processing to handle large datasets without OOM errors.
+    1. Aggregate per-post Artwork Views (deduped per Visitor per day; for
+       new rows total_views == unique_viewers by construction), Impressions,
+       and Views-only country/device breakdowns into post_stats_daily.
+    2. Aggregate the site-level player slice (total_player_views,
+       active_players, views_by_player) into site_stats_daily — this
+       replaces the consumption rollup_site_events used to do with its own
+       later cutoff, which permanently lost a 1-hour band of player views
+       from post stats daily and double-counted on failure.
+    3. Reconcile posts.view_count for affected posts (view_metrics).
+    4. Advance the watermark to yesterday.
+    5. Delete raw events that are BOTH rolled (day <= watermark) AND past
+       the 7-day retention — readers stitch daily rows <= watermark with raw
+       events after it, so rolled-but-retained rows never double count.
+
+    Everything happens in ONE transaction: a failure leaves raw events and
+    the watermark intact for the next run — no data loss, no double count.
+    Legacy view_type values (intentional/listing/search/widget) are mapped
+    via canonical_view_type during the <=7-day transition window after the
+    redesign deploy; raw rows are never rewritten.
+
     Runs daily at 01:00 US Eastern (configured in beat_schedule).
     """
     from datetime import datetime, timedelta, timezone
-    from sqlalchemy import func, cast, Date
+    from sqlalchemy import text as sa_text
     from . import models
     from .db import SessionLocal
+    from .services.view_metrics import (
+        VIEW,
+        canonical_view_type,
+        get_view_watermark,
+        recompute_post_view_counts,
+        set_view_watermark,
+        utc_today,
+    )
     from .utils.view_tracking import visitor_key
 
     BATCH_SIZE = 10000  # Process events in batches of 10,000
@@ -726,229 +783,283 @@ def rollup_view_events(self) -> dict[str, Any]:
     db = SessionLocal()
     try:
         logger.info("Starting view events rollup task")
+        yesterday = utc_today() - timedelta(days=1)
 
-        # Get events older than 7 days
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=7)
-
-        # Count total events to process
-        total_count = (
-            db.query(func.count(models.ViewEvent.id))
-            .filter(models.ViewEvent.created_at < cutoff_date)
-            .scalar()
-        )
-
-        if total_count == 0:
-            logger.info("No old view events to roll up")
-            return {"status": "success", "rolled_up": 0, "deleted": 0}
-
-        logger.info(f"Found {total_count} old view events to roll up")
-
-        # Aggregate events by (post_id, date) - process in batches
-        aggregates: dict[tuple, dict] = {}  # (post_id, date) -> aggregate data
-        processed_count = 0
-        offset = 0
-
-        while offset < total_count:
-            # Fetch a batch of events
-            batch = (
-                db.query(models.ViewEvent)
-                .filter(models.ViewEvent.created_at < cutoff_date)
-                .order_by(models.ViewEvent.id)
-                .offset(offset)
-                .limit(BATCH_SIZE)
-                .all()
+        watermark = get_view_watermark(db)
+        if watermark is None:
+            # Self-seed (fresh DB / first run): one day before the oldest raw
+            # event, clamped to yesterday, so nothing predating the seed can
+            # ever re-roll.
+            min_day = db.execute(
+                sa_text(
+                    "SELECT min((created_at AT TIME ZONE 'UTC')::date) FROM view_events"
+                )
+            ).scalar()
+            watermark = (
+                yesterday
+                if min_day is None
+                else min(min_day - timedelta(days=1), yesterday)
             )
+            set_view_watermark(db, watermark)
+            logger.info(f"Self-seeded view-events watermark to {watermark}")
 
-            if not batch:
-                break
+        if watermark >= yesterday:
+            db.commit()  # persist a potential self-seed
+            logger.info("No complete days to roll up")
+            return {"status": "success", "days": 0, "rolled_up": 0, "deleted": 0}
 
-            for event in batch:
-                key = (event.post_id, event.created_at.date())
-
-                if key not in aggregates:
-                    aggregates[key] = {
-                        "total_views": 0,
-                        "unique_viewer_keys": set(),
-                        "views_by_country": {},
-                        "views_by_device": {},
-                        "views_by_type": {},
-                        "total_views_authenticated": 0,
-                        "authenticated_unique_viewer_keys": set(),
-                        "views_by_country_authenticated": {},
-                        "views_by_device_authenticated": {},
-                        "views_by_type_authenticated": {},
-                    }
-
-                agg = aggregates[key]
-                agg["total_views"] += 1
-                agg["unique_viewer_keys"].add(
-                    visitor_key(event.viewer_user_id, event.viewer_ip_hash)
-                )
-
-                if event.country_code:
-                    agg["views_by_country"][event.country_code] = (
-                        agg["views_by_country"].get(event.country_code, 0) + 1
-                    )
-
-                agg["views_by_device"][event.device_type] = (
-                    agg["views_by_device"].get(event.device_type, 0) + 1
-                )
-
-                agg["views_by_type"][event.view_type] = (
-                    agg["views_by_type"].get(event.view_type, 0) + 1
-                )
-
-                # Track authenticated views separately
-                if event.viewer_user_id is not None:
-                    agg["total_views_authenticated"] += 1
-                    agg["authenticated_unique_viewer_keys"].add(
-                        visitor_key(event.viewer_user_id, event.viewer_ip_hash)
-                    )
-
-                    if event.country_code:
-                        agg["views_by_country_authenticated"][event.country_code] = (
-                            agg["views_by_country_authenticated"].get(
-                                event.country_code, 0
-                            )
-                            + 1
-                        )
-
-                    agg["views_by_device_authenticated"][event.device_type] = (
-                        agg["views_by_device_authenticated"].get(event.device_type, 0)
-                        + 1
-                    )
-
-                    agg["views_by_type_authenticated"][event.view_type] = (
-                        agg["views_by_type_authenticated"].get(event.view_type, 0) + 1
-                    )
-
-            processed_count += len(batch)
-            offset += BATCH_SIZE
-
-            # Clear SQLAlchemy's identity map to free memory
-            db.expire_all()
-
-            if processed_count % 50000 == 0:
-                logger.info(f"Processed {processed_count}/{total_count} view events")
-
-        # Upsert aggregates into post_stats_daily
+        days_processed = 0
         rolled_up = 0
-        for (post_id, date), agg in aggregates.items():
-            # Check if record exists
-            existing = (
-                db.query(models.PostStatsDaily)
-                .filter(
-                    models.PostStatsDaily.post_id == post_id,
-                    models.PostStatsDaily.date == date,
-                )
-                .first()
-            )
+        affected_post_ids: set[int] = set()
 
-            if existing:
-                # Merge with existing data
-                existing.total_views += agg["total_views"]
-                existing.unique_viewers += len(agg["unique_viewer_keys"])
+        day = watermark + timedelta(days=1)
+        while day <= yesterday:
+            day_start = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
+            day_end = day_start + timedelta(days=1)
 
-                # Merge country data
-                existing_countries = dict(existing.views_by_country or {})
-                for country, count in agg["views_by_country"].items():
-                    existing_countries[country] = (
-                        existing_countries.get(country, 0) + count
+            # ----- Aggregate one UTC day (batched to bound memory) -----
+            post_aggs: dict[int, dict] = {}
+            player_total = 0
+            player_ids: set[str] = set()
+            views_by_player_id: dict[str, int] = {}
+
+            offset = 0
+            while True:
+                batch = (
+                    db.query(models.ViewEvent)
+                    .filter(
+                        models.ViewEvent.created_at >= day_start,
+                        models.ViewEvent.created_at < day_end,
                     )
-                existing.views_by_country = existing_countries
-
-                # Merge device data
-                existing_devices = dict(existing.views_by_device or {})
-                for device, count in agg["views_by_device"].items():
-                    existing_devices[device] = existing_devices.get(device, 0) + count
-                existing.views_by_device = existing_devices
-
-                # Merge type data
-                existing_types = dict(existing.views_by_type or {})
-                for vtype, count in agg["views_by_type"].items():
-                    existing_types[vtype] = existing_types.get(vtype, 0) + count
-                existing.views_by_type = existing_types
-
-                # Merge authenticated data
-                existing.total_views_authenticated += agg["total_views_authenticated"]
-                existing.unique_viewers_authenticated += len(
-                    agg["authenticated_unique_viewer_keys"]
+                    .order_by(models.ViewEvent.id)
+                    .offset(offset)
+                    .limit(BATCH_SIZE)
+                    .all()
                 )
+                if not batch:
+                    break
 
-                existing_countries_auth = dict(
-                    existing.views_by_country_authenticated or {}
-                )
-                for country, count in agg["views_by_country_authenticated"].items():
-                    existing_countries_auth[country] = (
-                        existing_countries_auth.get(country, 0) + count
+                for event in batch:
+                    agg = post_aggs.setdefault(
+                        event.post_id,
+                        {
+                            "view_visitors": set(),
+                            "auth_view_visitors": set(),
+                            "impressions": 0,
+                            "impressions_auth": 0,
+                            "views_by_country": {},
+                            "views_by_device": {},
+                            "views_by_country_auth": {},
+                            "views_by_device_auth": {},
+                        },
                     )
-                existing.views_by_country_authenticated = existing_countries_auth
 
-                existing_devices_auth = dict(
-                    existing.views_by_device_authenticated or {}
-                )
-                for device, count in agg["views_by_device_authenticated"].items():
-                    existing_devices_auth[device] = (
-                        existing_devices_auth.get(device, 0) + count
+                    if canonical_view_type(event.view_type) == VIEW:
+                        visitor = visitor_key(
+                            event.viewer_user_id, event.viewer_ip_hash
+                        )
+                        if visitor not in agg["view_visitors"]:
+                            agg["view_visitors"].add(visitor)
+                            # Views-only breakdowns, one per Visitor per day
+                            # (first event wins)
+                            if event.country_code:
+                                agg["views_by_country"][event.country_code] = (
+                                    agg["views_by_country"].get(event.country_code, 0)
+                                    + 1
+                                )
+                            agg["views_by_device"][event.device_type] = (
+                                agg["views_by_device"].get(event.device_type, 0) + 1
+                            )
+                        if (
+                            event.viewer_user_id is not None
+                            and visitor not in agg["auth_view_visitors"]
+                        ):
+                            agg["auth_view_visitors"].add(visitor)
+                            if event.country_code:
+                                agg["views_by_country_auth"][event.country_code] = (
+                                    agg["views_by_country_auth"].get(
+                                        event.country_code, 0
+                                    )
+                                    + 1
+                                )
+                            agg["views_by_device_auth"][event.device_type] = (
+                                agg["views_by_device_auth"].get(event.device_type, 0)
+                                + 1
+                            )
+                    else:
+                        agg["impressions"] += 1
+                        if event.viewer_user_id is not None:
+                            agg["impressions_auth"] += 1
+
+                    # Site-level player slice: every player event is a "play"
+                    # (Views + Impressions), matching the pre-redesign numbers.
+                    if event.device_type == "player":
+                        player_total += 1
+                        if event.player_id:
+                            pid = str(event.player_id)
+                            player_ids.add(pid)
+                            views_by_player_id[pid] = views_by_player_id.get(pid, 0) + 1
+
+                offset += BATCH_SIZE
+                # Clear SQLAlchemy's identity map to free memory
+                db.expire_all()
+
+            # ----- Upsert per-post daily rows -----
+            for post_id, agg in post_aggs.items():
+                views = len(agg["view_visitors"])
+                views_auth = len(agg["auth_view_visitors"])
+
+                existing = (
+                    db.query(models.PostStatsDaily)
+                    .filter(
+                        models.PostStatsDaily.post_id == post_id,
+                        models.PostStatsDaily.date == day,
                     )
-                existing.views_by_device_authenticated = existing_devices_auth
-
-                existing_types_auth = dict(existing.views_by_type_authenticated or {})
-                for vtype, count in agg["views_by_type_authenticated"].items():
-                    existing_types_auth[vtype] = (
-                        existing_types_auth.get(vtype, 0) + count
-                    )
-                existing.views_by_type_authenticated = existing_types_auth
-            else:
-                # Create new record
-                daily_stat = models.PostStatsDaily(
-                    post_id=post_id,
-                    date=date,
-                    total_views=agg["total_views"],
-                    unique_viewers=len(agg["unique_viewer_keys"]),
-                    views_by_country=agg["views_by_country"],
-                    views_by_device=agg["views_by_device"],
-                    views_by_type=agg["views_by_type"],
-                    total_views_authenticated=agg["total_views_authenticated"],
-                    unique_viewers_authenticated=len(
-                        agg["authenticated_unique_viewer_keys"]
-                    ),
-                    views_by_country_authenticated=agg[
-                        "views_by_country_authenticated"
-                    ],
-                    views_by_device_authenticated=agg["views_by_device_authenticated"],
-                    views_by_type_authenticated=agg["views_by_type_authenticated"],
+                    .first()
                 )
-                db.add(daily_stat)
 
-            rolled_up += 1
+                if existing:
+                    # Merging only happens into rows the OLD pipeline wrote
+                    # partially (the watermark gates re-entry for new rows);
+                    # summed uniques there are an accepted approximation.
+                    # JSON columns are reassigned as NEW dict objects —
+                    # in-place mutation is invisible to SQLAlchemy's
+                    # dirty-tracking (appraisal A6).
+                    existing.total_views += views
+                    existing.unique_viewers += views
+                    existing.total_impressions += agg["impressions"]
+                    existing.views_by_country = _merge_count_dict(
+                        existing.views_by_country, agg["views_by_country"]
+                    )
+                    existing.views_by_device = _merge_count_dict(
+                        existing.views_by_device, agg["views_by_device"]
+                    )
+                    existing.views_by_type = _merge_count_dict(
+                        existing.views_by_type,
+                        {"view": views, "impression": agg["impressions"]},
+                    )
+                    existing.total_views_authenticated += views_auth
+                    existing.unique_viewers_authenticated += views_auth
+                    existing.total_impressions_authenticated += agg["impressions_auth"]
+                    existing.views_by_country_authenticated = _merge_count_dict(
+                        existing.views_by_country_authenticated,
+                        agg["views_by_country_auth"],
+                    )
+                    existing.views_by_device_authenticated = _merge_count_dict(
+                        existing.views_by_device_authenticated,
+                        agg["views_by_device_auth"],
+                    )
+                    existing.views_by_type_authenticated = _merge_count_dict(
+                        existing.views_by_type_authenticated,
+                        {"view": views_auth, "impression": agg["impressions_auth"]},
+                    )
+                else:
+                    db.add(
+                        models.PostStatsDaily(
+                            post_id=post_id,
+                            date=day,
+                            total_views=views,
+                            unique_viewers=views,
+                            total_impressions=agg["impressions"],
+                            views_by_country=agg["views_by_country"],
+                            views_by_device=agg["views_by_device"],
+                            views_by_type={
+                                "view": views,
+                                "impression": agg["impressions"],
+                            },
+                            total_views_authenticated=views_auth,
+                            unique_viewers_authenticated=views_auth,
+                            total_impressions_authenticated=agg["impressions_auth"],
+                            views_by_country_authenticated=agg["views_by_country_auth"],
+                            views_by_device_authenticated=agg["views_by_device_auth"],
+                            views_by_type_authenticated={
+                                "view": views_auth,
+                                "impression": agg["impressions_auth"],
+                            },
+                        )
+                    )
 
-            # Commit in batches to avoid holding too many objects
-            if rolled_up % 1000 == 0:
-                db.commit()
+                rolled_up += 1
+                affected_post_ids.add(post_id)
 
-        # Delete old events (preserve player events for rollup_site_events)
-        deleted_count = (
-            db.query(models.ViewEvent)
-            .filter(
-                models.ViewEvent.created_at < cutoff_date,
-                models.ViewEvent.device_type != "player",
-            )
-            .delete(synchronize_session=False)
-        )
+            # ----- Upsert the site-level player slice for this day -----
+            if player_total:
+                from uuid import UUID as _UUID
+
+                players = (
+                    db.query(models.Player)
+                    .filter(models.Player.id.in_([_UUID(p) for p in player_ids]))
+                    .all()
+                )
+                player_names = {
+                    str(p.id): p.name or str(p.player_key)[:8] for p in players
+                }
+                views_by_player: dict[str, int] = {}
+                for pid, count in views_by_player_id.items():
+                    name = player_names.get(pid, pid[:8])
+                    views_by_player[name] = views_by_player.get(name, 0) + count
+
+                site_row = (
+                    db.query(models.SiteStatsDaily)
+                    .filter(models.SiteStatsDaily.date == day)
+                    .first()
+                )
+                if site_row:
+                    site_row.total_player_views += player_total
+                    site_row.active_players += len(player_ids)
+                    site_row.views_by_player = _merge_count_dict(
+                        site_row.views_by_player, views_by_player
+                    )
+                else:
+                    db.add(
+                        models.SiteStatsDaily(
+                            date=day,
+                            total_player_views=player_total,
+                            active_players=len(player_ids),
+                            views_by_player=views_by_player,
+                        )
+                    )
+
+            db.flush()
+            days_processed += 1
+            if days_processed % 10 == 0:
+                logger.info(f"Rolled up {days_processed} days (through {day})")
+            day += timedelta(days=1)
+
+        # ----- Advance watermark, reconcile counters, retention delete -----
+        set_view_watermark(db, yesterday)
+        db.flush()  # the raw-SQL recompute below must see the new watermark
+
+        if affected_post_ids:
+            recompute_post_view_counts(db, post_ids=sorted(affected_post_ids))
+
+        deleted_count = db.execute(
+            sa_text(
+                "DELETE FROM view_events "
+                "WHERE (created_at AT TIME ZONE 'UTC')::date <= :wm "
+                "AND created_at < now() - interval '7 days'"
+            ),
+            {"wm": yesterday},
+        ).rowcount
 
         db.commit()
 
         logger.info(
-            f"Rolled up {rolled_up} daily aggregates, deleted {deleted_count} old events"
+            f"Rolled up {rolled_up} daily aggregates across {days_processed} days, "
+            f"deleted {deleted_count} old events, watermark -> {yesterday}"
         )
-        return {"status": "success", "rolled_up": rolled_up, "deleted": deleted_count}
+        return {
+            "status": "success",
+            "days": days_processed,
+            "rolled_up": rolled_up,
+            "deleted": deleted_count,
+        }
 
     except Exception:
         # Raise (not a success-shaped error dict) so Celery records a real
-        # failure and alerting fires. The rolled-up events are only deleted in
-        # the same transaction as the aggregation, so a failure here leaves the
-        # raw events intact for the next run — no data loss, no double count.
+        # failure and alerting fires. Aggregation, watermark advance, and
+        # deletion share one transaction, so a failure leaves the raw events
+        # intact for the next run — no data loss, no double count.
         logger.error("Error in rollup_view_events task", exc_info=True)
         db.rollback()
         raise
@@ -960,6 +1071,10 @@ def rollup_view_events(self) -> dict[str, Any]:
 def rollup_blog_post_view_events(self) -> dict[str, Any]:
     """
     Daily task: Roll up blog post view events older than 7 days into daily aggregates.
+
+    DEPRECATED (docs/artwork-views/ D16): the Blog subsystem is legacy and
+    will eventually be deleted. This rollup deliberately keeps the old
+    cutoff-based design — do not port it to the watermark pipeline.
 
     This task:
     1. Selects blog post view events older than 7 days
@@ -1159,6 +1274,7 @@ def rollup_site_events(self) -> dict[str, Any]:
     from sqlalchemy import func
     from . import models
     from .db import SessionLocal
+    from .services.view_metrics import SITE_EVENTS_WATERMARK, set_watermark
     from .utils.view_tracking import visitor_key
 
     BATCH_SIZE = 10000  # Process events in batches of 10,000
@@ -1178,6 +1294,12 @@ def rollup_site_events(self) -> dict[str, Any]:
         )
 
         if total_count == 0:
+            # Still advance the site-events watermark: with no events at all,
+            # "rolled through the cutoff date" is vacuously true, and readers
+            # need the boundary (max(SiteStatsDaily.date) no longer works —
+            # rollup_view_events also writes rows, up to yesterday).
+            set_watermark(db, SITE_EVENTS_WATERMARK, cutoff_date.date())
+            db.commit()
             logger.info("No old site events to roll up")
             return {"status": "success", "rolled_up": 0, "deleted": 0}
 
@@ -1325,65 +1447,11 @@ def rollup_site_events(self) -> dict[str, Any]:
             if processed_count % 50000 == 0:
                 logger.info(f"Processed {processed_count}/{total_count} site events")
 
-        # ===== AGGREGATE PLAYER VIEW EVENTS =====
-        # Process ViewEvent records to get player view statistics
-        player_aggregates: dict[date, dict] = {}
-
-        player_view_events = (
-            db.query(models.ViewEvent)
-            .filter(
-                models.ViewEvent.device_type == "player",
-                models.ViewEvent.created_at < cutoff_date,
-            )
-            .all()
-        )
-
-        for view_event in player_view_events:
-            event_date = view_event.created_at.date()
-
-            if event_date not in player_aggregates:
-                player_aggregates[event_date] = {
-                    "total_player_views": 0,
-                    "player_ids": set(),
-                    "views_by_player_id": {},
-                }
-
-            pagg = player_aggregates[event_date]
-            pagg["total_player_views"] += 1
-
-            if view_event.player_id:
-                player_id_str = str(view_event.player_id)
-                pagg["player_ids"].add(player_id_str)
-                pagg["views_by_player_id"][player_id_str] = (
-                    pagg["views_by_player_id"].get(player_id_str, 0) + 1
-                )
-
-        # Fetch player names for display in aggregated stats
-        all_player_ids = set()
-        for pagg in player_aggregates.values():
-            all_player_ids.update(pagg["player_ids"])
-
-        player_names = {}
-        if all_player_ids:
-            from uuid import UUID
-
-            player_uuids = [UUID(pid) for pid in all_player_ids]
-            players = (
-                db.query(models.Player).filter(models.Player.id.in_(player_uuids)).all()
-            )
-            player_names = {str(p.id): p.name or str(p.player_key)[:8] for p in players}
-
-        # Convert player_id-based counts to player_name-based counts
-        for event_date, pagg in player_aggregates.items():
-            views_by_player = {}
-            for player_id_str, count in pagg["views_by_player_id"].items():
-                player_name = player_names.get(player_id_str, player_id_str[:8])
-                views_by_player[player_name] = (
-                    views_by_player.get(player_name, 0) + count
-                )
-            pagg["views_by_player"] = views_by_player
-
-        logger.info(f"Aggregated player views for {len(player_aggregates)} days")
+        # Player view events are NOT consumed here anymore: the site-level
+        # player slice of site_stats_daily is written by rollup_view_events
+        # (single owner of view_events, docs/artwork-views/ D10). The old
+        # dual-cutoff consumption deleted a 1-hour band of player views
+        # daily before they ever reached post_stats_daily.
 
         # Upsert aggregates into site_stats_daily
         rolled_up = 0
@@ -1482,23 +1550,15 @@ def rollup_site_events(self) -> dict[str, Any]:
                     )
                 existing.authenticated_top_referrers = existing_auth_top_referrers
 
-                # Merge player view aggregates if available
-                if event_date in player_aggregates:
-                    pagg = player_aggregates[event_date]
-                    existing.total_player_views += pagg["total_player_views"]
-                    existing.active_players += len(pagg["player_ids"])
-
-                    existing_views_by_player = dict(existing.views_by_player or {})
-                    for player_name, count in pagg["views_by_player"].items():
-                        existing_views_by_player[player_name] = (
-                            existing_views_by_player.get(player_name, 0) + count
-                        )
-                    existing.views_by_player = existing_views_by_player
+                # Player fields (total_player_views, active_players,
+                # views_by_player) are deliberately NOT touched here: they are
+                # owned by rollup_view_events (docs/artwork-views/ D10), which
+                # runs at 01:00 ET and may already have written this row.
             else:
-                # Get player aggregates for this date if available
-                pagg = player_aggregates.get(event_date, {})
-
-                # Create new record
+                # Create new record. Player fields default to 0/{} — the
+                # 01:00 rollup_view_events run normally creates the row first
+                # with them filled; this branch only fires for dates that had
+                # site events but no player views.
                 daily_stat = models.SiteStatsDaily(
                     date=event_date,
                     total_page_views=agg["total_page_views"],
@@ -1523,10 +1583,6 @@ def rollup_site_events(self) -> dict[str, Any]:
                     ],
                     authenticated_views_by_device=agg["authenticated_views_by_device"],
                     authenticated_top_referrers=agg["authenticated_top_referrers"],
-                    # Player view aggregates
-                    total_player_views=pagg.get("total_player_views", 0),
-                    active_players=len(pagg.get("player_ids", set())),
-                    views_by_player=pagg.get("views_by_player", {}),
                 )
                 db.add(daily_stat)
 
@@ -1536,35 +1592,29 @@ def rollup_site_events(self) -> dict[str, Any]:
             if rolled_up % 100 == 0:
                 db.commit()
 
-        # Delete old site events
+        # Delete old site events. view_events deletion is owned exclusively
+        # by rollup_view_events (docs/artwork-views/ D10).
         deleted_count = (
             db.query(models.SiteEvent)
             .filter(models.SiteEvent.created_at < cutoff_date)
             .delete(synchronize_session=False)
         )
 
-        # Delete old player view events (from ViewEvent table)
-        deleted_player_views = (
-            db.query(models.ViewEvent)
-            .filter(
-                models.ViewEvent.device_type == "player",
-                models.ViewEvent.created_at < cutoff_date,
-            )
-            .delete(synchronize_session=False)
-        )
+        # Record how far daily rows now carry the site-event fields (the
+        # partial cutoff date is the max rolled date, matching the old
+        # max(SiteStatsDaily.date) reader semantics).
+        set_watermark(db, SITE_EVENTS_WATERMARK, cutoff_date.date())
 
         db.commit()
 
         logger.info(
             f"Rolled up {rolled_up} daily site aggregates, "
-            f"deleted {deleted_count} old site events, "
-            f"deleted {deleted_player_views} old player view events"
+            f"deleted {deleted_count} old site events"
         )
         return {
             "status": "success",
             "rolled_up": rolled_up,
             "deleted": deleted_count,
-            "deleted_player_views": deleted_player_views,
         }
 
     except Exception:
@@ -1621,32 +1671,39 @@ def cleanup_old_site_events(self) -> dict[str, Any]:
 @celery_app.task(name="app.tasks.cleanup_old_view_events", bind=True)
 def cleanup_old_view_events(self) -> dict[str, Any]:
     """
-    Manual-only cleanup of non-player view events older than 7 days.
+    Manual-only cleanup of ROLLED view events older than 7 days.
 
     NOT scheduled: as a nightly beat task with its own `now - 7d` cutoff it
     deleted the band of events not yet 7 days old at rollup time (permanent,
-    un-rolled-up loss) and deleted everything when the rollup failed. The
-    rollups own deletion, after aggregation, in the same transaction. Kept only
-    as an operator tool for clearing confirmed post-rollup stragglers by hand.
+    un-rolled-up loss) and deleted everything when the rollup failed.
+    rollup_view_events owns deletion, after aggregation, in the same
+    transaction (docs/artwork-views/ D10). Kept only as an operator tool for
+    clearing confirmed post-rollup stragglers by hand — it never deletes
+    events newer than the watermark (those are not yet aggregated).
     """
     from datetime import datetime, timedelta, timezone
     from . import models
     from .db import SessionLocal
+    from .services.view_metrics import get_view_watermark
+    from sqlalchemy import text as sa_text
 
     db = SessionLocal()
     try:
         logger.info("Starting old view events cleanup task")
 
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=7)
+        watermark = get_view_watermark(db)
+        if watermark is None:
+            logger.info("No view-events watermark; refusing to delete anything")
+            return {"status": "success", "deleted": 0}
 
-        deleted_count = (
-            db.query(models.ViewEvent)
-            .filter(
-                models.ViewEvent.created_at < cutoff_date,
-                models.ViewEvent.device_type != "player",
-            )
-            .delete(synchronize_session=False)
-        )
+        deleted_count = db.execute(
+            sa_text(
+                "DELETE FROM view_events "
+                "WHERE (created_at AT TIME ZONE 'UTC')::date <= :wm "
+                "AND created_at < now() - interval '7 days'"
+            ),
+            {"wm": watermark},
+        ).rowcount
 
         db.commit()
 
@@ -2032,6 +2089,77 @@ def cleanup_unverified_accounts(self) -> dict[str, Any]:
         raise
     finally:
         db.close()
+
+
+@celery_app.task(bind=True, name="app.tasks.check_view_ingestion_health")
+def check_view_ingestion_health(self) -> dict[str, Any]:
+    """
+    Watchdog for the view-ingestion pipeline (docs/artwork-views/ D15).
+
+    Errors when the /view door rejected requests with 422 (a client is
+    speaking a contract we don't accept — the failure mode that silently
+    swallowed every mobile-app view registration from launch until the
+    2026-08 audit) or when the rollup watermark is stale (> 2 days behind,
+    i.e. the 01:00 rollup missed at least one night). Info-logs the routine
+    drop counters (bots, dedup, rate limits). Runs daily at 02:30 ET, after
+    the 01:00 rollup should have advanced the watermark.
+    """
+    from datetime import timedelta
+    from .db import SessionLocal
+    from .services.view_metrics import (
+        get_view_counter,
+        get_view_watermark,
+        utc_today,
+    )
+
+    today = utc_today()
+    yesterday = today - timedelta(days=1)
+
+    level = "ok"
+    problems: list[str] = []
+
+    rejected = get_view_counter("contract_rejected", today) + get_view_counter(
+        "contract_rejected", yesterday
+    )
+    if rejected > 0:
+        problems.append(f"{rejected} contract-rejected (422) view registrations")
+        level = "critical"
+
+    db = SessionLocal()
+    try:
+        watermark = get_view_watermark(db)
+    finally:
+        db.close()
+
+    if watermark is None:
+        problems.append("view-events watermark missing (rollup never ran?)")
+        level = "critical"
+    elif watermark < today - timedelta(days=2):
+        problems.append(f"view-events watermark stale: {watermark}")
+        level = "critical"
+
+    counters = {
+        name: get_view_counter(name, today) + get_view_counter(name, yesterday)
+        for name in (
+            "bot_dropped",
+            "site_bot_dropped",
+            "dedup_suppressed",
+            "rate_limited",
+        )
+    }
+
+    if problems:
+        logger.error(f"View ingestion health: {'; '.join(problems)} | {counters}")
+    else:
+        logger.info(f"View ingestion health OK (watermark {watermark}) | {counters}")
+
+    return {
+        "status": "success",
+        "level": level,
+        "problems": problems,
+        "watermark": str(watermark),
+        "counters": counters,
+    }
 
 
 @celery_app.task(bind=True, name="app.tasks.check_vault_free_space")
@@ -3782,6 +3910,36 @@ def _purge_user_account(db: Session, user_id: int) -> dict[str, Any]:
 # ============================================================================
 # BACKFILL POST_FILES
 # ============================================================================
+
+
+@celery_app.task(name="app.tasks.backfill_view_counts")
+def backfill_view_counts() -> dict[str, Any]:
+    """Manual operator task: rebuild posts.view_count and reseed the watermark.
+
+    Wraps the same callables the artwork-views migration runs
+    (services/view_metrics.py). Not scheduled — for dev DBs and repair runs.
+    """
+    from .db import SessionLocal
+    from .services.view_metrics import (
+        recompute_post_view_counts,
+        seed_view_watermark,
+    )
+
+    db = SessionLocal()
+    try:
+        watermark = seed_view_watermark(db)  # no-op if already seeded
+        updated = recompute_post_view_counts(db)
+        db.commit()
+        logger.info(
+            f"Backfilled view_count for {updated} posts; watermark seeded to {watermark}"
+        )
+        return {"status": "success", "updated": updated, "watermark": str(watermark)}
+    except Exception:
+        db.rollback()
+        logger.error("Error in backfill_view_counts task", exc_info=True)
+        raise
+    finally:
+        db.close()
 
 
 @celery_app.task(name="app.tasks.backfill_post_files")

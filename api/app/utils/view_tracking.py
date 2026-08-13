@@ -40,18 +40,19 @@ class ViewSource(str, Enum):
     """Source of the view."""
 
     WEB = "web"
-    API = "api"
-    WIDGET = "widget"
     PLAYER = "player"
 
 
 class ViewType(str, Enum):
-    """Type of view interaction."""
+    """LEGACY view-type taxonomy — blog pipeline only (deprecated, D16).
 
-    INTENTIONAL = "intentional"  # User clicked to view artwork
-    LISTING = "listing"  # Artwork appeared in a feed/list
-    SEARCH = "search"  # Artwork appeared in search results
-    WIDGET = "widget"  # Viewed via embedded widget
+    Artwork views use the canonical string values in
+    services/view_metrics.py: "view" (deliberate look) and "impression"
+    (playback exposure). See docs/artwork-views/DECISIONS.md D2/D7.
+    """
+
+    INTENTIONAL = "intentional"  # User clicked to view (blog posts)
+    LISTING = "listing"  # Appeared in a feed/list (blog posts)
 
 
 # User-Agent patterns for device detection
@@ -90,17 +91,23 @@ _player_regex = re.compile(PLAYER_PATTERN, re.IGNORECASE)
 
 def hash_ip(ip: str) -> str:
     """
-    Create a SHA256 hash of an IP address for privacy-preserving storage.
+    Create a salted SHA256 hash of an IP address for privacy-preserving storage.
+
+    Salted with the MAKAPIX_IP_HASH_SALT deployment secret (docs/artwork-views/
+    D14): the IPv4 space is small enough that unsalted hashes are reversible by
+    brute force. Also used for synthetic non-IP identities ("player:{key}").
 
     Args:
-        ip: IPv4 or IPv6 address string
+        ip: IPv4 or IPv6 address string (or synthetic identity string)
 
     Returns:
         64-character hex string (SHA256 hash)
     """
+    from ..settings import ip_hash_salt
+
     if not ip:
         ip = "unknown"
-    return hashlib.sha256(ip.encode("utf-8")).hexdigest()
+    return hashlib.sha256((ip_hash_salt() + ip).encode("utf-8")).hexdigest()
 
 
 def visitor_key(user_id, ip_hash: str) -> tuple[str, str]:
@@ -225,10 +232,10 @@ def truncate_ip(ip: str) -> str:
 
 def record_view(
     db: Session,
-    post_id: int,  # Changed from UUID to int
+    post_id: int,
     request: Request,
     user: User | None = None,
-    view_type: ViewType = ViewType.INTENTIONAL,
+    view_type: str = "view",
     view_source: ViewSource = ViewSource.WEB,
     post_owner_id: UUID | None = None,
     channel: str | None = None,
@@ -236,23 +243,26 @@ def record_view(
     play_order: int | None = None,
 ) -> None:
     """
-    Queue an artwork view event for async writing via Celery.
+    Queue an artwork view/impression event for async writing via Celery.
 
     Extracts all metadata from the request synchronously, then dispatches
     to Celery for non-blocking database write. Zero database interaction
     in the request path.
 
-    Author views are excluded - if the authenticated user is the post owner, the view is not recorded.
+    Author views are excluded - if the authenticated user is the post owner,
+    the event is not recorded. The caller (POST /post/{id}/view) owns the
+    bot gate and the per-day View dedup so it can report counted-vs-accepted
+    truthfully (201 vs 204).
 
     Args:
         db: Database session (used only to query post owner if not provided)
         post_id: Integer ID of the post being viewed
         request: FastAPI Request object
         user: Current user (if authenticated)
-        view_type: Type of view (intentional, listing, search, widget)
-        view_source: Source of view (web, api, widget, player)
+        view_type: Canonical type: "view" or "impression" (services/view_metrics)
+        view_source: Source of view (web, player)
         post_owner_id: UUID of the post owner (if provided, used to exclude author views)
-        channel: Optional channel label (all, promoted, by_user, hashtag)
+        channel: Optional channel label (all, promoted, by_user, hashtag, artwork)
         channel_context: Optional channel context (user sqid or hashtag)
         play_order: Optional play order (0=server, 1=created, 2=random)
     """
@@ -299,7 +309,7 @@ def record_view(
             "country_code": country_code,
             "device_type": device_type.value,
             "view_source": view_source.value,
-            "view_type": view_type.value,
+            "view_type": view_type,
             "user_agent_hash": hash_user_agent(user_agent),
             "referrer_domain": extract_referrer_domain(referrer),
             "created_at": datetime.now(timezone.utc).isoformat(),
@@ -314,7 +324,7 @@ def record_view(
         logger.debug(
             f"Queued view event for post {post_id}: "
             f"device={device_type.value}, source={view_source.value}, "
-            f"type={view_type.value}, country={country_code}"
+            f"type={view_type}, country={country_code}"
         )
 
     except Exception as e:
@@ -324,103 +334,12 @@ def record_view(
         )
 
 
-def record_views_batch(
-    db: Session,
-    post_ids: list[int],  # Changed from list[UUID] to list[int]
-    request: Request,
-    user: User | None = None,
-    view_type: ViewType = ViewType.LISTING,
-    view_source: ViewSource = ViewSource.WEB,
-    post_owner_ids: (
-        dict[int, UUID] | None
-    ) = None,  # Changed from dict[UUID, UUID] to dict[int, UUID]
-) -> None:
-    """
-    Queue view events for multiple artworks for async writing via Celery (batch operation).
-
-    Used when artworks appear in feeds or search results.
-    Extracts metadata once and dispatches multiple events to Celery.
-
-    Author views are excluded - posts where the authenticated user is the owner are filtered out.
-
-    Args:
-        db: Database session (used only to query post owners if not provided)
-        post_ids: List of post integer IDs being viewed
-        request: FastAPI Request object
-        user: Current user (if authenticated)
-        view_type: Type of view (default: listing)
-        view_source: Source of view (default: web)
-        post_owner_ids: Dict mapping post_id -> owner_id (if None, will query database)
-    """
-    if not post_ids:
-        return
-
-    try:
-        from ..models import Post
-        from ..geoip import get_country_code
-        from ..tasks import write_view_event
-
-        # Get owner_ids if not provided (minimal DB query)
-        if post_owner_ids is None:
-            posts = db.query(Post.id, Post.owner_id).filter(Post.id.in_(post_ids)).all()
-            post_owner_ids = {post.id: post.owner_id for post in posts}
-
-        # Filter out posts where user is the owner
-        if user is not None:
-            filtered_post_ids = [
-                post_id
-                for post_id in post_ids
-                if post_id not in post_owner_ids or post_owner_ids[post_id] != user.id
-            ]
-        else:
-            filtered_post_ids = post_ids
-
-        if not filtered_post_ids:
-            logger.debug(
-                f"All {len(post_ids)} posts filtered out (user is owner), skipping batch view recording"
-            )
-            return
-
-        # Extract request metadata once
-        client_ip = get_client_ip(request)
-        user_agent = request.headers.get("User-Agent")
-        referrer = request.headers.get("Referer")
-
-        # Process metadata once
-        device_type = detect_device_type(user_agent)
-        if device_type == DeviceType.PLAYER:
-            view_source = ViewSource.PLAYER
-
-        country_code = get_country_code(client_ip)
-        ip_hash = hash_ip(client_ip)
-        ua_hash = hash_user_agent(user_agent)
-        referrer_domain = extract_referrer_domain(referrer)
-        now_iso = datetime.now(timezone.utc).isoformat()
-        user_id_str = str(user.id) if user else None
-
-        # Queue events for filtered posts (non-blocking Celery dispatch)
-        for post_id in filtered_post_ids:
-            event_data = {
-                "post_id": str(post_id),
-                "viewer_user_id": user_id_str,
-                "viewer_ip_hash": ip_hash,
-                "country_code": country_code,
-                "device_type": device_type.value,
-                "view_source": view_source.value,
-                "view_type": view_type.value,
-                "user_agent_hash": ua_hash,
-                "referrer_domain": referrer_domain,
-                "created_at": now_iso,
-            }
-            write_view_event.delay(event_data)
-
-        logger.debug(
-            f"Queued {len(filtered_post_ids)} batch views (filtered {len(post_ids) - len(filtered_post_ids)} owner views): "
-            f"device={device_type.value}, type={view_type.value}"
-        )
-
-    except Exception as e:
-        logger.warning(f"Failed to queue batch views: {e}", exc_info=True)
+# ---------------------------------------------------------------------------
+# DEPRECATED (docs/artwork-views/ D16): the entire Blog subsystem is legacy
+# and will eventually be deleted. The blog view functions below deliberately
+# stay on the old ViewType taxonomy and were NOT ported to the view/impression
+# model — do not extend or modernize them.
+# ---------------------------------------------------------------------------
 
 
 def record_blog_post_view(

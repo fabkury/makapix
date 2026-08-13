@@ -1088,15 +1088,17 @@ export function WebPlayer({
     };
   }, [isActive, displayedArtwork, paused, dwellSec, advanceToNext]);
 
-  // View tracking: fire at T=2s after a post appears, then every 30s thereafter.
-  // Runs regardless of pause state (a paused post is still on screen).
+  // Impression tracking: one Impression per artwork appearance, fired at
+  // T=2s (a "did actually display" guard against skip-throughs). No re-fire
+  // — screen time is not a tracked metric (docs/artwork-views/ D8; the old
+  // 30s interval racked up ~2,880 events/day from one open tab).
   useEffect(() => {
     if (!isActive || !displayedArtwork) return;
 
     const postId = displayedArtwork.id;
     const ownerSqid = displayedArtwork.owner?.public_sqid ?? null;
 
-    // Skip self-views (backend enforces this as well)
+    // Skip self-plays (backend excludes author engagement as well)
     if (currentUserId && ownerSqid && currentUserId === ownerSqid) return;
 
     const { channel, channel_context } = deriveViewChannel(
@@ -1105,7 +1107,7 @@ export function WebPlayer({
       channelContextRef.current,
     );
 
-    const submitView = async () => {
+    const submitImpression = async () => {
       const url = `/api/post/${postId}/view`;
       const fullUrl = url.startsWith("http")
         ? url
@@ -1115,6 +1117,7 @@ export function WebPlayer({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          intent: "impression",
           channel,
           channel_context,
           play_order: 2,
@@ -1127,20 +1130,12 @@ export function WebPlayer({
           await fetch(fullUrl, { ...init, credentials: "include" });
         }
       } catch {
-        // Best-effort — view registration must never disrupt playback
+        // Best-effort — impression registration must never disrupt playback
       }
     };
 
-    let intervalId: ReturnType<typeof setInterval> | null = null;
-    const initialTimer = setTimeout(() => {
-      submitView();
-      intervalId = setInterval(submitView, 30_000);
-    }, 2000);
-
-    return () => {
-      clearTimeout(initialTimer);
-      if (intervalId) clearInterval(intervalId);
-    };
+    const initialTimer = setTimeout(submitImpression, 2000);
+    return () => clearTimeout(initialTimer);
   }, [isActive, displayedArtwork, currentUserId]);
 
   // Keyboard

@@ -2,9 +2,13 @@ import { defineConfig } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-// Load web/.env.e2e.local if present (gitignored; contains Basic Auth + test user creds).
-const envFile = resolve(__dirname, '.env.e2e.local');
-if (existsSync(envFile)) {
+// Load env files if present: .env.e2e (committed; Basic Auth creds) and
+// .env.e2e.local (gitignored; test user creds). Previously only the .local
+// file was auto-loaded, so `npx playwright test` outside `make e2e` (which
+// sources .env.e2e) silently lacked the Caddy Basic Auth credentials.
+for (const name of ['.env.e2e', '.env.e2e.local']) {
+  const envFile = resolve(__dirname, name);
+  if (!existsSync(envFile)) continue;
   for (const line of readFileSync(envFile, 'utf-8').split('\n')) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;

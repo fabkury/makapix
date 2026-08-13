@@ -24,6 +24,9 @@ def pytest_configure(config):
     # raises when unset). Inside the dev/prod containers the real value is
     # present; give bare local runs a deterministic stand-in.
     os.environ.setdefault("VAULT_PUBLIC_BASE_URL", "https://vault.test")
+    # MAKAPIX_IP_HASH_SALT is likewise required (app.settings.ip_hash_salt
+    # raises when unset); deterministic stand-in for bare local runs.
+    os.environ.setdefault("MAKAPIX_IP_HASH_SALT", "test-ip-salt")
 
     api_user = os.getenv("DB_API_WORKER_USER")
     api_pass = os.getenv("DB_API_WORKER_PASSWORD")
@@ -207,19 +210,22 @@ def _no_live_celery(monkeypatch) -> None:
 
 @pytest.fixture(autouse=True)
 def _reset_rate_limits() -> Generator[None, None, None]:
-    """Flush rate-limit counters before each test.
+    """Flush rate-limit / view-dedup / view-observability keys before each test.
 
-    Rate limits live in the shared dev Redis, which is not reset between test
-    runs; without this, throttle counters accumulate across tests/reruns and
-    cause spurious 429s. Flushing only at test start preserves within-test
-    accumulation (so 429-asserting tests still work).
+    These live in the shared dev Redis, which is not reset between test runs;
+    without this, throttle counters and the per-UTC-day view dedup slots
+    accumulate across tests/reruns and cause spurious 429s / suppressed views.
+    Flushing only at test start preserves within-test accumulation (so
+    429-asserting and dedup-asserting tests still work).
     """
     try:
         from app.services.rate_limit import get_redis_client
 
         r = get_redis_client()
         if r:
-            keys = list(r.scan_iter("ratelimit:*"))
+            keys = []
+            for prefix in ("ratelimit:*", "viewdedup:*", "viewobs:*"):
+                keys.extend(r.scan_iter(prefix))
             if keys:
                 r.delete(*keys)
     except Exception:

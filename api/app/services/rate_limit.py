@@ -254,6 +254,45 @@ def check_web_view_rate_limit(
         return True, None
 
 
+def check_and_set_daily_view_dedup(visitor: tuple[str, str], post_id: int) -> bool:
+    """
+    Per-day Artwork View dedup (docs/artwork-views/ D2): a Visitor counts at
+    most one View per artwork per UTC calendar day.
+
+    Marks the (visitor, post, UTC-day) slot atomically (SET NX) with an expiry
+    at the next UTC midnight. Fail-open: Redis down -> not a duplicate (the
+    nightly rollup enforces exact per-day dedup when aggregating, and
+    reconciles posts.view_count, so outages self-heal).
+
+    Args:
+        visitor: (scope, ident) from view_tracking.visitor_key
+        post_id: Post being viewed
+
+    Returns:
+        True if this View was already counted today (suppress), False if fresh
+        (and the slot is now marked).
+    """
+    from datetime import datetime, timedelta, timezone
+
+    client = get_redis_client()
+    if not client:
+        return False
+
+    try:
+        scope, ident = visitor
+        now = datetime.now(timezone.utc)
+        key = f"viewdedup:{scope}:{ident}:{post_id}:{now.strftime('%Y%m%d')}"
+        next_midnight = (now + timedelta(days=1)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        ttl = max(60, int((next_midnight - now).total_seconds()) + 60)
+        was_set = client.set(key, "1", nx=True, ex=ttl)
+        return not bool(was_set)
+    except Exception as e:
+        logger.error(f"Daily view dedup check error: {e}")
+        return False
+
+
 def check_view_duplicate(player_key: str, post_id: int, timestamp: str) -> bool:
     """
     Check if a view event is a duplicate.

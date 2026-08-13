@@ -38,6 +38,24 @@ MAKAPIX_VAULT_MIN_FREE_BYTES: int = _int_env(
 )
 
 
+def ip_hash_salt() -> str:
+    """Return the secret salt for IP-address hashing (required setting).
+
+    Unsalted SHA-256 over the IPv4 space is brute-forceable, so stored
+    visitor_ip_hash values would be reversible by anyone with DB access
+    (docs/artwork-views/ D14). The salt is a deployment secret (generate
+    with `openssl rand -hex 32`), static so hashes stay comparable across
+    days. Read at call time so tests can monkeypatch the environment.
+    """
+    salt = os.environ.get("MAKAPIX_IP_HASH_SALT", "")
+    if not salt:
+        raise RuntimeError(
+            "MAKAPIX_IP_HASH_SALT must be set (generate with `openssl rand -hex 32`); "
+            "visitor IP hashes cannot be computed without it"
+        )
+    return salt
+
+
 def vault_public_base_url() -> str:
     """Return the public base URL for vault assets (required setting).
 

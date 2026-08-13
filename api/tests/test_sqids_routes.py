@@ -149,24 +149,10 @@ def test_get_post_by_sqid_anonymous(test_post: Post):
 
 
 def test_get_post_by_sqid_view_count(test_post: Post, db: Session):
-    """The public view count combines raw events + daily aggregates."""
-    from datetime import date
-
-    from app.models import PostStatsDaily, ViewEvent
-
-    # Two recent raw events ...
-    for _ in range(2):
-        db.add(
-            ViewEvent(
-                post_id=test_post.id,
-                viewer_ip_hash="0" * 64,
-                device_type="desktop",
-                view_source="web",
-                view_type="intentional",
-            )
-        )
-    # ... plus three already rolled into the daily aggregate.
-    db.add(PostStatsDaily(post_id=test_post.id, date=date(2026, 1, 1), total_views=3))
+    """The public view count is the denormalized posts.view_count column
+    (docs/artwork-views/ D11) — no stitching, and the GET itself must not
+    record a view (D4)."""
+    test_post.view_count = 5
     db.commit()
 
     client = TestClient(app)

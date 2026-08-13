@@ -37,6 +37,7 @@ BEAT_HEARTBEATS: dict[str, str] = {
     "app.tasks.cleanup_social_notifications": "cleanup-social-notifications",
     "app.tasks.cleanup_retired_artwork": "cleanup-retired-artwork",
     "app.tasks.renew_crl_if_needed": "renew-crl",
+    "app.tasks.check_view_ingestion_health": "check-view-ingestion-health",
 }
 
 

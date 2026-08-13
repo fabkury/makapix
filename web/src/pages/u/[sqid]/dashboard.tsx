@@ -1,112 +1,92 @@
-import { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/router';
-import Link from 'next/link';
-import Layout from '../../../components/Layout';
-import { authenticatedFetch } from '../../../lib/api';
+import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
+import Link from "next/link";
+import Layout from "../../../components/Layout";
+import {
+  ApiRequestError,
+  clearTokens,
+  getArtistDashboard,
+} from "../../../lib/api";
+import {
+  ArtistDashboardResponse,
+  DailyViewCount,
+} from "../../../types/stats";
+import { TrendPoint } from "../../../components/metrics/types";
+import { CHART } from "../../../components/metrics/theme";
+import {
+  countryName,
+  getCountryFlag,
+} from "../../../components/metrics/format";
+import BarList, {
+  BarListItem,
+} from "../../../components/metrics/BarList";
+import ChartCard from "../../../components/metrics/ChartCard";
+import ChartGrid from "../../../components/metrics/ChartGrid";
+import DeviceGrid from "../../../components/metrics/DeviceGrid";
+import KpiCard from "../../../components/metrics/KpiCard";
+import KpiGrid from "../../../components/metrics/KpiGrid";
+import TrendChart from "../../../components/metrics/TrendChart";
 
-interface ArtistStats {
-  user_id: number;
-  user_key: string;
-  total_posts: number;
-  total_views: number;
-  unique_viewers: number;
-  views_by_country: Record<string, number>;
-  views_by_device: Record<string, number>;
-  total_reactions: number;
-  reactions_by_emoji: Record<string, number>;
-  total_comments: number;
-  total_views_authenticated: number;
-  unique_viewers_authenticated: number;
-  views_by_country_authenticated: Record<string, number>;
-  views_by_device_authenticated: Record<string, number>;
-  total_reactions_authenticated: number;
-  reactions_by_emoji_authenticated: Record<string, number>;
-  total_comments_authenticated: number;
-  first_post_at: string | null;
-  latest_post_at: string | null;
-  computed_at: string;
-}
+const toViewTrend = (daily: DailyViewCount[]): TrendPoint[] =>
+  (daily || []).map((d) => ({
+    x: d.date,
+    primary: d.views,
+    secondary: d.unique_viewers,
+  }));
 
-interface PostStatsListItem {
-  post_id: number;
-  public_sqid: string;
-  title: string;
-  created_at: string;
-  total_views: number;
-  unique_viewers: number;
-  total_reactions: number;
-  total_comments: number;
-  total_views_authenticated: number;
-  unique_viewers_authenticated: number;
-  total_reactions_authenticated: number;
-  total_comments_authenticated: number;
-}
+const toImpressionTrend = (daily: DailyViewCount[]): TrendPoint[] =>
+  (daily || []).map((d) => ({ x: d.date, primary: d.impressions ?? 0 }));
 
-interface ArtistDashboardResponse {
-  artist_stats: ArtistStats;
-  posts: PostStatsListItem[];
-  total_posts: number;
-  page: number;
-  page_size: number;
-  has_more: boolean;
-}
-
+/**
+ * Artist Dashboard on the metrics kit (docs/artwork-views/): 30-day Views
+ * vs Impressions (never summed, D2), daily trend, countries with flags,
+ * device share, and the per-artwork table.
+ */
 export default function ArtistDashboard() {
   const router = useRouter();
   const { sqid } = router.query;
 
-  const [dashboard, setDashboard] = useState<ArtistDashboardResponse | null>(null);
+  const [dashboard, setDashboard] = useState<ArtistDashboardResponse | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const [showAuthenticatedOnly, setShowAuthenticatedOnly] = useState(false);
-
-  const API_BASE_URL = useMemo(
-    () => typeof window !== 'undefined'
-      ? (process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin)
-      : '',
-    []
-  );
+  const [includeUnauthenticated, setIncludeUnauthenticated] = useState(true);
 
   useEffect(() => {
-    if (!sqid || typeof sqid !== 'string') return;
+    if (!sqid || typeof sqid !== "string") return;
 
     const fetchDashboard = async () => {
       setLoading(true);
       setError(null);
-
       try {
-        const response = await authenticatedFetch(
-          `${API_BASE_URL}/api/user/${sqid}/artist-dashboard?page=${page}&page_size=20`
-        );
-
-        if (!response.ok) {
-          if (response.status === 401) {
-            router.push('/auth');
-            return;
-          } else if (response.status === 403) {
-            setError('You do not have permission to view this dashboard');
-          } else if (response.status === 404) {
-            setError('Artist not found');
-          } else {
-            setError('Failed to load dashboard');
-          }
-          setLoading(false);
-          return;
-        }
-
-        const data = await response.json();
-        setDashboard(data);
+        setDashboard(await getArtistDashboard(sqid, page));
       } catch (err) {
-        console.error('Error fetching dashboard:', err);
-        setError('Failed to load dashboard');
+        if (err instanceof ApiRequestError) {
+          if (err.status === 401) {
+            clearTokens();
+            router.push("/auth");
+            return;
+          }
+          if (err.status === 403) {
+            setError("You do not have permission to view this dashboard");
+          } else if (err.status === 404) {
+            setError("Artist not found");
+          } else {
+            setError("Failed to load dashboard");
+          }
+        } else {
+          console.error("Error fetching dashboard:", err);
+          setError("Failed to load dashboard");
+        }
       } finally {
         setLoading(false);
       }
     };
 
     fetchDashboard();
-  }, [sqid, page, API_BASE_URL, router]);
+  }, [sqid, page, router]);
 
   if (loading) {
     return (
@@ -129,7 +109,11 @@ export default function ArtistDashboard() {
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
           }
-          @keyframes spin { to { transform: rotate(360deg); } }
+          @keyframes spin {
+            to {
+              transform: rotate(360deg);
+            }
+          }
         `}</style>
       </Layout>
     );
@@ -140,8 +124,10 @@ export default function ArtistDashboard() {
       <Layout title="Artist Dashboard">
         <div className="error-container">
           <span className="error-icon">😢</span>
-          <h1>{error || 'Dashboard not found'}</h1>
-          <Link href={`/u/${sqid}`} className="back-link">← Back to Profile</Link>
+          <h1>{error || "Dashboard not found"}</h1>
+          <Link href={`/u/${sqid}`} className="back-link">
+            ← Back to Profile
+          </Link>
         </div>
         <style jsx>{`
           .error-container {
@@ -171,25 +157,43 @@ export default function ArtistDashboard() {
     );
   }
 
-  const stats = showAuthenticatedOnly
+  const a = dashboard.artist_stats;
+  const stats = includeUnauthenticated
     ? {
-        total_views: dashboard.artist_stats.total_views_authenticated,
-        unique_viewers: dashboard.artist_stats.unique_viewers_authenticated,
-        views_by_country: dashboard.artist_stats.views_by_country_authenticated,
-        views_by_device: dashboard.artist_stats.views_by_device_authenticated,
-        total_reactions: dashboard.artist_stats.total_reactions_authenticated,
-        reactions_by_emoji: dashboard.artist_stats.reactions_by_emoji_authenticated,
-        total_comments: dashboard.artist_stats.total_comments_authenticated,
+        total_views: a.total_views,
+        unique_viewers: a.unique_viewers,
+        total_impressions: a.total_impressions ?? 0,
+        views_by_country: a.views_by_country,
+        views_by_device: a.views_by_device,
+        daily_views: a.daily_views ?? [],
+        total_reactions: a.total_reactions,
+        reactions_by_emoji: a.reactions_by_emoji,
+        total_comments: a.total_comments,
       }
     : {
-        total_views: dashboard.artist_stats.total_views,
-        unique_viewers: dashboard.artist_stats.unique_viewers,
-        views_by_country: dashboard.artist_stats.views_by_country,
-        views_by_device: dashboard.artist_stats.views_by_device,
-        total_reactions: dashboard.artist_stats.total_reactions,
-        reactions_by_emoji: dashboard.artist_stats.reactions_by_emoji,
-        total_comments: dashboard.artist_stats.total_comments,
+        total_views: a.total_views_authenticated,
+        unique_viewers: a.unique_viewers_authenticated,
+        total_impressions: a.total_impressions_authenticated ?? 0,
+        views_by_country: a.views_by_country_authenticated,
+        views_by_device: a.views_by_device_authenticated,
+        daily_views: a.daily_views_authenticated ?? [],
+        total_reactions: a.total_reactions_authenticated,
+        reactions_by_emoji: a.reactions_by_emoji_authenticated,
+        total_comments: a.total_comments_authenticated,
       };
+
+  const countryItems: BarListItem[] = Object.entries(
+    stats.views_by_country,
+  ).map(([code, count]) => ({
+    key: code,
+    label: `${getCountryFlag(code)} ${countryName(code)}`,
+    title: countryName(code),
+    count,
+  }));
+
+  const reactionItems: BarListItem[] = Object.entries(
+    stats.reactions_by_emoji,
+  ).map(([emoji, count]) => ({ key: emoji, label: emoji, count }));
 
   return (
     <Layout title="Artist Dashboard">
@@ -203,114 +207,114 @@ export default function ArtistDashboard() {
             <label>
               <input
                 type="checkbox"
-                checked={showAuthenticatedOnly}
-                onChange={(e) => setShowAuthenticatedOnly(e.target.checked)}
+                checked={includeUnauthenticated}
+                onChange={(e) => setIncludeUnauthenticated(e.target.checked)}
               />
-              <span>Authenticated users only</span>
+              <span>Include unauthenticated traffic</span>
             </label>
           </div>
         </div>
 
-        {/* Summary Statistics */}
-        <div className="stats-grid">
-          <div className="stat-card">
-            <div className="stat-value">{dashboard.artist_stats.total_posts}</div>
-            <div className="stat-label">Total Posts</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-value">{stats.total_views.toLocaleString()}</div>
-            <div className="stat-label">Total Views</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-value">{stats.unique_viewers.toLocaleString()}</div>
-            <div className="stat-label">Unique Viewers</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-value">{stats.total_reactions.toLocaleString()}</div>
-            <div className="stat-label">Total Reactions</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-value">{stats.total_comments.toLocaleString()}</div>
-            <div className="stat-label">Total Comments</div>
-          </div>
+        {/* KPI row */}
+        <div className="kpi-section">
+          <KpiGrid>
+            <KpiCard label="Posts" value={a.total_posts.toLocaleString()} />
+            <KpiCard
+              label="Views (30d)"
+              value={stats.total_views.toLocaleString()}
+              hint="Deliberate looks — counted at most once per visitor per artwork per day."
+            />
+            <KpiCard
+              label="Impressions (30d)"
+              value={stats.total_impressions.toLocaleString()}
+              hint="Passive exposure during player / web-player rotation. Never added to Views."
+            />
+            <KpiCard
+              label="Unique viewers (30d)"
+              value={stats.unique_viewers.toLocaleString()}
+              hint="Approximate — summed per day and per artwork; a returning viewer counts more than once."
+            />
+            <KpiCard
+              label="Reactions"
+              value={stats.total_reactions.toLocaleString()}
+            />
+            <KpiCard
+              label="Comments"
+              value={stats.total_comments.toLocaleString()}
+            />
+          </KpiGrid>
         </div>
 
-        {/* Views by Country */}
-        {Object.keys(stats.views_by_country).length > 0 && (
-          <div className="breakdown-section">
-            <h2>Views by Country</h2>
-            <div className="breakdown-list">
-              {Object.entries(stats.views_by_country)
-                .sort(([, a], [, b]) => b - a)
-                .map(([country, count]) => (
-                  <div key={country} className="breakdown-item">
-                    <span className="breakdown-label">{country}</span>
-                    <span className="breakdown-value">{count.toLocaleString()}</span>
-                  </div>
-                ))}
-            </div>
-          </div>
-        )}
-
-        {/* Views by Device */}
-        {Object.keys(stats.views_by_device).length > 0 && (
-          <div className="breakdown-section">
-            <h2>Views by Device</h2>
-            <div className="breakdown-list">
-              {Object.entries(stats.views_by_device)
-                .sort(([, a], [, b]) => b - a)
-                .map(([device, count]) => (
-                  <div key={device} className="breakdown-item">
-                    <span className="breakdown-label">{device}</span>
-                    <span className="breakdown-value">{count.toLocaleString()}</span>
-                  </div>
-                ))}
-            </div>
-          </div>
-        )}
-
-        {/* Reactions by Emoji */}
-        {Object.keys(stats.reactions_by_emoji).length > 0 && (
-          <div className="breakdown-section">
-            <h2>Reactions by Emoji</h2>
-            <div className="breakdown-list">
-              {Object.entries(stats.reactions_by_emoji)
-                .sort(([, a], [, b]) => b - a)
-                .slice(0, 10)
-                .map(([emoji, count]) => (
-                  <div key={emoji} className="breakdown-item">
-                    <span className="breakdown-label">{emoji}</span>
-                    <span className="breakdown-value">{count.toLocaleString()}</span>
-                  </div>
-                ))}
-            </div>
-          </div>
-        )}
+        {/* Charts */}
+        <div className="charts-section">
+          <ChartGrid>
+            <ChartCard title="Daily views" subtitle="Last 30 days, all artworks">
+              <TrendChart
+                data={toViewTrend(stats.daily_views)}
+                granularity="day"
+                primaryName="Views"
+                primaryColor={CHART.cyan}
+                secondaryName="Unique viewers"
+                secondaryColor={CHART.pink}
+                height={220}
+              />
+            </ChartCard>
+            {stats.total_impressions > 0 && (
+              <ChartCard
+                title="Daily impressions"
+                subtitle="Last 30 days · playback exposure"
+              >
+                <TrendChart
+                  data={toImpressionTrend(stats.daily_views)}
+                  granularity="day"
+                  primaryName="Impressions"
+                  primaryColor={CHART.purple}
+                  height={220}
+                />
+              </ChartCard>
+            )}
+            {countryItems.length > 0 && (
+              <ChartCard title="Top countries" subtitle="Views, last 30 days">
+                <BarList items={countryItems} />
+              </ChartCard>
+            )}
+            {Object.keys(stats.views_by_device).length > 0 && (
+              <ChartCard title="Devices" subtitle="Share of views, last 30 days">
+                <DeviceGrid viewsByDevice={stats.views_by_device} />
+              </ChartCard>
+            )}
+            {reactionItems.length > 0 && (
+              <ChartCard title="Reactions">
+                <BarList items={reactionItems} maxItems={10} />
+              </ChartCard>
+            )}
+          </ChartGrid>
+        </div>
 
         {/* Post Statistics List */}
         <div className="posts-section">
-          <h2>Post Statistics</h2>
+          <h2>Per-artwork stats</h2>
           <div className="posts-table">
             <div className="table-header">
               <div className="col-title">Post</div>
               <div className="col-stat">Views</div>
-              <div className="col-stat">Unique</div>
+              <div className="col-stat">Impressions</div>
               <div className="col-stat">Reactions</div>
               <div className="col-stat">Comments</div>
             </div>
             {dashboard.posts.map((post) => {
-              const postStats = showAuthenticatedOnly
+              const row = includeUnauthenticated
                 ? {
-                    views: post.total_views_authenticated,
-                    unique: post.unique_viewers_authenticated,
-                    reactions: post.total_reactions_authenticated,
-                    comments: post.total_comments_authenticated,
-                  }
-                : {
                     views: post.total_views,
-                    unique: post.unique_viewers,
+                    impressions: post.total_impressions ?? 0,
                     reactions: post.total_reactions,
                     comments: post.total_comments,
+                  }
+                : {
+                    views: post.total_views_authenticated,
+                    impressions: post.total_impressions_authenticated ?? 0,
+                    reactions: post.total_reactions_authenticated,
+                    comments: post.total_comments_authenticated,
                   };
 
               return (
@@ -323,10 +327,18 @@ export default function ArtistDashboard() {
                       {new Date(post.created_at).toLocaleDateString()}
                     </div>
                   </div>
-                  <div className="col-stat" data-label="Views:">{postStats.views.toLocaleString()}</div>
-                  <div className="col-stat" data-label="Unique:">{postStats.unique.toLocaleString()}</div>
-                  <div className="col-stat" data-label="Reactions:">{postStats.reactions.toLocaleString()}</div>
-                  <div className="col-stat" data-label="Comments:">{postStats.comments.toLocaleString()}</div>
+                  <div className="col-stat" data-label="Views:">
+                    {row.views.toLocaleString()}
+                  </div>
+                  <div className="col-stat" data-label="Impressions:">
+                    {row.impressions.toLocaleString()}
+                  </div>
+                  <div className="col-stat" data-label="Reactions:">
+                    {row.reactions.toLocaleString()}
+                  </div>
+                  <div className="col-stat" data-label="Comments:">
+                    {row.comments.toLocaleString()}
+                  </div>
                 </div>
               );
             })}
@@ -344,7 +356,8 @@ export default function ArtistDashboard() {
                 </button>
               )}
               <span className="page-info">
-                Page {page} of {Math.ceil(dashboard.total_posts / dashboard.page_size)}
+                Page {page} of{" "}
+                {Math.ceil(dashboard.total_posts / dashboard.page_size)}
               </span>
               {dashboard.has_more && (
                 <button
@@ -367,7 +380,7 @@ export default function ArtistDashboard() {
         }
 
         .dashboard-header {
-          margin-bottom: 32px;
+          margin-bottom: 24px;
         }
 
         .back-link {
@@ -396,80 +409,24 @@ export default function ArtistDashboard() {
         .filter-toggle label {
           display: flex;
           align-items: center;
+          gap: 8px;
           cursor: pointer;
           font-size: 0.9rem;
           color: var(--text-secondary);
-        }
-        .filter-toggle label > :global(* + *) {
-          margin-left: 8px;
         }
 
         .filter-toggle input[type="checkbox"] {
           cursor: pointer;
+          width: 16px;
+          height: 16px;
         }
 
-        .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-          gap: 16px;
-          margin-bottom: 32px;
+        .kpi-section {
+          margin-bottom: 16px;
         }
 
-        .stat-card {
-          background: var(--bg-secondary);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 8px;
-          padding: 24px;
-          text-align: center;
-        }
-
-        .stat-value {
-          font-size: 2rem;
-          font-weight: bold;
-          color: var(--accent-cyan);
-          margin-bottom: 8px;
-        }
-
-        .stat-label {
-          font-size: 0.9rem;
-          color: var(--text-secondary);
-        }
-
-        .breakdown-section {
-          background: var(--bg-secondary);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 8px;
-          padding: 24px;
+        .charts-section {
           margin-bottom: 24px;
-        }
-
-        .breakdown-list {
-          display: flex;
-          flex-direction: column;
-        }
-        .breakdown-list > :global(* + *) {
-          margin-top: 8px;
-        }
-
-        .breakdown-item {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 8px 12px;
-          background: var(--bg-tertiary);
-          border-radius: 4px;
-        }
-
-        .breakdown-label {
-          font-size: 0.95rem;
-          color: var(--text-primary);
-          text-transform: capitalize;
-        }
-
-        .breakdown-value {
-          font-size: 0.95rem;
-          font-weight: 600;
-          color: var(--accent-cyan);
         }
 
         .posts-section {
@@ -563,27 +520,14 @@ export default function ArtistDashboard() {
         }
 
         @media (max-width: 768px) {
-          .stats-grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
-
           .table-header,
           .table-row {
-            grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
             font-size: 0.85rem;
             gap: 8px;
-          }
-
-          .col-stat {
-            font-size: 0.85rem;
           }
         }
 
         @media (max-width: 480px) {
-          .stats-grid {
-            grid-template-columns: 1fr;
-          }
-
           .table-header,
           .table-row {
             grid-template-columns: 1fr;

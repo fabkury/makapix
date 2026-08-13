@@ -133,10 +133,12 @@ class UserProfileStatsService:
             or 0
         )
 
-        # Total views across all posts (excluding hidden/non-conformant)
+        # Total Artwork Views across all posts (excluding hidden/non-conformant).
+        # Sums the denormalized posts.view_count (docs/artwork-views/ D11) —
+        # the old PostStatsDaily-only sum ignored the last ~7 days entirely,
+        # so new artists' profiles showed 0 views for their first week.
         total_views = (
-            self.db.query(func.coalesce(func.sum(models.PostStatsDaily.total_views), 0))
-            .join(models.Post, models.Post.id == models.PostStatsDaily.post_id)
+            self.db.query(func.coalesce(func.sum(models.Post.view_count), 0))
             .filter(
                 models.Post.owner_id == user_id,
                 models.Post.deleted_by_user == False,
