@@ -27,6 +27,11 @@ IMPRESSION = "impression"
 # rollup_watermarks.name for the artwork view-events pipeline.
 VIEW_EVENTS_WATERMARK = "view_events"
 
+# rollup_watermarks.name for the site-events pipeline (maintained by
+# rollup_site_events; readers use it to find where daily rows end instead of
+# max(SiteStatsDaily.date), which the view rollup now also writes to).
+SITE_EVENTS_WATERMARK = "site_events"
+
 # Pre-redesign view_type values, mapped at read/rollup time. Raw rows are
 # never rewritten; they age out of view_events within the 7-day retention.
 LEGACY_VIEW_TYPE_MAP = {
@@ -83,23 +88,33 @@ def utc_today() -> date:
 # ---------------------------------------------------------------------------
 
 
-def get_view_watermark(db: Session) -> date | None:
-    """Last UTC day fully rolled into post_stats_daily, or None if unseeded."""
+def get_watermark(db: Session, name: str) -> date | None:
+    """Read a rollup watermark by name, or None if unseeded."""
     from .. import models
 
-    row = db.get(models.RollupWatermark, VIEW_EVENTS_WATERMARK)
+    row = db.get(models.RollupWatermark, name)
     return row.value_date if row else None
+
+
+def set_watermark(db: Session, name: str, value: date) -> None:
+    """Advance (or create) a rollup watermark. Caller owns the commit."""
+    from .. import models
+
+    row = db.get(models.RollupWatermark, name)
+    if row is None:
+        db.add(models.RollupWatermark(name=name, value_date=value))
+    else:
+        row.value_date = value
+
+
+def get_view_watermark(db: Session) -> date | None:
+    """Last UTC day fully rolled into post_stats_daily, or None if unseeded."""
+    return get_watermark(db, VIEW_EVENTS_WATERMARK)
 
 
 def set_view_watermark(db: Session, value: date) -> None:
     """Advance (or create) the view-events watermark. Caller owns the commit."""
-    from .. import models
-
-    row = db.get(models.RollupWatermark, VIEW_EVENTS_WATERMARK)
-    if row is None:
-        db.add(models.RollupWatermark(name=VIEW_EVENTS_WATERMARK, value_date=value))
-    else:
-        row.value_date = value
+    set_watermark(db, VIEW_EVENTS_WATERMARK, value)
 
 
 def seed_view_watermark(conn) -> date:

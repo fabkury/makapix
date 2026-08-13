@@ -147,6 +147,22 @@
             "title": "Computed At",
             "type": "string"
           },
+          "daily_views": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DailyViewCount"
+            },
+            "title": "Daily Views",
+            "type": "array"
+          },
+          "daily_views_authenticated": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DailyViewCount"
+            },
+            "title": "Daily Views Authenticated",
+            "type": "array"
+          },
           "first_post_at": {
             "anyOf": [
               {
@@ -191,6 +207,16 @@
           },
           "total_comments_authenticated": {
             "title": "Total Comments Authenticated",
+            "type": "integer"
+          },
+          "total_impressions": {
+            "default": 0,
+            "title": "Total Impressions",
+            "type": "integer"
+          },
+          "total_impressions_authenticated": {
+            "default": 0,
+            "title": "Total Impressions Authenticated",
             "type": "integer"
           },
           "total_posts": {
@@ -2258,11 +2284,16 @@
         "type": "object"
       },
       "DailyViewCount": {
-        "description": "Daily view count for trends.",
+        "description": "Daily view/impression counts for trends (docs/artwork-views/ D2).",
         "properties": {
           "date": {
             "title": "Date",
             "type": "string"
+          },
+          "impressions": {
+            "default": 0,
+            "title": "Impressions",
+            "type": "integer"
           },
           "unique_viewers": {
             "title": "Unique Viewers",
@@ -5114,6 +5145,16 @@
             "title": "Total Comments Authenticated",
             "type": "integer"
           },
+          "total_impressions": {
+            "default": 0,
+            "title": "Total Impressions",
+            "type": "integer"
+          },
+          "total_impressions_authenticated": {
+            "default": 0,
+            "title": "Total Impressions Authenticated",
+            "type": "integer"
+          },
           "total_reactions": {
             "title": "Total Reactions",
             "type": "integer"
@@ -5157,7 +5198,7 @@
         "type": "object"
       },
       "PostStatsResponse": {
-        "description": "Statistics for a single post.\n\nIncludes both \"all\" (including unauthenticated) and \"authenticated-only\" statistics.\nFrontend can toggle between the two without additional API calls.",
+        "description": "Statistics for a single post (30-day window).\n\nIncludes both \"all\" (including unauthenticated) and \"authenticated-only\" statistics.\nFrontend can toggle between the two without additional API calls.\nViews and Impressions are separate metrics, never summed (docs/artwork-views/ D2).",
         "properties": {
           "computed_at": {
             "format": "date-time",
@@ -5226,6 +5267,16 @@
           },
           "total_comments_authenticated": {
             "title": "Total Comments Authenticated",
+            "type": "integer"
+          },
+          "total_impressions": {
+            "default": 0,
+            "title": "Total Impressions",
+            "type": "integer"
+          },
+          "total_impressions_authenticated": {
+            "default": 0,
+            "title": "Total Impressions Authenticated",
             "type": "integer"
           },
           "total_reactions": {

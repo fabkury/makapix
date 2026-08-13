@@ -318,7 +318,7 @@ def get_widget_data(
     This is more efficient than making separate requests for reactions and comments.
     """
     viewer = current_user if isinstance(current_user, models.User) else None
-    get_accessible_post_or_404(db, id, viewer)
+    post = get_accessible_post_or_404(db, id, viewer)
 
     # ===== REACTIONS (using SQL aggregation) =====
     aggregated = (
@@ -456,33 +456,11 @@ def get_widget_data(
     comments = [schemas.Comment.model_validate(c) for c in valid_comments]
 
     # ===== VIEWS COUNT =====
-    # Combine raw view events (last 7 days) with aggregated daily stats (older)
-    now = datetime.now(timezone.utc)
-    seven_days_ago = now - timedelta(days=7)
-
-    # Count recent views from ViewEvent table (last 7 days)
-    recent_views_count = (
-        db.query(func.count(models.ViewEvent.id))
-        .filter(
-            models.ViewEvent.post_id == id,
-            models.ViewEvent.created_at >= seven_days_ago,
-        )
-        .scalar()
-        or 0
-    )
-
-    # Sum older aggregated views from PostStatsDaily (before 7 days ago)
-    older_views_count = (
-        db.query(func.coalesce(func.sum(models.PostStatsDaily.total_views), 0))
-        .filter(
-            models.PostStatsDaily.post_id == id,
-            models.PostStatsDaily.date < seven_days_ago.date(),
-        )
-        .scalar()
-        or 0
-    )
-
-    views_count = recent_views_count + older_views_count
+    # The denormalized lifetime Artwork View count (docs/artwork-views/ D11).
+    # This endpoint previously stitched raw events with daily aggregates
+    # using a 7-day boundary that dropped the not-yet-rolled-up band —
+    # displayed counts could visibly DECREASE as events aged past 7 days.
+    views_count = post.view_count
 
     return schemas.WidgetData(
         reactions=reactions,

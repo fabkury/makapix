@@ -30,11 +30,12 @@ STATS_CACHE_TTL = 300
 
 @dataclass
 class DailyViewCount:
-    """Daily view count data."""
+    """Daily view/impression count data (docs/artwork-views/ D2)."""
 
     date: str  # ISO format date string
-    views: int
-    unique_viewers: int
+    views: int  # deduped Artwork Views
+    unique_viewers: int  # == views for post-redesign days; legacy for older
+    impressions: int = 0  # playback exposure (never summed with views)
 
 
 @dataclass
@@ -49,9 +50,10 @@ class PostStats:
     # "All" statistics (including unauthenticated)
     total_views: int
     unique_viewers: int
+    total_impressions: int
     views_by_country: dict[str, int]  # Top 10 countries
     views_by_device: dict[str, int]  # desktop, mobile, tablet, player
-    views_by_type: dict[str, int]  # intentional, listing, search, widget
+    views_by_type: dict[str, int]  # canonical: {"view": n, "impression": m}
     daily_views: list[DailyViewCount]  # Last 30 days
     total_reactions: int
     reactions_by_emoji: dict[str, int]
@@ -59,9 +61,10 @@ class PostStats:
     # Authenticated-only statistics
     total_views_authenticated: int
     unique_viewers_authenticated: int
+    total_impressions_authenticated: int
     views_by_country_authenticated: dict[str, int]  # Top 10 countries
     views_by_device_authenticated: dict[str, int]  # desktop, mobile, tablet, player
-    views_by_type_authenticated: dict[str, int]  # intentional, listing, search, widget
+    views_by_type_authenticated: dict[str, int]  # canonical keys
     daily_views_authenticated: list[DailyViewCount]  # Last 30 days
     total_reactions_authenticated: int
     reactions_by_emoji_authenticated: dict[str, int]
@@ -153,253 +156,229 @@ class PostStatsService:
         """
         from .. import models
 
+        # ===== VIEW STATISTICS (30-day window) =====
+        # One stitching rule (docs/artwork-views/ D10): daily aggregate rows
+        # for days <= the rollup watermark, raw events for days after it.
+        # Rolled-but-retained raw rows are therefore never double-counted,
+        # and there is no crack at the old "7 days" boundary.
+        from .view_metrics import (
+            VIEW,
+            canonical_view_type,
+            get_view_watermark,
+            impressions_from_breakdown,
+            views_from_breakdown,
+        )
+
         now = datetime.now(timezone.utc)
-        seven_days_ago = now - timedelta(days=7)
-        thirty_days_ago = now - timedelta(days=30)
+        today = now.date()
+        window_start = today - timedelta(days=29)  # 30 calendar days incl. today
 
-        # ===== VIEW STATISTICS =====
+        watermark = get_view_watermark(self.db)
 
-        # Get raw view events from the last 7 days
+        daily_stats: list = []
+        if watermark is not None:
+            daily_stats = (
+                self.db.query(models.PostStatsDaily)
+                .filter(
+                    models.PostStatsDaily.post_id == post_id,
+                    models.PostStatsDaily.date >= window_start,
+                    models.PostStatsDaily.date <= watermark,
+                )
+                .all()
+            )
+
+        raw_start = window_start
+        if watermark is not None and watermark + timedelta(days=1) > raw_start:
+            raw_start = watermark + timedelta(days=1)
         recent_views = (
             self.db.query(models.ViewEvent)
             .filter(
                 models.ViewEvent.post_id == post_id,
-                models.ViewEvent.created_at >= seven_days_ago,
+                models.ViewEvent.created_at
+                >= datetime(
+                    raw_start.year, raw_start.month, raw_start.day, tzinfo=timezone.utc
+                ),
             )
             .all()
         )
 
-        # Get daily aggregates for older data (8-30 days ago)
-        daily_stats = (
-            self.db.query(models.PostStatsDaily)
-            .filter(
-                models.PostStatsDaily.post_id == post_id,
-                models.PostStatsDaily.date >= thirty_days_ago.date(),
-                models.PostStatsDaily.date < seven_days_ago.date(),
-            )
-            .all()
-        )
-
-        # Separate authenticated and unauthenticated views
-        authenticated_views = [v for v in recent_views if v.viewer_user_id is not None]
-
-        # Aggregate total views and unique viewers (all)
-        total_views = len(recent_views)
-        unique_viewer_keys = set(
-            visitor_key(v.viewer_user_id, v.viewer_ip_hash) for v in recent_views
-        )
-        unique_viewers = len(unique_viewer_keys)
-
-        # Aggregate authenticated-only views and unique viewers
-        total_views_authenticated = len(authenticated_views)
-        authenticated_unique_viewer_keys = set(
-            visitor_key(v.viewer_user_id, v.viewer_ip_hash) for v in authenticated_views
-        )
-        unique_viewers_authenticated = len(authenticated_unique_viewer_keys)
-
-        # Add older aggregated data (all)
-        for ds in daily_stats:
-            total_views += ds.total_views
-            unique_viewers += (
-                ds.unique_viewers
-            )  # Note: may slightly overcount across boundaries
-
-        # Add older aggregated data (authenticated)
-        for ds in daily_stats:
-            total_views_authenticated += ds.total_views_authenticated
-            unique_viewers_authenticated += ds.unique_viewers_authenticated
-
-        # Aggregate views by country (all)
+        # ----- Aggregate raw (post-watermark) days with the same rules as the
+        # rollup: Views deduped per Visitor per UTC day; country/device
+        # breakdowns are Views-only, first event wins; Impressions counted.
+        raw_days: dict[str, dict] = {}
         views_by_country: dict[str, int] = {}
+        views_by_device: dict[str, int] = {}
+        views_by_country_authenticated: dict[str, int] = {}
+        views_by_device_authenticated: dict[str, int] = {}
+        views_by_type: dict[str, int] = {"view": 0, "impression": 0}
+        views_by_type_authenticated: dict[str, int] = {"view": 0, "impression": 0}
+        first_raw_view = None
+        last_raw_view = None
+
         for v in recent_views:
-            if v.country_code:
-                views_by_country[v.country_code] = (
-                    views_by_country.get(v.country_code, 0) + 1
-                )
+            event_utc = v.created_at.astimezone(timezone.utc)
+            day_str = event_utc.date().isoformat()
+            slot = raw_days.setdefault(
+                day_str,
+                {
+                    "visitors": set(),
+                    "auth_visitors": set(),
+                    "impressions": 0,
+                    "impressions_auth": 0,
+                },
+            )
+            if canonical_view_type(v.view_type) == VIEW:
+                visitor = visitor_key(v.viewer_user_id, v.viewer_ip_hash)
+                if visitor not in slot["visitors"]:
+                    slot["visitors"].add(visitor)
+                    if v.country_code:
+                        views_by_country[v.country_code] = (
+                            views_by_country.get(v.country_code, 0) + 1
+                        )
+                    views_by_device[v.device_type] = (
+                        views_by_device.get(v.device_type, 0) + 1
+                    )
+                    views_by_type["view"] += 1
+                if (
+                    v.viewer_user_id is not None
+                    and visitor not in slot["auth_visitors"]
+                ):
+                    slot["auth_visitors"].add(visitor)
+                    if v.country_code:
+                        views_by_country_authenticated[v.country_code] = (
+                            views_by_country_authenticated.get(v.country_code, 0) + 1
+                        )
+                    views_by_device_authenticated[v.device_type] = (
+                        views_by_device_authenticated.get(v.device_type, 0) + 1
+                    )
+                    views_by_type_authenticated["view"] += 1
+            else:
+                slot["impressions"] += 1
+                views_by_type["impression"] += 1
+                if v.viewer_user_id is not None:
+                    slot["impressions_auth"] += 1
+                    views_by_type_authenticated["impression"] += 1
+            if last_raw_view is None or event_utc > last_raw_view:
+                last_raw_view = event_utc
+            if first_raw_view is None or event_utc < first_raw_view:
+                first_raw_view = event_utc
+
+        # ----- Build the 30-day daily series (all + authenticated) -----
+        daily_map: dict[str, DailyViewCount] = {}
+        daily_map_auth: dict[str, DailyViewCount] = {}
+        for i in range(30):
+            day_str = (window_start + timedelta(days=i)).isoformat()
+            daily_map[day_str] = DailyViewCount(
+                date=day_str, views=0, unique_viewers=0, impressions=0
+            )
+            daily_map_auth[day_str] = DailyViewCount(
+                date=day_str, views=0, unique_viewers=0, impressions=0
+            )
+
+        # Daily rows (legacy rows are read through the breakdown helpers;
+        # their country/device breakdowns include impressions — an accepted
+        # approximation that ages out of the window).
         for ds in daily_stats:
+            day_str = ds.date.isoformat()
+            row_views = views_from_breakdown(ds.views_by_type)
+            row_impressions = impressions_from_breakdown(ds.views_by_type)
+            row_views_auth = views_from_breakdown(ds.views_by_type_authenticated)
+            row_impressions_auth = impressions_from_breakdown(
+                ds.views_by_type_authenticated
+            )
+            if day_str in daily_map:
+                daily_map[day_str].views = row_views
+                daily_map[day_str].unique_viewers = ds.unique_viewers
+                daily_map[day_str].impressions = row_impressions
+                daily_map_auth[day_str].views = row_views_auth
+                daily_map_auth[day_str].unique_viewers = ds.unique_viewers_authenticated
+                daily_map_auth[day_str].impressions = row_impressions_auth
+
+            views_by_type["view"] += row_views
+            views_by_type["impression"] += row_impressions
+            views_by_type_authenticated["view"] += row_views_auth
+            views_by_type_authenticated["impression"] += row_impressions_auth
             for country, count in (ds.views_by_country or {}).items():
                 views_by_country[country] = views_by_country.get(country, 0) + count
-
-        # Sort by count and keep top 10
-        views_by_country = dict(
-            sorted(views_by_country.items(), key=lambda x: -x[1])[:10]
-        )
-
-        # Aggregate views by country (authenticated only)
-        views_by_country_authenticated: dict[str, int] = {}
-        for v in authenticated_views:
-            if v.country_code:
-                views_by_country_authenticated[v.country_code] = (
-                    views_by_country_authenticated.get(v.country_code, 0) + 1
-                )
-        for ds in daily_stats:
+            for device, count in (ds.views_by_device or {}).items():
+                views_by_device[device] = views_by_device.get(device, 0) + count
             for country, count in (ds.views_by_country_authenticated or {}).items():
                 views_by_country_authenticated[country] = (
                     views_by_country_authenticated.get(country, 0) + count
                 )
-
-        # Sort by count and keep top 10
-        views_by_country_authenticated = dict(
-            sorted(views_by_country_authenticated.items(), key=lambda x: -x[1])[:10]
-        )
-
-        # Aggregate views by device (all)
-        views_by_device: dict[str, int] = {}
-        for v in recent_views:
-            views_by_device[v.device_type] = views_by_device.get(v.device_type, 0) + 1
-        for ds in daily_stats:
-            for device, count in (ds.views_by_device or {}).items():
-                views_by_device[device] = views_by_device.get(device, 0) + count
-
-        # Aggregate views by device (authenticated only)
-        views_by_device_authenticated: dict[str, int] = {}
-        for v in authenticated_views:
-            views_by_device_authenticated[v.device_type] = (
-                views_by_device_authenticated.get(v.device_type, 0) + 1
-            )
-        for ds in daily_stats:
             for device, count in (ds.views_by_device_authenticated or {}).items():
                 views_by_device_authenticated[device] = (
                     views_by_device_authenticated.get(device, 0) + count
                 )
 
-        # Aggregate views by type (all)
-        views_by_type: dict[str, int] = {}
-        for v in recent_views:
-            views_by_type[v.view_type] = views_by_type.get(v.view_type, 0) + 1
-        for ds in daily_stats:
-            for vtype, count in (ds.views_by_type or {}).items():
-                views_by_type[vtype] = views_by_type.get(vtype, 0) + count
+        # Raw days overlay
+        for day_str, slot in raw_days.items():
+            if day_str in daily_map:
+                daily_map[day_str].views = len(slot["visitors"])
+                daily_map[day_str].unique_viewers = len(slot["visitors"])
+                daily_map[day_str].impressions = slot["impressions"]
+                daily_map_auth[day_str].views = len(slot["auth_visitors"])
+                daily_map_auth[day_str].unique_viewers = len(slot["auth_visitors"])
+                daily_map_auth[day_str].impressions = slot["impressions_auth"]
 
-        # Aggregate views by type (authenticated only)
-        views_by_type_authenticated: dict[str, int] = {}
-        for v in authenticated_views:
-            views_by_type_authenticated[v.view_type] = (
-                views_by_type_authenticated.get(v.view_type, 0) + 1
-            )
-        for ds in daily_stats:
-            for vtype, count in (ds.views_by_type_authenticated or {}).items():
-                views_by_type_authenticated[vtype] = (
-                    views_by_type_authenticated.get(vtype, 0) + count
-                )
+        daily_views = sorted(daily_map.values(), key=lambda x: x.date)
+        daily_views_authenticated = sorted(
+            daily_map_auth.values(), key=lambda x: x.date
+        )
 
-        # ===== DAILY VIEW TRENDS (last 30 days) =====
+        # ----- Window totals (cross-day uniques are a sum of daily uniques —
+        # approximate by design, labeled as such in the UI per D13) -----
+        total_views = sum(d.views for d in daily_views)
+        unique_viewers = sum(d.unique_viewers for d in daily_views)
+        total_impressions = sum(d.impressions for d in daily_views)
+        total_views_authenticated = sum(d.views for d in daily_views_authenticated)
+        unique_viewers_authenticated = sum(
+            d.unique_viewers for d in daily_views_authenticated
+        )
+        total_impressions_authenticated = sum(
+            d.impressions for d in daily_views_authenticated
+        )
 
-        daily_views: list[DailyViewCount] = []
-
-        # Initialize all 30 days with zeros
-        for i in range(30):
-            day = (now - timedelta(days=i)).date()
-            daily_views.append(
-                DailyViewCount(date=day.isoformat(), views=0, unique_viewers=0)
-            )
-
-        # Create lookup dict for daily views
-        daily_lookup = {d.date: d for d in daily_views}
-
-        # Fill in data from recent views (last 7 days) - all
-        views_by_day: dict[str, list] = {}
-        for v in recent_views:
-            day_str = v.created_at.date().isoformat()
-            if day_str not in views_by_day:
-                views_by_day[day_str] = []
-            views_by_day[day_str].append(v)
-
-        for day_str, views in views_by_day.items():
-            if day_str in daily_lookup:
-                daily_lookup[day_str].views = len(views)
-                daily_lookup[day_str].unique_viewers = len(
-                    set(visitor_key(v.viewer_user_id, v.viewer_ip_hash) for v in views)
-                )
-
-        # Fill in data from daily aggregates (older than 7 days)
-        for ds in daily_stats:
-            day_str = ds.date.isoformat()
-            if day_str in daily_lookup:
-                daily_lookup[day_str].views = ds.total_views
-                daily_lookup[day_str].unique_viewers = ds.unique_viewers
-
-        # Sort by date ascending (oldest first)
-        daily_views.sort(key=lambda x: x.date)
-
-        # ===== DAILY VIEW TRENDS AUTHENTICATED (last 30 days) =====
-
-        daily_views_authenticated: list[DailyViewCount] = []
-
-        # Initialize all 30 days with zeros
-        for i in range(30):
-            day = (now - timedelta(days=i)).date()
-            daily_views_authenticated.append(
-                DailyViewCount(date=day.isoformat(), views=0, unique_viewers=0)
-            )
-
-        # Create lookup dict for daily authenticated views
-        daily_lookup_authenticated = {d.date: d for d in daily_views_authenticated}
-
-        # Fill in data from authenticated views (last 7 days)
-        views_by_day_authenticated: dict[str, list] = {}
-        for v in authenticated_views:
-            day_str = v.created_at.date().isoformat()
-            if day_str not in views_by_day_authenticated:
-                views_by_day_authenticated[day_str] = []
-            views_by_day_authenticated[day_str].append(v)
-
-        for day_str, views in views_by_day_authenticated.items():
-            if day_str in daily_lookup_authenticated:
-                daily_lookup_authenticated[day_str].views = len(views)
-                daily_lookup_authenticated[day_str].unique_viewers = len(
-                    set(visitor_key(v.viewer_user_id, v.viewer_ip_hash) for v in views)
-                )
-
-        # Fill in data from daily aggregates (older than 7 days) - authenticated
-        for ds in daily_stats:
-            day_str = ds.date.isoformat()
-            if day_str in daily_lookup_authenticated:
-                daily_lookup_authenticated[day_str].views = ds.total_views_authenticated
-                daily_lookup_authenticated[day_str].unique_viewers = (
-                    ds.unique_viewers_authenticated
-                )
-
-        # Sort by date ascending (oldest first)
-        daily_views_authenticated.sort(key=lambda x: x.date)
+        # Sort country breakdowns by count and keep top 10
+        views_by_country = dict(
+            sorted(views_by_country.items(), key=lambda x: -x[1])[:10]
+        )
+        views_by_country_authenticated = dict(
+            sorted(views_by_country_authenticated.items(), key=lambda x: -x[1])[:10]
+        )
 
         # ===== FIRST AND LAST VIEW TIMESTAMPS =====
 
         first_view_at = None
         last_view_at = None
 
-        if recent_views:
-            sorted_views = sorted(recent_views, key=lambda v: v.created_at)
-            last_view_at = sorted_views[-1].created_at.isoformat()
-
-            # Check if we have older data
-            oldest_daily = (
-                self.db.query(models.PostStatsDaily)
-                .filter(
-                    models.PostStatsDaily.post_id == post_id,
-                    models.PostStatsDaily.total_views > 0,
-                )
-                .order_by(models.PostStatsDaily.date.asc())
-                .first()
+        # Oldest daily row with any activity (all-time, not window-bounded)
+        oldest_daily = (
+            self.db.query(models.PostStatsDaily)
+            .filter(
+                models.PostStatsDaily.post_id == post_id,
+                models.PostStatsDaily.total_views > 0,
             )
+            .order_by(models.PostStatsDaily.date.asc())
+            .first()
+        )
 
-            if oldest_daily:
-                first_view_at = datetime.combine(
-                    oldest_daily.date, datetime.min.time(), tzinfo=timezone.utc
-                ).isoformat()
-            else:
-                first_view_at = sorted_views[0].created_at.isoformat()
+        if oldest_daily:
+            first_view_at = datetime.combine(
+                oldest_daily.date, datetime.min.time(), tzinfo=timezone.utc
+            ).isoformat()
+        elif first_raw_view is not None:
+            first_view_at = first_raw_view.isoformat()
+
+        if last_raw_view is not None:
+            last_view_at = last_raw_view.isoformat()
         elif daily_stats:
-            sorted_daily = sorted(daily_stats, key=lambda d: d.date)
-            if sorted_daily:
-                first_view_at = datetime.combine(
-                    sorted_daily[0].date, datetime.min.time(), tzinfo=timezone.utc
-                ).isoformat()
-                last_view_at = datetime.combine(
-                    sorted_daily[-1].date,
-                    datetime.max.time().replace(microsecond=0),
-                    tzinfo=timezone.utc,
-                ).isoformat()
+            latest_daily = max(daily_stats, key=lambda d: d.date)
+            last_view_at = datetime.combine(
+                latest_daily.date,
+                datetime.max.time().replace(microsecond=0),
+                tzinfo=timezone.utc,
+            ).isoformat()
 
         # ===== REACTION STATISTICS =====
 
@@ -461,6 +440,7 @@ class PostStatsService:
             # All statistics
             total_views=total_views,
             unique_viewers=unique_viewers,
+            total_impressions=total_impressions,
             views_by_country=views_by_country,
             views_by_device=views_by_device,
             views_by_type=views_by_type,
@@ -471,6 +451,7 @@ class PostStatsService:
             # Authenticated-only statistics
             total_views_authenticated=total_views_authenticated,
             unique_viewers_authenticated=unique_viewers_authenticated,
+            total_impressions_authenticated=total_impressions_authenticated,
             views_by_country_authenticated=views_by_country_authenticated,
             views_by_device_authenticated=views_by_device_authenticated,
             views_by_type_authenticated=views_by_type_authenticated,
@@ -500,6 +481,7 @@ class PostStatsService:
             # All statistics
             total_views=data["total_views"],
             unique_viewers=data["unique_viewers"],
+            total_impressions=data.get("total_impressions", 0),
             views_by_country=data["views_by_country"],
             views_by_device=data["views_by_device"],
             views_by_type=data["views_by_type"],
@@ -510,6 +492,9 @@ class PostStatsService:
             # Authenticated-only statistics
             total_views_authenticated=data.get("total_views_authenticated", 0),
             unique_viewers_authenticated=data.get("unique_viewers_authenticated", 0),
+            total_impressions_authenticated=data.get(
+                "total_impressions_authenticated", 0
+            ),
             views_by_country_authenticated=data.get(
                 "views_by_country_authenticated", {}
             ),

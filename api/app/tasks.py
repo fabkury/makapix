@@ -887,9 +887,7 @@ def rollup_view_events(self) -> dict[str, Any]:
                         if event.player_id:
                             pid = str(event.player_id)
                             player_ids.add(pid)
-                            views_by_player_id[pid] = (
-                                views_by_player_id.get(pid, 0) + 1
-                            )
+                            views_by_player_id[pid] = views_by_player_id.get(pid, 0) + 1
 
                 offset += BATCH_SIZE
                 # Clear SQLAlchemy's identity map to free memory
@@ -931,9 +929,7 @@ def rollup_view_events(self) -> dict[str, Any]:
                     )
                     existing.total_views_authenticated += views_auth
                     existing.unique_viewers_authenticated += views_auth
-                    existing.total_impressions_authenticated += agg[
-                        "impressions_auth"
-                    ]
+                    existing.total_impressions_authenticated += agg["impressions_auth"]
                     existing.views_by_country_authenticated = _merge_count_dict(
                         existing.views_by_country_authenticated,
                         agg["views_by_country_auth"],
@@ -963,12 +959,8 @@ def rollup_view_events(self) -> dict[str, Any]:
                             total_views_authenticated=views_auth,
                             unique_viewers_authenticated=views_auth,
                             total_impressions_authenticated=agg["impressions_auth"],
-                            views_by_country_authenticated=agg[
-                                "views_by_country_auth"
-                            ],
-                            views_by_device_authenticated=agg[
-                                "views_by_device_auth"
-                            ],
+                            views_by_country_authenticated=agg["views_by_country_auth"],
+                            views_by_device_authenticated=agg["views_by_device_auth"],
                             views_by_type_authenticated={
                                 "view": views_auth,
                                 "impression": agg["impressions_auth"],
@@ -1267,6 +1259,7 @@ def rollup_site_events(self) -> dict[str, Any]:
     from sqlalchemy import func
     from . import models
     from .db import SessionLocal
+    from .services.view_metrics import SITE_EVENTS_WATERMARK, set_watermark
     from .utils.view_tracking import visitor_key
 
     BATCH_SIZE = 10000  # Process events in batches of 10,000
@@ -1286,6 +1279,12 @@ def rollup_site_events(self) -> dict[str, Any]:
         )
 
         if total_count == 0:
+            # Still advance the site-events watermark: with no events at all,
+            # "rolled through the cutoff date" is vacuously true, and readers
+            # need the boundary (max(SiteStatsDaily.date) no longer works —
+            # rollup_view_events also writes rows, up to yesterday).
+            set_watermark(db, SITE_EVENTS_WATERMARK, cutoff_date.date())
+            db.commit()
             logger.info("No old site events to roll up")
             return {"status": "success", "rolled_up": 0, "deleted": 0}
 
@@ -1585,6 +1584,11 @@ def rollup_site_events(self) -> dict[str, Any]:
             .filter(models.SiteEvent.created_at < cutoff_date)
             .delete(synchronize_session=False)
         )
+
+        # Record how far daily rows now carry the site-event fields (the
+        # partial cutoff date is the max rolled date, matching the old
+        # max(SiteStatsDaily.date) reader semantics).
+        set_watermark(db, SITE_EVENTS_WATERMARK, cutoff_date.date())
 
         db.commit()
 

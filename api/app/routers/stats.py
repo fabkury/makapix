@@ -80,12 +80,16 @@ async def get_post_statistics(
         # All statistics
         total_views=stats.total_views,
         unique_viewers=stats.unique_viewers,
+        total_impressions=stats.total_impressions,
         views_by_country=stats.views_by_country,
         views_by_device=stats.views_by_device,
         views_by_type=stats.views_by_type,
         daily_views=[
             schemas.DailyViewCount(
-                date=dv.date, views=dv.views, unique_viewers=dv.unique_viewers
+                date=dv.date,
+                views=dv.views,
+                unique_viewers=dv.unique_viewers,
+                impressions=dv.impressions,
             )
             for dv in stats.daily_views
         ],
@@ -95,12 +99,16 @@ async def get_post_statistics(
         # Authenticated-only statistics
         total_views_authenticated=stats.total_views_authenticated,
         unique_viewers_authenticated=stats.unique_viewers_authenticated,
+        total_impressions_authenticated=stats.total_impressions_authenticated,
         views_by_country_authenticated=stats.views_by_country_authenticated,
         views_by_device_authenticated=stats.views_by_device_authenticated,
         views_by_type_authenticated=stats.views_by_type_authenticated,
         daily_views_authenticated=[
             schemas.DailyViewCount(
-                date=dv.date, views=dv.views, unique_viewers=dv.unique_viewers
+                date=dv.date,
+                views=dv.views,
+                unique_viewers=dv.unique_viewers,
+                impressions=dv.impressions,
             )
             for dv in stats.daily_views_authenticated
         ],
