@@ -148,7 +148,11 @@ UPDATE posts SET view_count =
     FROM post_stats_daily WHERE post_stats_daily.post_id = posts.id
   ), 0)
   + COALESCE((
-    SELECT COUNT(*) FROM view_events
+    SELECT COUNT(DISTINCT (
+      COALESCE('u:' || view_events.viewer_user_id::text,
+               'ip:' || view_events.viewer_ip_hash),
+      (view_events.created_at AT TIME ZONE 'UTC')::date))
+    FROM view_events
     WHERE view_events.post_id = posts.id
       AND view_events.view_type IN ('view', 'intentional')
       {raw_filter}
@@ -159,14 +163,16 @@ UPDATE posts SET view_count =
 def recompute_post_view_counts(conn, post_ids: list[int] | None = None) -> int:
     """Rebuild posts.view_count from daily aggregates + raw view events.
 
-    The D12 recompute: Views = the intentional/view slice of the stored
-    daily breakdowns plus raw view rows AFTER the watermark (rolled days'
-    raw rows are retained up to 7 days and already live in the daily rows —
-    counting them again would double count). With no watermark, all raw
-    rows count (only reachable pre-seed / in tests). Historical daily rows
-    were never deduped (accepted approximation); post-redesign raw rows are
-    dedup-gated at ingestion. Accepts a Session or Connection; caller owns
-    the commit. Returns the number of posts updated.
+    The D12 recompute, also the nightly rollup's reconciliation: Views = the
+    intentional/view slice of the stored daily breakdowns plus raw view rows
+    AFTER the watermark (rolled days' raw rows are retained up to 7 days and
+    already live in the daily rows — counting them again would double count).
+    The raw slice is deduped per (Visitor, UTC day) with the same rule the
+    rollup aggregates by, so counts never dip when a raw day rolls up. With
+    no watermark, all raw rows count (only reachable pre-seed / in tests).
+    Pre-redesign daily rows were never deduped (accepted approximation).
+    Accepts a Session or Connection; caller owns the commit. Returns the
+    number of posts updated.
     """
     watermark = conn.execute(
         text("SELECT value_date FROM rollup_watermarks WHERE name = :name"),
