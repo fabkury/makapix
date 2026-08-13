@@ -81,11 +81,12 @@ export default function TrendChart({
               dataKey="x"
               tickLine={false}
               axisLine={{ stroke: CHART.axisLine }}
-              interval={granularity === 'day' ? 1 : 2}
+              interval="preserveStartEnd"
+              minTickGap={16}
               tick={
                 granularity === 'day' ? <DayTick /> : { fill: CHART.tick, fontSize: 11 }
               }
-              tickFormatter={granularity === 'day' ? undefined : formatHourTick}
+              tickFormatter={granularity === 'day' ? formatDayTick : formatHourTick}
             />
             <YAxis
               width={44}
