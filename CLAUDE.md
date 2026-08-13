@@ -78,7 +78,7 @@ make clean           # Removes containers AND volumes (10-second grace period)
 Source of truth: `api/app/utils/view_tracking.py:DeviceType`
 - `desktop`, `mobile`, `tablet`, `player`
 
-Frontend must mirror in `DEVICE_LABELS` constant (`web/src/components/SiteMetricsPanel.tsx`).
+Frontend must mirror in `DEVICE_LABELS` constant (`web/src/components/metrics/DeviceGrid.tsx`).
 
 ## Vault Storage System
 

@@ -1,91 +1,42 @@
 import { useState, useEffect, useMemo } from 'react';
 import { authenticatedFetch } from '../lib/api';
+import { DailyCount, HourlyCount, OnlinePlayer, SitewideStats, TrendPoint } from './metrics/types';
+import { CHART } from './metrics/theme';
+import { countryName, getCountryFlag } from './metrics/format';
+import BarList, { BarListItem } from './metrics/BarList';
+import ChartCard from './metrics/ChartCard';
+import DeviceGrid from './metrics/DeviceGrid';
+import KpiCard from './metrics/KpiCard';
+import OnlinePlayersGrid from './metrics/OnlinePlayersGrid';
+import TrendChart from './metrics/TrendChart';
 
-interface DailyCount {
-  date: string;
-  count: number;
+function zipDaily(views: DailyCount[], visitors?: DailyCount[]): TrendPoint[] {
+  return (views || []).map((day, i) => ({
+    x: day.date,
+    primary: day.count,
+    secondary: visitors?.[i]?.count ?? 0,
+  }));
 }
 
-interface HourlyCount {
-  hour: string;
-  count: number;
+function zipHourly(views: HourlyCount[], visitors?: HourlyCount[]): TrendPoint[] {
+  return (views || []).map((hour, i) => ({
+    x: hour.hour,
+    primary: hour.count,
+    secondary: visitors?.[i]?.count ?? 0,
+  }));
 }
 
-interface SitewideStats {
-  total_page_views_14d: number;
-  unique_visitors_14d: number;
-  new_signups_14d: number;
-  new_posts_14d: number;
-  total_api_calls_14d: number;
-  total_errors_14d: number;
-  total_page_views_14d_authenticated: number;
-  unique_visitors_14d_authenticated: number;
-  daily_views: DailyCount[];
-  daily_signups: DailyCount[];
-  daily_posts: DailyCount[];
-  daily_views_authenticated: DailyCount[];
-  daily_unique_visitors: DailyCount[];
-  daily_unique_visitors_authenticated: DailyCount[];
-  hourly_views: HourlyCount[];
-  hourly_views_authenticated: HourlyCount[];
-  hourly_unique_visitors: HourlyCount[];
-  hourly_unique_visitors_authenticated: HourlyCount[];
-  views_by_page: Record<string, number>;
-  views_by_country: Record<string, number>;
-  views_by_device: Record<string, number>;
-  top_referrers: Record<string, number>;
-  views_by_page_authenticated: Record<string, number>;
-  views_by_country_authenticated: Record<string, number>;
-  views_by_device_authenticated: Record<string, number>;
-  top_referrers_authenticated: Record<string, number>;
-  errors_by_type: Record<string, number>;
-  // Player Activity
-  total_player_artwork_views_14d: number;
-  active_players_14d: number;
-  daily_player_views: DailyCount[];
-  views_by_player: Record<string, number>;
-  computed_at: string;
+function toPoints(series?: DailyCount[]): TrendPoint[] {
+  return (series || []).map((day) => ({ x: day.date, primary: day.count }));
 }
 
-// Country code to name mapping (common countries)
-const COUNTRY_NAMES: Record<string, string> = {
-  US: 'United States',
-  BR: 'Brazil',
-  GB: 'United Kingdom',
-  DE: 'Germany',
-  FR: 'France',
-  CA: 'Canada',
-  AU: 'Australia',
-  JP: 'Japan',
-  IN: 'India',
-  MX: 'Mexico',
-  ES: 'Spain',
-  IT: 'Italy',
-  NL: 'Netherlands',
-  PL: 'Poland',
-  RU: 'Russia',
-  KR: 'South Korea',
-  CN: 'China',
-  AR: 'Argentina',
-  SE: 'Sweden',
-  PT: 'Portugal',
-};
-
-// Device type labels
-const DEVICE_LABELS: Record<string, string> = {
-  desktop: '💻 Desktop',
-  mobile: '📱 Mobile',
-  tablet: '📱 Tablet',
-  player: '🎮 Player',
-};
-
-interface OnlinePlayer {
-  id: string;
-  name: string | null;
-  device_model: string | null;
-  firmware_version: string | null;
-  last_seen_at: string | null;
-  owner_handle: string | null;
+function toItems(record?: Record<string, number>): BarListItem[] {
+  return Object.entries(record || {}).map(([key, count]) => ({
+    key,
+    label: key,
+    title: key,
+    count,
+  }));
 }
 
 export default function SiteMetricsPanel() {
@@ -157,12 +108,12 @@ export default function SiteMetricsPanel() {
         authenticatedFetch(`${API_BASE_URL}/api/admin/sitewide-stats?refresh=true`),
         authenticatedFetch(`${API_BASE_URL}/api/admin/online-players`),
       ]);
-      
+
       if (statsResponse.ok) {
         const data = await statsResponse.json();
         setStats(data);
       }
-      
+
       if (playersResponse.ok) {
         const data = await playersResponse.json();
         setOnlinePlayers(data.online_players || []);
@@ -174,12 +125,11 @@ export default function SiteMetricsPanel() {
     }
   };
 
-  // Compute displayed stats based on toggle
+  // Swap between all-traffic and authenticated-only series based on the toggle.
   const displayedStats = useMemo(() => {
     if (!stats) return null;
 
     if (includeUnauthenticated) {
-      // Show all statistics (including unauthenticated)
       return {
         total_page_views_14d: stats.total_page_views_14d,
         unique_visitors_14d: stats.unique_visitors_14d,
@@ -193,7 +143,6 @@ export default function SiteMetricsPanel() {
         top_referrers: stats.top_referrers,
       };
     } else {
-      // Show authenticated-only statistics
       return {
         total_page_views_14d: stats.total_page_views_14d_authenticated,
         unique_visitors_14d: stats.unique_visitors_14d_authenticated,
@@ -209,602 +158,245 @@ export default function SiteMetricsPanel() {
     }
   }, [stats, includeUnauthenticated]);
 
+  const dailyTraffic = useMemo(
+    () => (displayedStats ? zipDaily(displayedStats.daily_views, displayedStats.daily_unique_visitors) : []),
+    [displayedStats]
+  );
+  const hourlyTraffic = useMemo(
+    () => (displayedStats ? zipHourly(displayedStats.hourly_views, displayedStats.hourly_unique_visitors) : []),
+    [displayedStats]
+  );
+  const signupTrend = useMemo(() => toPoints(stats?.daily_signups), [stats]);
+  const postTrend = useMemo(() => toPoints(stats?.daily_posts), [stats]);
+  const playerTrend = useMemo(() => toPoints(stats?.daily_player_views), [stats]);
+
+  const countryItems = useMemo<BarListItem[]>(
+    () =>
+      Object.entries(displayedStats?.views_by_country || {}).map(([code, count]) => ({
+        key: code,
+        label: `${getCountryFlag(code)} ${countryName(code)}`,
+        title: countryName(code),
+        count,
+      })),
+    [displayedStats]
+  );
+  const playerItems = useMemo<BarListItem[]>(
+    () =>
+      Object.entries(stats?.views_by_player || {}).map(([name, count]) => ({
+        key: name,
+        label: `📺 ${name}`,
+        title: name,
+        count,
+      })),
+    [stats]
+  );
+
   if (loading) {
     return (
       <div className="metrics-loading">
         <div className="loading-spinner"></div>
         <p>Loading sitewide metrics...</p>
+        <style jsx>{`
+          .metrics-loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 24px;
+            color: var(--text-muted, #6a6a80);
+          }
+
+          .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--bg-tertiary, #1a1a24);
+            border-top-color: var(--accent-cyan, #00d4ff);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 16px;
+          }
+
+          @keyframes spin {
+            to {
+              transform: rotate(360deg);
+            }
+          }
+        `}</style>
       </div>
     );
   }
 
-  if (error) {
+  if (error || !stats || !displayedStats) {
     return (
       <div className="metrics-error">
         <span className="error-icon">⚠️</span>
-        <p>{error}</p>
+        <p>{error || 'No metrics data available'}</p>
+        <style jsx>{`
+          .metrics-error {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 24px;
+            color: var(--text-muted, #6a6a80);
+          }
+
+          .error-icon {
+            font-size: 2rem;
+            margin-bottom: 12px;
+          }
+        `}</style>
       </div>
     );
   }
 
-  if (!stats || !displayedStats) {
-    return (
-      <div className="metrics-error">
-        <p>No metrics data available</p>
-      </div>
-    );
-  }
-
-  // Calculate max values for charts
-  const maxDailyViews = Math.max(...displayedStats.daily_views.map(d => d.count), 1);
-  const maxDailyUniqueVisitors = Math.max(...(displayedStats.daily_unique_visitors || []).map(d => d.count), 1);
-  const maxHourlyViews = Math.max(...displayedStats.hourly_views.map(h => h.count), 1);
-  const maxHourlyUniqueVisitors = Math.max(...(displayedStats.hourly_unique_visitors || []).map(h => h.count), 1);
-  const maxCountryViews = Math.max(...Object.values(displayedStats.views_by_country), 1);
-  const maxPageViews = Math.max(...Object.values(displayedStats.views_by_page), 1);
-  const maxReferrerViews = Math.max(...Object.values(displayedStats.top_referrers), 1);
-
-  // Views per unique visitor (views and unique-visitor series share aligned buckets)
-  const dailyViewsPerVisitor = displayedStats.daily_views.map((day, i) => {
-    const visitors = displayedStats.daily_unique_visitors?.[i]?.count ?? 0;
-    return { date: day.date, ratio: visitors > 0 ? day.count / visitors : 0 };
-  });
-  const hourlyViewsPerVisitor = displayedStats.hourly_views.map((hour, i) => {
-    const visitors = displayedStats.hourly_unique_visitors?.[i]?.count ?? 0;
-    return { hour: hour.hour, ratio: visitors > 0 ? hour.count / visitors : 0 };
-  });
-  const maxDailyRatio = Math.max(...dailyViewsPerVisitor.map(d => d.ratio), 1);
-  const maxHourlyRatio = Math.max(...hourlyViewsPerVisitor.map(h => h.ratio), 1);
+  const pageItems = toItems(displayedStats.views_by_page);
+  const referrerItems = toItems(displayedStats.top_referrers);
+  const errorItems = toItems(stats.errors_by_type);
 
   return (
     <div className="site-metrics">
-      {/* Toggle */}
-      <div className="metrics-toggle">
+      {/* Filter row */}
+      <div className="controls-row">
         <label className="toggle-label">
           <input
             type="checkbox"
             checked={includeUnauthenticated}
             onChange={(e) => setIncludeUnauthenticated(e.target.checked)}
           />
-          <span>{includeUnauthenticated ? 'Showing all statistics (including unauthenticated)' : 'Showing authenticated-only statistics'}</span>
+          <span>Include unauthenticated traffic</span>
         </label>
+        <span className="controls-hint">
+          Applies to traffic charts and breakdowns; signups, posts, errors, and player stats always
+          count everything.
+        </span>
       </div>
 
-      {/* Summary Cards */}
-      <div className="metrics-summary">
-        <div className="metric-card">
-          <div className="metric-value">{displayedStats.total_page_views_14d.toLocaleString()}</div>
-          <div className="metric-label">Page Views (14d)</div>
-        </div>
-        <div className="metric-card">
-          <div className="metric-value">{displayedStats.unique_visitors_14d.toLocaleString()}</div>
-          <div className="metric-label">Unique Visitors (14d)</div>
-        </div>
-        <div className="metric-card">
-          <div className="metric-value">
-            {displayedStats.unique_visitors_14d > 0
-              ? (displayedStats.total_page_views_14d / displayedStats.unique_visitors_14d).toFixed(1)
-              : '—'}
-          </div>
-          <div className="metric-label">Views / Visitor</div>
-        </div>
-        <div className="metric-card">
-          <div className="metric-value">{stats.new_signups_14d.toLocaleString()}</div>
-          <div className="metric-label">New Signups (14d)</div>
-        </div>
-        <div className="metric-card">
-          <div className="metric-value">{stats.new_posts_14d.toLocaleString()}</div>
-          <div className="metric-label">New Posts (14d)</div>
-        </div>
-        <div className="metric-card">
-          <div className="metric-value">{stats.total_api_calls_14d.toLocaleString()}</div>
-          <div className="metric-label">API Calls (14d)</div>
-        </div>
-        <div className="metric-card">
-          <div className="metric-value">{stats.total_errors_14d.toLocaleString()}</div>
-          <div className="metric-label">Errors (14d)</div>
-        </div>
+      {/* KPI row */}
+      <div className="kpi-grid">
+        <KpiCard label="Page views (14d)" value={displayedStats.total_page_views_14d.toLocaleString()} />
+        <KpiCard
+          label="Visitor-days (14d)"
+          value={displayedStats.unique_visitors_14d.toLocaleString()}
+          hint="Sum of each day's unique visitors — a visitor active on N days counts N times."
+        />
+        <KpiCard label="New signups (14d)" value={stats.new_signups_14d.toLocaleString()} />
+        <KpiCard label="New posts (14d)" value={stats.new_posts_14d.toLocaleString()} />
+        <KpiCard label="API calls (14d)" value={stats.total_api_calls_14d.toLocaleString()} />
+        <KpiCard label="Errors (14d)" value={stats.total_errors_14d.toLocaleString()} />
       </div>
 
-      {/* 14-Day Trends */}
-      <div className="metrics-section">
-        <h3>📈 Page Views (Last 14 Days)</h3>
-        <div className="trend-chart">
-          {displayedStats.daily_views.map((day, index) => {
-            const height = maxDailyViews > 0 ? (day.count / maxDailyViews) * 100 : 0;
-            const date = new Date(day.date);
-            const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-            const showLabel =
-              index % 3 === 0 ||
-              index === displayedStats.daily_views.length - 1 ||
-              day.count === maxDailyViews;
-            return (
-              <div key={day.date} className="trend-bar-wrap">
-                {showLabel && (
-                  <span className="trend-bar-label" aria-hidden="true">
-                    {day.count.toLocaleString()}
-                  </span>
-                )}
-                <div
-                  className={`trend-bar ${isWeekend ? 'weekend' : ''}`}
-                  style={{ height: `${Math.max(height, 2)}%` }}
-                  title={`${day.date}: ${day.count} views`}
-                  aria-label={`${day.date}: ${day.count} views`}
-                  role="img"
-                />
-              </div>
-            );
-          })}
-        </div>
-        <div className="trend-labels">
-          <span>14 days ago</span>
-          <span>Today</span>
-        </div>
-      </div>
-
-      {/* 14-Day Unique Visitors */}
-      {displayedStats.daily_unique_visitors && displayedStats.daily_unique_visitors.length > 0 && (
-        <div className="metrics-section">
-          <h3>👥 Unique Visitors (Last 14 Days)</h3>
-          <div className="trend-chart">
-            {displayedStats.daily_unique_visitors.map((day, index) => {
-              const height = maxDailyUniqueVisitors > 0 ? (day.count / maxDailyUniqueVisitors) * 100 : 0;
-              const date = new Date(day.date);
-              const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-              const showLabel =
-                index % 3 === 0 ||
-                index === displayedStats.daily_unique_visitors.length - 1 ||
-                day.count === maxDailyUniqueVisitors;
-              return (
-                <div key={day.date} className="trend-bar-wrap">
-                  {showLabel && (
-                    <span className="trend-bar-label" aria-hidden="true">
-                      {day.count.toLocaleString()}
-                    </span>
-                  )}
-                  <div
-                    className={`trend-bar visitor-bar ${isWeekend ? 'weekend' : ''}`}
-                    style={{ height: `${Math.max(height, 2)}%` }}
-                    title={`${day.date}: ${day.count} unique visitors`}
-                    aria-label={`${day.date}: ${day.count} unique visitors`}
-                    role="img"
-                  />
-                </div>
-              );
-            })}
-          </div>
-          <div className="trend-labels">
-            <span>14 days ago</span>
-            <span>Today</span>
-          </div>
-        </div>
-      )}
-
-      {/* 14-Day Views per Unique Visitor */}
-      {dailyViewsPerVisitor.length > 0 && (
-        <div className="metrics-section">
-          <h3>📊 Views per Unique Visitor (Last 14 Days)</h3>
-          <div className="trend-chart">
-            {dailyViewsPerVisitor.map((day, index) => {
-              const height = maxDailyRatio > 0 ? (day.ratio / maxDailyRatio) * 100 : 0;
-              const date = new Date(day.date);
-              const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-              const showLabel =
-                index % 3 === 0 ||
-                index === dailyViewsPerVisitor.length - 1 ||
-                day.ratio === maxDailyRatio;
-              return (
-                <div key={day.date} className="trend-bar-wrap">
-                  {showLabel && (
-                    <span className="trend-bar-label" aria-hidden="true">
-                      {day.ratio.toFixed(1)}
-                    </span>
-                  )}
-                  <div
-                    className={`trend-bar ratio-bar ${isWeekend ? 'weekend' : ''}`}
-                    style={{ height: `${Math.max(height, 2)}%` }}
-                    title={`${day.date}: ${day.ratio.toFixed(1)} views/visitor`}
-                    aria-label={`${day.date}: ${day.ratio.toFixed(1)} views per visitor`}
-                    role="img"
-                  />
-                </div>
-              );
-            })}
-          </div>
-          <div className="trend-labels">
-            <span>14 days ago</span>
-            <span>Today</span>
-          </div>
-        </div>
-      )}
-
-      {/* 24-Hour Granular Chart */}
-      <div className="metrics-section">
-        <h3>⏰ Page Views (Last 24 Hours - Hourly)</h3>
-        <div className="trend-chart hourly">
-          {displayedStats.hourly_views.map((hour, index) => {
-            const height = maxHourlyViews > 0 ? (hour.count / maxHourlyViews) * 100 : 0;
-            const hourDate = new Date(hour.hour);
-            const hourLabel = hourDate.getHours();
-            const showLabel =
-              // Show every 3 hours + last bar + peak hour(s)
-              index % 3 === 0 ||
-              index === displayedStats.hourly_views.length - 1 ||
-              hour.count === maxHourlyViews;
-            return (
-              <div key={hour.hour} className="trend-bar-wrap">
-                <span className="trend-bar-xlabel" aria-hidden="true">
-                  {hourLabel}
-                </span>
-                {showLabel && (
-                  <span className="trend-bar-label" aria-hidden="true">
-                    {hour.count.toLocaleString()}
-                  </span>
-                )}
-                <div
-                  className="trend-bar"
-                  style={{ height: `${Math.max(height, 2)}%` }}
-                  title={`${hourLabel}:00 - ${hour.count} views`}
-                  aria-label={`${hourLabel}:00 - ${hour.count} views`}
-                  role="img"
-                />
-              </div>
-            );
-          })}
-        </div>
-        <div className="trend-labels">
-          <span>24h ago</span>
-          <span>Now</span>
-        </div>
-      </div>
-
-      {/* 24-Hour Unique Visitors */}
-      {displayedStats.hourly_unique_visitors && displayedStats.hourly_unique_visitors.length > 0 && (
-        <div className="metrics-section">
-          <h3>👥 Unique Visitors (Last 24 Hours - Hourly)</h3>
-          <div className="trend-chart hourly">
-            {displayedStats.hourly_unique_visitors.map((hour, index) => {
-              const height = maxHourlyUniqueVisitors > 0 ? (hour.count / maxHourlyUniqueVisitors) * 100 : 0;
-              const hourDate = new Date(hour.hour);
-              const hourLabel = hourDate.getHours();
-              const showLabel =
-                index % 3 === 0 ||
-                index === displayedStats.hourly_unique_visitors.length - 1 ||
-                hour.count === maxHourlyUniqueVisitors;
-              return (
-                <div key={hour.hour} className="trend-bar-wrap">
-                  <span className="trend-bar-xlabel" aria-hidden="true">
-                    {hourLabel}
-                  </span>
-                  {showLabel && (
-                    <span className="trend-bar-label" aria-hidden="true">
-                      {hour.count.toLocaleString()}
-                    </span>
-                  )}
-                  <div
-                    className="trend-bar visitor-bar"
-                    style={{ height: `${Math.max(height, 2)}%` }}
-                    title={`${hourLabel}:00 - ${hour.count} unique visitors`}
-                    aria-label={`${hourLabel}:00 - ${hour.count} unique visitors`}
-                    role="img"
-                  />
-                </div>
-              );
-            })}
-          </div>
-          <div className="trend-labels">
-            <span>24h ago</span>
-            <span>Now</span>
-          </div>
-        </div>
-      )}
-
-      {/* 24-Hour Views per Unique Visitor */}
-      {hourlyViewsPerVisitor.length > 0 && (
-        <div className="metrics-section">
-          <h3>📊 Views per Unique Visitor (Last 24 Hours - Hourly)</h3>
-          <div className="trend-chart hourly">
-            {hourlyViewsPerVisitor.map((hour, index) => {
-              const height = maxHourlyRatio > 0 ? (hour.ratio / maxHourlyRatio) * 100 : 0;
-              const hourDate = new Date(hour.hour);
-              const hourLabel = hourDate.getHours();
-              const showLabel =
-                index % 3 === 0 ||
-                index === hourlyViewsPerVisitor.length - 1 ||
-                hour.ratio === maxHourlyRatio;
-              return (
-                <div key={hour.hour} className="trend-bar-wrap">
-                  <span className="trend-bar-xlabel" aria-hidden="true">
-                    {hourLabel}
-                  </span>
-                  {showLabel && (
-                    <span className="trend-bar-label" aria-hidden="true">
-                      {hour.ratio.toFixed(1)}
-                    </span>
-                  )}
-                  <div
-                    className="trend-bar ratio-bar"
-                    style={{ height: `${Math.max(height, 2)}%` }}
-                    title={`${hourLabel}:00 - ${hour.ratio.toFixed(1)} views/visitor`}
-                    aria-label={`${hourLabel}:00 - ${hour.ratio.toFixed(1)} views per visitor`}
-                    role="img"
-                  />
-                </div>
-              );
-            })}
-          </div>
-          <div className="trend-labels">
-            <span>24h ago</span>
-            <span>Now</span>
-          </div>
-        </div>
-      )}
-
-      {/* Top Pages */}
-      {Object.keys(displayedStats.views_by_page).length > 0 && (
-        <div className="metrics-section">
-          <h3>📄 Top Pages</h3>
-          <div className="breakdown-list">
-            {Object.entries(displayedStats.views_by_page)
-              .sort(([, a], [, b]) => b - a)
-              .slice(0, 10)
-              .map(([page, count]) => (
-                <div key={page} className="breakdown-item">
-                  <div className="breakdown-label">{page}</div>
-                  <div className="breakdown-bar-container">
-                    <div
-                      className="breakdown-bar"
-                      style={{ width: `${(count / maxPageViews) * 100}%` }}
-                    />
-                  </div>
-                  <div className="breakdown-value">{count.toLocaleString()}</div>
-                </div>
-              ))}
-          </div>
-        </div>
-      )}
-
-      {/* Country Breakdown */}
-      {Object.keys(displayedStats.views_by_country).length > 0 && (
-        <div className="metrics-section">
-          <h3>🌍 Top Countries</h3>
-          <div className="breakdown-list">
-            {Object.entries(displayedStats.views_by_country)
-              .sort(([, a], [, b]) => b - a)
-              .map(([country, count]) => (
-                <div key={country} className="breakdown-item">
-                  <div className="breakdown-label">
-                    <span className="country-flag">{getCountryFlag(country)}</span>
-                    <span>{COUNTRY_NAMES[country] || country}</span>
-                  </div>
-                  <div className="breakdown-bar-container">
-                    <div
-                      className="breakdown-bar country-bar"
-                      style={{ width: `${(count / maxCountryViews) * 100}%` }}
-                    />
-                  </div>
-                  <div className="breakdown-value">{count.toLocaleString()}</div>
-                </div>
-              ))}
-          </div>
-        </div>
-      )}
-
-      {/* Device Breakdown */}
-      {Object.keys(displayedStats.views_by_device).length > 0 && (
-        <div className="metrics-section">
-          <h3>📱 Devices</h3>
-          <div className="device-grid">
-            {Object.entries(displayedStats.views_by_device)
-              .sort(([, a], [, b]) => b - a)
-              .map(([device, count]) => {
-                const percentage = displayedStats.total_page_views_14d > 0
-                  ? Math.round((count / displayedStats.total_page_views_14d) * 100)
-                  : 0;
-                return (
-                  <div key={device} className="device-item">
-                    <div className="device-label">{DEVICE_LABELS[device] || device}</div>
-                    <div className="device-value">{percentage}%</div>
-                    <div className="device-count">{count.toLocaleString()} views</div>
-                  </div>
-                );
-              })}
-          </div>
-        </div>
-      )}
-
-      {/* Top Referrers */}
-      {Object.keys(displayedStats.top_referrers).length > 0 && (
-        <div className="metrics-section">
-          <h3>🔗 Top Referrers</h3>
-          <div className="breakdown-list">
-            {Object.entries(displayedStats.top_referrers)
-              .sort(([, a], [, b]) => b - a)
-              .slice(0, 10)
-              .map(([referrer, count]) => (
-                <div key={referrer} className="breakdown-item">
-                  <div className="breakdown-label">{referrer}</div>
-                  <div className="breakdown-bar-container">
-                    <div
-                      className="breakdown-bar"
-                      style={{ width: `${(count / maxReferrerViews) * 100}%` }}
-                    />
-                  </div>
-                  <div className="breakdown-value">{count.toLocaleString()}</div>
-                </div>
-              ))}
-          </div>
-        </div>
-      )}
-
-      {/* Error Tracking */}
-      {Object.keys(stats.errors_by_type).length > 0 && (
-        <div className="metrics-section">
-          <h3>⚠️ Errors by Type</h3>
-          <div className="breakdown-list">
-            {Object.entries(stats.errors_by_type)
-              .sort(([, a], [, b]) => b - a)
-              .map(([errorType, count]) => (
-                <div key={errorType} className="breakdown-item">
-                  <div className="breakdown-label">{errorType}</div>
-                  <div className="breakdown-bar-container">
-                    <div
-                      className="breakdown-bar error-bar"
-                      style={{ width: `${(count / stats.total_errors_14d) * 100}%` }}
-                    />
-                  </div>
-                  <div className="breakdown-value">{count.toLocaleString()}</div>
-                </div>
-              ))}
-          </div>
-        </div>
-      )}
-
-      {/* Player Activity Section */}
-      <div className="metrics-section player-activity-section">
-        <h3>🎮 Player Activity (Artwork Views)</h3>
-        <p className="section-note">
-          Views from physical player devices (P3A and others) - separate from website page views.
-        </p>
-
-        {/* Player Summary Cards */}
-        <div className="player-summary">
-          <div className="metric-card player-card">
-            <div className="metric-value">{stats.total_player_artwork_views_14d?.toLocaleString() || 0}</div>
-            <div className="metric-label">Player Artwork Views (14d)</div>
-          </div>
-          <div className="metric-card player-card">
-            <div className="metric-value">{stats.active_players_14d?.toLocaleString() || 0}</div>
-            <div className="metric-label">Active Players (14d)</div>
-          </div>
-        </div>
-
-        {/* Daily Player Views Trend */}
-        {stats.daily_player_views && stats.daily_player_views.length > 0 && (
-          <>
-            <h4>📈 Player Views (Last 14 Days)</h4>
-            <div className="trend-chart">
-              {(() => {
-                const maxPlayerViews = Math.max(...stats.daily_player_views.map(d => d.count), 1);
-                return stats.daily_player_views.map((day, index) => {
-                  const height = maxPlayerViews > 0 ? (day.count / maxPlayerViews) * 100 : 0;
-                  const showLabel =
-                    index % 3 === 0 ||
-                    index === stats.daily_player_views.length - 1 ||
-                    day.count === maxPlayerViews;
-                  return (
-                    <div key={day.date} className="trend-bar-wrap">
-                      {showLabel && day.count > 0 && (
-                        <span className="trend-bar-label" aria-hidden="true">
-                          {day.count.toLocaleString()}
-                        </span>
-                      )}
-                      <div
-                        className="trend-bar player-bar"
-                        style={{ height: `${Math.max(height, 2)}%` }}
-                        title={`${day.date}: ${day.count} player views`}
-                        aria-label={`${day.date}: ${day.count} player views`}
-                        role="img"
-                      />
-                    </div>
-                  );
-                });
-              })()}
-            </div>
-            <div className="trend-labels">
-              <span>14 days ago</span>
-              <span>Today</span>
-            </div>
-          </>
+      {/* Traffic + growth charts */}
+      <div className="chart-grid">
+        <ChartCard title="Daily traffic" subtitle="Last 14 days">
+          <TrendChart
+            data={dailyTraffic}
+            granularity="day"
+            primaryName="Page views"
+            primaryColor={CHART.cyan}
+            secondaryName="Unique visitors"
+            secondaryColor={CHART.pink}
+          />
+        </ChartCard>
+        <ChartCard title="Hourly traffic" subtitle="Last 24 hours, local time">
+          <TrendChart
+            data={hourlyTraffic}
+            granularity="hour"
+            primaryName="Page views"
+            primaryColor={CHART.cyan}
+            secondaryName="Unique visitors"
+            secondaryColor={CHART.pink}
+            height={260}
+          />
+        </ChartCard>
+        <ChartCard title="New signups" subtitle="Last 14 days · not affected by the visitor filter">
+          <TrendChart
+            data={signupTrend}
+            granularity="day"
+            primaryName="Signups"
+            primaryColor={CHART.blue}
+            height={200}
+          />
+        </ChartCard>
+        <ChartCard title="New posts" subtitle="Last 14 days · not affected by the visitor filter">
+          <TrendChart
+            data={postTrend}
+            granularity="day"
+            primaryName="Posts"
+            primaryColor={CHART.purple}
+            height={200}
+          />
+        </ChartCard>
+        {pageItems.length > 0 && (
+          <ChartCard title="Top pages" subtitle="Page views, last 14 days">
+            <BarList items={pageItems} />
+          </ChartCard>
         )}
-
-        {/* Views by Player */}
-        {stats.views_by_player && Object.keys(stats.views_by_player).length > 0 && (
-          <>
-            <h4>🏆 Top Players</h4>
-            <div className="breakdown-list">
-              {Object.entries(stats.views_by_player)
-                .sort(([, a], [, b]) => b - a)
-                .map(([playerName, count]) => {
-                  const maxPlayerCount = Math.max(...Object.values(stats.views_by_player));
-                  return (
-                    <div key={playerName} className="breakdown-item">
-                      <div className="breakdown-label">
-                        <span className="player-icon">📺</span>
-                        <span>{playerName}</span>
-                      </div>
-                      <div className="breakdown-bar-container">
-                        <div
-                          className="breakdown-bar player-bar"
-                          style={{ width: `${(count / maxPlayerCount) * 100}%` }}
-                        />
-                      </div>
-                      <div className="breakdown-value">{count.toLocaleString()}</div>
-                    </div>
-                  );
-                })}
-            </div>
-          </>
+        {countryItems.length > 0 && (
+          <ChartCard title="Top countries" subtitle="Page views, last 14 days">
+            <BarList items={countryItems} />
+          </ChartCard>
         )}
+        {referrerItems.length > 0 && (
+          <ChartCard title="Top referrers" subtitle="Page views, last 14 days">
+            <BarList items={referrerItems} />
+          </ChartCard>
+        )}
+        {Object.keys(displayedStats.views_by_device).length > 0 && (
+          <ChartCard title="Devices" subtitle="Share of page views, last 14 days">
+            <DeviceGrid viewsByDevice={displayedStats.views_by_device} />
+          </ChartCard>
+        )}
+        {errorItems.length > 0 && (
+          <ChartCard title="Errors by type" subtitle="Last 14 days · not affected by the visitor filter">
+            <BarList items={errorItems} variant="error" />
+          </ChartCard>
+        )}
+      </div>
 
-        {stats.total_player_artwork_views_14d === 0 && (
+      {/* Player activity */}
+      <ChartCard
+        title="Player activity"
+        subtitle="Artwork views from physical player devices — separate from website page views."
+      >
+        <div className="player-kpis">
+          <KpiCard
+            label="Player artwork views (14d)"
+            value={(stats.total_player_artwork_views_14d ?? 0).toLocaleString()}
+          />
+          <KpiCard label="Active players (14d)" value={(stats.active_players_14d ?? 0).toLocaleString()} />
+        </div>
+        {stats.total_player_artwork_views_14d > 0 ? (
+          <>
+            <TrendChart
+              data={playerTrend}
+              granularity="day"
+              primaryName="Player views"
+              primaryColor={CHART.cyan}
+              height={200}
+            />
+            {playerItems.length > 0 && (
+              <>
+                <h4 className="subheading">Top players</h4>
+                <BarList items={playerItems} variant="player" />
+              </>
+            )}
+          </>
+        ) : (
           <p className="no-data">No player activity in the last 14 days.</p>
         )}
-      </div>
+      </ChartCard>
 
-      {/* Online Players Section */}
-      <div className="metrics-section online-players-section">
-        <h3>🟢 Online Players</h3>
-        
-        {onlinePlayers.length > 0 ? (
-          <div className="online-players-list">
-            {onlinePlayers.map((player) => (
-              <div key={player.id} className="online-player-card">
-                <div className="player-header">
-                  <span className="player-status-dot">●</span>
-                  <span className="player-name">{player.name || 'Unnamed Player'}</span>
-                </div>
-                <div className="player-details">
-                  {player.device_model && (
-                    <div className="player-detail">
-                      <span className="detail-label">Model:</span>
-                      <span className="detail-value">{player.device_model}</span>
-                    </div>
-                  )}
-                  {player.firmware_version && (
-                    <div className="player-detail">
-                      <span className="detail-label">Firmware:</span>
-                      <span className="detail-value">{player.firmware_version}</span>
-                    </div>
-                  )}
-                  {player.owner_handle && (
-                    <div className="player-detail">
-                      <span className="detail-label">Owner:</span>
-                      <span className="detail-value">{player.owner_handle}</span>
-                    </div>
-                  )}
-                  {player.last_seen_at && (
-                    <div className="player-detail">
-                      <span className="detail-label">Last seen:</span>
-                      <span className="detail-value">
-                        {new Date(player.last_seen_at).toLocaleTimeString()}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="no-data">No players currently online.</p>
-        )}
-      </div>
+      {/* Online players */}
+      <ChartCard title="Online players">
+        <OnlinePlayersGrid players={onlinePlayers} />
+      </ChartCard>
 
       {/* Footer */}
       <div className="metrics-footer">
         <span>Last updated: {new Date(stats.computed_at).toLocaleString()}</span>
-        <button 
-          onClick={handleRefresh} 
+        <button
+          onClick={handleRefresh}
           disabled={isRefreshing}
           className="refresh-link"
           title="Cache is refreshed every 5 minutes, but click here to refresh it now"
@@ -815,288 +407,80 @@ export default function SiteMetricsPanel() {
 
       <style jsx>{`
         .site-metrics {
-          padding: 24px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          padding: 16px 0;
         }
 
-        .metrics-toggle {
-          margin-bottom: 24px;
-          padding: 12px;
-          background: var(--bg-secondary, #1a1a2e);
-          border-radius: 8px;
+        .controls-row {
+          display: flex;
+          align-items: baseline;
+          gap: 16px;
+          flex-wrap: wrap;
         }
 
         .toggle-label {
           display: flex;
           align-items: center;
+          gap: 8px;
           cursor: pointer;
           font-size: 0.9rem;
-          color: var(--text-secondary, #ccc);
+          color: var(--text-secondary, #a0a0b8);
+          white-space: nowrap;
         }
 
-        .toggle-label > :global(* + *) {
-          margin-left: 8px;
-        }
-
-        .toggle-label input[type="checkbox"] {
+        .toggle-label input[type='checkbox'] {
           cursor: pointer;
-          width: 18px;
-          height: 18px;
+          width: 16px;
+          height: 16px;
         }
 
-        .metrics-loading,
-        .metrics-error {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          padding: 60px 24px;
-          color: var(--text-muted, #888);
+        .controls-hint {
+          font-size: 0.75rem;
+          color: var(--text-muted, #6a6a80);
         }
 
-        .loading-spinner {
-          width: 40px;
-          height: 40px;
-          border: 3px solid var(--bg-tertiary, #2a2a3e);
-          border-top-color: var(--accent-cyan, #4ecdc4);
-          border-radius: 50%;
-          animation: spin 0.8s linear infinite;
-          margin-bottom: 16px;
-        }
-
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-
-        .error-icon {
-          font-size: 2rem;
-          margin-bottom: 12px;
-        }
-
-        .metrics-summary {
+        .kpi-grid {
           display: grid;
-          grid-template-columns: repeat(2, 1fr);
+          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
           gap: 12px;
-          margin-bottom: 24px;
         }
 
-        @media (min-width: 640px) {
-          .metrics-summary {
-            grid-template-columns: repeat(3, 1fr);
-          }
+        .chart-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 16px;
         }
 
         @media (min-width: 1024px) {
-          .metrics-summary {
-            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+          .chart-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
           }
         }
 
-        .metric-card {
-          background: var(--bg-secondary, #1a1a2e);
-          border-radius: 12px;
-          padding: 16px;
-          text-align: center;
-        }
-
-        .metric-value {
-          font-size: 1.5rem;
-          font-weight: 700;
-          color: var(--accent-cyan, #4ecdc4);
-          margin-bottom: 4px;
-        }
-
-        .metric-label {
-          font-size: 0.75rem;
-          color: var(--text-muted, #888);
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-
-        .metrics-section {
-          margin-bottom: 32px;
-        }
-
-        .metrics-section h3 {
-          font-size: 1rem;
-          font-weight: 600;
-          color: var(--text-primary, #fff);
-          margin-bottom: 12px;
-        }
-
-        .trend-chart {
-          display: flex;
-          align-items: flex-end;
-          height: 80px;
-          background: var(--bg-tertiary, #2a2a3e);
-          border-radius: 8px;
-          padding: 12px 8px;
-        }
-
-        .trend-chart > :global(* + *) {
-          margin-left: 2px;
-        }
-
-        .trend-chart.hourly {
-          height: 120px;
-          padding-bottom: 18px; /* room for hour labels */
-        }
-
-        .trend-bar-wrap {
-          flex: 1;
-          position: relative;
-          height: 100%;
-          display: flex;
-          align-items: flex-end;
-          justify-content: center;
+        .chart-grid > :global(*) {
           min-width: 0;
         }
 
-        .trend-bar-xlabel {
-          position: absolute;
-          bottom: -16px;
-          font-size: 10px;
-          line-height: 1;
-          color: rgba(255, 255, 255, 0.6);
-          width: 100%;
-          text-align: center;
-          pointer-events: none;
-          white-space: nowrap;
-        }
-
-        .trend-bar {
-          width: 100%;
-          background: linear-gradient(to top, var(--accent-purple, #b44eff), var(--accent-cyan, #4ecdc4));
-          border-radius: 2px 2px 0 0;
-          min-height: 2px;
-          cursor: pointer;
-          transition: opacity 0.2s;
-        }
-
-        .trend-bar-label {
-          position: absolute;
-          top: -2px;
-          transform: translateY(-100%);
-          font-size: 10px;
-          line-height: 1;
-          color: rgba(255, 255, 255, 0.72);
-          white-space: nowrap;
-          pointer-events: none;
-          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
-        }
-
-        .trend-bar.visitor-bar {
-          background: linear-gradient(to top, #6366f1, #a78bfa);
-        }
-
-        .trend-bar.ratio-bar {
-          background: linear-gradient(to top, #f59e0b, #fbbf24);
-        }
-
-        .trend-bar.weekend {
-          opacity: 0.6;
-        }
-
-        .trend-bar:hover {
-          opacity: 1;
-          box-shadow: 0 0 8px var(--accent-cyan, #4ecdc4);
-        }
-
-        .trend-labels {
-          display: flex;
-          justify-content: space-between;
-          font-size: 0.7rem;
-          color: var(--text-muted, #888);
-          margin-top: 8px;
-        }
-
-        .breakdown-list {
-          display: flex;
-          flex-direction: column;
-        }
-
-        .breakdown-list > :global(* + *) {
-          margin-top: 8px;
-        }
-
-        .breakdown-item {
+        .player-kpis {
           display: grid;
-          grid-template-columns: 140px 1fr 60px;
-          align-items: center;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
           gap: 12px;
+          margin-bottom: 16px;
         }
 
-        .breakdown-label {
-          display: flex;
-          align-items: center;
-          font-size: 0.85rem;
-          color: var(--text-secondary, #ccc);
-        }
-
-        .breakdown-label > :global(* + *) {
-          margin-left: 8px;
-        }
-
-        .country-flag {
-          font-size: 1.1rem;
-        }
-
-        .breakdown-bar-container {
-          height: 8px;
-          background: var(--bg-tertiary, #2a2a3e);
-          border-radius: 4px;
-          overflow: hidden;
-        }
-
-        .breakdown-bar {
-          height: 100%;
-          border-radius: 4px;
-          transition: width 0.3s ease;
-          background: linear-gradient(to right, var(--accent-purple, #b44eff), var(--accent-pink, #ff6b9d));
-        }
-
-        .breakdown-bar.country-bar {
-          background: linear-gradient(to right, var(--accent-purple, #b44eff), var(--accent-pink, #ff6b9d));
-        }
-
-        .breakdown-bar.error-bar {
-          background: linear-gradient(to right, #ef4444, #f97316);
-        }
-
-        .breakdown-value {
-          text-align: right;
+        .subheading {
           font-size: 0.85rem;
           font-weight: 600;
-          color: var(--text-primary, #fff);
+          color: var(--text-secondary, #a0a0b8);
+          margin: 20px 0 10px;
         }
 
-        .device-grid {
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 12px;
-        }
-
-        .device-item {
-          background: var(--bg-tertiary, #2a2a3e);
-          border-radius: 8px;
-          padding: 12px;
-          text-align: center;
-        }
-
-        .device-label {
-          font-size: 0.85rem;
-          color: var(--text-secondary, #ccc);
-          margin-bottom: 4px;
-        }
-
-        .device-value {
-          font-size: 1.5rem;
-          font-weight: 700;
-          color: var(--accent-cyan, #4ecdc4);
-        }
-
-        .device-count {
-          font-size: 0.75rem;
-          color: var(--text-muted, #888);
+        .no-data {
+          color: var(--text-muted, #6a6a80);
+          font-style: italic;
+          margin: 0;
         }
 
         .metrics-footer {
@@ -1104,15 +488,15 @@ export default function SiteMetricsPanel() {
           justify-content: space-between;
           align-items: center;
           font-size: 0.75rem;
-          color: var(--text-muted, #888);
-          padding-top: 16px;
+          color: var(--text-muted, #6a6a80);
+          padding-top: 12px;
           border-top: 1px solid rgba(255, 255, 255, 0.05);
         }
 
         .refresh-link {
           background: none;
           border: none;
-          color: var(--accent-cyan, #4ecdc4);
+          color: var(--accent-cyan, #00d4ff);
           cursor: pointer;
           font-size: 0.75rem;
           padding: 4px 8px;
@@ -1121,177 +505,15 @@ export default function SiteMetricsPanel() {
         }
 
         .refresh-link:hover:not(:disabled) {
-          background: rgba(78, 205, 196, 0.1);
+          background: rgba(0, 212, 255, 0.1);
           text-decoration: underline;
         }
 
         .refresh-link:disabled {
-          color: var(--text-muted, #888);
+          color: var(--text-muted, #6a6a80);
           cursor: not-allowed;
-        }
-
-        /* Player Activity Styles */
-        .player-activity-section {
-          background: var(--bg-secondary, #1a1a2e);
-          border-radius: 12px;
-          padding: 20px;
-          margin-top: 24px;
-          border: 1px solid rgba(78, 205, 196, 0.2);
-        }
-
-        .player-activity-section h3 {
-          color: var(--accent-cyan, #4ecdc4);
-          margin-bottom: 8px;
-        }
-
-        .player-activity-section h4 {
-          font-size: 0.9rem;
-          font-weight: 600;
-          color: var(--text-secondary, #ccc);
-          margin: 20px 0 12px 0;
-        }
-
-        .section-note {
-          font-size: 0.8rem;
-          color: var(--text-muted, #888);
-          margin-bottom: 16px;
-        }
-
-        .player-summary {
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 12px;
-          margin-bottom: 20px;
-        }
-
-        .player-card {
-          background: var(--bg-tertiary, #2a2a3e);
-          border: 1px solid rgba(78, 205, 196, 0.15);
-        }
-
-        .player-card .metric-value {
-          color: var(--accent-cyan, #4ecdc4);
-        }
-
-        .trend-bar.player-bar {
-          background: linear-gradient(to top, var(--accent-cyan, #4ecdc4), #7fdbda);
-        }
-
-        .breakdown-bar.player-bar {
-          background: linear-gradient(to right, var(--accent-cyan, #4ecdc4), #7fdbda);
-        }
-
-        .player-icon {
-          font-size: 1rem;
-          margin-right: 4px;
-        }
-
-        .no-data {
-          text-align: center;
-          color: var(--text-muted, #888);
-          font-style: italic;
-          padding: 20px;
-        }
-
-        /* Online Players Styles */
-        .online-players-section {
-          background: var(--bg-secondary, #1a1a2e);
-          border-radius: 12px;
-          padding: 20px;
-          margin-top: 24px;
-          border: 1px solid rgba(78, 205, 196, 0.2);
-        }
-
-        .online-players-section h3 {
-          color: var(--accent-cyan, #4ecdc4);
-          margin-bottom: 16px;
-        }
-
-        .online-players-list {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-          gap: 16px;
-        }
-
-        .online-player-card {
-          background: var(--bg-tertiary, #2a2a3e);
-          border: 1px solid rgba(78, 205, 196, 0.15);
-          border-radius: 8px;
-          padding: 16px;
-          transition: all 0.2s ease;
-        }
-
-        .online-player-card:hover {
-          border-color: rgba(78, 205, 196, 0.3);
-          transform: translateY(-2px);
-        }
-
-        .player-header {
-          display: flex;
-          align-items: center;
-          margin-bottom: 12px;
-          padding-bottom: 12px;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .player-header > :global(* + *) {
-          margin-left: 8px;
-        }
-
-        .player-status-dot {
-          color: #00ff00;
-          font-size: 1.2rem;
-          animation: pulse 2s ease-in-out infinite;
-        }
-
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
-
-        .player-name {
-          font-weight: 600;
-          color: var(--text-primary, #fff);
-          font-size: 1rem;
-        }
-
-        .player-details {
-          display: flex;
-          flex-direction: column;
-        }
-
-        .player-details > :global(* + *) {
-          margin-top: 8px;
-        }
-
-        .player-detail {
-          display: flex;
-          justify-content: space-between;
-          font-size: 0.85rem;
-        }
-
-        .detail-label {
-          color: var(--text-muted, #888);
-        }
-
-        .detail-value {
-          color: var(--text-secondary, #ccc);
-          font-family: monospace;
         }
       `}</style>
     </div>
   );
 }
-
-// Helper function to get country flag emoji from country code
-function getCountryFlag(countryCode: string): string {
-  if (!countryCode || countryCode.length !== 2) return '🏳️';
-  
-  const codePoints = countryCode
-    .toUpperCase()
-    .split('')
-    .map(char => 127397 + char.charCodeAt(0));
-  
-  return String.fromCodePoint(...codePoints);
-}
-
