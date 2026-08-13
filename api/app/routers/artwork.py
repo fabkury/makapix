@@ -15,7 +15,6 @@ from ..auth import get_current_user, get_current_user_optional
 from ..deps import get_db
 from ..utils.visibility import can_access_post
 from ..utils.site_tracking import record_site_event
-from ..utils.view_tracking import record_view, ViewType, ViewSource
 from ..vault import (
     get_artwork_file_path,
     get_mkpx_file_path,
@@ -102,28 +101,16 @@ def get_post_by_sqid(
             status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
         )
 
-    # Add reaction and comment counts
-    from ..services.post_stats import annotate_posts_with_counts, get_view_counts
+    # Add reaction and comment counts (view_count is the denormalized
+    # posts.view_count column, serialized directly by the schema)
+    from ..services.post_stats import annotate_posts_with_counts
 
     annotate_posts_with_counts(db, [post], current_user.id if current_user else None)
 
-    # Public lifetime view count (recorded views are written async, so this
-    # reflects prior views and never the visitor's own in-flight request)
-    post.view_count = get_view_counts(db, [post.id]).get(post.id, 0)
-
-    # Record site event for page view (sitewide stats)
+    # Record site event for page view (sitewide stats). Per-post views are
+    # NOT recorded here: fetching data is not viewing art (docs/artwork-views/
+    # D4) — clients register views through POST /post/{id}/view.
     record_site_event(request, "page_view", user=current_user)
-
-    # Record view event for post stats (excludes author views)
-    record_view(
-        db=db,
-        post_id=post.id,
-        request=request,
-        user=current_user,
-        view_type=ViewType.INTENTIONAL,
-        view_source=ViewSource.WEB,
-        post_owner_id=post.owner_id,
-    )
 
     return schemas.Post.model_validate(post)
 

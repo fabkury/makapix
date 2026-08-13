@@ -20,6 +20,7 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     UploadFile,
     status,
 )
@@ -52,7 +53,7 @@ from ..utils.monitored_hashtags import (
     apply_monitored_hashtag_filter,
     filter_posts_by_monitored_hashtags,
 )
-from ..utils.view_tracking import record_view, ViewType, ViewSource
+from ..utils.view_tracking import record_view, ViewSource
 from ..utils.site_tracking import record_site_event
 from ..services.post_stats import annotate_posts_with_counts, get_user_liked_post_ids
 from ..services.storage_quota import check_storage_quota, format_quota_error
@@ -1055,19 +1056,10 @@ def get_post_by_storage_key(
     # Add reaction and comment counts
     annotate_posts_with_counts(db, [post], current_user.id if current_user else None)
 
-    # Record site event for page view (sitewide stats)
+    # Record site event for page view (sitewide stats). Per-post views are
+    # NOT recorded here: fetching data is not viewing art (docs/artwork-views/
+    # D4) — clients register views through POST /post/{id}/view.
     record_site_event(request, "page_view", user=current_user)
-
-    # Record view event for post stats (excludes author views)
-    record_view(
-        db=db,
-        post_id=post.id,
-        request=request,
-        user=current_user,
-        view_type=ViewType.INTENTIONAL,
-        view_source=ViewSource.WEB,
-        post_owner_id=post.owner_id,
-    )
 
     return schemas.Post.model_validate(post)
 
@@ -1079,57 +1071,100 @@ async def register_view(
     payload: schemas.ViewRegisterPayload | None = None,
     db: Session = Depends(get_db),
     current_user: models.User | None = Depends(get_current_user_optional),
-) -> None:
+) -> Response:
     """
-    Register a view on a post.
+    Register an Artwork View or Impression (docs/artwork-views/ D2/D4).
 
-    Body-less requests come from the Selected Post Overlay and are recorded
-    as INTENTIONAL views. Requests with a body come from the Web Player and
-    are recorded as LISTING views with channel/play_order metadata.
+    The single human door for view recording. Intent resolution: explicit
+    `intent` wins; body-less or channel="artwork" means View; any other
+    channel means Impression.
+
+    Views are guarded by per-day dedup (once per Visitor per artwork per UTC
+    day) — deliberately no request rate limit, so fast legitimate browsing
+    never loses first views. Impressions are a rate-limited volume metric.
+
+    Returns 201 when a View was counted, 204 when accepted but not counted
+    (dedup, bot, self-view, or an Impression).
     """
-    from ..services.rate_limit import check_web_view_rate_limit
-    from ..utils.view_tracking import hash_ip
+    from ..services.rate_limit import (
+        check_and_set_daily_view_dedup,
+        check_web_view_rate_limit,
+    )
+    from ..services.view_metrics import IMPRESSION, VIEW, incr_view_counter
+    from ..utils.bot_detection import is_bot
+    from ..utils.view_tracking import get_client_ip, hash_ip, visitor_key
 
-    # Rate limit: 1 view per 3 seconds per user
-    ip = request.client.host if request.client else "unknown"
-    ip_hash = hash_ip(ip)
-    user_id = current_user.id if current_user else None
-
-    allowed, retry_after = check_web_view_rate_limit(user_id, ip_hash)
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail="Too many view requests",
-            headers={"Retry-After": str(int(retry_after or 3))},
-        )
+    # Known bots are never recorded (D9)
+    if is_bot(request.headers.get("User-Agent")):
+        incr_view_counter("bot_dropped")
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
 
+    # Self-views are accepted but never counted
+    if current_user is not None and post.owner_id == current_user.id:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    # Resolve intent (D4)
     if payload is None:
-        record_view(
-            db=db,
-            post_id=post.id,
-            request=request,
-            user=current_user,
-            view_type=ViewType.INTENTIONAL,
-            view_source=ViewSource.WEB,
-            post_owner_id=post.owner_id,
-        )
+        intent = VIEW
+    elif payload.intent is not None:
+        intent = payload.intent
+    elif payload.channel == "artwork":
+        intent = VIEW
     else:
+        intent = IMPRESSION
+
+    ip = get_client_ip(request)
+    user_id = current_user.id if current_user else None
+    channel = payload.channel if payload else None
+    channel_context = payload.channel_context if payload else None
+    play_order = payload.play_order if payload else None
+
+    if intent == VIEW:
+        visitor = visitor_key(user_id, hash_ip(ip))
+        if check_and_set_daily_view_dedup(visitor, post.id):
+            incr_view_counter("dedup_suppressed")
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
         record_view(
             db=db,
             post_id=post.id,
             request=request,
             user=current_user,
-            view_type=ViewType.LISTING,
+            view_type=VIEW,
             view_source=ViewSource.WEB,
             post_owner_id=post.owner_id,
-            channel=payload.channel,
-            channel_context=payload.channel_context,
-            play_order=payload.play_order,
+            channel=channel,
+            channel_context=channel_context,
+            play_order=play_order,
         )
+        return Response(status_code=status.HTTP_201_CREATED)
+
+    # Impression path: 1 per 3 seconds per user/IP (correctly keyed on the
+    # real client IP — request.client.host is always the reverse proxy, D23b)
+    allowed, retry_after = check_web_view_rate_limit(user_id, hash_ip(ip))
+    if not allowed:
+        incr_view_counter("rate_limited")
+        raise HTTPException(
+            status_code=429,
+            detail="Too many view requests",
+            headers={"Retry-After": str(int(retry_after or 3))},
+        )
+    record_view(
+        db=db,
+        post_id=post.id,
+        request=request,
+        user=current_user,
+        view_type=IMPRESSION,
+        view_source=ViewSource.WEB,
+        post_owner_id=post.owner_id,
+        channel=channel,
+        channel_context=channel_context,
+        play_order=play_order,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.patch("/{id}", response_model=schemas.Post)

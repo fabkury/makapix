@@ -541,6 +541,16 @@ def write_view_event(self, event_data: dict) -> None:
         )
 
         db.add(view_event)
+
+        # Accepted Artwork Views bump the denormalized public counter in the
+        # same transaction (docs/artwork-views/ D11). The nightly rollup
+        # recomputes the exact value, so any drift self-heals.
+        if event_data["view_type"] == "view":
+            db.query(models.Post).filter(models.Post.id == post_id).update(
+                {models.Post.view_count: models.Post.view_count + 1},
+                synchronize_session=False,
+            )
+
         db.commit()
 
         logger.debug(f"Wrote deferred view event for post {post_id}")

@@ -1,9 +1,10 @@
 """User-Agent based bot/crawler classification.
 
-Used by the download-stats rollup (and any future consumer that needs to
-separate human browser traffic from automated fetches). Deliberately
-conservative: matches the well-known crawler families and CLI tools; does
-NOT try to fingerprint headless browsers.
+Used by the download-stats rollup and the view/site tracking pipelines
+(docs/artwork-views/ D9: known bots are never recorded). Deliberately
+conservative: matches the well-known crawler families, CLI tools, and
+self-identifying headless/automation browsers; does NOT try to fingerprint
+evasive bots.
 """
 
 from __future__ import annotations
@@ -22,7 +23,9 @@ _BOT_PATTERN = re.compile(
     # CLI / library user-agents
     r"curl|wget|python-requests|httpx|go-http-client|"
     # SEO / commercial crawlers
-    r"ahrefsbot|semrushbot|mj12bot|dotbot|petalbot|applebot" r")\b",
+    r"ahrefsbot|semrushbot|mj12bot|dotbot|petalbot|applebot|"
+    # Self-identifying headless / automation browsers (docs/artwork-views/ D9)
+    r"headlesschrome|phantomjs|puppeteer|playwright|selenium" r")\b",
     re.IGNORECASE,
 )
 

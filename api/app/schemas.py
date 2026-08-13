@@ -439,17 +439,21 @@ class PostRead(Post):
 
 class ViewRegisterPayload(BaseModel):
     """
-    Optional body for POST /post/{id}/view.
+    Optional body for POST /post/{id}/view (docs/artwork-views/ D4).
 
-    When absent (body-less request), the view is recorded as
-    view_type=INTENTIONAL, view_source=WEB with no channel metadata
-    (used by the Selected Post Overlay).
+    Intent resolution: an explicit `intent` wins; otherwise a body-less
+    request or channel="artwork" (a deliberate single-artwork open — how the
+    mobile app registers views) means an Artwork View, and any other channel
+    means an Impression (auto-play exposure, e.g. the Web Player).
 
-    When present, the view is recorded as view_type=LISTING (auto-play)
-    with the supplied channel metadata (used by the Web Player).
+    Response: 201 when a View was counted; 204 when the request was accepted
+    but not counted (per-day dedup, bot, self-view, or an Impression).
     """
 
-    channel: Literal["all", "promoted", "by_user", "hashtag", "reactions"] | None = None
+    intent: Literal["view", "impression"] | None = None
+    channel: (
+        Literal["all", "promoted", "by_user", "hashtag", "reactions", "artwork"] | None
+    ) = None
     channel_context: str | None = Field(None, max_length=100)
     play_order: Literal[0, 1, 2] | None = None
 
