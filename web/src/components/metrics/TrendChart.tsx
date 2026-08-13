@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import {
   Bar,
   CartesianGrid,
@@ -47,6 +48,13 @@ function DayTick({ x, y, payload }: { x?: number; y?: number; payload?: { value?
   );
 }
 
+/**
+ * Trend chart. With a single series: one bar chart. With a secondary series:
+ * stacked small multiples — bars on top, line below — sharing the x-axis,
+ * each panel with its own y-scale, hover synced across panels. (Never a
+ * dual-axis chart: two y-scales on one plot make series crossings and gaps
+ * an artifact of axis choice rather than data.)
+ */
 export default function TrendChart({
   data,
   granularity,
@@ -58,72 +66,128 @@ export default function TrendChart({
 }: TrendChartProps) {
   const hasSecondary = Boolean(secondaryName && secondaryColor);
   const formatX = granularity === 'day' ? formatDayFull : formatHourFull;
+  const syncId = useId();
+
+  // Panel heights: the bottom panel also carries the shared x-axis labels.
+  const X_AXIS_SPACE = 26;
+  const PANEL_GAP = 6;
+  const usable = Math.max(140, height) - X_AXIS_SPACE - PANEL_GAP;
+  const primaryHeight = hasSecondary ? Math.round(usable * 0.56) : height;
+  const secondaryHeight = usable - Math.round(usable * 0.56) + X_AXIS_SPACE;
+
+  const xAxisTicks = (
+    <XAxis
+      dataKey="x"
+      tickLine={false}
+      axisLine={{ stroke: CHART.axisLine }}
+      interval="preserveStartEnd"
+      minTickGap={16}
+      tick={granularity === 'day' ? <DayTick /> : { fill: CHART.tick, fontSize: 11 }}
+      tickFormatter={granularity === 'day' ? formatDayTick : formatHourTick}
+    />
+  );
+
+  const yAxis = (
+    <YAxis
+      width={44}
+      allowDecimals={false}
+      tickFormatter={formatCompact}
+      tick={{ fill: CHART.tick, fontSize: 11 }}
+      axisLine={false}
+      tickLine={false}
+    />
+  );
+
+  const tooltip = (
+    <Tooltip
+      content={<ChartTooltip granularity={granularity} />}
+      cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }}
+    />
+  );
+
+  const primaryBar = (
+    <Bar
+      dataKey="primary"
+      name={primaryName}
+      fill={primaryColor}
+      fillOpacity={0.85}
+      maxBarSize={24}
+      radius={[4, 4, 0, 0]}
+      animationDuration={300}
+    />
+  );
 
   return (
     <div className="trend-chart">
-      {hasSecondary && (
-        <div className="legend">
-          <span className="legend-item">
+      {hasSecondary ? (
+        <>
+          {/* Top panel: primary series (bars), x-axis hidden but aligned */}
+          <div className="panel-label">
             <span className="legend-key" style={{ background: primaryColor }} />
             {primaryName}
-          </span>
-          <span className="legend-item">
-            <span className="legend-key legend-key-line" style={{ background: secondaryColor }} />
+          </div>
+          <div className="chart-box" style={{ height: primaryHeight }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart
+                data={data}
+                syncId={syncId}
+                margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+              >
+                <CartesianGrid vertical={false} stroke={CHART.grid} />
+                <XAxis dataKey="x" hide />
+                {yAxis}
+                {tooltip}
+                {primaryBar}
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Bottom panel: secondary series (line), carries the x-axis */}
+          <div className="panel-label panel-label-secondary">
+            <span
+              className="legend-key legend-key-line"
+              style={{ background: secondaryColor }}
+            />
             {secondaryName}
-          </span>
+          </div>
+          <div className="chart-box" style={{ height: secondaryHeight }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart
+                data={data}
+                syncId={syncId}
+                margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+              >
+                <CartesianGrid vertical={false} stroke={CHART.grid} />
+                {xAxisTicks}
+                {yAxis}
+                {tooltip}
+                <Line
+                  dataKey="secondary"
+                  name={secondaryName}
+                  type="monotone"
+                  stroke={secondaryColor}
+                  strokeWidth={2}
+                  dot={{ r: 4, fill: secondaryColor, stroke: CHART.surface, strokeWidth: 2 }}
+                  activeDot={{ r: 5 }}
+                  animationDuration={300}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </>
+      ) : (
+        <div className="chart-box" style={{ height }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+              <CartesianGrid vertical={false} stroke={CHART.grid} />
+              {xAxisTicks}
+              {yAxis}
+              {tooltip}
+              {primaryBar}
+            </ComposedChart>
+          </ResponsiveContainer>
         </div>
       )}
-      <div className="chart-box" style={{ height }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-            <CartesianGrid vertical={false} stroke={CHART.grid} />
-            <XAxis
-              dataKey="x"
-              tickLine={false}
-              axisLine={{ stroke: CHART.axisLine }}
-              interval="preserveStartEnd"
-              minTickGap={16}
-              tick={
-                granularity === 'day' ? <DayTick /> : { fill: CHART.tick, fontSize: 11 }
-              }
-              tickFormatter={granularity === 'day' ? formatDayTick : formatHourTick}
-            />
-            <YAxis
-              width={44}
-              allowDecimals={false}
-              tickFormatter={formatCompact}
-              tick={{ fill: CHART.tick, fontSize: 11 }}
-              axisLine={false}
-              tickLine={false}
-            />
-            <Tooltip
-              content={<ChartTooltip granularity={granularity} />}
-              cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }}
-            />
-            <Bar
-              dataKey="primary"
-              name={primaryName}
-              fill={primaryColor}
-              fillOpacity={0.85}
-              maxBarSize={24}
-              radius={[4, 4, 0, 0]}
-              animationDuration={300}
-            />
-            {hasSecondary && (
-              <Line
-                dataKey="secondary"
-                name={secondaryName}
-                type="monotone"
-                stroke={secondaryColor}
-                strokeWidth={2}
-                dot={{ r: 4, fill: secondaryColor, stroke: CHART.surface, strokeWidth: 2 }}
-                activeDot={{ r: 5 }}
-                animationDuration={300}
-              />
-            )}
-          </ComposedChart>
-        </ResponsiveContainer>
-      </div>
       <details className="data-table">
         <summary>View data</summary>
         <table>
@@ -150,18 +214,17 @@ export default function TrendChart({
           min-width: 0;
         }
 
-        .legend {
-          display: flex;
-          gap: 16px;
-          margin-bottom: 8px;
+        .panel-label {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          margin-bottom: 4px;
           font-size: 0.8rem;
           color: var(--text-secondary, #a0a0b8);
         }
 
-        .legend-item {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
+        .panel-label-secondary {
+          margin-top: 6px;
         }
 
         .legend-key {
