@@ -24,6 +24,9 @@ def pytest_configure(config):
     # raises when unset). Inside the dev/prod containers the real value is
     # present; give bare local runs a deterministic stand-in.
     os.environ.setdefault("VAULT_PUBLIC_BASE_URL", "https://vault.test")
+    # MAKAPIX_IP_HASH_SALT is likewise required (app.settings.ip_hash_salt
+    # raises when unset); deterministic stand-in for bare local runs.
+    os.environ.setdefault("MAKAPIX_IP_HASH_SALT", "test-ip-salt")
 
     api_user = os.getenv("DB_API_WORKER_USER")
     api_pass = os.getenv("DB_API_WORKER_PASSWORD")

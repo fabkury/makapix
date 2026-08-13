@@ -129,6 +129,7 @@ services:
       MQTT_PASSWORD: ${MQTT_PASSWORD:-}
       VAULT_LOCATION: ${VAULT_LOCATION}
       VAULT_PUBLIC_BASE_URL: ${VAULT_PUBLIC_BASE_URL:-}
+      MAKAPIX_IP_HASH_SALT: ${MAKAPIX_IP_HASH_SALT:?MAKAPIX_IP_HASH_SALT is required (openssl rand -hex 32)}
       MAKAPIX_ADMIN_USER: ${MAKAPIX_ADMIN_USER}
       MAKAPIX_ADMIN_PASSWORD: ${MAKAPIX_ADMIN_PASSWORD}
       # Observability (opt-in; empty = disabled). See api/app/observability.py.
@@ -179,11 +180,18 @@ services:
       DATABASE_URL: postgresql://${DB_API_WORKER_USER}:${DB_API_WORKER_PASSWORD}@db:5432/${DB_DATABASE}
       CELERY_BROKER_URL: redis://broker:6379/0
       CELERY_RESULT_BACKEND: redis://broker:6379/0
+      # Same cache Redis as the api service: the view-ingestion observability
+      # counters (viewobs:*) are written by the API and read by the
+      # check_view_ingestion_health beat task in this container. Without this,
+      # cache.get_redis_client() falls back to the broker Redis (a different
+      # instance) and the health task reads nothing.
+      REDIS_URL: redis://cache:6379/1
       MQTT_CA_FILE: /certs/ca.crt
       MQTT_CA_KEY_FILE: /certs/ca.key
       MQTT_CRL_FILE: /certs/crl.pem
       VAULT_LOCATION: ${VAULT_LOCATION}
       VAULT_PUBLIC_BASE_URL: ${VAULT_PUBLIC_BASE_URL:-}
+      MAKAPIX_IP_HASH_SALT: ${MAKAPIX_IP_HASH_SALT:?MAKAPIX_IP_HASH_SALT is required (openssl rand -hex 32)}
       # Observability (opt-in; empty = disabled). The worker runs beat, so it
       # also pings the healthchecks.io dead-man's-switches. See observability.py.
       SENTRY_DSN: ${SENTRY_DSN:-}

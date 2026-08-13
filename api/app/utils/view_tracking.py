@@ -90,17 +90,23 @@ _player_regex = re.compile(PLAYER_PATTERN, re.IGNORECASE)
 
 def hash_ip(ip: str) -> str:
     """
-    Create a SHA256 hash of an IP address for privacy-preserving storage.
+    Create a salted SHA256 hash of an IP address for privacy-preserving storage.
+
+    Salted with the MAKAPIX_IP_HASH_SALT deployment secret (docs/artwork-views/
+    D14): the IPv4 space is small enough that unsalted hashes are reversible by
+    brute force. Also used for synthetic non-IP identities ("player:{key}").
 
     Args:
-        ip: IPv4 or IPv6 address string
+        ip: IPv4 or IPv6 address string (or synthetic identity string)
 
     Returns:
         64-character hex string (SHA256 hash)
     """
+    from ..settings import ip_hash_salt
+
     if not ip:
         ip = "unknown"
-    return hashlib.sha256(ip.encode("utf-8")).hexdigest()
+    return hashlib.sha256((ip_hash_salt() + ip).encode("utf-8")).hexdigest()
 
 
 def visitor_key(user_id, ip_hash: str) -> tuple[str, str]:
