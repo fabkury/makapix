@@ -3784,6 +3784,36 @@ def _purge_user_account(db: Session, user_id: int) -> dict[str, Any]:
 # ============================================================================
 
 
+@celery_app.task(name="app.tasks.backfill_view_counts")
+def backfill_view_counts() -> dict[str, Any]:
+    """Manual operator task: rebuild posts.view_count and reseed the watermark.
+
+    Wraps the same callables the artwork-views migration runs
+    (services/view_metrics.py). Not scheduled — for dev DBs and repair runs.
+    """
+    from .db import SessionLocal
+    from .services.view_metrics import (
+        recompute_post_view_counts,
+        seed_view_watermark,
+    )
+
+    db = SessionLocal()
+    try:
+        watermark = seed_view_watermark(db)  # no-op if already seeded
+        updated = recompute_post_view_counts(db)
+        db.commit()
+        logger.info(
+            f"Backfilled view_count for {updated} posts; watermark seeded to {watermark}"
+        )
+        return {"status": "success", "updated": updated, "watermark": str(watermark)}
+    except Exception:
+        db.rollback()
+        logger.error("Error in backfill_view_counts task", exc_info=True)
+        raise
+    finally:
+        db.close()
+
+
 @celery_app.task(name="app.tasks.backfill_post_files")
 def backfill_post_files(batch_size: int = 100) -> dict[str, Any]:
     """

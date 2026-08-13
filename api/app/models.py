@@ -17,6 +17,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
 from sqlalchemy.orm import relationship, backref, validates
@@ -421,6 +422,11 @@ class Post(Base):
 
     # Display timing (milliseconds)
     dwell_time_ms = Column(Integer, nullable=False, default=30000)
+
+    # Denormalized lifetime Artwork Views (deduped, non-author; docs/artwork-views/
+    # D11): incremented by write_view_event on accepted Views, recomputed exactly
+    # by the nightly rollup. The single source every display surface reads.
+    view_count = Column(Integer, nullable=False, default=0, server_default=text("0"))
 
     # Optional attached .mkpx layers file (docs/mkpx-upload/). Stored at
     # {vault}/mkpx/{storage_shard}/{storage_key}.mkpx; both NULL when absent.
@@ -1180,9 +1186,16 @@ class PostStatsDaily(Base):
     )
     date = Column(Date, nullable=False, index=True)
 
-    # Aggregated counts
+    # Aggregated counts. Since the views redesign (docs/artwork-views/), for
+    # newly-written rows total_views counts deduped Artwork Views (== that
+    # day's unique_viewers by construction) and total_impressions counts
+    # playback exposure; rows written before the redesign hold the old mixed
+    # semantics (read via services/view_metrics.py breakdown helpers).
     total_views = Column(Integer, nullable=False, default=0)
     unique_viewers = Column(Integer, nullable=False, default=0)
+    total_impressions = Column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
 
     # Breakdown by dimension (stored as JSONB for flexibility)
     views_by_country = Column(
@@ -1193,11 +1206,14 @@ class PostStatsDaily(Base):
     )  # {"desktop": 40, "mobile": 35, ...}
     views_by_type = Column(
         JSON, nullable=False, default=dict
-    )  # {"intentional": 60, "listing": 15, ...}
+    )  # {"view": 60, "impression": 15}; legacy rows: intentional/listing/search/widget
 
     # Authenticated-only aggregates (for 30-day stats)
     total_views_authenticated = Column(Integer, nullable=False, default=0)
     unique_viewers_authenticated = Column(Integer, nullable=False, default=0)
+    total_impressions_authenticated = Column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
     views_by_country_authenticated = Column(JSON, nullable=False, default=dict)
     views_by_device_authenticated = Column(JSON, nullable=False, default=dict)
     views_by_type_authenticated = Column(JSON, nullable=False, default=dict)
@@ -1217,6 +1233,29 @@ class PostStatsDaily(Base):
     __table_args__ = (
         UniqueConstraint("post_id", "date", name="uq_post_stats_daily_post_date"),
         Index("ix_post_stats_daily_post_date", post_id, date),
+    )
+
+
+class RollupWatermark(Base):
+    """High-water mark for event rollups (docs/artwork-views/ D10).
+
+    One row per pipeline (name is the pipeline key, e.g. "view_events").
+    value_date is the last UTC calendar day fully rolled into the daily
+    aggregate tables. Readers stitch: daily rows for dates <= value_date,
+    raw events for later days — rolled-but-retained raw rows are therefore
+    never double-counted, and there is exactly one boundary, owned by the
+    rollup that advances it.
+    """
+
+    __tablename__ = "rollup_watermarks"
+
+    name = Column(String(64), primary_key=True)
+    value_date = Column(Date, nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
 
