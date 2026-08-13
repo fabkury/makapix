@@ -584,6 +584,10 @@ def write_blog_post_view_event(self, event_data: dict) -> None:
     """
     Async Celery task to write a blog post view event to the database.
 
+    DEPRECATED (docs/artwork-views/ D16): the Blog subsystem is legacy and
+    will eventually be deleted. This pipeline deliberately stays on the old
+    view model — do not port it to the view/impression redesign.
+
     This task receives serialized event data and creates a BlogPostViewEvent record.
     Called asynchronously from record_blog_post_view() to avoid blocking request handlers.
 
@@ -1067,6 +1071,10 @@ def rollup_view_events(self) -> dict[str, Any]:
 def rollup_blog_post_view_events(self) -> dict[str, Any]:
     """
     Daily task: Roll up blog post view events older than 7 days into daily aggregates.
+
+    DEPRECATED (docs/artwork-views/ D16): the Blog subsystem is legacy and
+    will eventually be deleted. This rollup deliberately keeps the old
+    cutoff-based design — do not port it to the watermark pipeline.
 
     This task:
     1. Selects blog post view events older than 7 days
