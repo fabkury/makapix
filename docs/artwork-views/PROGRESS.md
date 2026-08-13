@@ -27,9 +27,20 @@
 - Docs — this file, PLAN.md, DECISIONS appendix I1–I12, message/0001 to the app team,
   blog deprecation banners (D16).
 
+## 2026-08-13 — dev verification (all green)
+- `make check-full`: OpenAPI drift + black + full suite, 74 test files, all chunks pass.
+- `make rebuild`: migration `c1d2e3f4a5b6` ran at startup — watermark seeded to
+  2026-08-12, view_count backfill = 300 (exactly the Σ intentional pre-check), 84 posts.
+- Live door checks (api container, browser UA): body-less 201 → dedup 204;
+  channel:'artwork' 201; impression 204 → same-IP burst 429; bot UA 204;
+  bad intent 422; GET /p/ 200 with no event. Async writes exact (2 views +
+  1 impression, view_count 3+2=5); all four viewobs counters incremented once.
+- Manual rollup: correct no-op (today's events post-watermark); health watchdog
+  correctly went critical on the 422 the contract test itself injected (day-keyed,
+  self-clears; expect one dev alert log at the next 02:30 ET run).
+- `make e2e`: 46/46 after stub-shape fixes (`c65a9ab`).
+
 ## Pending
-- [ ] Dev verification: make check-full, make rebuild, migration sanity numbers,
-      live door checks, make e2e, manual rollup run.
 - [ ] PR develop→main, merge, prod deploy (salt into .env.prod first).
 - [ ] Post-deploy: next-morning check of the 01:00 rollup + 02:30 watchdog;
       healthchecks slug auto-created.
