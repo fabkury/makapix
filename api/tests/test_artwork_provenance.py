@@ -183,6 +183,22 @@ def test_invalid_source_details_422(client, db, vault_tmp, raw):
     assert r.json()["error"]["code"] == "invalid_source_details"
 
 
+def test_imported_format_comma_list_accepted(client, db, vault_tmp):
+    # App message 0003: imported_format may be a comma list, first-use order.
+    user = _make_user(db)
+    r = _upload(
+        client,
+        user,
+        data={
+            "creation_method": "editor_import",
+            "source_details": json.dumps({"imported_format": "png,gif,webp,jpeg"}),
+        },
+    )
+    assert r.status_code == 201, r.text
+    row = db.query(Post).filter(Post.id == r.json()["post"]["id"]).first()
+    assert row.source_details["imported_format"] == "png,gif,webp,jpeg"
+
+
 def test_mkpx_inference_editor(client, db, vault_tmp):
     user = _make_user(db)
     r = _upload(

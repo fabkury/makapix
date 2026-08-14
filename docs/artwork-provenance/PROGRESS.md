@@ -1,5 +1,11 @@
 # Artwork Provenance — Progress
 
+## 2026-08-14 — App reply 0003 processed; 0004 (test instructions) sent
+- App accepted everything from 0001+0002 and implemented app-side (unreleased): sticky bit + parent list persisted in `.mkpx` META (`club.everImported`, `club.importedFormats`, `club.parents`), full declarations on upload/replace, remixable gating UX, honest 422 dialogs ("publish without remix claim" is user-explicit).
+- Owner verdicts on 0003's confirmables: **imported_format comma list accepted** — validator cap raised 16→64 chars (`utils/provenance.py`, + test); **META parent-sqid visibility accepted as-is** (redaction would break download→edit→republish lineage durability; hidden posts still 404).
+- Message `0004-server-live-on-dev-test-instructions.md` written and mirrored+pushed to the app repo (commit 3ece4ed): e2e matrix expectations, seeded fixture (gZC←P2J), note that parents/children//me/remixes endpoints are already live, `remix` notification type name. Awaiting 0005 (their e2e results; will include sqids for us to verify stored source_details).
+- Dev api restarted — 64-char validator live.
+
 ## 2026-08-14 — Phase 2 (web) implemented on dev
 - Post detail (`p/[sqid].tsx`): public Remix badge pills ("↻ Remix of N" / "🎨 N remixes"), login-gated parents/children panels (anonymous slot for invisible parents, tombstone for deleted, load-more for children), Remixable checkbox in the edit panel (ND-disabled with hint), PATCH sends `remixable`.
 - Submit (`submit.tsx`): dead `allowEdit` checkbox repurposed as **Remixable** (default on; ND license forces it off + disables), FormData now sends `client=web`, `creation_method=external_file`, `remixable`; draft key renamed `allowEdit`→`remixable` (old drafts fall back to true). `divoom-import.tsx` also declares web/external_file.

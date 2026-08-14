@@ -58,7 +58,9 @@ SERVER_ZONE_KEY = "_server"
 _DECLARED_KEY_VALIDATORS: dict[str, Any] = {
     "editor_version": lambda v: isinstance(v, str) and 0 < len(v) <= 64,
     "editor_platform": lambda v: v in EDITOR_PLATFORMS,
-    "imported_format": lambda v: isinstance(v, str) and 0 < len(v) <= 16,
+    # May be a comma list in first-use order, e.g. "png,gif" (app message
+    # 0003 §"details worth confirming" — accepted 2026-08-14).
+    "imported_format": lambda v: isinstance(v, str) and 0 < len(v) <= 64,
     "device_type": lambda v: v in UPLOAD_DEVICE_TYPES,
 }
 

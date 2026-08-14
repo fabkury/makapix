@@ -84,7 +84,7 @@ class PostLineage(Base):
 
 ### 3.4 `source_details` shape
 
-Client-declared whitelisted keys: `editor_version`, `editor_platform` (`ios`|`android`), `imported_format`, **`device_type`** (`desktop`|`mobile`|`tablet` — the *upload* device, L7). Server zone `_server` (clients can never set it): as v1 (`declared_client`, `user_agent`, `mkpx_at_upload`, `inferred`, `backfilled_at`, `replaced[]`), plus:
+Client-declared whitelisted keys: `editor_version`, `editor_platform` (`ios`|`android`), `imported_format` (may be a comma list in first-use order, e.g. `png,gif` — ≤ 64 chars total; accepted from app message 0003), **`device_type`** (`desktop`|`mobile`|`tablet` — the *upload* device, L7). Server zone `_server` (clients can never set it): as v1 (`declared_client`, `user_agent`, `mkpx_at_upload`, `inferred`, `backfilled_at`, `replaced[]`), plus:
 
 ```jsonc
 "_server": {
