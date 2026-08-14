@@ -22,7 +22,7 @@ MAX_HASHTAG_LENGTH = 64
 # Terms of Service version (its effective date). Stamped into
 # users.terms_version_accepted at self-signup (docs/ugc-safety/ D26).
 # Bump when /terms changes materially.
-TERMS_VERSION = "2026-07-06"
+TERMS_VERSION = "2026-08-14"
 
 
 class NotificationType(StrEnum):
@@ -45,3 +45,6 @@ class NotificationType(StrEnum):
     MODERATOR_REVOKED = "moderator_revoked"
     NEW_REPORT = "new_report"
     REPORT_RESOLVED = "report_resolved"
+    # A Remix of the recipient's artwork was published; content fields point
+    # at the child (the new Remix), actor is the remixer (PLAN.md §6, L12).
+    REMIX = "remix"

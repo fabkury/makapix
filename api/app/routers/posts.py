@@ -55,6 +55,13 @@ from ..utils.monitored_hashtags import (
 )
 from ..utils.view_tracking import record_view, ViewSource
 from ..utils.site_tracking import record_site_event
+from ..utils.visibility import can_access_post
+from ..utils import provenance
+from ..utils.lineage import (
+    create_lineage_links,
+    notify_remix_published,
+    resolve_declared_parents,
+)
 from ..services.post_stats import annotate_posts_with_counts, get_user_liked_post_ids
 from ..services.storage_quota import check_storage_quota, format_quota_error
 from ..services.rate_limit import check_rate_limit
@@ -593,6 +600,13 @@ async def upload_artwork(
     hashtags: str = Form(""),  # Comma-separated hashtags
     hidden_by_user: str = Form("false"),  # User can choose to hide their artwork
     license_id: int | None = Form(None),  # Creative Commons license ID
+    # Provenance & lineage (docs/artwork-provenance/PLAN.md §5.1) — all
+    # optional; absence records as NULL/unknown, never coerced.
+    client: str | None = Form(None, max_length=64),  # e.g. "web", "app/1.0.14"
+    creation_method: str | None = Form(None),
+    source_details: str | None = Form(None),  # JSON object, whitelisted keys
+    remixed_from: str | None = Form(None),  # Comma-separated parent sqids
+    remixable: str | None = Form(None),  # "true"/"false"; default per license
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ) -> schemas.ArtworkUploadResponse:
@@ -731,6 +745,7 @@ async def upload_artwork(
     user_hidden = hidden_by_user.lower() in ("true", "1", "yes")
 
     # Validate license_id if provided; null means "All rights reserved".
+    license_obj = None
     if license_id is not None:
         license_obj = (
             db.query(models.License).filter(models.License.id == license_id).first()
@@ -740,6 +755,31 @@ async def upload_artwork(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid license_id",
             )
+
+    # Provenance & lineage (docs/artwork-provenance/PLAN.md §5.1). Everything
+    # validates before any DB/vault write so failures are clean 422s; a
+    # non-Remixable declared parent fails the whole upload (ADR 0002 — never
+    # silently drop the edge).
+    declared_method = provenance.validate_creation_method(creation_method)
+    declared_details = provenance.parse_declared_source_details(source_details)
+    post_remixable = provenance.resolve_remixable(
+        remixable, license_obj.identifier if license_obj else None
+    )
+    parents = resolve_declared_parents(db, remixed_from, actor_id=current_user.id)
+
+    inferred = None
+    effective_method = declared_method
+    if effective_method is None and mkpx is not None:
+        # An .mkpx accompanying the upload implies the editor pipeline, but
+        # hand-drawn vs import is unknowable server-side; declared values win.
+        effective_method = provenance.CREATION_METHOD_EDITOR
+        inferred = {"creation_method": provenance.CREATION_METHOD_EDITOR}
+    server_zone = provenance.build_server_zone(
+        declared_client=client,
+        user_agent=request.headers.get("user-agent"),
+        mkpx_at_upload=mkpx is not None,
+        inferred=inferred,
+    )
 
     # Generate UUID for storage_key and pre-compute storage shard
     storage_key = uuid.uuid4()
@@ -776,6 +816,10 @@ async def upload_artwork(
         artwork_modified_at=now,
         dwell_time_ms=30000,
         license_id=license_id,
+        upload_channel=provenance.map_client_to_channel(client),
+        creation_method=effective_method,
+        source_details=provenance.compose_source_details(declared_details, server_zone),
+        remixable=post_remixable,
     )
     # Fast-path duplicate check (user-friendly error); partial unique index is the
     # authoritative protection against races.
@@ -832,6 +876,10 @@ async def upload_artwork(
     from ..sqids_config import encode_id
 
     post.public_sqid = encode_id(post.id)
+
+    # Lineage Links ride the same transaction as the post (ADR 0002).
+    if parents:
+        create_lineage_links(db, post, parents)
 
     # Save to vault using the storage_key
     artwork_path = None
@@ -907,9 +955,18 @@ async def upload_artwork(
     if not public_visibility:
         message += ". Awaiting moderator approval for public visibility."
 
+    # One `remix` notification per distinct parent owner (L12). Never fail
+    # the committed upload over a notification hiccup.
+    if parents:
+        try:
+            notify_remix_published(db, post, current_user, parents)
+        except Exception as e:
+            logger.error(f"Failed to send remix notifications for post {post.id}: {e}")
+
     # Record site event for upload
     record_site_event(request, "upload", user=current_user)
 
+    annotate_posts_with_counts(db, [post], current_user.id)
     return schemas.ArtworkUploadResponse(
         post=schemas.Post.model_validate(post),
         message=message,
@@ -1210,6 +1267,22 @@ def update_post(
         roles = current_user.roles or []
         if "moderator" in roles or "owner" in roles:
             post.hidden_by_mod = payload.hidden_by_mod
+    if payload.remixable is not None:
+        # Remix permission toggle (L4; require_ownership above already admits
+        # moderators, covering force-disallow). ND licenses can never be
+        # Remixable (L5). Flips only affect FUTURE publishes — existing
+        # Lineage Links are immutable (ADR 0002).
+        if (
+            payload.remixable
+            and post.license is not None
+            and post.license.identifier in provenance.ND_LICENSE_IDENTIFIERS
+        ):
+            raise AppError(
+                ErrorCode.remixable_conflicts_with_license,
+                "A NoDerivatives-licensed work cannot be marked Remixable.",
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+        post.remixable = payload.remixable
 
     from datetime import datetime, timezone
 
@@ -1842,7 +1915,17 @@ def revoke_public_visibility(
 @router.post("/{id}/replace-artwork")
 async def replace_artwork(
     id: int,
+    request: Request,
     image: UploadFile = File(...),
+    # Provenance & lineage (docs/artwork-provenance/PLAN.md §5.2): provenance
+    # describes the *current* bytes (D5) so it resets to the new declaration;
+    # lineage is append-only (L9) — remixed_from may add parents, never
+    # removes. `remixable` is deliberately absent: that toggle belongs to
+    # PATCH /post/{id}.
+    client: str | None = Form(None, max_length=64),
+    creation_method: str | None = Form(None),
+    source_details: str | None = Form(None),
+    remixed_from: str | None = Form(None),
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1870,6 +1953,14 @@ async def replace_artwork(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Upload rate limit exceeded. Please try again later.",
         )
+
+    # Provenance & lineage declarations validate up front (fail fast, before
+    # any file processing). The cycle check needs the existing post (child=).
+    declared_method = provenance.validate_creation_method(creation_method)
+    declared_details = provenance.parse_declared_source_details(source_details)
+    new_parents = resolve_declared_parents(
+        db, remixed_from, actor_id=current_user.id, child=post
+    )
 
     file_content = await image.read()
     file_size = len(file_content)
@@ -2037,6 +2128,33 @@ async def replace_artwork(
     post.metadata_modified_at = now
     post.artwork_modified_at = now
 
+    # Provenance describes the current bytes (D5): snapshot the outgoing
+    # declared values into _server.replaced[], then apply the new declaration
+    # — undeclared fields become honest unknowns, they do NOT carry over.
+    # Server-written audit zones (replaced history, mod severing) survive.
+    old_server = (post.source_details or {}).get(provenance.SERVER_ZONE_KEY) or {}
+    replaced_history = list(old_server.get("replaced") or [])
+    replaced_history.append(provenance.snapshot_replaced_provenance(post))
+    server_zone = provenance.build_server_zone(
+        declared_client=client,
+        user_agent=request.headers.get("user-agent"),
+        mkpx_at_upload=False,  # replace always drops the layers file (D4)
+    )
+    server_zone["replaced"] = replaced_history
+    if old_server.get("severed"):
+        server_zone["severed"] = old_server["severed"]
+    post.upload_channel = provenance.map_client_to_channel(client)
+    post.creation_method = declared_method
+    post.source_details = provenance.compose_source_details(
+        declared_details, server_zone
+    )
+
+    # Lineage is append-only through replace (L9/ADR 0002): new declared
+    # parents are added, existing links are never touched. Same transaction
+    # as the artwork rotation.
+    created_links = create_lineage_links(db, post, new_parents) if new_parents else []
+    newly_linked_sqids = {link.parent_sqid for link in created_links}
+
     try:
         db.flush()
     except IntegrityError:
@@ -2135,6 +2253,19 @@ async def replace_artwork(
     cache_invalidate("feed:recent:*")
     cache_invalidate("feed:promoted:*")
 
+    # Notify owners of parents that were *newly* linked by this replace —
+    # re-declared existing parents were skipped, so no duplicate pings.
+    if newly_linked_sqids:
+        try:
+            notify_remix_published(
+                db,
+                post,
+                current_user,
+                [p for p in new_parents if p.public_sqid in newly_linked_sqids],
+            )
+        except Exception as e:
+            logger.error(f"Failed to send remix notifications for post {post.id}: {e}")
+
     logger.info(
         "Artwork replaced for post %s by user %s",
         post.public_sqid,
@@ -2152,6 +2283,118 @@ async def replace_artwork(
             "frame_count": post.frame_count,
         },
     }
+
+
+@router.get("/{id}/parents", response_model=schemas.LineageParentsResponse)
+def list_post_parents(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.LineageParentsResponse:
+    """Ordered Parent slots of a post (login-gated, L8).
+
+    Visibility (L10): a parent that exists but isn't visible to the viewer
+    yields an anonymous 'unavailable' slot — no identity leaked; a deleted
+    parent (soft-deleted row or hard-delete tombstone) yields 'deleted'.
+    """
+    post = db.query(models.Post).filter(models.Post.id == id).first()
+    if not post or post.kind != "artwork" or not can_access_post(post, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        )
+
+    links = (
+        db.query(models.PostLineage)
+        .filter(models.PostLineage.child_post_id == post.id)
+        .order_by(models.PostLineage.position)
+        .all()
+    )
+    parent_ids = [l.parent_post_id for l in links if l.parent_post_id is not None]
+    parents_by_id: dict[int, models.Post] = {}
+    if parent_ids:
+        parent_rows = db.query(models.Post).filter(models.Post.id.in_(parent_ids)).all()
+        annotate_posts_with_counts(db, parent_rows, current_user.id)
+        parents_by_id = {p.id: p for p in parent_rows}
+
+    items: list[schemas.LineageParentSlot] = []
+    for link in links:
+        parent = (
+            parents_by_id.get(link.parent_post_id)
+            if link.parent_post_id is not None
+            else None
+        )
+        if parent is None or parent.deleted_by_user:
+            state, parent_out = "deleted", None
+        elif can_access_post(parent, current_user):
+            state, parent_out = "available", schemas.Post.model_validate(parent)
+        else:
+            state, parent_out = "unavailable", None
+        items.append(
+            schemas.LineageParentSlot(
+                position=link.position, state=state, post=parent_out
+            )
+        )
+    return schemas.LineageParentsResponse(items=items)
+
+
+@router.get("/{id}/children", response_model=schemas.Page[schemas.Post])
+def list_post_children(
+    id: int,
+    cursor: str | None = None,
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.Page[schemas.Post]:
+    """Viewer-visible Children (Remixes) of a post, newest first (L8/L10).
+
+    Invisible children are filtered out entirely — no placeholders (the
+    query predicate mirrors can_access_post: own posts always show; others
+    must be visible, unhidden, and approved-or-promoted; mods see all
+    non-deleted).
+    """
+    from sqlalchemy import and_, or_
+
+    post = db.query(models.Post).filter(models.Post.id == id).first()
+    if not post or post.kind != "artwork" or not can_access_post(post, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        )
+
+    query = (
+        db.query(models.Post)
+        .join(models.PostLineage, models.PostLineage.child_post_id == models.Post.id)
+        .filter(
+            models.PostLineage.parent_post_id == post.id,
+            models.Post.deleted_by_user == False,
+        )
+    )
+    roles = current_user.roles or []
+    if "moderator" not in roles and "owner" not in roles:
+        query = query.filter(
+            or_(
+                models.Post.owner_id == current_user.id,
+                and_(
+                    models.Post.visible == True,
+                    models.Post.hidden_by_user == False,
+                    models.Post.hidden_by_mod == False,
+                    or_(
+                        models.Post.public_visibility == True,
+                        models.Post.promoted == True,
+                    ),
+                ),
+            )
+        )
+    query = apply_cursor_filter(
+        query, models.Post, cursor, "created_at", sort_desc=True
+    )
+    query = query.order_by(models.Post.created_at.desc()).limit(limit + 1)
+    children = query.all()
+    page_data = create_page_response(children, limit, cursor)
+    annotate_posts_with_counts(db, page_data["items"], current_user.id)
+    return schemas.Page(
+        items=[schemas.Post.model_validate(p) for p in page_data["items"]],
+        next_cursor=page_data["next_cursor"],
+    )
 
 
 @router.get(

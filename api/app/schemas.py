@@ -403,6 +403,16 @@ class Post(BaseModel):
     has_mkpx: bool = False
     mkpx_file_bytes: int | None = None
     mkpx_attached_at: datetime | None = None
+    # Lineage (docs/artwork-provenance/PLAN.md §5.6). The Remix badge fact
+    # (parent_count > 0) and the permission flag are public to everyone;
+    # navigable parent/children lists are separate, login-gated endpoints.
+    # parent_count counts ALL Lineage Links incl. tombstones; child_count
+    # counts publicly-visible children only. Both annotated by
+    # services/post_stats.annotate_posts_with_counts (0 where unannotated,
+    # same as reaction_count).
+    remixable: bool = True
+    parent_count: int = 0
+    child_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -415,6 +425,61 @@ class PostUpdate(BaseModel):
     hashtags: list[str] | None = Field(None, max_length=64)
     hidden_by_user: bool | None = None
     hidden_by_mod: bool | None = None
+    # Remix permission (L4). true on an ND-licensed post → 422
+    # remixable_conflicts_with_license (L5). Moderators may force-disallow.
+    remixable: bool | None = None
+
+
+class LineageParentSlot(BaseModel):
+    """One declared Parent of a post, in declaration order (PLAN.md §5.5).
+
+    Non-available slots carry no identifying fields: 'unavailable' means the
+    parent exists but is not visible to the viewer (identity withheld);
+    'deleted' is the tombstone for a deleted parent.
+    """
+
+    position: int
+    state: Literal["available", "unavailable", "deleted"]
+    post: Post | None = None
+
+
+class LineageParentsResponse(BaseModel):
+    """Ordered Parent slots of a post (GET /post/{id}/parents)."""
+
+    items: list[LineageParentSlot]
+
+
+class RemixReceivedItem(BaseModel):
+    """A viewer-visible Remix of one of the caller's works (GET /me/remixes)."""
+
+    post: Post
+    # public_sqids of the caller's own works this Remix declares as Parents
+    my_parent_sqids: list[str]
+
+
+class LineageParentRef(BaseModel):
+    """One Lineage Link seen from the mod side: the link id enables severing
+    (DELETE /admin/lineage/{link_id})."""
+
+    link_id: int
+    sqid: str
+
+
+class PostProvenance(BaseModel):
+    """Internal provenance detail — mod/admin surfaces ONLY (D3 remnant:
+    channel/method/details never enter the public Post schema)."""
+
+    upload_channel: str | None = None
+    creation_method: str | None = None
+    source_details: dict | None = None
+    # Declared Parents (sqid snapshots, declaration order, incl. tombstones)
+    parents: list[LineageParentRef] = []
+
+
+class PostAdmin(Post):
+    """Post + internal provenance, for moderator/admin endpoints."""
+
+    provenance: PostProvenance | None = None
 
 
 class ModHashtagsUpdate(BaseModel):
@@ -876,6 +941,9 @@ class PulseItem(BaseModel):
     post_public_sqid: str | None = None
     post_title: str | None = None
     post_art_url: str | None = None
+    # Provenance at a glance (mod-only surface; docs/artwork-provenance/)
+    upload_channel: str | None = None
+    creation_method: str | None = None
 
     # Type-specific detail
     emoji: str | None = None  # post_reaction

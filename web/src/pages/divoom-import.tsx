@@ -777,6 +777,9 @@ export default function DivoomImportPage() {
       if (selectedLicenseId !== null) {
         formData.append('license_id', selectedLicenseId.toString());
       }
+      // Provenance (docs/artwork-provenance/): imported files are external
+      formData.append('client', 'web');
+      formData.append('creation_method', 'external_file');
 
       const response = await authenticatedFetch(`${API_BASE_URL}/api/post/upload`, {
         method: 'POST',
@@ -938,6 +941,9 @@ export default function DivoomImportPage() {
         if (selectedLicenseId !== null) {
           formData.append('license_id', selectedLicenseId.toString());
         }
+        // Provenance (docs/artwork-provenance/): imported files are external
+        formData.append('client', 'web');
+        formData.append('creation_method', 'external_file');
 
         const response = await authenticatedFetch(`${API_BASE_URL}/api/post/upload`, {
           method: 'POST',

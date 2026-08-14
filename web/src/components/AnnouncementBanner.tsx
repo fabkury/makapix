@@ -6,8 +6,8 @@ import { useRouter } from 'next/router';
 // BANNER_ID to null. To publish a new one, change BANNER_ID (a new id makes
 // the banner reappear for users who dismissed the previous one) and update
 // the message/link below.
-const BANNER_ID: string | null = 'android-launch-2026-07';
-const BANNER_HREF = '/app';
+const BANNER_ID: string | null = 'remix-lineage-2026-08';
+const BANNER_HREF = '/terms#remixes';
 
 export default function AnnouncementBanner() {
   const router = useRouter();
@@ -24,8 +24,9 @@ export default function AnnouncementBanner() {
     setVisible(true);
   }, []);
 
-  // Don't show the banner on the page it links to.
-  const shown = Boolean(BANNER_ID) && visible && router.pathname !== BANNER_HREF;
+  // Don't show the banner on the page it links to (hash-insensitive).
+  const shown =
+    Boolean(BANNER_ID) && visible && router.pathname !== BANNER_HREF.split('#')[0];
 
   // The banner renders inside the fixed header, so the space it occupies must
   // be pushed onto everything positioned off the header: --banner-height feeds
@@ -69,7 +70,8 @@ export default function AnnouncementBanner() {
       aria-label="Announcement"
     >
       <Link href={BANNER_HREF} className="announcement-link">
-        🎉 Makapix Club is now on Android &amp; iOS — get the app&nbsp;→
+        🎨 Remixing is here! Your artworks are Remixable by default — you can
+        turn it off per artwork. Learn more&nbsp;→
       </Link>
       <button
         type="button"

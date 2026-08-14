@@ -69,6 +69,21 @@ class ErrorCode(StrEnum):
     mkpx_invalid = "mkpx_invalid"
     mkpx_too_large = "mkpx_too_large"
 
+    # --- Provenance & lineage (docs/artwork-provenance/PLAN.md §5) ---
+    invalid_creation_method = "invalid_creation_method"
+    invalid_source_details = "invalid_source_details"
+    # Declared parent sqid doesn't resolve to an existing artwork post
+    parent_not_found = "parent_not_found"
+    # Declared parent exists but is not Remixable (details name the sqid)
+    remix_not_allowed = "remix_not_allowed"
+    too_many_parents = "too_many_parents"
+    # Declared parent is the child itself or one of its descendants
+    lineage_cycle = "lineage_cycle"
+    # remixable=true requested on a NoDerivatives-licensed post (L5)
+    remixable_conflicts_with_license = "remixable_conflicts_with_license"
+    # .mkpx download refused: post is not Remixable and requester isn't owner/mod
+    not_remixable = "not_remixable"
+
     # --- UGC safety (docs/ugc-safety/API-CONTRACT.md) ---
     # Interaction refused because a block exists between the two users (D11/D20)
     blocked = "blocked"

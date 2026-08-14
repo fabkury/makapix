@@ -13,7 +13,7 @@ export default function TermsPage() {
         <article className="policy-article">
           <h1>Terms of Service</h1>
 
-          <p className="effective-date">Effective date: July 6, 2026</p>
+          <p className="effective-date">Effective date: August 14, 2026</p>
 
           <p className="lead">
             Makapix Club is a small, community-run social network for pixel artists and DIY
@@ -67,6 +67,26 @@ export default function TermsPage() {
           <p>
             Only post content you have the right to post. Don&apos;t upload other
             people&apos;s work without permission.
+          </p>
+
+          <h2 id="remixes">Remixes</h2>
+
+          <p>
+            Artworks on Makapix Club can be marked <strong>Remixable</strong> (they are by
+            default — you can turn it off when posting or any time after). Marking a work
+            Remixable grants other members permission to create derivative pixel artworks
+            (&quot;Remixes&quot;) of it and post them on Makapix Club, with the source
+            recorded as the work&apos;s lineage — every Remix visibly links back to what it
+            was made from.
+          </p>
+
+          <p>
+            <strong>Turning Remixable off is not retroactive.</strong> You can switch it
+            off whenever you like, which stops new Remixes from that moment on — but
+            Remixes lawfully created and posted while your work was Remixable stay
+            permitted and may remain on the Club, with their lineage intact. Where a work
+            carries a Creative Commons license, that license applies additionally; works
+            with NoDerivatives licenses cannot be marked Remixable.
           </p>
 
           <h2>Community rules and zero tolerance</h2>

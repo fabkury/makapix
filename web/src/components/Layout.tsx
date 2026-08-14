@@ -530,6 +530,14 @@ export default function Layout({ children, title, description }: LayoutProps) {
                 {isLoggedIn && (
                   <>
                     <div className="menu-divider" role="separator" />
+                    <Link
+                      href="/remixes"
+                      className="menu-item"
+                      role="menuitem"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      🎨 Remixes of my works
+                    </Link>
                     <button
                       type="button"
                       className="menu-item menu-item-button"

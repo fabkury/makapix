@@ -63,3 +63,82 @@ def list_my_blocks(
         )
 
     return schemas.Page(items=items, next_cursor=page_data["next_cursor"])
+
+
+@router.get("/remixes", response_model=schemas.Page[schemas.RemixReceivedItem])
+def list_remixes_of_my_works(
+    cursor: str | None = None,
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.Page[schemas.RemixReceivedItem]:
+    """Aggregate "Remixes of my works" view, newest first (PLAN.md L12/§5.5).
+
+    Lists viewer-visible Children of any post the caller owns; each item names
+    which of the caller's works it declares as Parents. Standard visibility
+    rules apply — a remixer who hides their Remix drops out of this list.
+    """
+    from sqlalchemy import and_, or_
+    from ..pagination import apply_cursor_filter, create_page_response
+    from ..services.post_stats import annotate_posts_with_counts
+    from sqlalchemy.orm import aliased
+
+    parent_post = aliased(models.Post)
+    query = (
+        db.query(models.Post)
+        .join(models.PostLineage, models.PostLineage.child_post_id == models.Post.id)
+        .join(parent_post, parent_post.id == models.PostLineage.parent_post_id)
+        .filter(
+            parent_post.owner_id == current_user.id,
+            models.Post.deleted_by_user == False,
+            or_(
+                models.Post.owner_id == current_user.id,
+                and_(
+                    models.Post.visible == True,
+                    models.Post.hidden_by_user == False,
+                    models.Post.hidden_by_mod == False,
+                    or_(
+                        models.Post.public_visibility == True,
+                        models.Post.promoted == True,
+                    ),
+                ),
+            ),
+        )
+        # One Remix may declare several of the caller's works as Parents.
+        .distinct()
+    )
+    query = apply_cursor_filter(
+        query, models.Post, cursor, "created_at", sort_desc=True
+    )
+    query = query.order_by(models.Post.created_at.desc()).limit(limit + 1)
+    children = query.all()
+    page_data = create_page_response(children, limit, cursor)
+    annotate_posts_with_counts(db, page_data["items"], current_user.id)
+
+    # Which of MY works does each Remix declare? (batch, declaration order)
+    child_ids = [p.id for p in page_data["items"]]
+    my_sqids_by_child: dict[int, list[str]] = {}
+    if child_ids:
+        rows = (
+            db.query(models.PostLineage.child_post_id, models.PostLineage.parent_sqid)
+            .join(parent_post, parent_post.id == models.PostLineage.parent_post_id)
+            .filter(
+                models.PostLineage.child_post_id.in_(child_ids),
+                parent_post.owner_id == current_user.id,
+            )
+            .order_by(models.PostLineage.position)
+            .all()
+        )
+        for child_id, parent_sqid in rows:
+            my_sqids_by_child.setdefault(child_id, []).append(parent_sqid)
+
+    return schemas.Page(
+        items=[
+            schemas.RemixReceivedItem(
+                post=schemas.Post.model_validate(p),
+                my_parent_sqids=my_sqids_by_child.get(p.id, []),
+            )
+            for p in page_data["items"]
+        ],
+        next_cursor=page_data["next_cursor"],
+    )

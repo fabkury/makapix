@@ -67,6 +67,10 @@ interface Post {
   has_mkpx?: boolean;
   mkpx_file_bytes?: number | null;
   mkpx_attached_at?: string | null;
+  // Lineage (docs/artwork-provenance/): public badge facts + permission flag
+  remixable?: boolean;
+  parent_count?: number;
+  child_count?: number;
   owner?: {
     id: string;
     handle: string;
@@ -74,6 +78,15 @@ interface Post {
     public_sqid: string;
     avatar_url?: string | null;
   };
+}
+
+// One Parent slot of a Remix (GET /post/{id}/parents). Non-available slots
+// carry no identity: "unavailable" = exists but not visible to the viewer,
+// "deleted" = tombstone.
+interface ParentSlot {
+  position: number;
+  state: "available" | "unavailable" | "deleted";
+  post?: Post | null;
 }
 
 interface ReactionTotals {
@@ -130,6 +143,16 @@ export default function PostPage() {
   const [editHashtags, setEditHashtags] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Lineage (docs/artwork-provenance/): parents/children panels + edit toggle
+  const [editRemixable, setEditRemixable] = useState(true);
+  const [lineagePanel, setLineagePanel] = useState<"parents" | "children" | null>(
+    null,
+  );
+  const [parentSlots, setParentSlots] = useState<ParentSlot[] | null>(null);
+  const [childrenItems, setChildrenItems] = useState<Post[] | null>(null);
+  const [childrenCursor, setChildrenCursor] = useState<string | null>(null);
+  const [lineageLoading, setLineageLoading] = useState(false);
 
   // Moderator hashtags edit state (docs/mod-hashtags/)
   const [isEditingModTags, setIsEditingModTags] = useState(false);
@@ -1006,11 +1029,72 @@ export default function PostPage() {
     }
   };
 
+  // Lineage: ND licenses can never be Remixable (server enforces too)
+  const ndLicense = post?.license
+    ? post.license.identifier.includes("-ND-")
+    : false;
+
+  // Lineage: badge is public; opening the lists requires login (L8)
+  const openLineagePanel = async (panel: "parents" | "children") => {
+    if (!post) return;
+    if (lineagePanel === panel) {
+      setLineagePanel(null);
+      return;
+    }
+    if (!localStorage.getItem("access_token")) {
+      router.push(`/auth?redirect=/p/${post.public_sqid}`);
+      return;
+    }
+    setLineagePanel(panel);
+    setLineageLoading(true);
+    try {
+      if (panel === "parents") {
+        const res = await authenticatedFetch(
+          `${API_BASE_URL}/api/post/${post.id}/parents`,
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setParentSlots(data.items ?? []);
+        }
+      } else {
+        const res = await authenticatedFetch(
+          `${API_BASE_URL}/api/post/${post.id}/children?limit=24`,
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setChildrenItems(data.items ?? []);
+          setChildrenCursor(data.next_cursor ?? null);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load lineage:", err);
+    } finally {
+      setLineageLoading(false);
+    }
+  };
+
+  const loadMoreChildren = async () => {
+    if (!post || !childrenCursor) return;
+    try {
+      const res = await authenticatedFetch(
+        `${API_BASE_URL}/api/post/${post.id}/children?limit=24&cursor=${encodeURIComponent(childrenCursor)}`,
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setChildrenItems([...(childrenItems ?? []), ...(data.items ?? [])]);
+        setChildrenCursor(data.next_cursor ?? null);
+      }
+    } catch (err) {
+      console.error("Failed to load more remixes:", err);
+    }
+  };
+
   // Owner: Edit title, description and hashtags
   const handleEditClick = () => {
     if (!post) return;
     setEditTitle(post.title || "");
     setEditDescription(post.description || "");
+    setEditRemixable(ndLicense ? false : (post.remixable ?? true));
     // Only artist-controlled tags are editable; mod-owned tags are shown as
     // read-only chips and re-merged server-side (docs/mod-hashtags/ D10).
     const modTags = post.mod_hashtags ?? [];
@@ -1046,6 +1130,7 @@ export default function PostPage() {
             title: editTitle.trim(),
             description: editDescription,
             hashtags: hashtagsArray,
+            remixable: editRemixable,
           }),
         },
         "PATCH",
@@ -1561,6 +1646,114 @@ export default function PostPage() {
               )}
             </div>
 
+            {/* Lineage (docs/artwork-provenance/): the Remix badge is public;
+                tapping a pill opens the login-gated parents/children lists */}
+            {((post.parent_count ?? 0) > 0 || (post.child_count ?? 0) > 0) && (
+              <div className="lineage-section">
+                {(post.parent_count ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    className={`lineage-pill ${lineagePanel === "parents" ? "active" : ""}`}
+                    onClick={() => openLineagePanel("parents")}
+                    title="This artwork is a remix — view its sources"
+                  >
+                    ↻ Remix of {post.parent_count}{" "}
+                    {post.parent_count === 1 ? "artwork" : "artworks"}
+                  </button>
+                )}
+                {(post.child_count ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    className={`lineage-pill ${lineagePanel === "children" ? "active" : ""}`}
+                    onClick={() => openLineagePanel("children")}
+                    title="View remixes of this artwork"
+                  >
+                    🎨 {post.child_count}{" "}
+                    {post.child_count === 1 ? "remix" : "remixes"}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {lineagePanel && (
+              <div className="lineage-panel">
+                {lineageLoading ? (
+                  <p className="lineage-muted">Loading…</p>
+                ) : lineagePanel === "parents" ? (
+                  <>
+                    <h4 className="lineage-heading">Remixed from</h4>
+                    {(parentSlots ?? []).map((slot) => (
+                      <div key={slot.position} className="lineage-item">
+                        {slot.state === "available" && slot.post ? (
+                          <Link
+                            href={`/p/${slot.post.public_sqid}`}
+                            className="lineage-link"
+                          >
+                            <img
+                              src={slot.post.art_url}
+                              alt={slot.post.title}
+                              className="lineage-thumb"
+                            />
+                            <span className="lineage-title">
+                              {slot.post.title}
+                            </span>
+                            {slot.post.owner && (
+                              <span className="lineage-author">
+                                by @{slot.post.owner.handle}
+                              </span>
+                            )}
+                          </Link>
+                        ) : (
+                          <span className="lineage-muted">
+                            {slot.state === "deleted"
+                              ? "🪦 Deleted artwork"
+                              : "🔒 Unavailable artwork"}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    <h4 className="lineage-heading">Remixes of this artwork</h4>
+                    {(childrenItems ?? []).length === 0 ? (
+                      <p className="lineage-muted">No visible remixes.</p>
+                    ) : (
+                      (childrenItems ?? []).map((child) => (
+                        <div key={child.id} className="lineage-item">
+                          <Link
+                            href={`/p/${child.public_sqid}`}
+                            className="lineage-link"
+                          >
+                            <img
+                              src={child.art_url}
+                              alt={child.title}
+                              className="lineage-thumb"
+                            />
+                            <span className="lineage-title">{child.title}</span>
+                            {child.owner && (
+                              <span className="lineage-author">
+                                by @{child.owner.handle}
+                              </span>
+                            )}
+                          </Link>
+                        </div>
+                      ))
+                    )}
+                    {childrenCursor && (
+                      <button
+                        type="button"
+                        className="lineage-more"
+                        onClick={loadMoreChildren}
+                      >
+                        Load more
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
             {isModerator &&
               (post.hidden_by_mod ||
                 post.promoted ||
@@ -1622,6 +1815,23 @@ export default function PostPage() {
                       </span>
                     </div>
                   )}
+                </div>
+
+                <div className="edit-field">
+                  <label className="remixable-label">
+                    <input
+                      type="checkbox"
+                      checked={editRemixable}
+                      onChange={(e) => setEditRemixable(e.target.checked)}
+                      disabled={isSaving || ndLicense}
+                    />{" "}
+                    Remixable — others may remix this artwork
+                  </label>
+                  <span className="field-hint">
+                    {ndLicense
+                      ? "NoDerivatives license — this work cannot be marked Remixable."
+                      : "Turning this off stops new remixes; existing remixes remain."}
+                  </span>
                 </div>
 
                 {saveError && <p className="save-error">{saveError}</p>}
@@ -2325,6 +2535,104 @@ export default function PostPage() {
           font-size: 0.85rem;
           color: var(--text-muted);
           font-style: italic;
+        }
+
+        .lineage-section {
+          margin-top: 12px;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .lineage-pill {
+          font-size: 0.8rem;
+          padding: 4px 12px;
+          border-radius: 12px;
+          border: 1px solid rgba(168, 85, 247, 0.35);
+          background: rgba(168, 85, 247, 0.12);
+          color: var(--text-secondary, #cbd5e1);
+          cursor: pointer;
+          transition: all var(--transition-fast);
+        }
+
+        .lineage-pill:hover,
+        .lineage-pill.active {
+          background: rgba(168, 85, 247, 0.25);
+          color: #fff;
+        }
+
+        .lineage-panel {
+          margin-top: 10px;
+          padding: 12px;
+          border-radius: 8px;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .lineage-heading {
+          margin: 0 0 8px;
+          font-size: 0.8rem;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          color: var(--text-muted);
+        }
+
+        .lineage-item {
+          padding: 4px 0;
+        }
+
+        .lineage-item :global(.lineage-link) {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          color: inherit;
+          text-decoration: none;
+        }
+
+        .lineage-item :global(.lineage-link:hover .lineage-title) {
+          text-decoration: underline;
+        }
+
+        .lineage-item :global(.lineage-thumb) {
+          width: 40px;
+          height: 40px;
+          object-fit: contain;
+          image-rendering: pixelated;
+          border-radius: 4px;
+          background: rgba(0, 0, 0, 0.3);
+        }
+
+        .lineage-item :global(.lineage-title) {
+          font-size: 0.9rem;
+        }
+
+        .lineage-item :global(.lineage-author) {
+          font-size: 0.8rem;
+          color: var(--text-muted);
+        }
+
+        .lineage-muted {
+          font-size: 0.85rem;
+          color: var(--text-muted);
+          font-style: italic;
+          margin: 0;
+        }
+
+        .lineage-more {
+          margin-top: 8px;
+          font-size: 0.8rem;
+          padding: 4px 12px;
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          background: transparent;
+          color: var(--text-muted);
+          cursor: pointer;
+        }
+
+        .remixable-label {
+          font-size: 0.9rem;
+          cursor: pointer;
+          user-select: none;
         }
 
         .action-button {

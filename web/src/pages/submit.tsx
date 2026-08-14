@@ -205,7 +205,9 @@ function SubmitPageContent() {
   const [description, setDescription] = useState('');
   const [hashtags, setHashtags] = useState('');
   const [postAsHidden, setPostAsHidden] = useState(false);
-  const [allowEdit, setAllowEdit] = useState(true);
+  // Remixable (docs/artwork-provenance/ L4): default allow; ND licenses force
+  // it off (L5, mirrored server-side).
+  const [remixable, setRemixable] = useState(true);
 
   // Scaling options
   const [showScalingOptions, setShowScalingOptions] = useState(false);
@@ -228,6 +230,15 @@ function SubmitPageContent() {
   const [licenses, setLicenses] = useState<License[]>([]);
   const [selectedLicenseId, setSelectedLicenseId] = useState<number | null>(null);
   const [showLicenseOptions, setShowLicenseOptions] = useState(false);
+
+  // ND licenses legally forbid derivatives, so they force Remixable off
+  // (docs/artwork-provenance/ L5; the server 422s contradictory combos).
+  const ndLicenseSelected = licenses.some(
+    (l) => l.id === selectedLicenseId && l.identifier.includes('-ND-')
+  );
+  useEffect(() => {
+    setRemixable(!ndLicenseSelected);
+  }, [ndLicenseSelected]);
 
   // Processing state (managed locally since we use direct function calls)
   const [processingState, setProcessingState] = useState<{
@@ -360,7 +371,7 @@ function SubmitPageContent() {
     setDescription(draft.description);
     setHashtags(draft.hashtags);
     setPostAsHidden(draft.postAsHidden);
-    setAllowEdit(draft.allowEdit);
+    setRemixable(draft.remixable ?? true);
 
     // Restore scaling options
     setShowScalingOptions(draft.showScalingOptions);
@@ -460,7 +471,7 @@ function SubmitPageContent() {
         description,
         hashtags,
         postAsHidden,
-        allowEdit,
+        remixable,
         showScalingOptions,
         scalePercent,
         scaleAlgorithm,
@@ -483,7 +494,7 @@ function SubmitPageContent() {
     description,
     hashtags,
     postAsHidden,
-    allowEdit,
+    remixable,
     showScalingOptions,
     scalePercent,
     scaleAlgorithm,
@@ -636,7 +647,7 @@ function SubmitPageContent() {
     setDescription('');
     setHashtags('');
     setPostAsHidden(false);
-    setAllowEdit(true);
+    setRemixable(true);
     setScalePercent(100);
     setCustomWidth('');
     setCustomHeight('');
@@ -783,6 +794,12 @@ function SubmitPageContent() {
       if (selectedLicenseId !== null) {
         formData.append('license_id', selectedLicenseId.toString());
       }
+      // Provenance (docs/artwork-provenance/ §5.1): a website upload is by
+      // definition a file from outside the editor pipeline. Device type is
+      // server-inferred from the User-Agent.
+      formData.append('client', 'web');
+      formData.append('creation_method', 'external_file');
+      formData.append('remixable', remixable.toString());
 
       const response = await authenticatedFetch(`${API_BASE_URL}/api/post/upload`, {
         method: 'POST',
@@ -1225,7 +1242,7 @@ function SubmitPageContent() {
                 <h3 className="options-title">Upload Options</h3>
                 <div className="checkbox-group">
                   <label className="checkbox-option"><input type="checkbox" checked={postAsHidden} onChange={(e) => setPostAsHidden(e.target.checked)} /><span className="checkbox-label">Post as hidden</span></label>
-                  <label className="checkbox-option"><input type="checkbox" checked={allowEdit} onChange={(e) => setAllowEdit(e.target.checked)} /><span className="checkbox-label">Allow others to edit</span></label>
+                  <label className="checkbox-option" title={ndLicenseSelected ? 'NoDerivatives license — this work cannot be marked Remixable' : 'Turning this off stops others from remixing this artwork'}><input type="checkbox" checked={remixable} disabled={ndLicenseSelected} onChange={(e) => setRemixable(e.target.checked)} /><span className="checkbox-label">Remixable — others may remix this artwork</span></label>
                 </div>
               </div>
 

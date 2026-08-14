@@ -19,7 +19,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSON, JSONB, UUID
 from sqlalchemy.orm import relationship, backref, validates
 
 from .db import Base
@@ -441,6 +441,19 @@ class Post(Base):
         index=True,
     )
 
+    # Provenance (docs/artwork-provenance/PLAN.md §3): client-declared, NULL =
+    # unknown (never coerced to a default). Valid values live in
+    # utils/provenance.py, app-level like Post.kind — no DB enum.
+    upload_channel = Column(String(16), nullable=True)  # 'web' | 'app' | 'api'
+    creation_method = Column(String(32), nullable=True)
+    # Whitelisted declared keys + server-reserved "_server" zone; see PLAN §3.4.
+    source_details = Column(JSONB, nullable=True)
+    # Remix permission (ADR 0003). Evaluated at publish time only; existing
+    # Lineage Links are never invalidated by later flips (ADR 0002).
+    remixable = Column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+
     # Relationships
     owner = relationship("User", back_populates="posts", foreign_keys=[owner_id])
     license = relationship("License", back_populates="posts", foreign_keys=[license_id])
@@ -459,6 +472,22 @@ class Post(Base):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
+    # Lineage (docs/artwork-provenance/PLAN.md): links where this post is the
+    # Child (its Parents, declaration order) / the Parent (its Children).
+    # passive_deletes: the DB's ON DELETE CASCADE / SET NULL rules govern.
+    parent_links = relationship(
+        "PostLineage",
+        foreign_keys="PostLineage.child_post_id",
+        order_by="PostLineage.position",
+        back_populates="child",
+        passive_deletes=True,
+    )
+    child_links = relationship(
+        "PostLineage",
+        foreign_keys="PostLineage.parent_post_id",
+        back_populates="parent",
+        passive_deletes=True,
+    )
 
     __table_args__ = (
         Index("ix_posts_hashtags", "hashtags", postgresql_using="gin"),
@@ -470,6 +499,45 @@ class Post(Base):
     def has_mkpx(self) -> bool:
         """Whether an .mkpx layers file is attached (schemas.Post reads this)."""
         return self.mkpx_file_bytes is not None
+
+
+class PostLineage(Base):
+    """Lineage Link: one row = one Child→Parent edge (both directions of the
+    same fact — never store the reverse).
+
+    Immutable once created except moderator severing (ADR 0002). parent_sqid
+    snapshots the Parent's public sqid so the link survives parent hard-delete
+    as a tombstone ("Remix of a deleted artwork"); child hard-delete cascades
+    the row away. See docs/artwork-provenance/PLAN.md §3.2.
+    """
+
+    __tablename__ = "post_lineage"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    child_post_id = Column(
+        Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    parent_post_id = Column(
+        Integer, ForeignKey("posts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    parent_sqid = Column(String(16), nullable=False)
+    position = Column(SmallInteger, nullable=False)  # declaration order, 0-based
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    child = relationship(
+        "Post", foreign_keys=[child_post_id], back_populates="parent_links"
+    )
+    parent = relationship(
+        "Post", foreign_keys=[parent_post_id], back_populates="child_links"
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "child_post_id", "parent_sqid", name="uq_post_lineage_child_parent_sqid"
+        ),
+    )
 
 
 class PostFile(Base):
