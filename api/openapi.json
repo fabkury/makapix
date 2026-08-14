@@ -1557,10 +1557,55 @@
       },
       "Body_replace_artwork_v1_post__id__replace_artwork_post": {
         "properties": {
+          "client": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client"
+          },
+          "creation_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creation Method"
+          },
           "image": {
             "contentMediaType": "application/octet-stream",
             "title": "Image",
             "type": "string"
+          },
+          "remixed_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remixed From"
+          },
+          "source_details": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Details"
           }
         },
         "required": [
@@ -1571,6 +1616,29 @@
       },
       "Body_upload_artwork_v1_post_upload_post": {
         "properties": {
+          "client": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client"
+          },
+          "creation_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creation Method"
+          },
           "description": {
             "anyOf": [
               {
@@ -1620,6 +1688,39 @@
               }
             ],
             "title": "Mkpx"
+          },
+          "remixable": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remixable"
+          },
+          "remixed_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remixed From"
+          },
+          "source_details": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Details"
           },
           "title": {
             "maxLength": 128,
@@ -2999,6 +3100,57 @@
         "title": "LicenseList",
         "type": "object"
       },
+      "LineageParentSlot": {
+        "description": "One declared Parent of a post, in declaration order (PLAN.md §5.5).\n\nNon-available slots carry no identifying fields: 'unavailable' means the\nparent exists but is not visible to the viewer (identity withheld);\n'deleted' is the tombstone for a deleted parent.",
+        "properties": {
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "post": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Post"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "enum": [
+              "available",
+              "unavailable",
+              "deleted"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "position",
+          "state"
+        ],
+        "title": "LineageParentSlot",
+        "type": "object"
+      },
+      "LineageParentsResponse": {
+        "description": "Ordered Parent slots of a post (GET /post/{id}/parents).",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LineageParentSlot"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "LineageParentsResponse",
+        "type": "object"
+      },
       "LoginRequest": {
         "description": "User login request - email and password.",
         "properties": {
@@ -3820,6 +3972,33 @@
         "title": "Page[Playlist]",
         "type": "object"
       },
+      "Page_PostAdmin_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PostAdmin"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "Page[PostAdmin]",
+        "type": "object"
+      },
       "Page_Post_": {
         "properties": {
           "items": {
@@ -3872,6 +4051,33 @@
           "items"
         ],
         "title": "Page[PulseItem]",
+        "type": "object"
+      },
+      "Page_RemixReceivedItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RemixReceivedItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "Page[RemixReceivedItem]",
         "type": "object"
       },
       "Page_Report_": {
@@ -4783,6 +4989,11 @@
             "title": "Artwork Modified At",
             "type": "string"
           },
+          "child_count": {
+            "default": 0,
+            "title": "Child Count",
+            "type": "integer"
+          },
           "comment_count": {
             "default": 0,
             "title": "Comment Count",
@@ -4970,6 +5181,11 @@
             "title": "Owner Id",
             "type": "integer"
           },
+          "parent_count": {
+            "default": 0,
+            "title": "Parent Count",
+            "type": "integer"
+          },
           "promoted": {
             "title": "Promoted",
             "type": "boolean"
@@ -4998,6 +5214,11 @@
             "default": 0,
             "title": "Reaction Count",
             "type": "integer"
+          },
+          "remixable": {
+            "default": true,
+            "title": "Remixable",
+            "type": "boolean"
           },
           "storage_key": {
             "format": "uuid",
@@ -5093,6 +5314,363 @@
         "title": "Post",
         "type": "object"
       },
+      "PostAdmin": {
+        "description": "Post + internal provenance, for moderator/admin endpoints.",
+        "properties": {
+          "alpha_actual": {
+            "default": false,
+            "title": "Alpha Actual",
+            "type": "boolean"
+          },
+          "alpha_meta": {
+            "default": false,
+            "title": "Alpha Meta",
+            "type": "boolean"
+          },
+          "art_url": {
+            "title": "Art Url",
+            "type": "string"
+          },
+          "artwork_modified_at": {
+            "format": "date-time",
+            "title": "Artwork Modified At",
+            "type": "string"
+          },
+          "child_count": {
+            "default": 0,
+            "title": "Child Count",
+            "type": "integer"
+          },
+          "comment_count": {
+            "default": 0,
+            "title": "Comment Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deleted_by_user": {
+            "default": false,
+            "title": "Deleted By User",
+            "type": "boolean"
+          },
+          "deleted_by_user_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted By User Date"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dwell_time_ms": {
+            "default": 30000,
+            "title": "Dwell Time Ms",
+            "type": "integer"
+          },
+          "files": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PostFile"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "frame_count": {
+            "default": 1,
+            "title": "Frame Count",
+            "type": "integer"
+          },
+          "has_mkpx": {
+            "default": false,
+            "title": "Has Mkpx",
+            "type": "boolean"
+          },
+          "hashtags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Hashtags",
+            "type": "array"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "hidden_by_mod": {
+            "title": "Hidden By Mod",
+            "type": "boolean"
+          },
+          "hidden_by_user": {
+            "title": "Hidden By User",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "artwork",
+            "title": "Kind",
+            "type": "string"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/License"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "license_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Id"
+          },
+          "max_frame_duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Frame Duration Ms"
+          },
+          "metadata_modified_at": {
+            "format": "date-time",
+            "title": "Metadata Modified At",
+            "type": "string"
+          },
+          "min_frame_duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Frame Duration Ms"
+          },
+          "mkpx_attached_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mkpx Attached At"
+          },
+          "mkpx_file_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mkpx File Bytes"
+          },
+          "mod_hashtags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Mod Hashtags",
+            "type": "array"
+          },
+          "non_conformant": {
+            "title": "Non Conformant",
+            "type": "boolean"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserPublic"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "owner_id": {
+            "title": "Owner Id",
+            "type": "integer"
+          },
+          "parent_count": {
+            "default": 0,
+            "title": "Parent Count",
+            "type": "integer"
+          },
+          "promoted": {
+            "title": "Promoted",
+            "type": "boolean"
+          },
+          "promoted_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promoted Category"
+          },
+          "provenance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PostProvenance"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "public_sqid": {
+            "title": "Public Sqid",
+            "type": "string"
+          },
+          "public_visibility": {
+            "default": false,
+            "title": "Public Visibility",
+            "type": "boolean"
+          },
+          "reaction_count": {
+            "default": 0,
+            "title": "Reaction Count",
+            "type": "integer"
+          },
+          "remixable": {
+            "default": true,
+            "title": "Remixable",
+            "type": "boolean"
+          },
+          "storage_key": {
+            "format": "uuid",
+            "title": "Storage Key",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "total_duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Duration Ms"
+          },
+          "transparency_actual": {
+            "default": false,
+            "title": "Transparency Actual",
+            "type": "boolean"
+          },
+          "transparency_meta": {
+            "default": false,
+            "title": "Transparency Meta",
+            "type": "boolean"
+          },
+          "unique_colors": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unique Colors"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "user_has_liked": {
+            "default": false,
+            "title": "User Has Liked",
+            "type": "boolean"
+          },
+          "view_count": {
+            "default": 0,
+            "title": "View Count",
+            "type": "integer"
+          },
+          "visible": {
+            "title": "Visible",
+            "type": "boolean"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "storage_key",
+          "public_sqid",
+          "kind",
+          "owner_id",
+          "title",
+          "art_url",
+          "width",
+          "height",
+          "metadata_modified_at",
+          "artwork_modified_at",
+          "visible",
+          "hidden_by_user",
+          "hidden_by_mod",
+          "non_conformant",
+          "promoted",
+          "created_at"
+        ],
+        "title": "PostAdmin",
+        "type": "object"
+      },
       "PostFile": {
         "description": "File variant for a post.\n\nNon-native variants are server-side re-encodes of the native file.\nAnimated variants can contain fewer frames than the post's frame_count\n(consecutive duplicate frames merge on encode, durations are summed;\nplayback is visually identical).",
         "properties": {
@@ -5115,6 +5693,55 @@
           "is_native"
         ],
         "title": "PostFile",
+        "type": "object"
+      },
+      "PostProvenance": {
+        "description": "Internal provenance detail — mod/admin surfaces ONLY (D3 remnant:\nchannel/method/details never enter the public Post schema).",
+        "properties": {
+          "creation_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creation Method"
+          },
+          "parent_sqids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Parent Sqids",
+            "type": "array"
+          },
+          "source_details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Details"
+          },
+          "upload_channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upload Channel"
+          }
+        },
+        "title": "PostProvenance",
         "type": "object"
       },
       "PostStatsListItem": {
@@ -5425,6 +6052,17 @@
             ],
             "title": "Hidden By User"
           },
+          "remixable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remixable"
+          },
           "title": {
             "anyOf": [
               {
@@ -5607,6 +6245,17 @@
             "title": "Created At",
             "type": "string"
           },
+          "creation_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creation Method"
+          },
           "emoji": {
             "anyOf": [
               {
@@ -5716,6 +6365,17 @@
             ],
             "title": "Type",
             "type": "string"
+          },
+          "upload_channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upload Channel"
           }
         },
         "required": [
@@ -6135,6 +6795,27 @@
           "handle"
         ],
         "title": "RegisterResponse",
+        "type": "object"
+      },
+      "RemixReceivedItem": {
+        "description": "A viewer-visible Remix of one of the caller's works (GET /me/remixes).",
+        "properties": {
+          "my_parent_sqids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "My Parent Sqids",
+            "type": "array"
+          },
+          "post": {
+            "$ref": "#/components/schemas/Post"
+          }
+        },
+        "required": [
+          "post",
+          "my_parent_sqids"
+        ],
+        "title": "RemixReceivedItem",
         "type": "object"
       },
       "ReorderHighlightsRequest": {
@@ -11875,6 +12556,47 @@
         ]
       }
     },
+    "/v1/admin/lineage/{link_id}": {
+      "delete": {
+        "description": "Sever a Lineage Link (moderator only) — the ONLY way a link is ever\nremoved besides child hard-delete (ADR 0002). The severed link is\naudit-trailed both in the child's ``_server.severed[]`` zone and in the\nmoderation audit log (Q2 tooling: false-parent claims are a harassment\nvector).",
+        "operationId": "sever_lineage_link_v1_admin_lineage__link_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "link_id",
+            "required": true,
+            "schema": {
+              "title": "Link Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Sever Lineage Link",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
     "/v1/admin/online-players": {
       "get": {
         "description": "Get list of currently online players (moderator only).\n\nReturns players with connection_status='online'.",
@@ -12075,7 +12797,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Page_Post_"
+                  "$ref": "#/components/schemas/Page_PostAdmin_"
                 }
               }
             },
@@ -12237,7 +12959,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Page_Post_"
+                  "$ref": "#/components/schemas/Page_PostAdmin_"
                 }
               }
             },
@@ -16036,6 +16758,73 @@
         ]
       }
     },
+    "/v1/me/remixes": {
+      "get": {
+        "description": "Aggregate \"Remixes of my works\" view, newest first (PLAN.md L12/§5.5).\n\nLists viewer-visible Children of any post the caller owns; each item names\nwhich of the caller's works it declares as Parents. Standard visibility\nrules apply — a remixer who hides their Remix drops out of this list.",
+        "operationId": "list_remixes_of_my_works_v1_me_remixes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_RemixReceivedItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Remixes Of My Works",
+        "tags": [
+          "Me"
+        ]
+      }
+    },
     "/v1/p/{public_sqid}": {
       "get": {
         "description": "Get post by public Sqids ID (canonical URL).\n\nThis is the canonical URL for posts sitewide.",
@@ -17979,6 +18768,82 @@
         ]
       }
     },
+    "/v1/post/{id}/children": {
+      "get": {
+        "description": "Viewer-visible Children (Remixes) of a post, newest first (L8/L10).\n\nInvisible children are filtered out entirely — no placeholders (the\nquery predicate mirrors can_access_post: own posts always show; others\nmust be visible, unhidden, and approved-or-promoted; mods see all\nnon-deleted).",
+        "operationId": "list_post_children_v1_post__id__children_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_Post_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Post Children",
+        "tags": [
+          "Posts"
+        ]
+      }
+    },
     "/v1/post/{id}/comments": {
       "get": {
         "description": "List comments for a post.\n\nReturns comments with guest names for anonymous users.\nModerators can see hidden comments; regular users cannot.\nFilters out comments with invalid depth (> 2) to prevent widget errors.\nDeleted comments are filtered out unless they have child comments (to maintain thread structure).",
@@ -18384,6 +19249,54 @@
         "tags": [
           "Posts",
           "Admin"
+        ]
+      }
+    },
+    "/v1/post/{id}/parents": {
+      "get": {
+        "description": "Ordered Parent slots of a post (login-gated, L8).\n\nVisibility (L10): a parent that exists but isn't visible to the viewer\nyields an anonymous 'unavailable' slot — no identity leaked; a deleted\nparent (soft-deleted row or hard-delete tombstone) yields 'deleted'.",
+        "operationId": "list_post_parents_v1_post__id__parents_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LineageParentsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Post Parents",
+        "tags": [
+          "Posts"
         ]
       }
     },

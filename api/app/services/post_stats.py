@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 if TYPE_CHECKING:
@@ -77,15 +77,55 @@ def annotate_posts_with_counts(
         )
         user_liked_posts = {row[0] for row in user_likes}
 
+    # Lineage counts (docs/artwork-provenance/PLAN.md §5.6):
+    # parent_count = ALL Lineage Links incl. tombstones (the "is a Remix" fact);
+    # child_count = publicly-visible children only (matches can_access_post's
+    # anonymous branch: not deleted/hidden, visible, approved-or-promoted).
+    parent_counts = (
+        db.query(
+            models.PostLineage.child_post_id,
+            func.count(models.PostLineage.id).label("count"),
+        )
+        .filter(models.PostLineage.child_post_id.in_(post_ids))
+        .group_by(models.PostLineage.child_post_id)
+        .all()
+    )
+    child_counts = (
+        db.query(
+            models.PostLineage.parent_post_id,
+            func.count(models.PostLineage.id).label("count"),
+        )
+        .join(models.Post, models.Post.id == models.PostLineage.child_post_id)
+        .filter(
+            models.PostLineage.parent_post_id.in_(post_ids),
+            and_(
+                models.Post.deleted_by_user == False,
+                models.Post.visible == True,
+                models.Post.hidden_by_user == False,
+                models.Post.hidden_by_mod == False,
+                or_(
+                    models.Post.public_visibility == True,
+                    models.Post.promoted == True,
+                ),
+            ),
+        )
+        .group_by(models.PostLineage.parent_post_id)
+        .all()
+    )
+
     # Create lookup dictionaries
     reaction_count_map = {post_id: count for post_id, count in reaction_counts}
     comment_count_map = {post_id: count for post_id, count in comment_counts}
+    parent_count_map = {post_id: count for post_id, count in parent_counts}
+    child_count_map = {post_id: count for post_id, count in child_counts}
 
     # Attach counts and liked status to posts
     for post in posts:
         post.reaction_count = reaction_count_map.get(post.id, 0)
         post.comment_count = comment_count_map.get(post.id, 0)
         post.user_has_liked = post.id in user_liked_posts
+        post.parent_count = parent_count_map.get(post.id, 0)
+        post.child_count = child_count_map.get(post.id, 0)
 
     return posts
 

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 from .. import models, schemas
 from ..auth import get_current_user, get_current_user_optional
 from ..deps import get_db
+from ..errors import AppError, ErrorCode
 from ..utils.visibility import can_access_post
 from ..utils.site_tracking import record_site_event
 from ..vault import (
@@ -147,6 +148,19 @@ def download_mkpx_by_sqid(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
         )
+
+    # Remixable gate (docs/artwork-provenance/PLAN.md L11): the layers file
+    # is the master remix material, so when the artist disallows remixes only
+    # the owner and moderators may fetch it. Raster art stays Caddy-static
+    # and ungated by design — accepted in ADR 0001's trust model.
+    if not post.remixable and post.owner_id != current_user.id:
+        roles = current_user.roles or []
+        if "moderator" not in roles and "owner" not in roles:
+            raise AppError(
+                ErrorCode.not_remixable,
+                "The artist does not allow remixes of this work.",
+                status.HTTP_403_FORBIDDEN,
+            )
 
     if post.mkpx_file_bytes is None:
         raise HTTPException(

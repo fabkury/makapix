@@ -19,6 +19,33 @@ _Avoid_: viewer (when identity is meant), unique
 **Unique Viewers**:
 The number of distinct Visitors in a window. Exact within a single day; any cross-day figure is an approximation and must be labeled as such.
 
+## Artwork lineage
+
+**Remix**:
+An artwork with at least one recorded Parent. Also the user-facing word (badges, buttons, notifications).
+_Avoid_: fork, derivative, edit (as a noun)
+
+**Original**:
+An artwork with no recorded Parents — meaning "not declared a remix", not a certified from-scratch claim (that stronger claim is a creation-method assertion, separate from lineage).
+
+**Parent**:
+An artwork a Remix was declared to be created from. One artwork can have multiple Parents, all equal in standing (declaration order is preserved for display).
+_Avoid_: base, primary parent, source (in lineage context)
+
+**Child**:
+A Remix of a given artwork, seen from that artwork's side.
+
+**Lineage Link**:
+A single stored connection between one Child and one Parent; "has parent" and "has child" are the two directions of the same link, never two separate records. Links connect Club artworks only.
+_Avoid_: has_parent/has_child (as distinct things), edge (user-facing)
+
+**Lineage**:
+The set of artworks reachable from an artwork through Lineage Links, in either direction.
+
+**Remixable**:
+The permission state of an artwork whose owner allows others to create Remixes of it. Remixes created while their Parent was Remixable stay legitimate forever, regardless of later permission changes.
+_Avoid_: open, public (for this meaning)
+
 ## Devices
 
 **Player**:

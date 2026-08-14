@@ -45,3 +45,6 @@ class NotificationType(StrEnum):
     MODERATOR_REVOKED = "moderator_revoked"
     NEW_REPORT = "new_report"
     REPORT_RESOLVED = "report_resolved"
+    # A Remix of the recipient's artwork was published; content fields point
+    # at the child (the new Remix), actor is the remixer (PLAN.md §6, L12).
+    REMIX = "remix"

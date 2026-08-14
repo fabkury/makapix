@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
@@ -440,13 +440,40 @@ def recent_profiles(
     )
 
 
-@router.get("/pending-approval", response_model=schemas.Page[schemas.Post])
+def _admin_post_items(db: Session, posts: list[models.Post]) -> list[schemas.PostAdmin]:
+    """Serialize posts for mod surfaces with the internal provenance object
+    (docs/artwork-provenance/PLAN.md §5.6). Lineage links batch-loaded."""
+    sqids_by_child: dict[int, list[str]] = {}
+    if posts:
+        rows = (
+            db.query(models.PostLineage.child_post_id, models.PostLineage.parent_sqid)
+            .filter(models.PostLineage.child_post_id.in_([p.id for p in posts]))
+            .order_by(models.PostLineage.position)
+            .all()
+        )
+        for child_id, parent_sqid in rows:
+            sqids_by_child.setdefault(child_id, []).append(parent_sqid)
+
+    items = []
+    for p in posts:
+        item = schemas.PostAdmin.model_validate(p)
+        item.provenance = schemas.PostProvenance(
+            upload_channel=p.upload_channel,
+            creation_method=p.creation_method,
+            source_details=p.source_details,
+            parent_sqids=sqids_by_child.get(p.id, []),
+        )
+        items.append(item)
+    return items
+
+
+@router.get("/pending-approval", response_model=schemas.Page[schemas.PostAdmin])
 def pending_approval(
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
     _moderator: models.User = Depends(require_moderator),
-) -> schemas.Page[schemas.Post]:
+) -> schemas.Page[schemas.PostAdmin]:
     """
     List posts pending public visibility approval (moderator only).
 
@@ -473,18 +500,18 @@ def pending_approval(
     page_data = create_page_response(posts, limit, cursor)
 
     return schemas.Page(
-        items=[schemas.Post.model_validate(p) for p in page_data["items"]],
+        items=_admin_post_items(db, page_data["items"]),
         next_cursor=page_data["next_cursor"],
     )
 
 
-@router.get("/recent-posts", response_model=schemas.Page[schemas.Post])
+@router.get("/recent-posts", response_model=schemas.Page[schemas.PostAdmin])
 def recent_posts(
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
     _moderator: models.User = Depends(require_moderator),
-) -> schemas.Page[schemas.Post]:
+) -> schemas.Page[schemas.PostAdmin]:
     """
     Recent posts (moderator only).
     """
@@ -502,9 +529,59 @@ def recent_posts(
     page_data = create_page_response(posts, limit, cursor)
 
     return schemas.Page(
-        items=[schemas.Post.model_validate(p) for p in page_data["items"]],
+        items=_admin_post_items(db, page_data["items"]),
         next_cursor=page_data["next_cursor"],
     )
+
+
+@router.delete("/lineage/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
+def sever_lineage_link(
+    link_id: int,
+    moderator: models.User = Depends(require_moderator),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Sever a Lineage Link (moderator only) — the ONLY way a link is ever
+    removed besides child hard-delete (ADR 0002). The severed link is
+    audit-trailed both in the child's ``_server.severed[]`` zone and in the
+    moderation audit log (Q2 tooling: false-parent claims are a harassment
+    vector)."""
+    from ..utils.provenance import SERVER_ZONE_KEY
+
+    link = db.query(models.PostLineage).filter(models.PostLineage.id == link_id).first()
+    if link is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Lineage link not found"
+        )
+
+    child = db.query(models.Post).filter(models.Post.id == link.child_post_id).first()
+    if child is not None:
+        # Reassign (not mutate) the JSONB so SQLAlchemy sees the change.
+        details = dict(child.source_details or {})
+        server_zone = dict(details.get(SERVER_ZONE_KEY) or {})
+        severed = list(server_zone.get("severed") or [])
+        severed.append(
+            {
+                "at": datetime.now(timezone.utc).isoformat(),
+                "parent_sqid": link.parent_sqid,
+                "by_user_id": moderator.id,
+            }
+        )
+        server_zone["severed"] = severed
+        details[SERVER_ZONE_KEY] = server_zone
+        child.source_details = details
+
+    log_moderation_action(
+        db,
+        actor_id=moderator.id,
+        action="sever_lineage_link",
+        target_type="post",
+        target_id=link.child_post_id,
+        note=f"severed parent {link.parent_sqid}",
+    )
+
+    db.delete(link)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 PULSE_TYPES = ("post", "comment", "post_reaction", "comment_like", "player", "profile")
@@ -538,6 +615,9 @@ def _pulse_post_context(post: models.Post | None) -> dict:
         "post_public_sqid": post.public_sqid,
         "post_title": post.title,
         "post_art_url": post.art_url,
+        # Provenance at a glance (docs/artwork-provenance/ §5.6)
+        "upload_channel": post.upload_channel,
+        "creation_method": post.creation_method,
     }
 
 

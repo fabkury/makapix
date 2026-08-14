@@ -1,180 +1,200 @@
-# Artwork Provenance — Design & Plan
+# Artwork Provenance & Lineage — Design & Plan (v2)
 
-**Status:** DESIGN APPROVED (owner decisions 2026-07-19) — implementation not started.
-**Owner decisions collected:** 2026-07-19. **Source of truth:** this folder. Read this file before touching provenance code; update `PROGRESS.md` after working.
+**Status:** DESIGN v2 APPROVED (owner decisions 2026-08-14) — Phase 1 (server) implementation started 2026-08-14.
+**Supersedes:** the 2026-07-19 v1 design *in part* — D3 (internal-only) and D6 (single remix FK) are superseded; see §2. **Source of truth:** this folder. Read this file before touching provenance or lineage code; update `PROGRESS.md` after working.
+**Vocabulary:** canonical terms (Remix, Original, Parent, Child, Lineage Link, Lineage, Remixable) are defined in the repo-root `CONTEXT.md` — use them.
+**ADRs:** the three decisions that outlive this effort are recorded in `docs/adr/0001..0003`.
 
 ## 1. Goal
 
-Every uploaded artwork records, internally, where it came from, preserving at minimum the distinction between:
+1. **Source** (v1 goal, kept): every uploaded artwork records where it came from — upload channel, creation method (hand-drawn in the Makapix Editor / editor with import / external file), upload device type, plus optional detail.
+2. **Lineage** (expanded): a published remix records the Club artworks it was remixed from — *multiple* Parents allowed, browsable in both directions.
+3. **Permission**: artists control whether their work is Remixable (at upload and any time after); remixes created while a work was Remixable stay legitimate forever.
+4. **Awareness**: parent owners are notified when a Remix of their work is published, and can browse all Remixes of all their works.
 
-1. Hand-drawn works made in the Makapix Editor (iOS/Android app)
-2. Works made in the Makapix Editor that used the **import** tool
-3. Files created elsewhere and uploaded directly (website or app)
+## 2. Decisions
 
-Plus optional richer detail (editor version, imported format, remix lineage).
+### 2.1 v1 decisions (2026-07-19) — status
 
-## 2. Owner decisions (2026-07-19)
+| # | Decision | Status |
+|---|----------|--------|
+| D1 | Two orthogonal enums + details JSON on `posts`: `upload_channel`, `creation_method`, `source_details` JSONB; NULL = unknown | **Kept** |
+| D2 | Client-declared, trusted; server records observed signals under `source_details._server`; mismatch = moderation smell | **Kept** |
+| D3 | Internal-only visibility | **SUPERSEDED** by L1/L8 (ADR 0001): lineage + Remixable are public; channel/method/details remain internal-only |
+| D4 | Backfill: mkpx-bearing posts → `app`/`editor`, inferred-marked; everything else stays NULL | **Kept** |
+| D5 | Replace-artwork updates provenance (describes current bytes; declared history snapshotted to `_server.replaced[]`) | **Kept**, amended: lineage is exempt — links are append-only through replace (L9, ADR 0002) |
+| D6 | Single nullable `remixed_from_post_id` FK, best-effort resolution | **SUPERSEDED** by L2 (ADR 0002): `post_lineage` table, multi-parent, fail-closed |
+| D7 | AI-generated labeling out of scope | **Kept** |
+| D8 | `.mkpx` blob stays opaque; nothing parsed server-side | **Kept** (the Remixable download gate in L11 is authz policy, not format change) |
+
+### 2.2 v2 decisions (owner, 2026-08-14)
 
 | # | Decision |
 |---|----------|
-| D1 | **Data model:** two orthogonal enums + details JSON on `posts` — `upload_channel` (web/app/api) and `creation_method` (editor_hand_drawn/editor_import/editor/external_file), plus `source_details` JSONB. NULL = unknown. |
-| D2 | **Trust model:** provenance is client-declared and accepted as-is, but the server also records observed signals (declared client string, User-Agent, mkpx-at-upload) under a reserved `_server` key in `source_details`. Mismatch is a moderation smell, not an error. |
-| D3 | **Visibility: internal only.** Exposed to moderators/admins (mod dashboard, admin endpoints). NOT added to public `schemas.Post`. No public badges. Can be made public later once the data is trusted. |
-| D4 | **Backfill:** one-time inference — posts with an attached `.mkpx` get `upload_channel='app'`, `creation_method='editor'` (import status unknowable), marked as inferred. All other existing posts stay NULL/unknown. |
-| D5 | **Replace-artwork updates provenance.** Provenance describes the *current* artwork bytes. `POST /post/{id}/replace-artwork` accepts the same optional provenance fields; the pre-replace declared values are snapshotted into `_server.replaced[]`. If the replacing client declares nothing, `creation_method` resets to NULL (honest unknown), it does NOT carry over. |
-| D6 | **Remix/edit lineage in scope:** nullable `remixed_from_post_id` FK (ON DELETE SET NULL) + sqid snapshot in `source_details`, closing the gap named in the app's C3 edit-and-remix plan ("server has none — provenance by convention"). |
-| D7 | AI-generated labeling **out of scope** (owner deselected). Columns are strings, so a future value is additive — nothing reserved now. |
-| D8 | The `.mkpx` blob stays **opaque** (frozen mkpx-upload contract). Its internal `META` chunk (`software`, `author`, …) is never parsed server-side; anything we want must arrive as explicit upload fields. |
+| L1 | **Public declared-only lineage** (ADR 0001): lineage edges come from client declarations; shown publicly; moderator link-severing ships in v1. |
+| L2 | **Multi-parent model**: `post_lineage` edge table; all Parents equal in standing, declaration order preserved; Parents are Club artworks only; duplicates collapse; self-loops and cycles rejected; cap 8 Parents per child. |
+| L3 | **Publish-time enforcement** (ADR 0002): declared parent must resolve to an existing post row (soft-deleted counts, hard-deleted doesn't) with `remixable = true`, else 422 — fail closed. Links, once created, are never invalidated by later flips. |
+| L4 | **Remixable defaults allow, legacy included** (ADR 0003): `posts.remixable` bool NOT NULL default true; legacy backfilled true; announced via banner, no grace period. Owner may always remix own work regardless of flag. Owner toggles at upload + `PATCH /post/{id}`; mods can force-disallow. |
+| L5 | **ND license coupling** (ADR 0003): NoDerivatives-licensed posts (`CC-BY-ND-4.0`, `CC-BY-NC-ND-4.0`) are forced/backfilled `remixable = false`; contradictory writes → 422. SA/NC implications for the *child's* license are out of scope v1. |
+| L6 | **ToS clause** ships with the feature (+ `TERMS_VERSION` bump): Remixable = explicit in-Club remix license grant, grandfathered (§10.3 has draft wording). |
+| L7 | **Device type**: upload-device only, values `desktop` / `mobile` / `tablet` (reuse `view_tracking.DeviceType` minus `player`; no laptop/smartphone split — not honestly observable). Client-declared via `source_details.device_type`; server cross-check from User-Agent in `_server.device_type`. |
+| L8 | **Visibility gating**: Remix badge + `remixable` + counts are public (`schemas.Post`, everyone incl. anonymous); navigable parent/children lists require login. |
+| L9 | **Append-only links** (ADR 0002): replace-artwork never removes links, may add (permission-checked at replace time); child's owner cannot remove links; only moderators sever (audit entry in `_server.severed[]`). |
+| L10 | **Deleted/hidden handling**: links survive parent deletion (soft window intact → undelete restores; hard delete → FK nulls, `parent_sqid` snapshot remains → "Remix of a deleted artwork" tombstone). Lineage surfaces filter by standard viewer visibility; an invisible parent shows as an anonymous "unavailable" slot (no sqid leaked); invisible children don't appear; counts count viewer-visible items. |
+| L11 | **mkpx gate**: `remixable = false` ⇒ `GET /d/{sqid}.mkpx` returns 403 for everyone except the owner and moderators. (Raster art is Caddy-static and cannot be gated — accepted.) |
+| L12 | **Awareness**: new `remix` notification (SSE, existing service): on publish of a child, one notification per distinct parent owner; self-remix generates none; actor = remixer; links to the child. Plus a private "remixes of my works" aggregate page in v1. |
+| L13 | **Web declares nothing in v1**: the website gets the Remixable toggle (submit + edit) but no parent-declaration field; declaration is app/API-only for now. |
+| L14 | **Docs**: this effort amended in place; ADRs 0001–0003 created; message `0002-server-lineage-amendment` supersedes parts of 0001 (app hasn't replied, nothing built on their side). |
+| L15 | **Bulk-import relicense** (owner, same day): the Dec-2025/Jan-2026 founding import was blanket-stamped `CC-BY-ND-4.0` (2644 posts / 13 owners on prod ≈ 91% of catalog), which under L5 would launch the back-catalog locked. Owner holds the rights and chose: those posts (ND + `created_at < 2026-02-01`, preserving later deliberate ND choices) drop to **no license / all rights reserved** with `remixable = true` — in-Club remixing via the ToS grant; off-Club rights go *down*, not up. `api/scripts/relicense_bulk_import.py` (idempotent, dry-run flag); run on dev 2026-08-14, run on prod at deploy (§9). |
 
-## 3. Non-goals
+## 3. Data model
 
-- Public display / badges (D3 — revisit later).
-- Cryptographic or enforced verification of claims (D2 — trust + record).
-- Parsing `.mkpx` (D8).
-- AI-generated category (D7).
-- C2PA/content-credentials style signed provenance.
-
-## 4. Data model
-
-New columns on `posts` (all nullable — NULL means *unknown*, which is the state of all legacy rows and of uploads from clients that don't declare):
+### 3.1 New columns on `posts`
 
 ```python
 # api/app/models.py — class Post
-upload_channel = Column(String(16), nullable=True)   # 'web' | 'app' | 'api'
-creation_method = Column(String(32), nullable=True)  # see table below
+upload_channel = Column(String(16), nullable=True)    # 'web' | 'app' | 'api'   (v1, unchanged)
+creation_method = Column(String(32), nullable=True)   # see §3.3               (v1, unchanged)
 source_details = Column(postgresql.JSONB, nullable=True)
-remixed_from_post_id = Column(
-    Integer, ForeignKey("posts.id", ondelete="SET NULL"), nullable=True, index=True
-)
+remixable = Column(Boolean, nullable=False, server_default=sa.true())
 ```
 
-Validation is app-level (constants in `api/app/utils/provenance.py`), matching how `Post.kind` works — no DB enum/CHECK, so future values are additive without a migration.
+The migration backfills `remixable = false` where the post's license is ND (L5). No `remixed_from_post_id` column — D6 was never implemented; lineage lives in `post_lineage`.
 
-### `creation_method` values
+### 3.2 New table `post_lineage`
 
-| Value | Meaning |
-|-------|---------|
-| `editor_hand_drawn` | Made in the Makapix Editor; the import tool was **never** used in the work's history (sticky bit — see §6.3). |
-| `editor_import` | Made in the Makapix Editor, but the import tool was used at some point (including seeding the canvas from an existing Club post — see §6.4). |
-| `editor` | Made in the Makapix Editor; hand-drawn vs import **unknown**. Used by the backfill (D4) and by server-side inference when a `.mkpx` is present but nothing was declared. Clients should not send this; they know better. |
-| `external_file` | File supplied from outside the editor pipeline at upload time (website file picker, app gallery pick, script). |
-| NULL | Unknown (legacy rows; clients that declared nothing). |
+```python
+class PostLineage(Base):
+    __tablename__ = "post_lineage"
+    id = Column(Integer, primary_key=True)
+    child_post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    parent_post_id = Column(Integer, ForeignKey("posts.id", ondelete="SET NULL"), nullable=True, index=True)
+    parent_sqid = Column(String(16), nullable=False)   # snapshot; survives parent hard-delete (tombstone)
+    position = Column(SmallInteger, nullable=False)    # declaration order, 0-based
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    __table_args__ = (UniqueConstraint("child_post_id", "parent_sqid"),)
+```
 
-### `upload_channel` values
+- Child hard-delete cascades its links away (a deleted remix needs no lineage rows); parent hard-delete nulls the FK and leaves the tombstone.
+- "has parent" and "has child" are the two directions of one row — never store both.
 
-| Value | Meaning |
-|-------|---------|
-| `web` | Declared `client` starts with `web`. |
-| `app` | Declared `client` starts with `app`. Also set by the backfill for mkpx-bearing posts. |
-| `api` | Reserved — set only if a client explicitly declares it. We cannot distinguish "script" from "old app version" by absence, so **absence ≠ api and absence ≠ web**; absence is NULL. |
+### 3.3 `creation_method` values — unchanged from v1
 
-### `source_details` shape
+`editor_hand_drawn` (sticky: import never used in the work's history) | `editor_import` (import used at some point; remix-seeding counts as import) | `editor` (server-inferred only) | `external_file` | NULL = unknown.
 
-One JSONB object with two zones:
+### 3.4 `source_details` shape
+
+Client-declared whitelisted keys: `editor_version`, `editor_platform` (`ios`|`android`), `imported_format`, **`device_type`** (`desktop`|`mobile`|`tablet` — the *upload* device, L7). Server zone `_server` (clients can never set it): as v1 (`declared_client`, `user_agent`, `mkpx_at_upload`, `inferred`, `backfilled_at`, `replaced[]`), plus:
 
 ```jsonc
-{
-  // client-declared (whitelisted keys, copied from the `source_details` form field)
-  "editor_version": "1.0.12",
-  "editor_platform": "ios",          // "ios" | "android"
-  "imported_format": "png",          // when creation_method = editor_import
-
-  // server-written (reserved key; clients cannot set or overwrite it)
-  "_server": {
-    "declared_client": "app/1.0.12",     // raw `client` form field, or null
-    "user_agent": "Makapix/1.0.12 ...",  // first 256 chars, raw (internal-only data)
-    "mkpx_at_upload": true,
-    "remixed_from_sqid": "aB3xY",        // snapshot of the declared sqid (survives FK SET NULL)
-    "inferred": {"creation_method": "editor"},   // present only when server inferred
-    "backfilled_at": "2026-07-20T00:00:00Z",     // present only on backfilled rows
-    "replaced": [                                 // appended by replace-artwork (D5)
-      {"at": "...", "upload_channel": "app", "creation_method": "editor_hand_drawn",
-       "declared": {"editor_version": "1.0.12"}}
-    ]
-  }
+"_server": {
+  "device_type": "mobile",            // server-inferred from User-Agent (cross-check for declared value)
+  "severed": [                          // moderator link-severing audit (L9)
+    {"at": "...", "parent_sqid": "aB3xY", "by_user_id": 7}
+  ]
 }
 ```
 
-Rules: client `source_details` must be a JSON object ≤ 2048 bytes with scalar values; unknown keys are dropped silently; the `_server` key in client input is always discarded before merging.
+Rules unchanged: client `source_details` must be a JSON object ≤ 2048 bytes, scalar values, unknown keys dropped, `_server` in client input discarded.
 
-## 5. API contract changes (additive, backward-compatible)
+## 4. Semantics (normative)
 
-All new fields are **optional multipart form fields**. Old clients (including every app version in the wild today) send nothing and get NULL provenance — uploads never break.
+1. **NULL means unknown, never "web"** — absence of declaration is never coerced.
+2. **Channel/method/details describe the current artwork bytes** (D5); lineage describes the post's *history* and is exempt from replace-reset (L9).
+3. **Sticky import bit** and **remix-seeding counts as import** — unchanged from v1 §6. The app must persist the sticky bit *and* the accumulated parent-sqid list in the project file so declarations survive save/load (shared-matter requirement; mechanics are the app's).
+4. **Publish-time permission** (L3): for each declared parent sqid — resolve to a post row; row must exist and have `remixable = true`, else the whole request fails 422. Visibility/hiding of the parent does **not** block the link (display-time concern only). Owner declaring their own post as parent always passes (L4).
+5. **Immutability** (L9): links are created at upload or replace, and removed only by moderator severing or child hard-delete.
+6. **Cycle rejection**: at replace time, a declared parent that is the child itself or a descendant of the child is rejected (`lineage_cycle`), keeping Lineage a DAG.
+7. **Spoofability accepted, publicly** (L1): moderation is the counterweight; sever + sanction.
+8. **Remixable is a platform grant** (L6): the license field remains independent legal metadata except for the ND consistency rule (L5).
 
-### 5.1 `POST /v1/post/upload` (and legacy mount `/post/upload`) — `api/app/routers/posts.py:696`
+## 5. API contract changes (additive except where noted)
+
+### 5.1 `POST /v1/post/upload`
+
+New optional multipart form fields:
 
 | Field | Type | Semantics |
 |-------|------|-----------|
-| `client` | str ≤ 64 | e.g. `web`, `app/1.0.12`. Prefix-mapped to `upload_channel` (§4); raw value stored in `_server.declared_client`. Unrecognized prefix → channel NULL, raw still recorded. |
-| `creation_method` | str | One of `editor_hand_drawn`, `editor_import`, `external_file`. Any other value → **422 `invalid_creation_method`** (fail fast so contract drift is caught; `editor` is server-internal). |
-| `source_details` | str (JSON) | Whitelisted keys per §4. Not valid JSON object / > 2048 bytes → **422 `invalid_source_details`**. |
-| `remixed_from` | str (public_sqid) | Best-effort (D6): resolve to a live artwork post → set `remixed_from_post_id`; always snapshot the sqid into `_server.remixed_from_sqid`. Unresolvable (deleted/bad) → FK stays NULL, upload still succeeds — the source may legitimately vanish between edit-start and publish. |
+| `client` | str ≤ 64 | as v1 (`web`/`app/<ver>` prefix → channel; raw to `_server.declared_client`) |
+| `creation_method` | str | as v1; invalid → 422 `invalid_creation_method` |
+| `source_details` | str (JSON) | §3.4; invalid → 422 `invalid_source_details` (bad `device_type` value → same error) |
+| `remixed_from` | str | **comma-separated list** of parent `public_sqid`s, declaration order, ≤ 8 after dedup. Failures (422): `parent_not_found`, `remix_not_allowed` (payload names the offending sqid), `too_many_parents`. |
+| `remixable` | str bool | like `hidden_by_user`; effective default: `false` if ND license, else `true`; explicit `true` + ND license → 422 `remixable_conflicts_with_license` |
 
-Server-side inference at upload: if `creation_method` is not declared but an `mkpx` file is part of the upload → `creation_method='editor'` with `_server.inferred` marker. Declared values always win over inference.
+Server-side at upload: UA device inference into `_server.device_type`; mkpx-presence inference of `creation_method='editor'` as v1; lineage rows created inside the upload transaction; `remix` notifications dispatched after commit.
 
-### 5.2 `POST /post/{id}/replace-artwork` — `posts.py:1941`
+### 5.2 `POST /v1/post/{id}/replace-artwork`
 
-Accepts the same four fields. Behavior per D5: snapshot old declared provenance into `_server.replaced[]`, then apply the new declaration; undeclared method → NULL. (Consistent with replace already dropping the attached `.mkpx`, mkpx decision D4.)
+Gains `request: Request` (for UA) and the same five fields. Channel/method/details behave per D5 (snapshot to `_server.replaced[]`, undeclared method → NULL). `remixed_from` **appends** new links (same checks + cycle rule); existing links untouched. `remixable` here is ignored — the toggle belongs to `PATCH /post/{id}`.
 
-### 5.3 `POST /post/{id}/mkpx` (late attach) — `posts.py:1423`
+### 5.3 `PATCH /v1/post/{id}`
 
-Does **not** change `creation_method` (post-hoc attach is a weak signal); records `_server.mkpx_attached_later: true`.
+`PostUpdate` gains `remixable: bool | None`. Owner or moderator may set; `true` on an ND-licensed post → 422 `remixable_conflicts_with_license`.
 
-### 5.4 Response schemas
+### 5.4 `GET /d/{public_sqid}.mkpx`
 
-- Public `schemas.Post`: **unchanged** (D3).
-- Admin surfaces gain a `provenance` object `{upload_channel, creation_method, source_details, remixed_from_post_id, remixed_from_sqid}` on post items in `GET /admin/recent-posts`, `GET /admin/pending-approval`, and the pulse context (`admin.py:532`).
-- `make openapi` after — admin endpoints are in the committed contract.
+After the existing auth check: if the post is not Remixable and the requester is neither owner nor moderator → 403 `not_remixable` (L11).
 
-## 6. Semantics (normative)
+### 5.5 New lineage endpoints
 
-1. **NULL means unknown, never "web".** Absence of declaration must never be coerced into a channel or method.
-2. **Provenance describes the current artwork bytes** (D5). History lives in `_server.replaced[]`.
-3. **Sticky import bit:** `editor_import` means the import tool was used *at any point in the work's history*, even if 99% was repainted afterward. `editor_hand_drawn` is a strong claim: from-scratch, never imported. The app owns tracking this bit across saves/loads (presumably persisted in the project file — their call; see message 0001).
-4. **Remix seeding counts as import:** loading an existing Club post into the editor to edit/remix it makes the result `editor_import` (+ `remixed_from`), not `editor_hand_drawn`. Proposed to the app team in message 0001; they may counter-propose.
-5. **Spoofability is accepted** (D2): any API client can claim anything. That is tolerable precisely because provenance is internal-only (D3); revisit the trust model before ever making it public.
+| Endpoint | Auth | Behavior |
+|----------|------|----------|
+| `GET /v1/post/{id}/parents` | logged-in | Ordered slots: `{position, state: 'available'\|'unavailable'\|'deleted', post?: PostSummary}`. `available` = parent exists and is visible to the viewer; `unavailable` = exists but not visible (**no sqid/identity leaked**); `deleted` = tombstone. |
+| `GET /v1/post/{id}/children` | logged-in | Viewer-visible children only, newest first, paginated. No placeholders. |
+| `GET /v1/me/remixes` | logged-in | Aggregate: viewer-visible children of any of the caller's posts, newest first, paginated (each item references which of the caller's works it remixes). |
+| `DELETE /v1/lineage/{link_id}` | moderator | Severs a link; appends audit entry to the child's `_server.severed[]`. |
 
-## 7. Backfill (one-off, idempotent)
+### 5.6 Public `schemas.Post` additions (breaking D3 for lineage only)
 
-`api/scripts/backfill_provenance.py`, run via `docker exec` on dev then prod:
+- `remixable: bool`
+- `parent_count: int` — total links incl. tombstones (the "is a Remix" fact; badge = `parent_count > 0`)
+- `child_count: int` — publicly-visible children count
 
-- Target: posts where `mkpx_attached_at IS NOT NULL AND upload_channel IS NULL AND creation_method IS NULL` (idempotence guard).
-- Set `upload_channel='app'`, `creation_method='editor'`, `source_details._server = {"inferred": {...}, "backfilled_at": <ts>, "mkpx_at_upload": true}`.
-- All other rows untouched (NULL/unknown by design).
-- Print counts; dry-run flag.
+Channel, method and `source_details` stay **out** of the public schema (internal-only, D3 remnant). Admin surfaces gain the v1 `provenance` object as planned. `make openapi` after.
 
-## 8. Client work
+## 6. Notification (L12)
 
-### 8.1 Web (`web/src/pages/submit.tsx`, FormData at ~:839)
+New `NotificationType.REMIX = "remix"`. On lineage-link creation at publish: for each distinct parent owner ≠ remixer, `SocialNotificationService.create_notification(user_id=parent_owner, type=REMIX, post=child, actor=remixer)` — content fields denormalize from the *child* so the notification leads to the new Remix; existing self-skip and per-actor rate limits apply.
 
-Append `client: "web"` and `creation_method: "external_file"` (a website upload is by definition a file from outside the editor pipeline — even if it happens to be an exported editor piece, the *upload path* can't know more, and §4 semantics define it this way).
+## 7. Web work (Phase 2)
 
-### 8.2 App (Makapix Editor team — message 0001, this folder / `club-server-cr-artwork-provenance.md` in their repo)
+1. **Badge**: discreet Remix indicator (+ counts) on post cards/detail — public. Tapping opens parents/children lists — login-gated (anonymous → login prompt).
+2. **Lists**: parents/children views on the post detail page; "unavailable/deleted artwork" placeholder slots per L10.
+3. **Toggle**: Remixable checkbox on `submit.tsx` (default per license) and on the post-detail edit panel (`p/[sqid].tsx` PATCH).
+4. **Aggregate**: private `/remixes` page ("Remixes of my works").
+5. **Banner**: feature announcement (client-rendered like android-launch banner).
+6. **ToS**: add the Remixable grant + grandfather clause; bump `TERMS_VERSION` (standing invariant); wording draft in §10.3.
+7. **Mod surface**: v1 §9 provenance line on mod dashboard + link-sever button on lineage rows.
 
-Asked to send, on `/post/upload` and `/post/{id}/replace-artwork`:
-- `client=app/<version>`
-- `creation_method`: `editor_hand_drawn` / `editor_import` per the sticky bit (§6.3), `external_file` for any gallery-pick direct-upload flow
-- optional `source_details`: `editor_version`, `editor_platform`, `imported_format`
-- `remixed_from=<public_sqid>` when publishing an edit/remix of an existing Club post (C3 tie-in)
+No parent-declaration input on the web submit form in v1 (L13).
 
-All optional; no app release gating the server side.
+## 8. App-team requirements (shared-matter, server authority — message 0002)
 
-## 9. Mod surface
+1. `remixed_from` is now a comma-separated **list**; send parents in declaration order (base first).
+2. Persist the sticky import bit **and** accumulated parent sqids in the project file — declarations must survive save/load (today's `_clubSource` is in-memory only and is cleared on save-to-local/reopen).
+3. Gate "open in editor / remix" UX on the post's public `remixable` field; expect 403 on `.mkpx` download and 422 `remix_not_allowed` at publish.
+4. Send `source_details.device_type` (`mobile`|`tablet` — the app knows its form factor) along with the v1 fields (`client`, `creation_method`, `editor_version`, `editor_platform`, `imported_format`).
+5. Surface the "artist has since disabled remixes" case on publish 422.
 
-`web/src/pages/mod-dashboard.tsx` Posts tab (+ pulse view): compact provenance line/badge per post, e.g. `✏️ Editor (hand-drawn) · app 1.0.12`, `📥 Editor (import: png)`, `📁 Direct upload · web`, `— Unknown`, with `↻ remix of <sqid>` when lineage exists. Tooltip shows raw `source_details` (mods only).
+## 9. Backfill & rollout
 
-## 10. Implementation phases
+1. **Migration** sets `remixable` default true and flips ND-licensed rows to false (L5) — no separate script needed for that.
+2. **Provenance backfill** (v1 D4, unchanged): `api/scripts/backfill_provenance.py`, mkpx-bearing posts → `app`/`editor`/inferred-marked; idempotent; dry-run flag; dev then prod.
+3. **Bulk-import relicense** (L15): `python scripts/relicense_bulk_import.py` — after the migration, on each environment. Done on dev 2026-08-14; **must run on prod at deploy**, else the catalog launches ~91% locked.
+4. **Rollout order**: server (Phase 1) → web (Phase 2, incl. banner + ToS bump) → announcement → app release whenever ready (fields optional forever).
 
-1. **Server:** migration + model + `utils/provenance.py` (constants, validation, merge logic) + upload/replace/mkpx-attach endpoint changes + admin exposure + tests (`api/tests/test_artwork_provenance.py`: declared/undeclared, invalid → 422, `_server` stripping, inference, replace snapshot+reset, remix resolution incl. unresolvable-sqid, backfill idempotence, public-schema absence) + `make openapi`.
-2. **Web:** submit.tsx fields + mod-dashboard display; rebuild dev web.
-3. **Backfill on dev**; verify via mod dashboard + `make check-full`.
-4. **App team:** message 0001 (sent at design time — parallel with 1–3); iterate on their reply.
-5. **Prod:** PR develop→main, deploy, run backfill on prod.
-6. **E2E once an app build ships the fields:** verify a hand-drawn, an imported, and a remix upload land with correct provenance on dev.
+## 10. Reference
 
-## 11. Optional follow-ups (not scheduled)
+### 10.1 Implementation phases
 
-- Include channel/method in `site_events` upload `event_data` for the metrics panel.
-- Mod-dashboard filter by provenance.
-- Public exposure / badges — requires revisiting D2/D3 together.
-- "Remixes of this post" listing (the FK already supports the query).
+1. **Server** (this session): migration + models + `utils/provenance.py` + `utils/lineage.py` + endpoint changes (§5) + `remix` notification + tests (`api/tests/test_artwork_provenance.py`, `test_artwork_lineage.py`) + `make openapi`.
+2. **Web**: §7. 3. **Backfill on dev + verify.** 4. **Message 0002** (sent at design time). 5. **Prod**: PR develop→main, deploy, backfill, ToS bump live. 6. **E2E with an app build** once they ship the fields.
+
+### 10.2 Test checklist
+
+Declared/undeclared provenance; invalid method/details/device → 422; `_server` stripping; mkpx inference; device UA cross-check; replace snapshot + method reset + lineage append-only; multi-parent create incl. order, dedup, cap, self/cycle rejection; permission: non-Remixable parent → 422, flag flip after link → link persists; ND coupling (upload default, explicit-true 422, PATCH 422, migration backfill); soft-deleted parent → link intact, hard-deleted → tombstone with sqid; parents/children/me-remixes visibility filtering + placeholder states; mkpx 403 gate (owner and mod bypass); notification fan-out (distinct owners, self-skip, links to child); mod sever + audit; public schema fields present, channel/method absent; backfill idempotence.
+
+### 10.3 ToS clause draft (owner to review wording in Phase 2)
+
+> **Remixes.** Marking a work "Remixable" grants other Makapix Club members a non-exclusive license to create derivative pixel artworks ("Remixes") of it and post them on Makapix Club, with attribution recorded as the work's lineage. You can turn Remixable off at any time; Remixes lawfully created and posted while your work was Remixable remain licensed and may stay on the Club. Where a work carries a Creative Commons license, that license applies additionally; works with NoDerivatives licenses cannot be marked Remixable.
