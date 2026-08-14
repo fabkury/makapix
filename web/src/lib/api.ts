@@ -790,6 +790,44 @@ export async function unblockUser(publicSqid: string): Promise<void> {
   }
 }
 
+/** One entry of GET /me/remixes: a visible Remix of one of the caller's
+ * works, plus which of the caller's works it declares as Parents
+ * (docs/artwork-provenance/ L12). */
+export interface RemixReceivedItem {
+  post: {
+    id: number;
+    public_sqid: string;
+    title: string;
+    art_url: string;
+    created_at: string;
+    parent_count?: number;
+    child_count?: number;
+    owner?: {
+      handle: string;
+      public_sqid: string;
+      avatar_url?: string | null;
+    } | null;
+  };
+  my_parent_sqids: string[];
+}
+
+export interface RemixesReceivedPage {
+  items: RemixReceivedItem[];
+  next_cursor: string | null;
+}
+
+/** Remixes of any of the caller's works, newest first. Auth required. */
+export async function getMyRemixes(
+  cursor?: string | null,
+  limit = 50,
+): Promise<RemixesReceivedPage> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) params.set("cursor", cursor);
+  return authenticatedRequestJson<RemixesReceivedPage>(
+    `/api/me/remixes?${params.toString()}`,
+  );
+}
+
 /** The caller's blocked-users list (cursor-paginated). Auth required. */
 export async function getMyBlocks(
   cursor?: string | null,

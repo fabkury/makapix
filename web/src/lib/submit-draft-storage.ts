@@ -28,7 +28,9 @@ export interface SubmitDraftData {
   description: string;
   hashtags: string;
   postAsHidden: boolean;
-  allowEdit: boolean;
+  // Remix permission (docs/artwork-provenance/). Pre-lineage drafts stored
+  // this as `allowEdit`; restore falls back to true when absent.
+  remixable: boolean;
   // Scaling options
   showScalingOptions: boolean;
   scalePercent: number;

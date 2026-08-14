@@ -1,5 +1,15 @@
 # Artwork Provenance — Progress
 
+## 2026-08-14 — Phase 2 (web) implemented on dev
+- Post detail (`p/[sqid].tsx`): public Remix badge pills ("↻ Remix of N" / "🎨 N remixes"), login-gated parents/children panels (anonymous slot for invisible parents, tombstone for deleted, load-more for children), Remixable checkbox in the edit panel (ND-disabled with hint), PATCH sends `remixable`.
+- Submit (`submit.tsx`): dead `allowEdit` checkbox repurposed as **Remixable** (default on; ND license forces it off + disables), FormData now sends `client=web`, `creation_method=external_file`, `remixable`; draft key renamed `allowEdit`→`remixable` (old drafts fall back to true). `divoom-import.tsx` also declares web/external_file.
+- New `/remixes` page (aggregate "Remixes of my works", cursor-paginated, names the caller's source works) + `getMyRemixes` helper in `lib/api.ts` + "🎨 Remixes of my works" link in the Layout menu (logged-in block).
+- Banner: `remix-lineage-2026-08` → links `/terms#remixes`; hash-insensitive self-hide fix.
+- ToS: new "Remixes" section (grant + non-retroactive grandfather + ND rule) at `/terms#remixes`, effective date → Aug 14 2026, `TERMS_VERSION` → `2026-08-14` (standing invariant).
+- Mod dashboard: Posts tab gets a provenance line (channel/method label, 🚫 not remixable, ↻ remix-of links with ✂ sever buttons → `DELETE /admin/lineage/{id}`; raw source_details in tooltip); Pulse post events show channel/method. API: `PostProvenance.parents` reshaped to `[{link_id, sqid}]` so severing works; openapi regenerated.
+- Verified on dev after `make rebuild`: tsc clean; `/remixes` + `/terms` serve 200 via container IP; `lineage-pill`, banner id, and Remixable label present in built chunks; API counts verified on a **synthetic test lineage row** (dev-only: post gZC declared child of P2J, id 1 in post_lineage — leave for owner click-testing or delete freely).
+- Deferred: card-level Remix glyph on feed grids (CardGrid/CardRoller); e2e specs for lineage flows.
+
 ## 2026-08-14 — Phase 1 (server) implemented on dev
 - Migration `d4e5f6a7b8c9`: posts.upload_channel/creation_method/source_details/remixable (ND rows → false) + `post_lineage`; applied to dev DB.
 - L15 executed on dev: `scripts/relicense_bulk_import.py` relicensed 2687 bulk-window ND posts → no license + remixable=true (1 later deliberate ND post preserved). **Prod must run the same script at deploy.**

@@ -457,6 +457,14 @@ class RemixReceivedItem(BaseModel):
     my_parent_sqids: list[str]
 
 
+class LineageParentRef(BaseModel):
+    """One Lineage Link seen from the mod side: the link id enables severing
+    (DELETE /admin/lineage/{link_id})."""
+
+    link_id: int
+    sqid: str
+
+
 class PostProvenance(BaseModel):
     """Internal provenance detail — mod/admin surfaces ONLY (D3 remnant:
     channel/method/details never enter the public Post schema)."""
@@ -465,7 +473,7 @@ class PostProvenance(BaseModel):
     creation_method: str | None = None
     source_details: dict | None = None
     # Declared Parents (sqid snapshots, declaration order, incl. tombstones)
-    parent_sqids: list[str] = []
+    parents: list[LineageParentRef] = []
 
 
 class PostAdmin(Post):

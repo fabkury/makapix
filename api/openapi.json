@@ -3100,6 +3100,25 @@
         "title": "LicenseList",
         "type": "object"
       },
+      "LineageParentRef": {
+        "description": "One Lineage Link seen from the mod side: the link id enables severing\n(DELETE /admin/lineage/{link_id}).",
+        "properties": {
+          "link_id": {
+            "title": "Link Id",
+            "type": "integer"
+          },
+          "sqid": {
+            "title": "Sqid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "link_id",
+          "sqid"
+        ],
+        "title": "LineageParentRef",
+        "type": "object"
+      },
       "LineageParentSlot": {
         "description": "One declared Parent of a post, in declaration order (PLAN.md §5.5).\n\nNon-available slots carry no identifying fields: 'unavailable' means the\nparent exists but is not visible to the viewer (identity withheld);\n'deleted' is the tombstone for a deleted parent.",
         "properties": {
@@ -5709,12 +5728,12 @@
             ],
             "title": "Creation Method"
           },
-          "parent_sqids": {
+          "parents": {
             "default": [],
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/LineageParentRef"
             },
-            "title": "Parent Sqids",
+            "title": "Parents",
             "type": "array"
           },
           "source_details": {

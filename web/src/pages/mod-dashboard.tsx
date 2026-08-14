@@ -34,6 +34,20 @@ interface PostOwner {
   avatar_url?: string | null;
 }
 
+// Internal provenance object on mod/admin post items
+// (docs/artwork-provenance/ §5.6 — never in the public Post schema)
+interface LineageParentRef {
+  link_id: number;
+  sqid: string;
+}
+
+interface PostProvenance {
+  upload_channel?: string | null;
+  creation_method?: string | null;
+  source_details?: Record<string, unknown> | null;
+  parents?: LineageParentRef[];
+}
+
 interface Post {
   id: number;
   public_sqid: string;
@@ -50,6 +64,20 @@ interface Post {
   deleted_by_user_date?: string | null;
   visible?: boolean;
   public_visibility?: boolean;
+  remixable?: boolean;
+  provenance?: PostProvenance | null;
+}
+
+// Compact provenance label, e.g. "✏️ Editor (hand-drawn) · app"
+function formatProvenance(p: PostProvenance): string {
+  const labels: Record<string, string> = {
+    editor_hand_drawn: "✏️ Editor (hand-drawn)",
+    editor_import: "📥 Editor (import)",
+    editor: "🎨 Editor",
+    external_file: "📁 Direct upload",
+  };
+  const label = labels[p.creation_method ?? ""] ?? "— Unknown source";
+  return p.upload_channel ? `${label} · ${p.upload_channel}` : label;
 }
 
 interface Report {
@@ -145,6 +173,9 @@ interface PulseItem {
   player_model: string | null;
   flags: string[];
   has_original_body: boolean;
+  // Provenance at a glance (docs/artwork-provenance/ §5.6)
+  upload_channel?: string | null;
+  creation_method?: string | null;
 }
 
 const PULSE_TYPE_META: Record<PulseType, { icon: string; label: string }> = {
@@ -421,6 +452,31 @@ export default function ModDashboardPage() {
       console.error("Error loading posts:", error);
     } finally {
       setPostsLoading(false);
+    }
+  };
+
+  // Sever a Lineage Link (docs/artwork-provenance/ Q2 tooling): the only way
+  // a link is removed besides child hard-delete. Audited server-side.
+  const severLineageLink = async (linkId: number, sqid: string) => {
+    if (
+      !confirm(
+        `Sever the lineage link to ${sqid}? The remix claim disappears from both posts. The remixer can re-declare it via replace-artwork if it was legitimate.`,
+      )
+    )
+      return;
+    try {
+      const response = await authenticatedFetch(
+        `${API_BASE_URL}/api/admin/lineage/${linkId}`,
+        { method: "DELETE" },
+      );
+      if (response.ok) {
+        loadRecentPosts(true);
+      } else {
+        alert("Failed to sever lineage link");
+      }
+    } catch (error) {
+      console.error("Error severing lineage link:", error);
+      alert("Failed to sever lineage link");
     }
   };
 
@@ -975,6 +1031,40 @@ export default function ModDashboardPage() {
                             {post.description}
                           </p>
                         )}
+                        {post.provenance && (
+                          <p
+                            className="provenance-line"
+                            title={
+                              post.provenance.source_details
+                                ? JSON.stringify(
+                                    post.provenance.source_details,
+                                    null,
+                                    2,
+                                  )
+                                : undefined
+                            }
+                          >
+                            {formatProvenance(post.provenance)}
+                            {post.remixable === false && " · 🚫 not remixable"}
+                            {(post.provenance.parents ?? []).map((ref) => (
+                              <span key={ref.link_id} className="lineage-ref">
+                                {" "}
+                                ↻ remix of{" "}
+                                <Link href={`/p/${ref.sqid}`}>{ref.sqid}</Link>
+                                <button
+                                  type="button"
+                                  className="sever-btn"
+                                  title="Sever this lineage link (audited)"
+                                  onClick={() =>
+                                    severLineageLink(ref.link_id, ref.sqid)
+                                  }
+                                >
+                                  ✂
+                                </button>
+                              </span>
+                            ))}
+                          </p>
+                        )}
                         <p className="item-date">
                           {new Date(post.created_at).toLocaleString()}
                         </p>
@@ -1215,6 +1305,15 @@ export default function ModDashboardPage() {
                               )}
                           </p>
                         )}
+                        {item.type === "post" &&
+                          (item.upload_channel || item.creation_method) && (
+                            <p className="provenance-line">
+                              {formatProvenance({
+                                upload_channel: item.upload_channel,
+                                creation_method: item.creation_method,
+                              })}
+                            </p>
+                          )}
                         <p className="item-date">
                           {new Date(item.created_at).toLocaleString()}
                         </p>
@@ -1690,6 +1789,35 @@ export default function ModDashboardPage() {
           border-radius: 4px;
           font-size: 0.8rem;
           color: var(--text-muted);
+        }
+
+        .provenance-line {
+          font-size: 0.78rem;
+          color: var(--text-muted);
+          margin: 2px 0 0;
+        }
+
+        .provenance-line :global(a) {
+          color: rgba(168, 85, 247, 0.9);
+          text-decoration: none;
+        }
+
+        .provenance-line :global(a:hover) {
+          text-decoration: underline;
+        }
+
+        .sever-btn {
+          margin-left: 4px;
+          padding: 0 4px;
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          font-size: 0.78rem;
+          opacity: 0.6;
+        }
+
+        .sever-btn:hover {
+          opacity: 1;
         }
 
         .load-more {

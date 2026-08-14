@@ -22,7 +22,7 @@ MAX_HASHTAG_LENGTH = 64
 # Terms of Service version (its effective date). Stamped into
 # users.terms_version_accepted at self-signup (docs/ugc-safety/ D26).
 # Bump when /terms changes materially.
-TERMS_VERSION = "2026-07-06"
+TERMS_VERSION = "2026-08-14"
 
 
 class NotificationType(StrEnum):

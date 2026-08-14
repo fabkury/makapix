@@ -443,16 +443,22 @@ def recent_profiles(
 def _admin_post_items(db: Session, posts: list[models.Post]) -> list[schemas.PostAdmin]:
     """Serialize posts for mod surfaces with the internal provenance object
     (docs/artwork-provenance/PLAN.md §5.6). Lineage links batch-loaded."""
-    sqids_by_child: dict[int, list[str]] = {}
+    parents_by_child: dict[int, list[schemas.LineageParentRef]] = {}
     if posts:
         rows = (
-            db.query(models.PostLineage.child_post_id, models.PostLineage.parent_sqid)
+            db.query(
+                models.PostLineage.child_post_id,
+                models.PostLineage.id,
+                models.PostLineage.parent_sqid,
+            )
             .filter(models.PostLineage.child_post_id.in_([p.id for p in posts]))
             .order_by(models.PostLineage.position)
             .all()
         )
-        for child_id, parent_sqid in rows:
-            sqids_by_child.setdefault(child_id, []).append(parent_sqid)
+        for child_id, link_id, parent_sqid in rows:
+            parents_by_child.setdefault(child_id, []).append(
+                schemas.LineageParentRef(link_id=link_id, sqid=parent_sqid)
+            )
 
     items = []
     for p in posts:
@@ -461,7 +467,7 @@ def _admin_post_items(db: Session, posts: list[models.Post]) -> list[schemas.Pos
             upload_channel=p.upload_channel,
             creation_method=p.creation_method,
             source_details=p.source_details,
-            parent_sqids=sqids_by_child.get(p.id, []),
+            parents=parents_by_child.get(p.id, []),
         )
         items.append(item)
     return items
