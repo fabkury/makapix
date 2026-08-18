@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -22,12 +23,22 @@ logger = logging.getLogger(__name__)
 _redis_client: redis.Redis | None = None
 
 
-class UUIDEncoder(json.JSONEncoder):
-    """Custom JSON encoder that handles UUID objects."""
+class CacheJSONEncoder(json.JSONEncoder):
+    """JSON encoder for cache payloads: UUIDs and datetimes as strings.
+
+    Callers cache pydantic `model_dump()` payloads, which keep `datetime`
+    values as objects; without this, such cache writes fail ("Object of type
+    datetime is not JSON serializable") and the endpoint silently serves
+    uncached on every request. Datetimes serialize to ISO-8601 — the same
+    wire format as `model_dump(mode="json")` — so pydantic parses them back
+    on cache read.
+    """
 
     def default(self, obj):
         if isinstance(obj, UUID):
             return str(obj)
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
         return super().default(obj)
 
 
@@ -122,7 +133,7 @@ def cache_set(key: str, value: Any, ttl: int = 300) -> bool:
     try:
         # Serialize value to JSON if it's a dict/list
         if isinstance(value, (dict, list)):
-            serialized = json.dumps(value, cls=UUIDEncoder)
+            serialized = json.dumps(value, cls=CacheJSONEncoder)
         else:
             serialized = str(value)
 
