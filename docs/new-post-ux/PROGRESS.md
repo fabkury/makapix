@@ -12,7 +12,9 @@
 - **2026-08-18** — **Deployed to production** (PR #259, merged + `make deploy`).
   `make check-full` green pre-merge. Post-deploy: site 200, recent feed 200,
   new copy present in prod web build (about/submit chunks), no new errors in
-  api logs (the `feed:recent` datetime cache-set warning is pre-existing,
-  also on dev). Effort complete; possible follow-ups: pending badge on
+  api logs (the `feed:recent` datetime cache-set warning was pre-existing,
+  also on dev — fixed same day in PR #260: `CacheJSONEncoder` now serializes
+  datetimes, so the recent feed actually caches again; verified key+TTL in
+  prod Redis). Effort complete; possible follow-ups: pending badge on
   `/u/{sqid}/posts` manage page, app-side adoption of the new notification
   types.
