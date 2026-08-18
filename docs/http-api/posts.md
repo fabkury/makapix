@@ -364,9 +364,16 @@ Demote a post. Moderator only.
 
 ## Public Visibility (Moderator)
 
+`public_visibility` gates **discovery surfaces only** (Recent feed, search,
+hashtags, sitemap). A pending post (`public_visibility=false`) is still
+reachable by anyone via its direct permalink and is listed on the author's
+profile for every viewer (new-post UX, 2026-08). Hiding a post outright is
+`hidden_by_mod`/`hidden_by_user`.
+
 ### POST /post/{id}/approve-public
 
-Approve public visibility. Moderator only.
+Approve public visibility. Moderator only. Sends the author a
+`post_approved` notification.
 
 **Response (201):**
 

@@ -52,9 +52,19 @@ def _auth(user):
 @pytest.mark.parametrize("path", ["comments", "reactions", "widget-data"])
 def test_hidden_post_reads_404_for_anonymous(client, db, path):
     owner = _user(db)
-    hidden = _post(db, owner, public_visibility=False, visible=True)
+    hidden = _post(db, owner, hidden_by_user=True, visible=True)
     resp = client.get(f"/post/{hidden.id}/{path}")
     assert resp.status_code == 404, resp.text
+
+
+@pytest.mark.parametrize("path", ["comments", "reactions", "widget-data"])
+def test_pending_post_reads_200_for_anonymous(client, db, path):
+    # A post awaiting moderation approval is link-shareable: reachable by
+    # anyone, only excluded from discovery surfaces (new-post UX, 2026-08).
+    owner = _user(db)
+    pending = _post(db, owner, public_visibility=False, visible=True)
+    resp = client.get(f"/post/{pending.id}/{path}")
+    assert resp.status_code == 200, resp.text
 
 
 @pytest.mark.parametrize("path", ["comments", "reactions", "widget-data"])
@@ -67,7 +77,7 @@ def test_public_post_reads_200(client, db, path):
 
 def test_owner_can_read_own_hidden_post(client, db):
     owner = _user(db)
-    hidden = _post(db, owner, public_visibility=False, visible=True)
+    hidden = _post(db, owner, hidden_by_user=True, visible=True)
     resp = client.get(f"/post/{hidden.id}/widget-data", headers=_auth(owner))
     assert resp.status_code == 200, resp.text
 
@@ -75,7 +85,7 @@ def test_owner_can_read_own_hidden_post(client, db):
 def test_cannot_comment_or_react_on_hidden_post(client, db):
     owner = _user(db)
     actor = _user(db)
-    hidden = _post(db, owner, public_visibility=False, visible=True)
+    hidden = _post(db, owner, hidden_by_user=True, visible=True)
 
     r1 = client.post(
         f"/post/{hidden.id}/comments", json={"body": "hi"}, headers=_auth(actor)

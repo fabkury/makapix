@@ -18445,7 +18445,7 @@
     },
     "/v1/post/upload": {
       "post": {
-        "description": "Upload a single artwork image directly to the vault.\n\nThe image must be:\n- Under 128x128: Only specific sizes allowed (8x8, 8x16, 16x16, 16x32, 32x32, 32x64, 64x64, 64x128)\n- From 128x128 to 256x256 (inclusive): Any size allowed (square or rectangular)\n- Above 256x256: Not allowed\n- Max 5 MB file size\n- PNG, GIF, WebP, or BMP format\n\nPublic visibility is automatically set based on the user's auto_public_approval privilege.\nIf the user does not have this privilege, the artwork will not appear in Recent Artworks\nuntil a moderator approves it.",
+        "description": "Upload a single artwork image directly to the vault.\n\nThe image must be:\n- Under 128x128: Only specific sizes allowed (8x8, 8x16, 16x16, 16x32, 32x32, 32x64, 64x64, 64x128)\n- From 128x128 to 256x256 (inclusive): Any size allowed (square or rectangular)\n- Above 256x256: Not allowed\n- Max 5 MB file size\n- PNG, GIF, WebP, or BMP format\n\nPublic visibility is automatically set based on the user's auto_public_approval privilege.\nIf the user does not have this privilege, the artwork will not appear in Recent Artworks,\nsearch, or other discovery surfaces until a moderator approves it — but it is immediately\nvisible on the author's profile page and shareable with anyone via its direct link.",
         "operationId": "upload_artwork_v1_post_upload_post",
         "requestBody": {
           "content": {
