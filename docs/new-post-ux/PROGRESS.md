@@ -8,6 +8,11 @@
   "non-viewable" post was merely pending; now `hidden_by_user`), `make check`
   clean, OpenAPI regenerated. Dev stack rebuilt 2026-08-18 (api restarted,
   web image rebuilt); new copy verified in served client chunk.
-  Pending: owner testing on development.makapix.club (upload as untrusted +
-  trusted user, approve flow, notifications, badges), then PR → main +
-  prod deploy.
+  Owner tested on development.makapix.club (trusted + untrusted flows) — OK.
+- **2026-08-18** — **Deployed to production** (PR #259, merged + `make deploy`).
+  `make check-full` green pre-merge. Post-deploy: site 200, recent feed 200,
+  new copy present in prod web build (about/submit chunks), no new errors in
+  api logs (the `feed:recent` datetime cache-set warning is pre-existing,
+  also on dev). Effort complete; possible follow-ups: pending badge on
+  `/u/{sqid}/posts` manage page, app-side adoption of the new notification
+  types.
