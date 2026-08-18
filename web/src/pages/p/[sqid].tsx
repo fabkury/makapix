@@ -1754,19 +1754,21 @@ export default function PostPage() {
               </div>
             )}
 
-            {isModerator &&
-              (post.hidden_by_mod ||
-                post.promoted ||
+            {(isModerator || isOwner) &&
+              ((isModerator && (post.hidden_by_mod || post.promoted)) ||
                 !post.public_visibility) && (
                 <div className="mod-status-badges">
-                  {post.hidden_by_mod && (
+                  {isModerator && post.hidden_by_mod && (
                     <span className="status-badge hidden">Hidden by mod</span>
                   )}
-                  {post.promoted && (
+                  {isModerator && post.promoted && (
                     <span className="status-badge promoted">Promoted</span>
                   )}
                   {!post.public_visibility && (
-                    <span className="status-badge pending">
+                    <span
+                      className="status-badge pending"
+                      title="This post is visible on your profile and shareable by direct link. A moderator will review it before it's released to the whole community (Recent feed, search, hashtags)."
+                    >
                       Pending approval
                     </span>
                   )}

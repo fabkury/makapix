@@ -887,6 +887,14 @@ export async function detachMkpx<TPost = unknown>(
   return resp.json() as Promise<TPost>;
 }
 
+export interface MeCapabilities {
+  /** True when the user has Trust (auto_public_approval): uploads are
+   *  auto-approved for public release instead of entering the mod queue. */
+  can_post_public: boolean;
+  can_moderate: boolean;
+  can_own_players: boolean;
+}
+
 export interface MeResponse {
   roles?: string[];
   user?: {
@@ -896,6 +904,7 @@ export interface MeResponse {
     handle: string;
     avatar_url?: string | null;
   };
+  capabilities?: MeCapabilities | null;
 }
 
 /** Fetch the current user's identity (handle, user_key, avatar_url, roles). */

@@ -90,6 +90,7 @@ export default function NotificationsPage() {
   const isSystemNotification = (notification: SocialNotificationFull): boolean => {
     return notification.notification_type === "moderator_granted" ||
            notification.notification_type === "moderator_revoked" ||
+           notification.notification_type === "trust_granted" ||
            notification.notification_type === "follow" ||
            notification.notification_type === "reputation_change";
   };
@@ -115,6 +116,9 @@ export default function NotificationsPage() {
     }
     if (notification.notification_type === "mod_hashtags_updated") {
       return <span className="emoji">{"🛡️"}</span>;
+    }
+    if (notification.notification_type === "post_approved") {
+      return <span className="emoji">{"✅"}</span>;
     }
     if (notification.notification_type === "post_promoted") {
       return (
@@ -170,6 +174,10 @@ export default function NotificationsPage() {
     } else if (notification.notification_type === "post_promoted") {
       const category = notification.comment_preview || "Recommended";
       return `${actor} promoted "${title}" to ${category}`;
+    } else if (notification.notification_type === "post_approved") {
+      return `Your artwork "${title}" was approved by a moderator — it's now publicly released to the community`;
+    } else if (notification.notification_type === "trust_granted") {
+      return `${actor} granted you Trust — your posts are now auto-approved for public release`;
     } else if (notification.notification_type === "mod_hashtags_updated") {
       const diff = notification.comment_preview;
       return `A moderator updated the tags on "${title}"${diff ? `: ${diff}` : ""}`;

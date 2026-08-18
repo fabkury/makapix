@@ -21,7 +21,10 @@ export interface SocialNotificationItem {
     | 'moderator_granted'
     | 'moderator_revoked'
     | 'new_report'
-    | 'report_resolved';
+    | 'report_resolved'
+    | 'remix'
+    | 'post_approved'
+    | 'trust_granted';
   post_id: number | null;
   actor_handle: string | null;
   actor_avatar_url: string | null;
