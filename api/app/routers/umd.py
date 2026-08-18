@@ -17,6 +17,8 @@ from ..auth import require_moderator, require_owner
 from ..deps import get_db
 from ..sqids_config import decode_user_sqid
 from ..utils.audit import log_moderation_action
+from ..constants import NotificationType
+from ..services.social_notifications import SocialNotificationService
 from ..pagination import apply_cursor_filter, create_page_response
 
 router = APIRouter(prefix="/admin", tags=["UMD"])
@@ -547,6 +549,14 @@ def trust_user(
         action="trust_user",
         target_type="user",
         target_id=user.id,
+    )
+
+    # Tell the user their future uploads are now auto-approved
+    SocialNotificationService.create_system_notification(
+        db=db,
+        user_id=user.id,
+        notification_type=NotificationType.TRUST_GRANTED,
+        actor=moderator,
     )
 
     return {"status": "trusted", "auto_public_approval": True}

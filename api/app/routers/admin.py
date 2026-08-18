@@ -364,6 +364,14 @@ def grant_auto_approval(
         target_id=user.id,
     )
 
+    # Tell the user their future uploads are now auto-approved
+    SocialNotificationService.create_system_notification(
+        db=db,
+        user_id=user.id,
+        notification_type=NotificationType.TRUST_GRANTED,
+        actor=moderator,
+    )
+
     return schemas.AutoApprovalResponse(user_id=user.id, auto_public_approval=True)
 
 

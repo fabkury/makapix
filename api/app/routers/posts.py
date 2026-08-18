@@ -292,9 +292,12 @@ def list_posts(
         # Hide non-conformant posts (visible only in Moderator Dashboard)
         query = query.filter(models.Post.non_conformant == False)
 
-        # Apply public_visibility filter unless viewing own posts
-        # Posts pending approval are visible only to their owner and in Moderator Dashboard
-        if not is_viewing_own_posts:
+        # Moderation approval (`public_visibility`) gates discovery surfaces
+        # only. A profile view (owner_id filter) shows pending posts to every
+        # viewer — they are link-shareable and profile-visible while awaiting
+        # review (see utils/visibility.py:can_access_post).
+        is_profile_view = owner_user_id is not None and reacted_by is None
+        if not is_profile_view and not is_viewing_own_posts:
             if reacted_by is not None and current_user is not None:
                 # Reactions channel: a viewer's own posts stay visible to them
                 # even when not publicly visible (mirrors
@@ -621,8 +624,9 @@ async def upload_artwork(
     - PNG, GIF, WebP, or BMP format
 
     Public visibility is automatically set based on the user's auto_public_approval privilege.
-    If the user does not have this privilege, the artwork will not appear in Recent Artworks
-    until a moderator approves it.
+    If the user does not have this privilege, the artwork will not appear in Recent Artworks,
+    search, or other discovery surfaces until a moderator approves it — but it is immediately
+    visible on the author's profile page and shareable with anyone via its direct link.
     """
     # Rate limiting: varies by reputation (4/16/64 per hour)
     limit, window = get_upload_rate_limit(current_user)
@@ -953,7 +957,11 @@ async def upload_artwork(
 
     message = "Artwork uploaded successfully"
     if not public_visibility:
-        message += ". Awaiting moderator approval for public visibility."
+        message += (
+            ". It will be reviewed by a moderator before public release to the"
+            " community; meanwhile it is visible on your profile page and can be"
+            " shared with anyone via its direct link."
+        )
 
     # One `remix` notification per distinct parent owner (L12). Never fail
     # the committed upload over a notification hiccup.
@@ -1866,6 +1874,19 @@ def approve_public_visibility(
         target_type="post",
         target_id=id,
     )
+
+    # Tell the author their post is now publicly released. Never fail the
+    # committed approval over a notification hiccup.
+    try:
+        SocialNotificationService.create_notification(
+            db=db,
+            user_id=post.owner_id,
+            notification_type=NotificationType.POST_APPROVED,
+            post=post,
+            actor=moderator,
+        )
+    except Exception as e:
+        logger.error(f"Failed to send post_approved notification for post {id}: {e}")
 
     return schemas.PublicVisibilityResponse(post_id=id, public_visibility=True)
 
