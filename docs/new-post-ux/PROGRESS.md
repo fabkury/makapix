@@ -4,5 +4,10 @@
   Backend + web implemented on `develop`
   (commits `bf390c5` backend, `73cfc68` web). New tests green
   (`test_pending_post_visibility.py`, updated `test_content_visibility.py`).
-  Pending: full-suite run, OpenAPI regen, dev rebuild, owner testing on
-  development.makapix.club, then PR → main + prod deploy.
+  Full suite green after fixture fixes (`test_avatar_from_post.py` — its
+  "non-viewable" post was merely pending; now `hidden_by_user`), `make check`
+  clean, OpenAPI regenerated. Dev stack rebuilt 2026-08-18 (api restarted,
+  web image rebuilt); new copy verified in served client chunk.
+  Pending: owner testing on development.makapix.club (upload as untrusted +
+  trusted user, approve flow, notifications, badges), then PR → main +
+  prod deploy.
