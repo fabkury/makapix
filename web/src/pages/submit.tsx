@@ -3,7 +3,8 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import Layout from '../components/Layout';
-import { authenticatedFetch, clearTokens } from '../lib/api';
+import { authenticatedFetch, clearTokens, getMe } from '../lib/api';
+import PostReviewNotice from '../components/PostReviewNotice';
 import { ensureCompatibleArtUrl } from '../utils/imageCompat';
 import {
   saveDraft,
@@ -263,6 +264,16 @@ function SubmitPageContent() {
       setIsAuthenticated(true);
     }
   }, [router]);
+
+  // Trust status (capabilities.can_post_public): null until known. Untrusted
+  // users get a heads-up that their post will be reviewed before release.
+  const [canPostPublic, setCanPostPublic] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    getMe()
+      .then((me) => setCanPostPublic(!!me.capabilities?.can_post_public))
+      .catch(() => setCanPostPublic(null));
+  }, [isAuthenticated]);
 
   // Fetch available licenses on mount
   useEffect(() => {
@@ -869,6 +880,12 @@ function SubmitPageContent() {
         <h1 className="page-title">Upload Artwork</h1>
         <div className="title-underline"></div>
 
+        {!uploadedArtwork && canPostPublic === false && (
+          <div className="pre-upload-notice">
+            <PostReviewNotice variant="pre-upload" />
+          </div>
+        )}
+
         {uploadedArtwork ? (
           <div className="success-container">
             <div className="success-card">
@@ -885,11 +902,13 @@ function SubmitPageContent() {
               <p className="success-name">{uploadedArtwork.title}</p>
               <p className="success-date">{new Date(uploadedArtwork.created_at).toLocaleString()}</p>
 
-              {!uploadedArtwork.public_visibility && (
-                <div className="pending-notice">
-                  <span className="pending-icon">⏳</span>
-                  <p className="pending-text">Your artwork is awaiting moderator approval.</p>
-                </div>
+              {uploadedArtwork.public_visibility ? (
+                <PostReviewNotice variant="approved" />
+              ) : (
+                <PostReviewNotice
+                  variant="pending"
+                  sharePath={`/p/${uploadedArtwork.public_sqid}`}
+                />
               )}
 
               <div className="success-buttons">
@@ -1440,10 +1459,7 @@ function SubmitPageContent() {
         .success-image { width: 100%; height: 100%; object-fit: contain; image-rendering: -webkit-optimize-contrast; image-rendering: -moz-crisp-edges; image-rendering: crisp-edges; image-rendering: pixelated; }
         .success-name { font-weight: 600; color: var(--text-primary); }
         .success-date { font-size: 0.9rem; color: var(--text-secondary); }
-        .pending-notice { display: flex; flex-direction: column; align-items: center; padding: 16px; background: rgba(255, 200, 100, 0.1); border: 1px solid rgba(255, 200, 100, 0.3); border-radius: 12px; text-align: center; }
-        .pending-notice > :global(* + *) { margin-top: 8px; }
-        .pending-icon { font-size: 1.5rem; }
-        .pending-text { font-size: 0.9rem; color: var(--text-primary); }
+        .pre-upload-notice { margin-bottom: 24px; }
         .success-buttons { display: flex; margin-top: 8px; }
         .success-buttons > :global(* + *) { margin-left: 12px; }
         .dialog-overlay { position: fixed; top: 0; right: 0; bottom: 0; left: 0; background: rgba(0, 0, 0, 0.8); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 24px; }

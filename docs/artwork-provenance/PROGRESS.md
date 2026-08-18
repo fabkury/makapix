@@ -1,5 +1,12 @@
 # Artwork Provenance — Progress
 
+## 2026-08-14 — DEPLOYED TO PROD (PR #258)
+- `make check-full` green (all 6 chunks, 76 test files) → PR #258 develop→main merged → prod deploy.
+- Deploy order followed §9: `git pull` on /opt/makapix → `alembic upgrade head` via the still-running old api (bind mount; additive migration, no broken window) → `make deploy` (api healthy, web+worker recreated) → `relicense_bulk_import.py` (**2629** bulk-window ND posts → no license + remixable, **15** later deliberate ND posts preserved-locked) → `backfill_provenance.py` (**5** mkpx-bearing posts → app/editor-inferred).
+- Verified live: prod DB 2904 remixable / 15 locked; makapix.club/api/p/P2J serves `remixable`/`parent_count`/`child_count` and is relicensed; /terms serves the Aug-14 Remixes clause; /remixes 200; banner id + lineage chunks in the served bundle. `post_lineage` empty as expected (no remixes declared yet — first real rows arrive via app e2e / releases).
+- ToS effective date + `TERMS_VERSION=2026-08-14` live together (standing invariant honored).
+- Remaining: app e2e results (0005) → verify their test sqids' `source_details` on the mod surface; then their release ships the declaring app.
+
 ## 2026-08-14 — App reply 0003 processed; 0004 (test instructions) sent
 - App accepted everything from 0001+0002 and implemented app-side (unreleased): sticky bit + parent list persisted in `.mkpx` META (`club.everImported`, `club.importedFormats`, `club.parents`), full declarations on upload/replace, remixable gating UX, honest 422 dialogs ("publish without remix claim" is user-explicit).
 - Owner verdicts on 0003's confirmables: **imported_format comma list accepted** — validator cap raised 16→64 chars (`utils/provenance.py`, + test); **META parent-sqid visibility accepted as-is** (redaction would break download→edit→republish lineage durability; hidden posts still 404).

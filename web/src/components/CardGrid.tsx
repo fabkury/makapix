@@ -32,6 +32,7 @@ interface Post {
   frame_count?: number;
   files?: Array<{ format: string; file_bytes: number; is_native: boolean }>;
   has_mkpx?: boolean;
+  public_visibility?: boolean;
 }
 
 interface CardGridProps {
@@ -333,6 +334,17 @@ export default function CardGrid({
                     loading="lazy"
                     style={{ visibility: isSelected ? "hidden" : "visible" }}
                   />
+                  {post.public_visibility === false &&
+                    (isModerator ||
+                      (currentUserId &&
+                        String(post.owner_id) === String(currentUserId))) && (
+                      <span
+                        className="pending-chip"
+                        title="Pending moderator approval — visible on your profile and by direct link"
+                      >
+                        ⏳
+                      </span>
+                    )}
                 </div>
               </Link>
             );
@@ -401,6 +413,19 @@ export default function CardGrid({
             height: 128px;
             position: relative;
             overflow: hidden;
+          }
+
+          /* Author/mod-only marker on posts awaiting moderator approval */
+          .pending-chip {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            font-size: 14px;
+            line-height: 1;
+            padding: 3px;
+            border-radius: 6px;
+            background: rgba(0, 0, 0, 0.55);
+            pointer-events: none;
           }
 
           :global(a.artwork-card) {

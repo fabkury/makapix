@@ -141,6 +141,8 @@ POST /api/admin/user/{id}/auto-approval     # UUID: returns AutoApprovalResponse
 POST /api/admin/user/{sqid}/trust           # Sqids: returns {"status": "trusted", ...}
 ```
 
+Both grant paths send the user a `trust_granted` notification.
+
 ### Revoke Auto-Approval
 
 ```

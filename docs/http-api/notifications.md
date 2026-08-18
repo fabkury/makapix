@@ -83,6 +83,9 @@ Source of truth: `api/app/constants.py:NotificationType`.
 | `moderator_revoked` | Your moderator role is revoked |
 | `new_report` | (moderators) A new content report was filed |
 | `report_resolved` | Your report was reviewed and resolved |
+| `remix` | Someone published a Remix of your artwork |
+| `post_approved` | A moderator approved your pending post for public release |
+| `trust_granted` | A moderator granted you Trust (future uploads auto-approved) |
 
 ### Rate limiting
 

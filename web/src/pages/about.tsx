@@ -608,9 +608,10 @@ function RulesTab() {
       <h2>Post Approval</h2>
       
       <p>
-        When you post artwork, it immediately appears on your profile for anyone to see.
-        However, for your post to appear site-wide—in the Recent feed, search results, and
-        other public listings—it must be approved by a moderator.
+        When you post artwork, it immediately appears on your profile for anyone to see,
+        and you can share its direct link with anyone on the internet. However, for your
+        post to appear site-wide—in the Recent feed, search results, and other public
+        listings—it must first be approved by a moderator.
       </p>
 
       <h2>Trust</h2>

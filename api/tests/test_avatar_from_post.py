@@ -206,7 +206,8 @@ def test_bmp_native_without_png_variant_is_transcoded(client, db, user, vault_tm
 
 
 def test_non_viewable_post_404(client, db, user, other_user, vault_tmp):
-    post = _make_post(db, other_user, {"png": _png_bytes()}, "png")  # not visible
+    # hidden_by_user, not merely pending approval — pending posts are viewable
+    post = _make_post(db, other_user, {"png": _png_bytes()}, "png", hidden_by_user=True)
 
     resp = _from_post(client, user, post.public_sqid, user)
     assert resp.status_code == 404, resp.text

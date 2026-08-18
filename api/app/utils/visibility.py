@@ -18,14 +18,13 @@ def can_access_post(post: "models.Post", user: "models.User" | None) -> bool:
     Access is allowed if:
     - User is a moderator/owner, OR
     - User is the post owner, OR
-    - Post is publicly visible (approved for public visibility) and not hidden, OR
-    - Post is promoted and not hidden
+    - Post is visible and not hidden (regardless of moderation approval)
 
     Notes:
-    - `public_visibility` is the primary "unlisted vs public" gate used across the API
-      (feeds/search only show `public_visibility == True`). The canonical permalink
-      endpoint `/api/p/{public_sqid}` should therefore allow access when
-      `public_visibility` is True.
+    - `public_visibility` (moderation approval) gates DISCOVERY surfaces only —
+      Recent feed, search, hashtags, sitemap. A post still pending approval is
+      reachable by anyone via its direct permalink and on the author's profile
+      page, so authors can share it before a moderator approves it.
     - Hidden posts (`hidden_by_user` or `hidden_by_mod`) remain accessible only to the
       owner and moderators/owners.
 
@@ -50,17 +49,19 @@ def can_access_post(post: "models.Post", user: "models.User" | None) -> bool:
         if user.id == post.owner_id:
             return True
 
-    # Public visibility:
-    # - must be visible
-    # - must not be hidden (either by user or moderator)
-    # - must be approved for public visibility OR promoted
+    # Anyone (including anonymous visitors) may view a post that is:
+    # - visible, and
+    # - not hidden (either by user or moderator)
+    # Moderation approval (`public_visibility`) is NOT required here — pending
+    # posts are link-shareable and shown on the author's profile; approval only
+    # gates discovery surfaces (Recent feed, search, hashtags, sitemap).
     if not post.visible:
         return False
 
     if post.hidden_by_mod or post.hidden_by_user:
         return False
 
-    return bool(post.public_visibility or post.promoted)
+    return True
 
 
 def get_accessible_post_or_404(

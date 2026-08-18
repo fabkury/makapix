@@ -55,6 +55,7 @@ interface Post {
   owner_id: string;
   created_at: string;
   owner?: PostOwner;
+  public_visibility?: boolean;
 }
 
 interface PageResponse<T> {

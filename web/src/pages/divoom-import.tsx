@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import SparkMD5 from 'spark-md5';
 import Layout from '../components/Layout';
-import { authenticatedFetch, clearTokens } from '../lib/api';
+import { authenticatedFetch, clearTokens, getMe } from '../lib/api';
+import PostReviewNotice from '../components/PostReviewNotice';
 import type { DivoomGalleryInfo, DivoomSession } from '../lib/divoom/divoomApi';
 import { divoomLogin, downloadDivoomDat, fetchMyUploads, DivoomApiError } from '../lib/divoom/divoomApi';
 import { PyodideDecoder } from '../lib/divoom/pyodideDecoder';
@@ -44,6 +45,8 @@ interface BatchResult {
   title: string;
   success: boolean;
   postSqid?: string;
+  /** False when the upload awaits moderator approval before public release */
+  publicVisibility?: boolean;
   errorMessage?: string;
   timestamp: number;
 }
@@ -234,6 +237,15 @@ export default function DivoomImportPage() {
   const [uploadNotice, setUploadNotice] = useState<string | null>(null);
   const [uploadedArtwork, setUploadedArtwork] = useState<UploadedArtwork | null>(null);
   const [lastUploadedGalleryId, setLastUploadedGalleryId] = useState<number | null>(null);
+
+  // Trust status (capabilities.can_post_public): null until known. Untrusted
+  // users get a heads-up that their uploads will be reviewed before release.
+  const [canPostPublic, setCanPostPublic] = useState<boolean | null>(null);
+  useEffect(() => {
+    getMe()
+      .then((me) => setCanPostPublic(!!me.capabilities?.can_post_public))
+      .catch(() => setCanPostPublic(null));
+  }, []);
 
   // Multi-select for batch processing
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -825,6 +837,10 @@ export default function DivoomImportPage() {
   // Compute batch statistics
   const batchSuccessCount = useMemo(() => batchResults.filter(r => r.success).length, [batchResults]);
   const batchFailedCount = useMemo(() => batchResults.filter(r => !r.success).length, [batchResults]);
+  const batchPendingReviewCount = useMemo(
+    () => batchResults.filter(r => r.success && r.publicVisibility === false).length,
+    [batchResults]
+  );
   const pendingBatchCount = useMemo(() => {
     // Selected items that haven't been uploaded yet
     return Array.from(selectedIds).filter(id => !uploadedGalleryIds.has(id)).length;
@@ -980,6 +996,7 @@ export default function DivoomImportPage() {
           title: itemTitle,
           success: true,
           postSqid: data.post.public_sqid,
+          publicVisibility: data.post.public_visibility,
           timestamp: Date.now(),
         }]);
         setUploadedGalleryIds(prev => new Set(prev).add(gid));
@@ -1429,6 +1446,11 @@ export default function DivoomImportPage() {
 
         <section className="panel">
           <h2 className="panel-title">4. Preview & submit to Makapix Club</h2>
+          {canPostPublic === false && divoomSession && (
+            <div className="pre-upload-notice">
+              <PostReviewNotice variant="pre-upload" />
+            </div>
+          )}
           {!divoomSession ? (
             <div className="muted">Sign in above to load your uploads.</div>
           ) : !itemsLoaded ? (
@@ -1586,6 +1608,18 @@ export default function DivoomImportPage() {
                       <span className="stat">Total time: {formatDuration(Date.now() - batchStartTime)}</span>
                     )}
                   </div>
+                  {batchPendingReviewCount > 0 ? (
+                    <div className="stats-note">
+                      ⏳ {batchPendingReviewCount === batchSuccessCount ? 'Your uploads' : `${batchPendingReviewCount} of your uploads`} will
+                      be reviewed by a moderator before public release to the community.
+                      Meanwhile, they&apos;re already visible on your profile page and can be
+                      shared with anyone via their direct links.
+                    </div>
+                  ) : batchSuccessCount > 0 ? (
+                    <div className="stats-note">
+                      ✅ Auto-approved — your uploads are already publicly released to the community.
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -1679,8 +1713,16 @@ export default function DivoomImportPage() {
                           View artwork
                         </button>
                       </div>
-                      {!uploadedArtwork.public_visibility && (
-                        <div className="muted">Your artwork is awaiting moderator approval for public visibility.</div>
+                      {uploadedArtwork.public_visibility ? (
+                        <div className="muted">
+                          ✅ Auto-approved — your artwork is already publicly released to the community.
+                        </div>
+                      ) : (
+                        <div className="muted">
+                          ⏳ A moderator will review this post before public release to the
+                          community. Meanwhile, it&apos;s already visible on your profile page
+                          and can be shared with anyone via its direct link.
+                        </div>
                       )}
                     </div>
                   )}
@@ -2502,6 +2544,17 @@ export default function DivoomImportPage() {
 
         .stat.error {
           color: #ef4444;
+        }
+
+        .stats-note {
+          margin-top: 12px;
+          font-size: 0.9rem;
+          color: var(--text-secondary);
+          line-height: 1.5;
+        }
+
+        .pre-upload-notice {
+          margin-bottom: 16px;
         }
 
         /* License panel (collapsible) */

@@ -48,3 +48,9 @@ class NotificationType(StrEnum):
     # A Remix of the recipient's artwork was published; content fields point
     # at the child (the new Remix), actor is the remixer (PLAN.md §6, L12).
     REMIX = "remix"
+    # A pending post was approved for public release; content fields point at
+    # the approved post, actor is the approving moderator.
+    POST_APPROVED = "post_approved"
+    # The user was granted Trust (auto_public_approval): future uploads are
+    # auto-approved. System notification, actor is the granting moderator.
+    TRUST_GRANTED = "trust_granted"
