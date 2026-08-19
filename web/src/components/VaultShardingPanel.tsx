@@ -336,7 +336,7 @@ export default function VaultShardingPanel() {
           margin-bottom: 16px;
           padding: 10px 14px;
           background: var(--bg-tertiary, #2a2a3e);
-          border-left: 3px solid var(--accent-purple, #b44eff);
+          border-left: 3px solid var(--accent-cyan);
           border-radius: 6px;
           color: var(--text-secondary, #ccc);
           font-size: 0.85rem;

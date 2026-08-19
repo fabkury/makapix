@@ -476,11 +476,11 @@ function FeaturesTab() {
         }
 
         .maker-section {
-          border-left: 3px solid var(--accent-pink);
+          border-left: 3px solid var(--accent-cyan);
         }
 
         .maker-section h2 {
-          color: var(--accent-pink);
+          color: var(--accent-cyan);
         }
 
         .maker-footnote {
@@ -494,7 +494,7 @@ function FeaturesTab() {
         }
 
         .maker-footnote :global(a) {
-          color: var(--accent-pink);
+          color: var(--accent-cyan);
           text-decoration: none;
         }
 
@@ -819,8 +819,8 @@ function RulesTab() {
         }
 
         .warning {
-          background: rgba(255, 110, 180, 0.1);
-          border-left: 3px solid var(--accent-pink);
+          background: rgba(0, 212, 255, 0.1);
+          border-left: 3px solid var(--accent-cyan);
           padding: 12px 16px;
           border-radius: 0 8px 8px 0;
         }
@@ -1299,8 +1299,8 @@ function LicensesTab() {
         }
 
         .warning {
-          background: rgba(255, 110, 180, 0.1);
-          border-left: 3px solid var(--accent-pink);
+          background: rgba(0, 212, 255, 0.1);
+          border-left: 3px solid var(--accent-cyan);
           padding: 12px 16px;
           border-radius: 0 8px 8px 0;
         }

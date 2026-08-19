@@ -460,7 +460,6 @@ function SearchTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any
 
         .search-input:focus {
           border-color: var(--accent-cyan);
-          box-shadow: var(--glow-cyan);
           outline: none;
         }
 
@@ -482,7 +481,7 @@ function SearchTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any
         .error-message {
           padding: 2rem;
           text-align: center;
-          color: var(--accent-pink);
+          color: var(--accent-cyan);
         }
 
         .empty-state {
@@ -592,7 +591,6 @@ function SearchTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any
         .load-more-button:hover:not(:disabled) {
           background: var(--accent-cyan);
           color: var(--bg-primary);
-          box-shadow: var(--glow-cyan);
         }
 
         .load-more-button:disabled {
@@ -764,7 +762,7 @@ function HashtagsTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: a
         }
 
         .clear-search:hover {
-          background: var(--accent-pink);
+          background: var(--accent-cyan);
           color: white;
         }
 
@@ -782,7 +780,6 @@ function HashtagsTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: a
         }
 
         .search-submit-btn:hover {
-          box-shadow: var(--glow-cyan);
           transform: translateY(-2px);
         }
 
@@ -811,7 +808,7 @@ function HashtagsTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: a
         }
 
         .sort-btn.active {
-          background: var(--accent-purple);
+          background: var(--accent-cyan);
           color: white;
         }
 
@@ -1158,7 +1155,7 @@ function UsersTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any 
         }
 
         .clear-search:hover {
-          background: var(--accent-pink);
+          background: var(--accent-cyan);
           color: white;
         }
 
@@ -1209,7 +1206,7 @@ function UsersTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any 
         .retry-button {
           margin-top: 1rem;
           padding: 0.75rem 1.5rem;
-          background: var(--accent-pink);
+          background: var(--accent-cyan);
           color: white;
           border-radius: 8px;
           font-weight: 600;
@@ -1219,7 +1216,6 @@ function UsersTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any 
         }
 
         .retry-button:hover {
-          box-shadow: var(--glow-pink);
         }
 
         .loading-state {
@@ -1280,7 +1276,7 @@ function UsersTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any 
         .browse-link {
           display: inline-block;
           padding: 12px 24px;
-          background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+          background: var(--accent-cyan);
           color: white;
           font-weight: 600;
           border-radius: 10px;
@@ -1291,7 +1287,6 @@ function UsersTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any 
         }
 
         .browse-link:hover {
-          box-shadow: var(--glow-purple);
           transform: translateY(-2px);
         }
 
@@ -1330,8 +1325,7 @@ function UsersTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any 
 
         .user-card:hover {
           background: var(--bg-tertiary);
-          border-color: var(--accent-purple);
-          box-shadow: var(--glow-purple);
+          border-color: var(--accent-cyan);
           transform: translateY(-2px);
         }
 
@@ -1405,7 +1399,6 @@ function UsersTab({ API_BASE_URL, router }: { API_BASE_URL: string; router: any 
 
         .load-more-btn:hover:not(:disabled) {
           background: var(--bg-tertiary);
-          box-shadow: var(--glow-cyan);
         }
 
         .load-more-btn:disabled {

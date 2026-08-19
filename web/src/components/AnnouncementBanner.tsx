@@ -91,7 +91,7 @@ export default function AnnouncementBanner() {
           padding: 10px 44px 10px 16px;
           background: linear-gradient(
             90deg,
-            rgba(255, 110, 180, 0.15),
+            rgba(0, 212, 255, 0.15),
             rgba(0, 212, 255, 0.15)
           );
           /* Last row inside the fixed header: the header's own bottom border

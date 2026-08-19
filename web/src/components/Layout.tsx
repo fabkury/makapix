@@ -688,7 +688,6 @@ export default function Layout({ children, title, description }: LayoutProps) {
 
         .header-left :global(button.logo-link:hover) .logo-container,
         .header-left :global(button.logo-link.logo-link-open) .logo-container {
-          box-shadow: var(--glow-pink);
         }
 
         .logo {
@@ -731,7 +730,6 @@ export default function Layout({ children, title, description }: LayoutProps) {
         .header-left :global(a.user-profile-link:hover) .user-icon {
           background: var(--accent-cyan);
           color: var(--bg-primary);
-          box-shadow: var(--glow-cyan);
         }
 
         .header-left :global(a.user-profile-link:hover) .user-icon .user-avatar {
@@ -766,13 +764,11 @@ export default function Layout({ children, title, description }: LayoutProps) {
         }
 
         .header-left :global(a.mod-dashboard-link:hover) .mod-icon {
-          background: var(--accent-purple);
-          box-shadow: var(--glow-purple);
+          background: var(--accent-cyan);
         }
 
         .header-left :global(a.mod-dashboard-link.active) .mod-icon {
           background: rgba(255, 255, 255, 0.15);
-          box-shadow: 0 0 16px rgba(180, 78, 255, 0.4), inset 0 0 0 2px rgba(180, 78, 255, 0.3);
         }
 
         .nav {
@@ -813,9 +809,8 @@ export default function Layout({ children, title, description }: LayoutProps) {
           transform: translateX(-50%);
           width: 20px;
           height: 3px;
-          background: linear-gradient(90deg, var(--accent-pink), var(--accent-cyan));
+          background: var(--accent-cyan);
           border-radius: 2px;
-          box-shadow: 0 0 8px rgba(255, 110, 180, 0.5);
         }
 
         .nav-icon {
@@ -891,7 +886,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
           font-weight: 700;
           font-size: 28px;
           color: var(--text-secondary);
-          background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+          background: var(--accent-cyan);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -902,7 +897,6 @@ export default function Layout({ children, title, description }: LayoutProps) {
         }
 
         .nav :global(a.nav-item-active) .nav-icon-hash {
-          text-shadow: var(--glow-purple);
         }
 
         .main-content {

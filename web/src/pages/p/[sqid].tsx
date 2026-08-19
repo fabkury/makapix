@@ -2327,7 +2327,7 @@ export default function PostPage() {
         }
 
         .post-info-author:hover .post-info-handle {
-          color: var(--accent-pink);
+          color: var(--accent-cyan);
         }
 
         .post-info-avatar {
@@ -2456,10 +2456,10 @@ export default function PostPage() {
         .hashtag {
           background: linear-gradient(
             135deg,
-            rgba(180, 78, 255, 0.2),
-            rgba(78, 159, 255, 0.2)
+            rgba(0, 212, 255, 0.2),
+            rgba(0, 212, 255, 0.2)
           );
-          color: var(--accent-purple);
+          color: var(--accent-cyan);
           padding: 6px 14px;
           border-radius: 20px;
           font-size: 0.85rem;
@@ -2480,9 +2480,9 @@ export default function PostPage() {
         }
 
         .mod-tag-chip {
-          background: rgba(180, 78, 255, 0.15);
-          border: 1px solid rgba(180, 78, 255, 0.35);
-          color: var(--accent-purple);
+          background: rgba(0, 212, 255, 0.15);
+          border: 1px solid rgba(0, 212, 255, 0.35);
+          color: var(--accent-cyan);
           padding: 4px 10px;
           border-radius: 16px;
           font-size: 0.8rem;
@@ -2495,21 +2495,20 @@ export default function PostPage() {
         }
 
         .mod-tag-chip.clickable:hover {
-          background: rgba(180, 78, 255, 0.3);
+          background: rgba(0, 212, 255, 0.3);
         }
 
         .mod-tag-chip.active {
-          background: rgba(180, 78, 255, 0.4);
-          border-color: var(--accent-purple);
+          background: rgba(0, 212, 255, 0.4);
+          border-color: var(--accent-cyan);
         }
 
         .hashtag:hover {
           background: linear-gradient(
             135deg,
-            rgba(180, 78, 255, 0.4),
-            rgba(78, 159, 255, 0.4)
+            rgba(0, 212, 255, 0.4),
+            rgba(0, 212, 255, 0.4)
           );
-          box-shadow: var(--glow-purple);
         }
 
         .license-section {
@@ -2653,16 +2652,11 @@ export default function PostPage() {
         }
 
         .action-button.save {
-          background: linear-gradient(
-            135deg,
-            var(--accent-pink),
-            var(--accent-purple)
-          );
+          background: var(--accent-cyan);
           color: white;
         }
 
         .action-button.save:hover:not(:disabled) {
-          box-shadow: var(--glow-pink);
         }
 
         .action-button.cancel {

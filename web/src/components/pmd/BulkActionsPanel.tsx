@@ -398,7 +398,7 @@ export function BulkActionsPanel({
         }
 
         .action-btn.primary {
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          background: var(--accent-cyan);
           border: none;
           color: white;
           font-weight: 500;

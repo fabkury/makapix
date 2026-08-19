@@ -334,7 +334,7 @@ export default function ModeratorActionsPanel({
           border: 1px solid var(--border-color);
         }
         .action-btn.danger {
-          background: var(--accent-pink);
+          background: var(--accent-cyan);
           color: #000;
         }
         .action-btn.danger:hover:not(:disabled) {

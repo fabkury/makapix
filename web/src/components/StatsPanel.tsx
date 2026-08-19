@@ -305,8 +305,8 @@ export default function StatsPanel({
           border-bottom: 1px solid rgba(255, 255, 255, 0.1);
           background: linear-gradient(
             135deg,
-            rgba(180, 78, 255, 0.1),
-            rgba(78, 159, 255, 0.1)
+            rgba(0, 212, 255, 0.1),
+            rgba(0, 212, 255, 0.1)
           );
         }
 

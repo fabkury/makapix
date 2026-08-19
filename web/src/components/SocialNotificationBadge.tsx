@@ -83,13 +83,12 @@ export default function SocialNotificationBadge() {
           height: 18px;
           padding: 0 5px;
           border-radius: 9px;
-          background: var(--accent-pink);
+          background: var(--accent-cyan);
           color: white;
           font-size: 11px;
           font-weight: 700;
           line-height: 18px;
           text-align: center;
-          box-shadow: 0 0 8px rgba(255, 110, 180, 0.6);
           animation: badge-pulse 2s ease-in-out infinite;
         }
 

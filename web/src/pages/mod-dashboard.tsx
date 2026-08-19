@@ -1773,13 +1773,12 @@ export default function ModDashboardPage() {
         }
 
         .action-btn.stats {
-          background: rgba(180, 78, 255, 0.2);
-          color: #b44eff;
+          background: rgba(0, 212, 255, 0.2);
+          color: #00d4ff;
         }
 
         .action-btn.stats:hover {
-          background: rgba(180, 78, 255, 0.3);
-          box-shadow: 0 0 8px rgba(180, 78, 255, 0.3);
+          background: rgba(0, 212, 255, 0.3);
         }
 
         .badge {

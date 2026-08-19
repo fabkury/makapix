@@ -281,7 +281,7 @@ export default function SendToPlayerModal({
 
         .error-message {
           background: rgba(239, 68, 68, 0.1);
-          color: var(--accent-pink);
+          color: var(--accent-cyan);
           padding: 12px;
           border-radius: 6px;
           font-size: 0.9rem;
@@ -319,14 +319,14 @@ export default function SendToPlayerModal({
         }
 
         .submit-btn {
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          background: var(--accent-cyan);
           color: white;
           font-weight: 600;
         }
 
         .submit-btn:hover:not(:disabled) {
           transform: translateY(-2px);
-          box-shadow: 0 4px 20px rgba(255, 110, 180, 0.4);
+          box-shadow: 0 4px 20px rgba(0, 212, 255, 0.4);
         }
 
         .cancel-btn:disabled,

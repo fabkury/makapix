@@ -1111,7 +1111,7 @@ export default function UserProfilePage() {
           width: 128px;
           height: 128px;
           border-radius: 0;
-          background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+          background: var(--accent-cyan);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1173,7 +1173,7 @@ export default function UserProfilePage() {
 
         .profile-actions :global(.write-blog-btn),
         .profile-actions :global(.players-btn) {
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          background: var(--accent-cyan);
           border: none;
           border-radius: 8px;
           padding: 10px 16px;
@@ -1196,7 +1196,6 @@ export default function UserProfilePage() {
         .profile-actions :global(.write-blog-btn:hover),
         .profile-actions :global(.players-btn:hover) {
           transform: translateY(-2px);
-          box-shadow: var(--glow-pink);
           color: white;
         }
 
@@ -1225,7 +1224,7 @@ export default function UserProfilePage() {
         }
 
         .logout-btn:hover {
-          background: var(--accent-pink);
+          background: var(--accent-cyan);
           transform: scale(1.05);
         }
 
@@ -1368,7 +1367,7 @@ export default function UserProfilePage() {
         }
 
         .save-error {
-          color: var(--accent-pink);
+          color: var(--accent-cyan);
           font-size: 0.9rem;
           margin: 0 0 12px 0;
         }
@@ -1383,7 +1382,7 @@ export default function UserProfilePage() {
         }
 
         .save-btn {
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          background: var(--accent-cyan);
           color: white;
           border: none;
           border-radius: 8px;
@@ -1396,7 +1395,7 @@ export default function UserProfilePage() {
 
         .save-btn:hover:not(:disabled) {
           transform: translateY(-2px);
-          box-shadow: 0 4px 20px rgba(255, 110, 180, 0.4);
+          box-shadow: 0 4px 20px rgba(0, 212, 255, 0.4);
         }
 
         .save-btn:disabled {

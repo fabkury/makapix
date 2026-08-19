@@ -145,7 +145,7 @@ export default function HashtagPanel({ API_BASE_URL, searchQuery = '', sortBy = 
             width: 40px;
             height: 40px;
             border: 3px solid var(--bg-tertiary);
-            border-top-color: var(--accent-purple);
+            border-top-color: var(--accent-cyan);
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
           }
@@ -187,7 +187,7 @@ export default function HashtagPanel({ API_BASE_URL, searchQuery = '', sortBy = 
           .retry-button {
             margin-top: 1rem;
             padding: 0.75rem 1.5rem;
-            background: var(--accent-pink);
+            background: var(--accent-cyan);
             color: white;
             border-radius: 8px;
             font-weight: 600;
@@ -197,7 +197,6 @@ export default function HashtagPanel({ API_BASE_URL, searchQuery = '', sortBy = 
           }
 
           .retry-button:hover {
-            box-shadow: var(--glow-pink);
           }
         `}</style>
       </div>
@@ -243,7 +242,7 @@ export default function HashtagPanel({ API_BASE_URL, searchQuery = '', sortBy = 
             font-size: 4rem;
             font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
             font-weight: 700;
-            background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+            background: var(--accent-cyan);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -315,7 +314,7 @@ export default function HashtagPanel({ API_BASE_URL, searchQuery = '', sortBy = 
           width: 32px;
           height: 32px;
           border: 3px solid var(--bg-tertiary);
-          border-top-color: var(--accent-purple);
+          border-top-color: var(--accent-cyan);
           border-radius: 50%;
           animation: spin 0.8s linear infinite;
         }

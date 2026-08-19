@@ -314,7 +314,7 @@ export default function PlayersPage() {
           .project-card {
             background: rgba(255, 255, 255, 0.02);
             border: 1px solid rgba(255, 255, 255, 0.06);
-            border-left: 3px solid var(--accent-pink);
+            border-left: 3px solid var(--accent-cyan);
             border-radius: 12px;
             padding: 20px;
             display: flex;
@@ -364,7 +364,7 @@ export default function PlayersPage() {
           }
 
           .project-link {
-            color: var(--accent-pink);
+            color: var(--accent-cyan);
             text-decoration: none;
             font-weight: 600;
             font-size: 0.95rem;
@@ -406,7 +406,7 @@ export default function PlayersPage() {
             align-items: center;
             justify-content: center;
             border-radius: 50%;
-            background: var(--accent-pink);
+            background: var(--accent-cyan);
             color: #fff;
             font-weight: 700;
             font-size: 0.85rem;
@@ -436,7 +436,7 @@ export default function PlayersPage() {
           }
 
           .doc-links a {
-            color: var(--accent-pink);
+            color: var(--accent-cyan);
             text-decoration: none;
           }
 

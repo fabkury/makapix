@@ -584,9 +584,8 @@ export default function CommentsAndReactions({
         }
         
         .makapix-reaction-btn:hover {
-          border-color: #ff6eb4;
+          border-color: #00d4ff;
           transform: scale(1.1);
-          box-shadow: 0 0 12px rgba(255, 110, 180, 0.4);
         }
         
         .makapix-reaction-btn-active {
@@ -660,7 +659,7 @@ export default function CommentsAndReactions({
         .makapix-comment-submit {
           margin-top: 10px;
           padding: 12px 24px;
-          background: linear-gradient(135deg, #ff6eb4, #b44eff);
+          background: #00d4ff;
           color: #fff;
           border: none;
           border-radius: 10px;
@@ -671,7 +670,6 @@ export default function CommentsAndReactions({
         }
         
         .makapix-comment-submit:hover:not(:disabled) {
-          box-shadow: 0 0 20px rgba(255, 110, 180, 0.4);
           transform: translateY(-1px);
         }
 
@@ -784,7 +782,7 @@ export default function CommentsAndReactions({
         .makapix-comment-reply-btn {
           padding: 6px 14px;
           background: transparent;
-          color: #b44eff;
+          color: #00d4ff;
           border: none;
           font-size: 0.85rem;
           font-weight: 600;
@@ -794,7 +792,7 @@ export default function CommentsAndReactions({
         }
         
         .makapix-comment-reply-btn:hover {
-          background: rgba(180, 78, 255, 0.1);
+          background: rgba(0, 212, 255, 0.1);
           color: #c77aff;
         }
         
@@ -853,7 +851,7 @@ export default function CommentsAndReactions({
         }
 
         .makapix-comment-like-btn:hover {
-          background: rgba(255, 110, 180, 0.1);
+          background: rgba(0, 212, 255, 0.1);
           transform: scale(1.15);
         }
 
@@ -865,7 +863,7 @@ export default function CommentsAndReactions({
           padding: 4px 6px;
           background: transparent;
           border: none;
-          color: #ff6eb4;
+          color: #00d4ff;
           font-size: 0.8rem;
           font-weight: 600;
           cursor: pointer;
@@ -874,7 +872,7 @@ export default function CommentsAndReactions({
         }
 
         .makapix-comment-like-count:hover {
-          background: rgba(255, 110, 180, 0.1);
+          background: rgba(0, 212, 255, 0.1);
           text-decoration: underline;
         }
 
@@ -882,7 +880,7 @@ export default function CommentsAndReactions({
           margin-left: 24px;
           margin-top: 12px;
           padding-left: 16px;
-          border-left: 2px solid rgba(180, 78, 255, 0.2);
+          border-left: 2px solid rgba(0, 212, 255, 0.2);
         }
         
         .makapix-no-comments,

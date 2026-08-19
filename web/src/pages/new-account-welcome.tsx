@@ -401,7 +401,7 @@ export default function NewAccountWelcomePage() {
           }
           .primary-button {
             padding: 14px 32px;
-            background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+            background: var(--accent-cyan);
             color: white;
             font-size: 1rem;
             font-weight: 600;
@@ -634,13 +634,13 @@ export default function NewAccountWelcomePage() {
         }
 
         .avatar-upload:hover {
-          border-color: var(--accent-pink);
-          background: rgba(255, 110, 180, 0.05);
+          border-color: var(--accent-cyan);
+          background: rgba(0, 212, 255, 0.05);
         }
 
         .avatar-upload.drag-over {
-          border-color: var(--accent-pink);
-          background: rgba(255, 110, 180, 0.1);
+          border-color: var(--accent-cyan);
+          background: rgba(0, 212, 255, 0.1);
         }
 
         .avatar-preview {
@@ -721,7 +721,7 @@ export default function NewAccountWelcomePage() {
         }
 
         .handle-input-wrapper:focus-within {
-          border-color: var(--accent-pink);
+          border-color: var(--accent-cyan);
         }
 
         .handle-prefix {
@@ -762,8 +762,8 @@ export default function NewAccountWelcomePage() {
         }
 
         .check-btn:hover:not(:disabled) {
-          border-color: var(--accent-pink);
-          color: var(--accent-pink);
+          border-color: var(--accent-cyan);
+          color: var(--accent-cyan);
         }
 
         .check-btn:disabled {
@@ -810,7 +810,7 @@ export default function NewAccountWelcomePage() {
 
         textarea:focus {
           outline: none;
-          border-color: var(--accent-pink);
+          border-color: var(--accent-cyan);
         }
 
         textarea::placeholder {
@@ -859,7 +859,7 @@ export default function NewAccountWelcomePage() {
 
         .save-btn {
           padding: 14px 32px;
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          background: var(--accent-cyan);
           border: none;
           border-radius: 10px;
           color: white;
@@ -870,7 +870,6 @@ export default function NewAccountWelcomePage() {
         }
 
         .save-btn:hover:not(:disabled) {
-          box-shadow: 0 0 20px rgba(255, 110, 180, 0.4);
         }
 
         .save-btn:disabled {

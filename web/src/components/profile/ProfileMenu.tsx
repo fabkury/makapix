@@ -158,7 +158,7 @@ export default function ProfileMenu({ items }: ProfileMenuProps) {
           background: rgba(255, 255, 255, 0.08);
         }
         .menu-dropdown :global(.menu-item.danger) {
-          color: var(--accent-pink, #ff6b6b);
+          color: var(--danger);
         }
         .menu-dropdown :global(.menu-item-icon) {
           font-size: 1.05rem;

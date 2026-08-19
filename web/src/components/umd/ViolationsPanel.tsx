@@ -272,7 +272,7 @@ export default function ViolationsPanel({ sqid }: ViolationsPanelProps) {
           border: none;
           border-radius: 4px;
           cursor: pointer;
-          color: var(--accent-pink);
+          color: var(--accent-cyan);
           transition: background 0.15s ease;
           flex-shrink: 0;
         }
@@ -311,7 +311,7 @@ export default function ViolationsPanel({ sqid }: ViolationsPanelProps) {
         }
         textarea:focus {
           outline: none;
-          border-color: var(--accent-pink);
+          border-color: var(--accent-cyan);
           box-shadow: 0 0 0 2px rgba(255, 82, 130, 0.2);
         }
         .char-count {
@@ -319,7 +319,7 @@ export default function ViolationsPanel({ sqid }: ViolationsPanelProps) {
           color: var(--text-muted);
         }
         .error {
-          color: var(--accent-pink);
+          color: var(--accent-cyan);
           font-size: 0.85rem;
         }
         .submit-btn {
@@ -330,7 +330,7 @@ export default function ViolationsPanel({ sqid }: ViolationsPanelProps) {
           font-size: 0.95rem;
           font-weight: 600;
           cursor: pointer;
-          background: var(--accent-pink);
+          background: var(--accent-cyan);
           color: #000;
           transition: background 0.15s ease, opacity 0.15s ease;
         }
