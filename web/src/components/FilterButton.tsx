@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import { Filter, X } from "lucide-react";
-import { Slider } from "./ui/Slider";
-import { Select } from "./ui/Select";
+import { IconFilter, IconX } from "./kit/icons";
+import { Slider } from "./kit/Slider";
+import { Select } from "./kit/Select";
 import { FilterConfig } from "../hooks/useFilters";
 
 // Delta-based scroll tracking to sync with Layout.tsx header hide/show
@@ -268,7 +268,7 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
           className={`filter-toggle ${isOpen ? 'is-open' : ''}`}
           aria-label="Toggle filters"
         >
-          {isOpen ? <X size={24} /> : <Filter size={24} />}
+          {isOpen ? <IconX size={24} /> : <IconFilter size={24} />}
           {hasActiveFilters && !isOpen && <span className="filter-badge" />}
         </button>
 
@@ -286,7 +286,7 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
                   className="filter-close-btn"
                   aria-label="Close menu"
                 >
-                  <X size={20} />
+                  <IconX size={20} />
                 </button>
               </div>
             </div>

@@ -7,7 +7,7 @@ import PostReviewNotice from '../components/PostReviewNotice';
 import type { DivoomGalleryInfo, DivoomSession } from '../lib/divoom/divoomApi';
 import { divoomLogin, downloadDivoomDat, fetchMyUploads, DivoomApiError } from '../lib/divoom/divoomApi';
 import { PyodideDecoder } from '../lib/divoom/pyodideDecoder';
-import { Checkbox } from '../components/ui/checkbox';
+import { Checkbox } from '../components/kit/Checkbox';
 
 // SharedArrayBuffer requires COOP/COEP headers which are only applied on full page loads.
 // Client-side navigation (router.push) retains the previous page's security context.
