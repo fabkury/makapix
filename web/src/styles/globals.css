@@ -1,31 +1,42 @@
 /* Makapix Club - Global Styles */
-/* Dark theme with neon accents inspired by pixel art */
+/* Dark theme, single accent (docs/newpost-ui-appraisal/ F1, option P1-a):
+   dark-gray ramp instead of pure black, cyan as the only accent, color
+   otherwise reserved for state (danger/warning/success). */
 
 /* Google Fonts loaded via _document.tsx for better performance */
 
 :root {
   /* Base colors */
-  --bg-primary: #000000;
-  --bg-secondary: #12121a;
-  --bg-tertiary: #1a1a24;
-  --bg-card: #16161f;
-  
+  --bg-primary: #0e0f13;
+  --bg-secondary: #16171d;
+  --bg-tertiary: #1e2028;
+  --bg-card: #181a20;
+
   /* Text colors */
   --text-primary: #e8e8f0;
   --text-secondary: #a0a0b8;
   --text-muted: #6a6a80;
-  
-  /* Accent colors - neon inspired by the logo */
-  --accent-pink: #ff6eb4;
+
+  /* Accent - the single brand/interactive color */
   --accent-cyan: #00d4ff;
-  --accent-purple: #b44eff;
-  --accent-blue: #4e9fff;
-  
-  /* Glow effects */
-  --glow-pink: 0 0 12px rgba(255, 110, 180, 0.6);
-  --glow-cyan: 0 0 12px rgba(0, 212, 255, 0.6);
-  --glow-purple: 0 0 12px rgba(180, 78, 255, 0.6);
-  
+  /* Deprecated aliases (P1-a): kept so legacy pages keep rendering; they now
+     resolve to the accent, which also collapses cyan→pink/purple gradients
+     into solid cyan. Migrate usages to --accent-cyan or a semantic token,
+     then delete. */
+  --accent-pink: var(--accent-cyan);
+  --accent-purple: var(--accent-cyan);
+  --accent-blue: var(--accent-cyan);
+
+  /* Semantic state colors */
+  --danger: #f2555a;
+  --warning: #f0bf68;
+  --success: #57c690;
+
+  /* Deprecated glow effects (P1-a): disabled; remove usages over time */
+  --glow-pink: none;
+  --glow-cyan: none;
+  --glow-purple: none;
+
   /* Layout */
   --header-height: 56px;
   --header-bottom-row-height: 34px;
@@ -111,7 +122,7 @@ a {
 }
 
 a:hover {
-  color: var(--accent-pink);
+  text-decoration: underline;
 }
 
 /* Focus styles for accessibility */

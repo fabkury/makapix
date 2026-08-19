@@ -1,5 +1,5 @@
 import * as SelectPrimitive from "@radix-ui/react-select";
-import { ReactNode } from "react";
+import { IconChevronDown, IconCheck } from "./icons";
 
 interface SelectOption {
   value: string;
@@ -21,7 +21,7 @@ export function Select({ value, onValueChange, options, placeholder = "Select...
         <SelectPrimitive.Trigger className="select-trigger">
           <SelectPrimitive.Value placeholder={placeholder} />
           <SelectPrimitive.Icon className="select-icon">
-            <ChevronDownIcon />
+            <IconChevronDown size={14} />
           </SelectPrimitive.Icon>
         </SelectPrimitive.Trigger>
 
@@ -32,7 +32,7 @@ export function Select({ value, onValueChange, options, placeholder = "Select...
                 <SelectPrimitive.Item key={option.value} value={option.value} className="select-item">
                   <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
                   <SelectPrimitive.ItemIndicator className="select-item-indicator">
-                    <CheckIcon />
+                    <IconCheck size={14} />
                   </SelectPrimitive.ItemIndicator>
                 </SelectPrimitive.Item>
               ))}
@@ -132,18 +132,3 @@ export function Select({ value, onValueChange, options, placeholder = "Select...
   );
 }
 
-function ChevronDownIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M2.5 6L5 8.5L9.5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}

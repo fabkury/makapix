@@ -57,7 +57,7 @@ export function Slider({ min, max, step = 1, value, onValueChange, disabled }: S
         .slider-range {
           position: absolute;
           height: 100%;
-          background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));
+          background: var(--accent-cyan);
           border-radius: 4px;
         }
 
@@ -68,19 +68,13 @@ export function Slider({ min, max, step = 1, value, onValueChange, disabled }: S
           background: var(--text-primary);
           border-radius: 50%;
           border: 2px solid var(--accent-cyan);
-          box-shadow: var(--glow-cyan);
           cursor: pointer;
-          transition: transform 0.15s ease, box-shadow 0.15s ease;
-        }
-
-        .slider-thumb:hover {
-          transform: scale(1.1);
-          box-shadow: 0 0 16px rgba(0, 212, 255, 0.8);
+          transition: box-shadow 0.15s ease;
         }
 
         .slider-thumb:focus {
           outline: none;
-          box-shadow: var(--glow-cyan), 0 0 0 3px rgba(0, 212, 255, 0.3);
+          box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.3);
         }
       `}</style>
     </>
