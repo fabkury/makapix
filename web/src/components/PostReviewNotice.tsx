@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { IconShield, IconClock, IconCheckCircle } from './ui/icons';
 
 type Variant = 'pre-upload' | 'pending' | 'approved';
 
@@ -40,7 +41,7 @@ export default function PostReviewNotice({ variant, sharePath }: PostReviewNotic
     <div className={`review-notice ${variant === 'approved' ? 'approved' : 'pending'}`}>
       {variant === 'pre-upload' && (
         <>
-          <span className="notice-icon">🛡️</span>
+          <span className="notice-icon"><IconShield size={20} /></span>
           <div className="notice-body">
             <p className="notice-title">Your post will be reviewed before public release</p>
             <p className="notice-text">
@@ -54,7 +55,7 @@ export default function PostReviewNotice({ variant, sharePath }: PostReviewNotic
       )}
       {variant === 'pending' && (
         <>
-          <span className="notice-icon">⏳</span>
+          <span className="notice-icon"><IconClock size={20} /></span>
           <div className="notice-body">
             <p className="notice-title">Awaiting moderator review</p>
             <p className="notice-text">
@@ -64,7 +65,7 @@ export default function PostReviewNotice({ variant, sharePath }: PostReviewNotic
             </p>
             {sharePath && (
               <button type="button" className="copy-link-btn" onClick={copyLink}>
-                {copied ? '✓ Link copied!' : '🔗 Copy link'}
+                {copied ? 'Link copied' : 'Copy link'}
               </button>
             )}
           </div>
@@ -72,7 +73,7 @@ export default function PostReviewNotice({ variant, sharePath }: PostReviewNotic
       )}
       {variant === 'approved' && (
         <>
-          <span className="notice-icon">✅</span>
+          <span className="notice-icon"><IconCheckCircle size={20} /></span>
           <div className="notice-body">
             <p className="notice-title">Auto-approved — your artwork is live</p>
             <p className="notice-text">
@@ -99,9 +100,15 @@ export default function PostReviewNotice({ variant, sharePath }: PostReviewNotic
           border: 1px solid rgba(100, 255, 160, 0.25);
         }
         .notice-icon {
-          font-size: 1.3rem;
-          line-height: 1.4;
+          display: inline-flex;
           margin-right: 12px;
+          margin-top: 1px;
+        }
+        .review-notice.pending .notice-icon {
+          color: var(--warning);
+        }
+        .review-notice.approved .notice-icon {
+          color: var(--success);
         }
         .notice-body {
           flex: 1;
@@ -131,8 +138,7 @@ export default function PostReviewNotice({ variant, sharePath }: PostReviewNotic
           transition: all var(--transition-fast);
         }
         .copy-link-btn:hover {
-          border-color: var(--accent-cyan);
-          color: var(--accent-cyan);
+          border-color: var(--warning);
         }
       `}</style>
     </div>

@@ -70,7 +70,7 @@ export default function AnnouncementBanner() {
       aria-label="Announcement"
     >
       <Link href={BANNER_HREF} className="announcement-link">
-        🎨 Remixing is here! Your artworks are Remixable by default — you can
+        Remixing is here! Your artworks are Remixable by default — you can
         turn it off per artwork. Learn more&nbsp;→
       </Link>
       <button
