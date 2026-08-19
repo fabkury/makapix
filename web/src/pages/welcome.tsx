@@ -183,9 +183,9 @@ export default function WelcomePage() {
           </p>
 
           <ul className="chips" aria-label="What makes Makapix different">
-            <li className="chip chip-cyan">On real displays</li>
-            <li className="chip chip-pink">Creator analytics</li>
-            <li className="chip chip-green">Open &amp; ad-free</li>
+            <li className="chip">On real displays</li>
+            <li className="chip">Creator analytics</li>
+            <li className="chip">Open &amp; ad-free</li>
           </ul>
 
           <div className="copy">
@@ -201,7 +201,7 @@ export default function WelcomePage() {
               <Link href="/players">Building a connected display? See player projects →</Link>
             </p>
             <p className="recommended-link">
-              <Link href="/app">📱 Get the app — free on iOS &amp; Android →</Link>
+              <Link href="/app">Get the app — free on iOS &amp; Android →</Link>
             </p>
           </div>
         </section>
@@ -356,28 +356,11 @@ export default function WelcomePage() {
           letter-spacing: 0.01em;
           padding: 5px 12px;
           border-radius: 999px;
-          border: 1px solid transparent;
+          border: 1px solid rgba(255, 255, 255, 0.16);
           white-space: nowrap;
-          color: var(--text-primary);
+          color: var(--text-secondary);
         }
 
-        .chip-cyan {
-          border-color: rgba(0, 212, 255, 0.45);
-          color: var(--accent-cyan, #00d4ff);
-          background: rgba(0, 212, 255, 0.08);
-        }
-
-        .chip-pink {
-          border-color: rgba(255, 110, 180, 0.45);
-          color: var(--accent-pink, #ff6eb4);
-          background: rgba(255, 110, 180, 0.08);
-        }
-
-        .chip-green {
-          border-color: rgba(120, 230, 150, 0.45);
-          color: #78e696;
-          background: rgba(120, 230, 150, 0.08);
-        }
 
         .copy {
           margin-top: 20px;
@@ -504,8 +487,6 @@ export default function WelcomePage() {
 
         .samples-grid :global(.sample-cell:hover) {
           border-color: rgba(0, 212, 255, 0.5);
-          transform: translateY(-2px);
-          box-shadow: var(--glow-cyan, 0 0 16px rgba(0, 212, 255, 0.25));
         }
 
         /* Canonical 128x128 thumbnail: small art scales UP, large scales down.
