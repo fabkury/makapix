@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { clearLoggedOutMarker } from '../lib/api';
+import { IconMail } from './kit/icons';
 
 interface AuthTokens {
   token: string;
@@ -253,7 +254,7 @@ export default function AuthPanel({
               <img src="/android-chrome-512x512.png" alt="Makapix Club" className="auth-logo" />
             </div>
           )}
-          <div className="success-icon">✉️</div>
+          <div className="success-icon"><IconMail size={48} /></div>
           <h2 className="otp-title">Enter your code</h2>
           <p className="otp-subtitle">
             We emailed a 6-digit code to <strong>{otpEmail}</strong>. Enter it to verify your account and sign in.
@@ -677,7 +678,9 @@ export default function AuthPanel({
         }
 
         .success-icon {
-          font-size: 4rem;
+          display: flex;
+          justify-content: center;
+          color: var(--text-secondary);
           margin-bottom: 16px;
         }
 
