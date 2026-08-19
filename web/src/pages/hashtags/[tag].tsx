@@ -314,7 +314,7 @@ export default function HashtagPage() {
           font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
           font-weight: 700;
           font-size: 2rem;
-          background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+          background: var(--accent-cyan);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -348,7 +348,7 @@ export default function HashtagPage() {
         .retry-button {
           margin-top: 1rem;
           padding: 0.75rem 1.5rem;
-          background: var(--accent-pink);
+          background: var(--accent-cyan);
           color: var(--bg-primary);
           border-radius: 8px;
           font-weight: 600;
@@ -356,7 +356,6 @@ export default function HashtagPage() {
         }
 
         .retry-button:hover {
-          box-shadow: var(--glow-pink);
         }
 
         .empty-state {
@@ -408,7 +407,7 @@ export default function HashtagPage() {
           width: 32px;
           height: 32px;
           border: 3px solid var(--bg-tertiary);
-          border-top-color: var(--accent-purple);
+          border-top-color: var(--accent-cyan);
           border-radius: 50%;
           animation: spin 0.8s linear infinite;
         }

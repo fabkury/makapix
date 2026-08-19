@@ -297,7 +297,7 @@ export default function BlogFeedPage() {
         .postponed-notice :global(.back-home-link) {
           display: inline-block;
           padding: 12px 24px;
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          background: var(--accent-cyan);
           color: white;
           border-radius: 8px;
           font-weight: 600;
@@ -307,7 +307,6 @@ export default function BlogFeedPage() {
 
         .postponed-notice :global(.back-home-link:hover) {
           transform: translateY(-2px);
-          box-shadow: var(--glow-pink);
         }
 
         /* Original styles preserved for future reactivation */
@@ -332,7 +331,7 @@ export default function BlogFeedPage() {
           align-items: center;
           gap: 8px;
           padding: 12px 24px;
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          background: var(--accent-cyan);
           color: white;
           border-radius: 8px;
           font-weight: 600;
@@ -342,7 +341,6 @@ export default function BlogFeedPage() {
 
         .blog-feed-header :global(.write-button:hover) {
           transform: translateY(-2px);
-          box-shadow: var(--glow-pink);
         }
 
         .blog-feed-header :global(.write-button) .write-icon {
@@ -388,7 +386,7 @@ export default function BlogFeedPage() {
         .retry-button {
           margin-top: 1rem;
           padding: 0.75rem 1.5rem;
-          background: var(--accent-pink);
+          background: var(--accent-cyan);
           color: var(--bg-primary);
           border-radius: 8px;
           font-weight: 600;
@@ -396,7 +394,6 @@ export default function BlogFeedPage() {
         }
 
         .retry-button:hover {
-          box-shadow: var(--glow-pink);
         }
 
         .empty-state {

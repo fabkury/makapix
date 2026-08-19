@@ -467,7 +467,7 @@ export default function ContentSettingsPage() {
         }
 
         .save-error {
-          color: var(--accent-pink, #ff6b6b);
+          color: var(--danger);
           margin: 16px 0 0 0;
         }
         .save-success {
@@ -480,7 +480,7 @@ export default function ContentSettingsPage() {
         }
 
         .save-btn {
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          background: var(--accent-cyan);
           color: white;
           border: none;
           border-radius: 8px;
@@ -492,7 +492,7 @@ export default function ContentSettingsPage() {
         }
         .save-btn:hover:not(:disabled) {
           transform: translateY(-2px);
-          box-shadow: 0 4px 20px rgba(255, 110, 180, 0.4);
+          box-shadow: 0 4px 20px rgba(0, 212, 255, 0.4);
         }
         .save-btn:disabled {
           opacity: 0.5;
@@ -544,7 +544,7 @@ export default function ContentSettingsPage() {
           display: flex;
           align-items: center;
           justify-content: center;
-          background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+          background: var(--accent-cyan);
           color: white;
           font-weight: 700;
           text-transform: uppercase;

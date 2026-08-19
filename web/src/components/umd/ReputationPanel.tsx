@@ -188,7 +188,7 @@ export default function ReputationPanel({ sqid, currentReputation, onReputationC
           color: var(--text-secondary);
         }
         .positive { color: var(--accent-cyan); }
-        .negative { color: var(--accent-pink); }
+        .negative { color: var(--accent-cyan); }
         .slider-section {
           display: flex;
           flex-direction: column;
@@ -229,7 +229,7 @@ export default function ReputationPanel({ sqid, currentReputation, onReputationC
           cursor: not-allowed;
         }
         .increment-buttons button:first-child svg {
-          color: var(--accent-pink);
+          color: var(--accent-cyan);
         }
         .increment-buttons button:last-child svg {
           color: var(--accent-cyan);
@@ -296,7 +296,7 @@ export default function ReputationPanel({ sqid, currentReputation, onReputationC
           color: var(--text-muted);
         }
         .error {
-          color: var(--accent-pink);
+          color: var(--accent-cyan);
           font-size: 0.85rem;
         }
         .submit-btn {
@@ -321,7 +321,7 @@ export default function ReputationPanel({ sqid, currentReputation, onReputationC
           background: #00e5ff;
         }
         .submit-btn.remove {
-          background: var(--accent-pink);
+          background: var(--accent-cyan);
           color: #000;
         }
         .submit-btn.remove:hover:not(:disabled) {

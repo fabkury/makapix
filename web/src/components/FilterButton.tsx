@@ -423,10 +423,9 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
           width: 56px;
           height: 56px;
           border-radius: 50%;
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          background: var(--accent-cyan);
           color: white;
           border: none;
-          box-shadow: var(--glow-pink);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -437,7 +436,6 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
 
         .filter-toggle:hover {
           transform: scale(1.05);
-          box-shadow: 0 0 20px rgba(255, 110, 180, 0.8);
         }
 
         .filter-toggle.is-open {
@@ -453,7 +451,6 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
           height: 10px;
           background: var(--accent-cyan);
           border-radius: 50%;
-          box-shadow: var(--glow-cyan);
         }
 
         .filter-menu {

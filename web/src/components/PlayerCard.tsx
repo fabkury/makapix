@@ -424,7 +424,7 @@ export default function PlayerCard({ player, sqid, onDelete, onRefresh }: Player
         }
 
         .delete-btn:hover:not(:disabled) {
-          background: var(--accent-pink);
+          background: var(--accent-cyan);
           transform: scale(1.05);
         }
 
@@ -450,7 +450,7 @@ export default function PlayerCard({ player, sqid, onDelete, onRefresh }: Player
         }
 
         .error-message {
-          color: var(--accent-pink);
+          color: var(--accent-cyan);
           font-size: 0.85rem;
           margin-top: 8px;
         }

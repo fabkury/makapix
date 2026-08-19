@@ -308,7 +308,7 @@ export default function RecentCommentsPanel({ sqid }: RecentCommentsPanelProps) 
           background: rgba(255, 255, 255, 0.1);
         }
         .action-btn.delete {
-          color: var(--accent-pink);
+          color: var(--accent-cyan);
         }
         .action-btn.delete.confirm {
           background: rgba(255, 82, 130, 0.2);

@@ -493,8 +493,8 @@ export default function OwnerDashboardPage() {
         }
 
         .role-owner {
-          background: rgba(255, 110, 180, 0.2);
-          color: var(--accent-pink);
+          background: rgba(0, 212, 255, 0.2);
+          color: var(--accent-cyan);
         }
 
         .role-moderator {
@@ -504,7 +504,7 @@ export default function OwnerDashboardPage() {
 
         .owner-badge {
           font-size: 0.8rem;
-          color: var(--accent-pink);
+          color: var(--accent-cyan);
           font-style: italic;
         }
 

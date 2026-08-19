@@ -264,7 +264,7 @@ export default function PlayersPage() {
         }
 
         .register-btn {
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          background: var(--accent-cyan);
           color: white;
           border: none;
           border-radius: 8px;
@@ -277,7 +277,7 @@ export default function PlayersPage() {
 
         .register-btn:hover {
           transform: translateY(-2px);
-          box-shadow: 0 4px 20px rgba(255, 110, 180, 0.4);
+          box-shadow: 0 4px 20px rgba(0, 212, 255, 0.4);
         }
 
         .stats-bar {
@@ -340,7 +340,7 @@ export default function PlayersPage() {
         }
 
         .register-btn-large {
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          background: var(--accent-cyan);
           color: white;
           border: none;
           border-radius: 8px;
@@ -353,7 +353,7 @@ export default function PlayersPage() {
 
         .register-btn-large:hover {
           transform: translateY(-2px);
-          box-shadow: 0 4px 20px rgba(255, 110, 180, 0.4);
+          box-shadow: 0 4px 20px rgba(0, 212, 255, 0.4);
         }
 
         .players-list {

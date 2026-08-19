@@ -184,7 +184,7 @@ export default function MarkdownBio({ bio, maxLength = 1000 }: MarkdownBioProps)
           color: var(--accent-cyan);
         }
         .markdown-bio .bio-link {
-          color: var(--accent-pink);
+          color: var(--accent-cyan);
           text-decoration: none;
         }
         .markdown-bio .bio-link:hover {

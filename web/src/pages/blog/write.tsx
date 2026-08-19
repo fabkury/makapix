@@ -423,7 +423,7 @@ export default function WriteBlogPostPage() {
         .postponed-notice :global(.back-home-link) {
           display: inline-block;
           padding: 12px 24px;
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          background: var(--accent-cyan);
           color: white;
           border-radius: 8px;
           font-weight: 600;
@@ -433,7 +433,6 @@ export default function WriteBlogPostPage() {
 
         .postponed-notice :global(.back-home-link:hover) {
           transform: translateY(-2px);
-          box-shadow: var(--glow-pink);
         }
 
         /* Original styles preserved for future reactivation */
@@ -457,12 +456,12 @@ export default function WriteBlogPostPage() {
         }
 
         .back-link:hover {
-          color: var(--accent-pink);
+          color: var(--accent-cyan);
         }
 
         .publish-button {
           padding: 12px 32px;
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          background: var(--accent-cyan);
           color: white;
           border: none;
           border-radius: 8px;
@@ -474,7 +473,6 @@ export default function WriteBlogPostPage() {
 
         .publish-button:hover:not(:disabled) {
           transform: translateY(-2px);
-          box-shadow: var(--glow-pink);
         }
 
         .publish-button:disabled {

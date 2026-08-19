@@ -324,7 +324,7 @@ export default function BlogPostPage() {
         .postponed-notice :global(.back-home-link) {
           display: inline-block;
           padding: 12px 24px;
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          background: var(--accent-cyan);
           color: white;
           border-radius: 8px;
           font-weight: 600;
@@ -334,7 +334,6 @@ export default function BlogPostPage() {
 
         .postponed-notice :global(.back-home-link:hover) {
           transform: translateY(-2px);
-          box-shadow: var(--glow-pink);
         }
 
         /* Original styles preserved for future reactivation */
@@ -376,7 +375,7 @@ export default function BlogPostPage() {
         }
 
         .blog-post-meta :global(.author-link:hover) {
-          color: var(--accent-pink);
+          color: var(--accent-cyan);
         }
 
         .meta-separator {
@@ -384,8 +383,8 @@ export default function BlogPostPage() {
         }
 
         .updated-badge {
-          background: rgba(78, 159, 255, 0.2);
-          color: var(--accent-blue);
+          background: rgba(0, 212, 255, 0.2);
+          color: var(--accent-cyan);
           padding: 2px 8px;
           border-radius: 4px;
           font-size: 0.75rem;
@@ -475,7 +474,7 @@ export default function BlogPostPage() {
         }
 
         .blog-post-content-inner :global(a:hover) {
-          color: var(--accent-pink);
+          color: var(--accent-cyan);
         }
 
         .blog-post-image {
@@ -504,12 +503,12 @@ export default function BlogPostPage() {
         }
 
         .owner-actions :global(.action-button.edit) {
-          background: rgba(78, 159, 255, 0.2);
-          color: #4e9fff;
+          background: rgba(0, 212, 255, 0.2);
+          color: #00d4ff;
         }
 
         .owner-actions :global(.action-button.edit:hover) {
-          background: rgba(78, 159, 255, 0.3);
+          background: rgba(0, 212, 255, 0.3);
         }
 
         .owner-actions .action-button.delete {

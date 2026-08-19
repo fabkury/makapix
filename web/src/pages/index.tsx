@@ -336,7 +336,7 @@ export default function HomePage() {
         .retry-button {
           margin-top: 1rem;
           padding: 0.75rem 1.5rem;
-          background: var(--accent-pink);
+          background: var(--accent-cyan);
           color: var(--bg-primary);
           border-radius: 8px;
           font-weight: 600;
@@ -344,7 +344,6 @@ export default function HomePage() {
         }
 
         .retry-button:hover {
-          box-shadow: var(--glow-pink);
         }
 
         .empty-state {

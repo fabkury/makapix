@@ -60,7 +60,7 @@ export default function ProfileTabs({ activeTab, onTabChange, isAuthenticated: _
           left: 0;
           right: 0;
           height: 2px;
-          background: linear-gradient(to right, var(--accent-pink), var(--accent-cyan));
+          background: var(--accent-cyan);
         }
       `}</style>
     </div>

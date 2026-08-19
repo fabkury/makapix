@@ -225,7 +225,7 @@ export default function SPOCommentsOverlay({
           marginLeft: depth > 0 ? 24 : 0,
           marginBottom: 12,
           paddingLeft: depth > 0 ? 16 : 0,
-          borderLeft: depth > 0 ? '2px solid rgba(180, 78, 255, 0.2)' : 'none',
+          borderLeft: depth > 0 ? '2px solid rgba(0, 212, 255, 0.2)' : 'none',
         }}
       >
         <div style={{ display: 'flex' }}>
@@ -270,7 +270,7 @@ export default function SPOCommentsOverlay({
               <span style={{
                 fontSize: 13,
                 fontWeight: 600,
-                color: depth === 0 ? '#00d4ff' : (depth === 1 ? '#ff6eb4' : '#b44eff'),
+                color: depth === 0 ? '#00d4ff' : (depth === 1 ? '#00d4ff' : '#00d4ff'),
                 marginRight: 8,
               }}>
                 {authorName}
@@ -316,7 +316,7 @@ export default function SPOCommentsOverlay({
                     style={{
                       background: 'transparent',
                       border: 'none',
-                      color: '#ff6eb4',
+                      color: '#00d4ff',
                       fontSize: 12,
                       cursor: 'pointer',
                       padding: '4px 0',
@@ -333,7 +333,7 @@ export default function SPOCommentsOverlay({
                     style={{
                       background: 'transparent',
                       border: 'none',
-                      color: '#b44eff',
+                      color: '#00d4ff',
                       fontSize: 12,
                       cursor: 'pointer',
                       padding: '4px 0',
@@ -414,7 +414,7 @@ export default function SPOCommentsOverlay({
                     disabled={!replyBody.trim() || submitting}
                     style={{
                       padding: '6px 16px',
-                      background: 'linear-gradient(135deg, #ff6eb4, #b44eff)',
+                      background: '#00d4ff',
                       color: '#fff',
                       border: 'none',
                       borderRadius: 8,
@@ -560,7 +560,7 @@ export default function SPOCommentsOverlay({
                 style={{
                   marginTop: 8,
                   padding: '10px 20px',
-                  background: 'linear-gradient(135deg, #ff6eb4, #b44eff)',
+                  background: '#00d4ff',
                   color: '#fff',
                   border: 'none',
                   borderRadius: 10,

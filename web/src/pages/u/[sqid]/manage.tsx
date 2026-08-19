@@ -319,7 +319,7 @@ export default function UserManagementDashboard() {
           color: var(--text-muted);
         }
         .error {
-          color: var(--accent-pink);
+          color: var(--accent-cyan);
         }
         .panels {
           display: flex;

@@ -202,7 +202,7 @@ export default function BadgePanel({ sqid, currentBadges, onBadgesChange }: Badg
           background: var(--bg-secondary);
         }
         .error {
-          color: var(--accent-pink);
+          color: var(--accent-cyan);
           font-size: 0.85rem;
         }
         .submit-btn {
@@ -227,7 +227,7 @@ export default function BadgePanel({ sqid, currentBadges, onBadgesChange }: Badg
           background: #00e5ff;
         }
         .submit-btn.revoke {
-          background: var(--accent-pink);
+          background: var(--accent-cyan);
           color: #000;
         }
         .submit-btn.revoke:hover:not(:disabled) {

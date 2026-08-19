@@ -304,7 +304,7 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
           font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
           font-weight: 700;
           font-size: 1.5rem;
-          background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+          background: var(--accent-cyan);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -410,7 +410,7 @@ export default function CardRoller({ hashtag, stats, API_BASE_URL, initialPosts 
           width: 24px;
           height: 24px;
           border: 2px solid var(--bg-tertiary);
-          border-top-color: var(--accent-purple);
+          border-top-color: var(--accent-cyan);
           border-radius: 50%;
           animation: spin 0.8s linear infinite;
         }

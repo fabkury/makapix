@@ -179,7 +179,7 @@ const API_BASE_URL = typeof window !== 'undefined'
           display: block;
           width: 100%;
           padding: 14px;
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          background: var(--accent-cyan);
           color: white;
           font-size: 1rem;
           font-weight: 600;
@@ -192,7 +192,6 @@ const API_BASE_URL = typeof window !== 'undefined'
         }
 
         .primary-button:hover:not(:disabled) {
-          box-shadow: 0 0 20px rgba(255, 110, 180, 0.4);
         }
 
         .primary-button:disabled {

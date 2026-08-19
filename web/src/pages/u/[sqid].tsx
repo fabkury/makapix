@@ -1504,7 +1504,7 @@ export default function UserProfilePage() {
           width: 128px;
           height: 128px;
           border-radius: 0;
-          background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+          background: var(--accent-cyan);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1701,7 +1701,7 @@ export default function UserProfilePage() {
         }
 
         .save-error {
-          color: var(--accent-pink);
+          color: var(--accent-cyan);
           font-size: 0.9rem;
           margin: 0 0 12px 0;
         }
@@ -1716,7 +1716,7 @@ export default function UserProfilePage() {
         }
 
         .save-btn {
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          background: var(--accent-cyan);
           color: white;
           border: none;
           border-radius: 8px;
@@ -1729,7 +1729,7 @@ export default function UserProfilePage() {
 
         .save-btn:hover:not(:disabled) {
           transform: translateY(-2px);
-          box-shadow: 0 4px 20px rgba(255, 110, 180, 0.4);
+          box-shadow: 0 4px 20px rgba(0, 212, 255, 0.4);
         }
 
         .save-btn:disabled {
@@ -1910,7 +1910,7 @@ export default function UserProfilePage() {
 
         .block-error {
           background: rgba(239, 68, 68, 0.1);
-          color: var(--accent-pink, #ff6b6b);
+          color: var(--danger);
           padding: 12px 16px;
           border-radius: 8px;
           font-size: 0.9rem;

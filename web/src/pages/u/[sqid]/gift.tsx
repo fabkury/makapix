@@ -43,7 +43,7 @@ export default function GiftPage() {
         .gift-icon {
           font-size: 5rem;
           margin-bottom: 24px;
-          filter: drop-shadow(0 4px 20px rgba(255, 110, 180, 0.4));
+          filter: drop-shadow(0 4px 20px rgba(0, 212, 255, 0.4));
         }
 
         h1 {
@@ -51,7 +51,7 @@ export default function GiftPage() {
           font-weight: 700;
           color: var(--text-primary);
           margin: 0 0 16px 0;
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          background: var(--accent-cyan);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;

@@ -267,7 +267,7 @@ export function DownloadRequestsPanel({ bdrs }: DownloadRequestsPanelProps) {
 
         .download-btn {
           display: inline-block;
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          background: var(--accent-cyan);
           color: white;
           padding: 10px 20px;
           border-radius: 6px;

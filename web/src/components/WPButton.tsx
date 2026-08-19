@@ -97,10 +97,9 @@ export function WPButton({ onClick, noFilter = false }: WPButtonProps) {
           width: 56px;
           height: 56px;
           border-radius: 50%;
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          background: var(--accent-cyan);
           color: white;
           border: none;
-          box-shadow: var(--glow-pink);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -110,7 +109,6 @@ export function WPButton({ onClick, noFilter = false }: WPButtonProps) {
 
         .wp-toggle:hover {
           transform: scale(1.05);
-          box-shadow: 0 0 20px rgba(255, 110, 180, 0.8);
         }
 
         .wp-icon {

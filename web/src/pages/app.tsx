@@ -270,11 +270,7 @@ export default function AppPage() {
         }
 
         .grad {
-          background: linear-gradient(
-            90deg,
-            var(--accent-pink),
-            var(--accent-cyan)
-          );
+          background: var(--accent-cyan);
           -webkit-background-clip: text;
           background-clip: text;
           -webkit-text-fill-color: transparent;

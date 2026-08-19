@@ -193,7 +193,7 @@ export default function VerifyEmailPage() {
         .primary-button {
           display: inline-block;
           padding: 14px 32px;
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
+          background: var(--accent-cyan);
           color: white;
           font-size: 1rem;
           font-weight: 600;
@@ -203,7 +203,6 @@ export default function VerifyEmailPage() {
         }
 
         .primary-button:hover {
-          box-shadow: 0 0 20px rgba(255, 110, 180, 0.4);
         }
 
         .actions {

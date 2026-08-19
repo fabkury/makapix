@@ -285,7 +285,7 @@ export default function DownloadStatsPanel() {
           margin-bottom: 24px;
           padding: 10px 14px;
           background: var(--bg-tertiary, #2a2a3e);
-          border-left: 3px solid var(--accent-purple, #b44eff);
+          border-left: 3px solid var(--accent-cyan);
           border-radius: 6px;
           color: var(--text-secondary, #ccc);
           font-size: 0.85rem;
@@ -381,7 +381,7 @@ export default function DownloadStatsPanel() {
         }
         .trend-bar {
           width: 100%;
-          background: linear-gradient(to top, var(--accent-purple, #b44eff), var(--accent-cyan, #4ecdc4));
+          background: linear-gradient(to top, var(--accent-cyan), var(--accent-cyan, #4ecdc4));
           border-radius: 3px 3px 0 0;
           transition: height 0.3s ease;
         }
