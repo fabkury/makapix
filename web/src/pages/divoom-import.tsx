@@ -1610,14 +1610,14 @@ export default function DivoomImportPage() {
                   </div>
                   {batchPendingReviewCount > 0 ? (
                     <div className="stats-note">
-                      ⏳ {batchPendingReviewCount === batchSuccessCount ? 'Your uploads' : `${batchPendingReviewCount} of your uploads`} will
+                      {batchPendingReviewCount === batchSuccessCount ? 'Your uploads' : `${batchPendingReviewCount} of your uploads`} will
                       be reviewed by a moderator before public release to the community.
                       Meanwhile, they&apos;re already visible on your profile page and can be
                       shared with anyone via their direct links.
                     </div>
                   ) : batchSuccessCount > 0 ? (
                     <div className="stats-note">
-                      ✅ Auto-approved — your uploads are already publicly released to the community.
+                      Auto-approved — your uploads are already publicly released to the community.
                     </div>
                   ) : null}
                 </div>
@@ -1715,11 +1715,11 @@ export default function DivoomImportPage() {
                       </div>
                       {uploadedArtwork.public_visibility ? (
                         <div className="muted">
-                          ✅ Auto-approved — your artwork is already publicly released to the community.
+                          Auto-approved — your artwork is already publicly released to the community.
                         </div>
                       ) : (
                         <div className="muted">
-                          ⏳ A moderator will review this post before public release to the
+                          A moderator will review this post before public release to the
                           community. Meanwhile, it&apos;s already visible on your profile page
                           and can be shared with anyone via its direct link.
                         </div>
@@ -1778,7 +1778,6 @@ export default function DivoomImportPage() {
         }
         .back-btn:hover {
           background: rgba(0, 212, 255, 0.12);
-          box-shadow: var(--glow-cyan);
         }
 
         .panel {
@@ -1890,15 +1889,14 @@ export default function DivoomImportPage() {
         .btn-primary {
           padding: 12px 16px;
           border-radius: 12px;
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
-          color: white;
+          background: var(--accent-cyan);
+          color: #0b0c10;
           font-weight: 700;
           transition: all var(--transition-fast);
           height: 44px;
         }
         .btn-primary:hover {
-          box-shadow: 0 0 30px rgba(255, 110, 180, 0.35);
-          transform: translateY(-1px);
+          filter: brightness(1.1);
         }
 
         .btn-secondary {
@@ -1909,8 +1907,7 @@ export default function DivoomImportPage() {
           transition: all var(--transition-fast);
         }
         .btn-secondary:hover:not(:disabled) {
-          background: rgba(180, 78, 255, 0.18);
-          box-shadow: var(--glow-purple);
+          background: rgba(0, 212, 255, 0.12);
         }
         .btn-secondary:disabled {
           opacity: 0.5;
@@ -2032,13 +2029,13 @@ export default function DivoomImportPage() {
         }
 
         .sort-btn:hover {
-          background: rgba(180, 78, 255, 0.12);
-          color: var(--accent-purple);
+          background: rgba(0, 212, 255, 0.1);
+          color: var(--accent-cyan);
         }
 
         .sort-btn.active {
-          background: rgba(180, 78, 255, 0.15);
-          color: var(--accent-purple);
+          background: rgba(0, 212, 255, 0.12);
+          color: var(--accent-cyan);
           font-weight: 600;
         }
 
@@ -2276,16 +2273,15 @@ export default function DivoomImportPage() {
         .submit-btn {
           width: 100%;
           padding: 16px;
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
-          color: white;
+          background: var(--accent-cyan);
+          color: #0b0c10;
           font-size: 1.05rem;
           font-weight: 700;
           border-radius: 12px;
           transition: all var(--transition-fast);
         }
         .submit-btn:hover:not(:disabled) {
-          box-shadow: 0 0 30px rgba(255, 110, 180, 0.4);
-          transform: translateY(-1px);
+          filter: brightness(1.1);
         }
         .submit-btn:disabled {
           opacity: 0.5;
@@ -2372,11 +2368,11 @@ export default function DivoomImportPage() {
         }
 
         .pause-btn {
-          background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+          background: var(--warning) !important;
         }
 
         .resume-btn {
-          background: linear-gradient(135deg, #22c55e, #16a34a) !important;
+          background: var(--success) !important;
         }
 
         /* Batch confirmation dialog */
@@ -2427,7 +2423,7 @@ export default function DivoomImportPage() {
 
         .progress-fill {
           height: 100%;
-          background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));
+          background: var(--accent-cyan);
           border-radius: 4px;
           transition: width 0.3s ease;
         }

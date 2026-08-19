@@ -605,8 +605,8 @@ export default function AuthPanel({
 
         .primary-button {
           padding: 14px;
-          background: linear-gradient(135deg, var(--accent-pink), var(--accent-purple));
-          color: white;
+          background: var(--accent-cyan);
+          color: #0b0c10;
           font-size: 1rem;
           font-weight: 600;
           border-radius: 10px;
@@ -614,8 +614,7 @@ export default function AuthPanel({
         }
 
         .primary-button:hover:not(:disabled) {
-          box-shadow: 0 0 20px rgba(255, 110, 180, 0.4);
-          transform: translateY(-1px);
+          filter: brightness(1.1);
         }
 
         .primary-button:disabled {
