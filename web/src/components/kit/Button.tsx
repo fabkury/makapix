@@ -33,6 +33,7 @@ export default function Button({
           align-items: center;
           justify-content: center;
           gap: 6px;
+          white-space: nowrap;
           padding: 12px 24px;
           border-radius: 8px;
           font-size: 1rem;

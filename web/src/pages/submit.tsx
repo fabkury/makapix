@@ -1488,8 +1488,9 @@ function SubmitPageContent() {
         .success-name { font-size: 1.25rem; font-weight: 600; color: var(--text-primary); margin: 0; }
         .success-status { display: inline-flex; align-items: center; gap: 8px; font-size: 0.9rem; color: var(--success); margin: 0; }
         .pre-upload-notice { margin-bottom: 24px; }
-        .success-buttons { display: flex; gap: 12px; margin-top: 8px; width: 100%; }
+        .success-buttons { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; width: 100%; }
         .success-buttons > :global(*) { flex: 1; }
+        .success-buttons > :global(*:first-child) { flex-basis: 100%; }
         .loading-state { text-align: center; padding: 48px; color: var(--text-muted); }
         @media (max-width: 480px) { .submit-container { padding: 16px; } .page-title { font-size: 1.5rem; } .action-buttons { flex-direction: column; } .success-buttons { flex-direction: column; width: 100%; } }
       `}</style>
