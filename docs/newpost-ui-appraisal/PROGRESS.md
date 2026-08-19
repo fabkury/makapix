@@ -34,6 +34,11 @@ Owner decisions: keep Radix (accessibility for free), full dependency prune.
 - `components/ui/` deleted entirely. Deps pruned (10): @radix-ui accordion/alert-dialog/label/radio-group/scroll-area/switch, class-variance-authority, clsx, tailwind-merge, lucide-react. Kept: @radix-ui checkbox/select/slider/tabs.
 - Verified live on dev: About tabs (incl. ?tab=rules deep link), feed Filter & Sort overlay (Selects, chips, icons), divoom-import loads clean. `tsc` + `make check` green. **Dev only — not pushed, not on prod.**
 
+## 2026-08-19 — DEPLOYED TO PRODUCTION
+- `make check-full` green (full API suite, 6 chunks / 78 files); pushed develop; PR #262 develop → main merged; `make deploy` on /opt/makapix.
+- Prod verified: new theme tokens served (`#0e0f13` in the built CSS), landing page + /about?tab=rules render with zero page errors, solid-cyan buttons live.
+- Known cosmetic leftovers on prod (open items below): hardcoded pink/purple rgba tints on legacy pages, landing-page chips/emoji, divoom-import visual pass.
+
 ### Still open
 - Legacy pages carry hardcoded pink/purple rgba tints and local gradients — migrate opportunistically, then delete the deprecated `--accent-pink/purple/blue` aliases.
 - `divoom-import.tsx` still uses the old visual language — apply the same pass when touched.
