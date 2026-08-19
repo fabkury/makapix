@@ -39,6 +39,11 @@ Owner decisions: keep Radix (accessibility for free), full dependency prune.
 - Prod verified: new theme tokens served (`#0e0f13` in the built CSS), landing page + /about?tab=rules render with zero page errors, solid-cyan buttons live.
 - Known cosmetic leftovers on prod (open items below): hardcoded pink/purple rgba tints on legacy pages, landing-page chips/emoji, divoom-import visual pass.
 
+## 2026-08-19 — Leftovers closed: landing + AuthPanel + divoom-import ON PROD (PR #263)
+- welcome: benefit chips → one neutral outline style; app-link 📱 dropped; sample-tile hover calmed (border only).
+- AuthPanel: primary button gradient → solid accent + dark text (fixed white-on-cyan contrast the alias collapse had left); OTP ✉️ → kit `IconMail`.
+- divoom-import (cosmetic only per owner): 4 gradient buttons → solid tokens (pause/resume = --warning/--success), purple states → accent, glows removed, status-line emoji dropped.
+- Verified on dev + prod (screenshots, computed chip color = --text-secondary); check-full green after fixing an env issue: **host / was 100% full** (47 GB docker build cache — `make rebuild`'s prune with 7 GB reserve was not holding); pruned to 3 GB reserve → / at 35%.
+
 ### Still open
-- Legacy pages carry hardcoded pink/purple rgba tints and local gradients — migrate opportunistically, then delete the deprecated `--accent-pink/purple/blue` aliases.
-- `divoom-import.tsx` still uses the old visual language — apply the same pass when touched.
+- Legacy pages carry hardcoded pink/purple rgba tints and local gradients — migrate opportunistically, then delete the deprecated `--accent-pink/purple/blue` aliases. (welcome/AuthPanel/divoom now clean; remaining: p/[sqid], user pages, blog (deprecated — skip), misc.)
