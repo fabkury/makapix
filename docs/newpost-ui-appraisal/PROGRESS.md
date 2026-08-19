@@ -16,5 +16,15 @@
 - **Fix (commit `21ca4b6`-ish, see log)** — Preview Scaling outline lost to `.btn { border:none }` reset; selector specificity bumped.
 - Deployed to dev via `make rebuild`; verified live with the Playwright harness (all 12 states re-captured, `scratchpad shots-after/`); `make check` green. **Not pushed / not on prod.**
 
-### Still open (Phases 3–4)
-F7 (staged empty state), F8 (contextualize rule links), F9 (dropzone post-load costume), F11+F12 (success screen layout, notice restyle), F13 (engineer-speak, mono chips, N/A rows), F15 (accordion summaries/chevrons), F16 (Upload Options card), F18 (extract ui/ primitives). Also: legacy pages still carry hardcoded pink/purple rgba tints and local gradients — migrate opportunistically and then delete the deprecated aliases.
+## 2026-08-19 — Phases 3 & 4 implemented and live on dev
+Owner decisions: F7 = keep grid but dim/disable the form until an image loads; F16 = Visibility select (Public/Hidden); F11 = no timestamp; F18 = extract primitives, adopt in submit flow only.
+
+- **Phase 4 first (same commit)** — new `web/src/components/kit/`: `Button` (primary/secondary/danger/ghost), `Field` (label + optional tag + helper + focus/near-limit counter), `Notice` (info/warning/danger/success tones), `Dialog`, `Disclosure` (chevron + collapsed-state summary), `icons` (moved from ui/). Styled-jsx on the P1-a tokens.
+  - **Discovery:** `components/ui/` (button/input/checkbox/tabs/… except icons) is a shadcn/Radix/Tailwind set but **Tailwind was never configured** — those components render unstyled (one even declares a cyan→pink gradient). Imported by `FilterButton.tsx`, `about.tsx`, `divoom-import.tsx`. Cleanup candidate: migrate those three to `kit/` and delete `ui/`.
+- **Phase 3** — submit flow rebuilt on the kit: form column dims until image load (F7); size-rules link folded into the dropzone caption and tag-rules into the Hashtags helper (F8); loaded image gets a solid preview card with compact meta line ("PNG · 64 × 64 px · static → posts at …") and Replace/Remove outside the click target (F9, F13 — info-card grid and N/A rows deleted); success screen rebuilt (F11): artwork title as heading, no timestamp, quiet green status line for approved, Copy link in both variants, View post primary + Copy link/Post another secondary row; `PostReviewNotice` rebuilt on kit Notice in neutral info tone, pre-upload variant collapsed to one line + "How it works" expander (F12); Crisp/Smooth scaling labels, decorative monospace dropped (F13); Disclosure summaries show pending output size / selected license when collapsed (F15); Upload Options card replaced by Visibility select + bare Remixable checkbox (F16).
+- Commits: `64bb9c6` (kit + rework), `bebd3b4` (success-action layout fix); deployed via `make rebuild`; all 12 states re-verified live (scratchpad `shots-p34/`); `make check` green. **Dev only — not pushed, not on prod.**
+
+### Still open
+- Legacy pages carry hardcoded pink/purple rgba tints and local gradients — migrate opportunistically, then delete the deprecated `--accent-pink/purple/blue` aliases.
+- Dead shadcn `components/ui/` set (see above) — migrate its 3 consumers to `kit/`, then delete.
+- `divoom-import.tsx` still uses the old visual language — apply the same pass when touched.
