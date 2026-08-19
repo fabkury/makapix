@@ -47,3 +47,11 @@ Owner decisions: keep Radix (accessibility for free), full dependency prune.
 
 ### Still open
 - Legacy pages carry hardcoded pink/purple rgba tints and local gradients — migrate opportunistically, then delete the deprecated `--accent-pink/purple/blue` aliases. (welcome/AuthPanel/divoom now clean; remaining: p/[sqid], user pages, blog (deprecated — skip), misc.)
+
+## 2026-08-19 — Token purge ON PROD (PR #264) — EFFORT COMPLETE
+- Mechanical sweep of 49 files: alias vars → `--accent-cyan` (rendered no-op), degenerate gradients collapsed, glow-var shadow lines deleted, hardcoded pink/purple/blue rgba/hex tints → same-alpha cyan, hardcoded pink/purple glow shadows deleted.
+- Judgment calls: danger-semantic pink (`var(--accent-pink, #ff6b6b)` in ProfileMenu / settings save-error / profile block-error) → `var(--danger)`.
+- `globals.css`: deprecated `--accent-pink/purple/blue` + `--glow-*` tokens DELETED. `blog/` received the same mechanical substitution only (would otherwise lose button backgrounds; no modernization). Exempt: `components/metrics/` (CVD-validated chart palette).
+- Verified: repo-wide grep zero old tokens/tints outside chart kit; dev spot-checks (post permalink w/ comments+reactions, search, new-account-welcome, players — zero page errors); check-full green; prod CSS bundle grep = 0 old tokens; prod recommended + post page render clean.
+
+**All 18 appraisal findings are now addressed or consciously closed. The single sanctioned multi-color palette is the chart kit's.** Future work in this area = new efforts, not this one.
