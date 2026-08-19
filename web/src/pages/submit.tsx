@@ -1411,9 +1411,9 @@ function SubmitPageContent() {
         .radio-label { font-family: monospace; color: var(--text-primary); }
         .radio-description { font-size: 0.8rem; color: var(--text-muted); margin-left: 26px; margin-top: -4px; }
         .preview-scaling-section { padding-top: 16px; border-top: 1px solid var(--bg-tertiary); }
-        .preview-scaling-btn { width: 100%; padding: 12px; font-weight: 600; background: transparent; border: 1px solid var(--bg-tertiary); color: var(--text-primary); border-radius: 8px; }
-        .preview-scaling-btn:hover:not(:disabled) { border-color: var(--accent-cyan); color: var(--accent-cyan); }
-        .preview-scaling-btn.active { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+        .btn.preview-scaling-btn { width: 100%; padding: 12px; font-weight: 600; background: transparent; border: 1px solid var(--bg-tertiary); color: var(--text-primary); border-radius: 8px; }
+        .btn.preview-scaling-btn:hover:not(:disabled) { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+        .btn.preview-scaling-btn.active { border-color: var(--accent-cyan); color: var(--accent-cyan); }
         .options-card { background: var(--bg-secondary); border: 1px solid var(--bg-tertiary); border-radius: 12px; padding: 20px; }
         .options-title { color: var(--text-primary); font-size: 1rem; font-weight: 600; margin-bottom: 16px; }
         .license-section { display: flex; flex-direction: column; }
