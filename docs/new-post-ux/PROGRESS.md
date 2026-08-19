@@ -18,3 +18,6 @@
   prod Redis). Effort complete; possible follow-ups: pending badge on
   `/u/{sqid}/posts` manage page, app-side adoption of the new notification
   types.
+- **2026-08-19** — Sent `messages/0001-server-new-notification-types-kickoff.md`
+  asking the app team to adopt `post_approved` + `trust_granted`; awaiting
+  their `0002` reply.
