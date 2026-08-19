@@ -24,7 +24,16 @@ Owner decisions: F7 = keep grid but dim/disable the form until an image loads; F
 - **Phase 3** — submit flow rebuilt on the kit: form column dims until image load (F7); size-rules link folded into the dropzone caption and tag-rules into the Hashtags helper (F8); loaded image gets a solid preview card with compact meta line ("PNG · 64 × 64 px · static → posts at …") and Replace/Remove outside the click target (F9, F13 — info-card grid and N/A rows deleted); success screen rebuilt (F11): artwork title as heading, no timestamp, quiet green status line for approved, Copy link in both variants, View post primary + Copy link/Post another secondary row; `PostReviewNotice` rebuilt on kit Notice in neutral info tone, pre-upload variant collapsed to one line + "How it works" expander (F12); Crisp/Smooth scaling labels, decorative monospace dropped (F13); Disclosure summaries show pending output size / selected license when collapsed (F15); Upload Options card replaced by Visibility select + bare Remixable checkbox (F16).
 - Commits: `64bb9c6` (kit + rework), `bebd3b4` (success-action layout fix); deployed via `make rebuild`; all 12 states re-verified live (scratchpad `shots-p34/`); `make check` green. **Dev only — not pushed, not on prod.**
 
+## 2026-08-19 — components/ui/ retired, live on dev
+Refined picture vs the Phase-4 note: `ui/` was three tiers — (1) 9 dead shadcn/Tailwind files + `ScrollArea` + `utils.ts` with **zero consumers**; (2) Radix `tabs`/`checkbox` used by about.tsx/divoom-import.tsx but styled entirely by those consumers (the Tailwind classes were inert); (3) `Slider`/`Select` — Radix + styled-jsx, genuinely working, used by FilterButton.
+
+Owner decisions: keep Radix (accessibility for free), full dependency prune.
+
+- Tier 2+3 moved into `kit/`: `Tabs`/`Checkbox` rewritten as thin unstyled Radix wrappers (className pass-through, consumers keep their styling); `Slider`/`Select` moved with small P1-a cleanups (range gradient → solid accent, glow/scale hover dropped, Select's private inline icons → kit icons).
+- FilterButton's `lucide-react` icons → kit icons (new `IconFilter`).
+- `components/ui/` deleted entirely. Deps pruned (10): @radix-ui accordion/alert-dialog/label/radio-group/scroll-area/switch, class-variance-authority, clsx, tailwind-merge, lucide-react. Kept: @radix-ui checkbox/select/slider/tabs.
+- Verified live on dev: About tabs (incl. ?tab=rules deep link), feed Filter & Sort overlay (Selects, chips, icons), divoom-import loads clean. `tsc` + `make check` green. **Dev only — not pushed, not on prod.**
+
 ### Still open
 - Legacy pages carry hardcoded pink/purple rgba tints and local gradients — migrate opportunistically, then delete the deprecated `--accent-pink/purple/blue` aliases.
-- Dead shadcn `components/ui/` set (see above) — migrate its 3 consumers to `kit/`, then delete.
 - `divoom-import.tsx` still uses the old visual language — apply the same pass when touched.
