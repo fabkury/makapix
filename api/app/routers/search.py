@@ -400,7 +400,9 @@ async def list_hashtag_posts(
     # Try to get from cache
     cached_result = cache_get(cache_key)
     if cached_result:
-        response = schemas.Page(**cached_result)
+        # Must be the typed Page: bare Page(**...) leaves items as dicts,
+        # which breaks the attribute access below on cache hits
+        response = schemas.Page[schemas.Post](**cached_result)
         # Apply monitored hashtag filtering (user-specific)
         response.items = filter_posts_by_monitored_hashtags(
             response.items, current_user
@@ -743,7 +745,9 @@ def feed_promoted(
     # Try to get from cache
     cached_result = cache_get(cache_key)
     if cached_result:
-        response = schemas.Page(**cached_result)
+        # Must be the typed Page: bare Page(**...) leaves items as dicts,
+        # which breaks the attribute access below on cache hits
+        response = schemas.Page[schemas.Post](**cached_result)
         # Apply monitored hashtag filtering (user-specific)
         response.items = filter_posts_by_monitored_hashtags(
             response.items, current_user

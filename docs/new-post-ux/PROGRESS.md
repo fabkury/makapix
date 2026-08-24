@@ -18,3 +18,14 @@
   prod Redis). Effort complete; possible follow-ups: pending badge on
   `/u/{sqid}/posts` manage page, app-side adoption of the new notification
   types.
+- **2026-08-19** — Sent `messages/0001-server-new-notification-types-kickoff.md`
+  asking the app team to adopt `post_approved` + `trust_granted`; awaiting
+  their `0002` reply.
+- **2026-08-19** — App team replied same day
+  (`messages/0002-app-notification-types-adopted.md`): both types adopted on
+  their `main`, ships next release. Notably, the app never dropped them —
+  unknown types render a generic fallback tile, so users saw these since the
+  2026-08-18 deploy (adoption was cosmetic). Null `post_id` on `trust_granted`
+  accepted as-is; `post_approved` rendered impersonally, mirroring the web.
+  Nothing pending on either side — exchange closed (no 0003 needed). App may
+  later open its own effort for pending-review upload messaging.
