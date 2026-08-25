@@ -20,19 +20,27 @@ export function usePageViewTracking() {
   const lastTrackedPath = useRef<string | null>(null);
 
   useEffect(() => {
-    // Track initial page load
-    trackPageView(router.asPath);
-    lastTrackedPath.current = router.asPath;
+    // Track the initial page load. Guard against the effect re-running (the
+    // router object is a new identity on every render): before router.isReady,
+    // asPath can still be the route template (e.g. "/p/[sqid]"), and once
+    // ready the effect fires again — without these guards a single load of a
+    // dynamic route was tracked three times.
+    if (router.isReady) {
+      const initialPath = router.asPath.split('?')[0].split('#')[0];
+      if (initialPath !== lastTrackedPath.current) {
+        trackPageView(router.asPath);
+        lastTrackedPath.current = initialPath;
+      }
+    }
 
     // Track route changes
     const handleRouteChange = (url: string) => {
       // Only track if the path actually changed (not just hash or query params)
       const newPath = url.split('?')[0].split('#')[0];
-      const oldPath = lastTrackedPath.current?.split('?')[0].split('#')[0];
-      
-      if (newPath !== oldPath) {
+
+      if (newPath !== lastTrackedPath.current) {
         trackPageView(url);
-        lastTrackedPath.current = url;
+        lastTrackedPath.current = newPath;
       }
     };
 
