@@ -24,6 +24,7 @@ def record_site_event(
     event_type: str,
     user: User | None = None,
     event_data: dict | None = None,
+    referrer: str | None = None,
 ) -> None:
     """
     Queue a sitewide event for async writing via Celery.
@@ -39,6 +40,9 @@ def record_site_event(
         event_type: Type of event (page_view, signup, upload, api_call, error)
         user: Current user (if authenticated)
         event_data: Optional event-specific data dict (can include "client_path" for frontend tracking)
+        referrer: Client-reported referrer URL (document.referrer). The Referer
+            header of a tracking POST is always our own origin, so callers that
+            relay a browser-side referrer must pass it explicitly.
     """
     try:
         from ..utils.view_tracking import (
@@ -55,7 +59,8 @@ def record_site_event(
         # Extract request metadata synchronously
         client_ip = get_client_ip(request)
         user_agent = request.headers.get("User-Agent")
-        referrer = request.headers.get("Referer")
+        if referrer is None:
+            referrer = request.headers.get("Referer")
 
         # Known bots are never recorded (D9)
         if is_bot(user_agent):

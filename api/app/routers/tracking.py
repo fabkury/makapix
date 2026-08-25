@@ -51,17 +51,17 @@ async def track_page_view(
         204 No Content (always succeeds, errors are logged but don't fail)
     """
     try:
-        # Override the request path with the client-provided path
-        # This ensures we track the frontend route, not the API endpoint
-        original_path = str(request.url.path)
-
-        # Create a modified request context for tracking
-        # We'll manually set the page_path in the event data
+        # The Referer header on this POST is always our own origin (the page
+        # making the call), so the browser-side document.referrer must come
+        # from the payload for external referral attribution to work.
         record_site_event(
             request=request,
             event_type="page_view",
             user=current_user,
             event_data={"client_path": payload.path} if payload.path else None,
+            # "" (not None) so a referrer-less visit records as direct instead
+            # of falling back to the header
+            referrer=payload.referrer or "",
         )
 
         logger.debug(f"Tracked client page view: {payload.path}")

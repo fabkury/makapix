@@ -247,6 +247,47 @@ def test_site_events_drop_bots(monkeypatch):
     assert get_view_counter("site_bot_dropped") == before + 1
 
 
+def test_page_view_uses_client_referrer(client, monkeypatch):
+    """The Referer header on the tracking POST is always our own origin; the
+    payload's document.referrer must win for external attribution to work."""
+    from types import SimpleNamespace
+
+    dispatched = []
+    monkeypatch.setattr(
+        "app.tasks.write_site_event",
+        SimpleNamespace(delay=lambda payload: dispatched.append(payload)),
+    )
+    resp = client.post(
+        "/track/page-view",
+        json={"path": "/p/abc", "referrer": "https://www.reddit.com/r/PixelArt/"},
+        headers={**BROWSER_UA, "Referer": "https://makapix.club/p/abc"},
+    )
+    assert resp.status_code == 204
+    assert len(dispatched) == 1
+    assert dispatched[0]["referrer_domain"] == "reddit.com"
+    assert dispatched[0]["page_path"] == "/p/abc"
+
+
+def test_page_view_without_referrer_records_direct(client, monkeypatch):
+    """A referrer-less page view must record as direct (NULL), not fall back
+    to the tracking POST's own Referer header."""
+    from types import SimpleNamespace
+
+    dispatched = []
+    monkeypatch.setattr(
+        "app.tasks.write_site_event",
+        SimpleNamespace(delay=lambda payload: dispatched.append(payload)),
+    )
+    resp = client.post(
+        "/track/page-view",
+        json={"path": "/", "referrer": None},
+        headers={**BROWSER_UA, "Referer": "https://makapix.club/"},
+    )
+    assert resp.status_code == 204
+    assert len(dispatched) == 1
+    assert dispatched[0]["referrer_domain"] is None
+
+
 # ---------------------------------------------------------------------------
 # Dedup keying + rate-limit keying (D14/D23b)
 # ---------------------------------------------------------------------------
