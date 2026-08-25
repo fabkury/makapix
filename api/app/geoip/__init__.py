@@ -27,48 +27,68 @@ GEOIP_DB_PATH = os.getenv(
     "GEOIP_DB_PATH", str(Path(__file__).parent / "GeoLite2-Country.mmdb")
 )
 
-# Global reader instance (lazy loaded)
+# Global reader instance (lazy loaded). The reader is keyed to the database
+# file's mtime so a refreshed file (refresh_geoip_database beat task, or a
+# manual drop-in) is picked up by running processes without a restart — the
+# original load-once latch meant a process started before the file existed
+# returned None forever.
 _reader = None
-_reader_initialized = False
+_loaded_mtime: float | None = None
+_warned_missing = False
 
 
 def _get_reader():
     """
-    Get or initialize the GeoIP reader.
+    Get the GeoIP reader, (re)opening it if the database file appeared or
+    changed since the last call.
 
-    Returns None if the database file is not available or geoip2 is not installed.
+    Returns None if the database file is not available or geoip2 is not
+    installed. A previously opened reader keeps serving if the file vanishes
+    or a reload fails. Old readers are left to GC rather than closed so a
+    concurrent lookup on one is never invalidated mid-call.
     """
-    global _reader, _reader_initialized
+    global _reader, _loaded_mtime, _warned_missing
 
-    if _reader_initialized:
+    try:
+        mtime = os.stat(GEOIP_DB_PATH).st_mtime
+    except OSError:
+        if _reader is None and not _warned_missing:
+            logger.warning(
+                f"GeoIP database not found at {GEOIP_DB_PATH}. "
+                "Set MAXMIND_LICENSE_KEY so the refresh_geoip_database beat task "
+                "downloads it, or place GeoLite2-Country.mmdb there manually. "
+                "See api/app/geoip/README.md for instructions."
+            )
+            _warned_missing = True
         return _reader
 
-    _reader_initialized = True
+    if _reader is not None and mtime == _loaded_mtime:
+        return _reader
 
     try:
         import geoip2.database
     except ImportError:
-        logger.warning(
-            "geoip2 library not installed. GeoIP lookups will be disabled. "
-            "Install with: pip install geoip2"
-        )
-        return None
-
-    if not os.path.exists(GEOIP_DB_PATH):
-        logger.warning(
-            f"GeoIP database not found at {GEOIP_DB_PATH}. "
-            "Download GeoLite2-Country.mmdb from MaxMind and place it in api/app/geoip/. "
-            "See api/app/geoip/README.md for instructions."
-        )
+        if not _warned_missing:
+            logger.warning(
+                "geoip2 library not installed. GeoIP lookups will be disabled. "
+                "Install with: pip install geoip2"
+            )
+            _warned_missing = True
         return None
 
     try:
-        _reader = geoip2.database.Reader(GEOIP_DB_PATH)
-        logger.info(f"GeoIP database loaded from {GEOIP_DB_PATH}")
-        return _reader
+        new_reader = geoip2.database.Reader(GEOIP_DB_PATH)
     except Exception as e:
         logger.error(f"Failed to load GeoIP database: {e}")
-        return None
+        # Remember the mtime so a broken file isn't re-tried on every lookup.
+        _loaded_mtime = mtime
+        return _reader
+
+    _reader = new_reader
+    _loaded_mtime = mtime
+    _warned_missing = False
+    logger.info(f"GeoIP database loaded from {GEOIP_DB_PATH}")
+    return _reader
 
 
 def get_country_code(ip: str) -> str | None:
@@ -134,7 +154,7 @@ def close_reader() -> None:
 
     Should be called on application shutdown.
     """
-    global _reader, _reader_initialized
+    global _reader, _loaded_mtime, _warned_missing
 
     if _reader is not None:
         try:
@@ -143,7 +163,8 @@ def close_reader() -> None:
             pass
         _reader = None
 
-    _reader_initialized = False
+    _loaded_mtime = None
+    _warned_missing = False
 
 
 def is_available() -> bool:

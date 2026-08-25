@@ -97,6 +97,7 @@ deploy/stack/cta-stats.csv
 
 # GeoIP database files (download from MaxMind, see api/app/geoip/README.md)
 *.mmdb
+*.mmdb.part
 api/app/geoip/*.mmdb
 
 # Playwright

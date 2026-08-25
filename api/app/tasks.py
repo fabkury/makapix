@@ -162,6 +162,13 @@ celery_app.conf.update(
             "schedule": crontab(minute=0, hour=5),  # 05:00 ET
             "options": {"queue": "default"},
         },
+        # Downloads only when the on-disk file is >6 days old (or missing), so
+        # the daily firing is a freshness check, not a daily download.
+        "refresh-geoip-database": {
+            "task": "app.tasks.refresh_geoip_database",
+            "schedule": crontab(minute=15, hour=5),  # 05:15 ET
+            "options": {"queue": "default"},
+        },
     },
     # Beat timezone governs every crontab() schedule above: the daily jobs run at
     # fixed times in US Eastern (DST-aware). The high-frequency entries are plain
@@ -4206,3 +4213,104 @@ def rollup_download_stats(self, target_date_iso: str | None = None) -> dict[str,
 
 # (send_push_notification was deleted 2026-08-11 with the FCM server half —
 # docs/notification-architecture/messages/0002: the app team chose "drop".)
+
+
+@celery_app.task(name="app.tasks.refresh_geoip_database", bind=True)
+def refresh_geoip_database(self, force: bool = False) -> dict[str, Any]:
+    """Download/refresh the MaxMind GeoLite2-Country database.
+
+    Writes to GEOIP_DB_PATH (api/app/geoip/, bind-mounted into both the api
+    and worker containers), so the api's mtime-aware reader picks the new
+    file up without a restart. No-ops without MAXMIND_LICENSE_KEY, and skips
+    the download while the on-disk file is under 6 days old (MaxMind updates
+    GeoLite2 twice a week; their EULA caps directly-downloaded copies at 30
+    days old). Pass force=True to download regardless of age.
+
+    Runs daily at 05:15 US Eastern (configured in beat_schedule).
+    """
+    import tarfile
+    import tempfile
+    import time
+
+    import requests
+
+    from .geoip import GEOIP_DB_PATH
+
+    license_key = os.environ.get("MAXMIND_LICENSE_KEY", "").strip()
+    if not license_key:
+        logger.info("refresh_geoip_database: MAXMIND_LICENSE_KEY not set, skipping")
+        return {"status": "skipped", "reason": "MAXMIND_LICENSE_KEY not set"}
+
+    if not force:
+        try:
+            age_days = (time.time() - os.stat(GEOIP_DB_PATH).st_mtime) / 86400
+            if age_days < 6:
+                return {"status": "fresh", "age_days": round(age_days, 1)}
+        except OSError:
+            pass  # missing file: download now
+
+    # NOTE: the license key rides in the URL (MaxMind's permalink format), so
+    # never log the URL or re-raise a requests exception verbatim — both would
+    # leak the key into logs/Sentry.
+    url = (
+        "https://download.maxmind.com/app/geoip_download"
+        f"?edition_id=GeoLite2-Country&license_key={license_key}&suffix=tar.gz"
+    )
+    try:
+        resp = requests.get(url, timeout=120)
+    except requests.RequestException as e:
+        raise RuntimeError(
+            f"GeoLite2 download failed: {type(e).__name__} (URL withheld: contains key)"
+        ) from None
+    if resp.status_code != 200:
+        raise RuntimeError(
+            f"GeoLite2 download failed with HTTP {resp.status_code} "
+            "(401 = bad MAXMIND_LICENSE_KEY)"
+        )
+
+    db_dir = os.path.dirname(GEOIP_DB_PATH)
+    # Temp file in the target directory: os.replace must stay on one filesystem.
+    with tempfile.NamedTemporaryFile(
+        dir=db_dir, suffix=".mmdb.part", delete=False
+    ) as tmp_archive:
+        tmp_archive.write(resp.content)
+        archive_path = tmp_archive.name
+    new_db_path = GEOIP_DB_PATH + ".part"
+    try:
+        with tarfile.open(archive_path, "r:gz") as tar:
+            member = next(
+                (m for m in tar.getmembers() if m.name.endswith(".mmdb")), None
+            )
+            if member is None:
+                raise RuntimeError("GeoLite2 archive contains no .mmdb file")
+            src = tar.extractfile(member)
+            assert src is not None
+            with open(new_db_path, "wb") as dst:
+                dst.write(src.read())
+
+        # Validate before installing: a truncated/corrupt file must never
+        # replace a working one.
+        import geoip2.database
+
+        with geoip2.database.Reader(new_db_path) as check:
+            if check.country("8.8.8.8").country.iso_code != "US":
+                raise RuntimeError("GeoLite2 validation lookup failed")
+            build_epoch = check.metadata().build_epoch
+
+        os.replace(new_db_path, GEOIP_DB_PATH)
+    except Exception:
+        try:
+            os.unlink(new_db_path)
+        except OSError:
+            pass
+        raise
+    finally:
+        try:
+            os.unlink(archive_path)
+        except OSError:
+            pass
+
+    logger.info(
+        "refresh_geoip_database: installed GeoLite2-Country build %s", build_epoch
+    )
+    return {"status": "updated", "build_epoch": build_epoch}
