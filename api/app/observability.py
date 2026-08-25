@@ -38,6 +38,10 @@ BEAT_HEARTBEATS: dict[str, str] = {
     "app.tasks.cleanup_retired_artwork": "cleanup-retired-artwork",
     "app.tasks.renew_crl_if_needed": "renew-crl",
     "app.tasks.check_view_ingestion_health": "check-view-ingestion-health",
+    # Not data-critical, but a silent stop means country_code quietly reverts
+    # to NULL-forever — the exact failure mode that went unnoticed until
+    # 2026-08-25.
+    "app.tasks.refresh_geoip_database": "refresh-geoip-database",
 }
 
 

@@ -130,6 +130,8 @@ services:
       VAULT_LOCATION: ${VAULT_LOCATION}
       VAULT_PUBLIC_BASE_URL: ${VAULT_PUBLIC_BASE_URL:-}
       MAKAPIX_IP_HASH_SALT: ${MAKAPIX_IP_HASH_SALT:?MAKAPIX_IP_HASH_SALT is required (openssl rand -hex 32)}
+      # Optional; empty = GeoIP country lookups disabled (country_code NULL).
+      MAXMIND_LICENSE_KEY: ${MAXMIND_LICENSE_KEY:-}
       MAKAPIX_ADMIN_USER: ${MAKAPIX_ADMIN_USER}
       MAKAPIX_ADMIN_PASSWORD: ${MAKAPIX_ADMIN_PASSWORD}
       # Observability (opt-in; empty = disabled). See api/app/observability.py.
@@ -192,6 +194,8 @@ services:
       VAULT_LOCATION: ${VAULT_LOCATION}
       VAULT_PUBLIC_BASE_URL: ${VAULT_PUBLIC_BASE_URL:-}
       MAKAPIX_IP_HASH_SALT: ${MAKAPIX_IP_HASH_SALT:?MAKAPIX_IP_HASH_SALT is required (openssl rand -hex 32)}
+      # Optional; the refresh_geoip_database beat task no-ops without it.
+      MAXMIND_LICENSE_KEY: ${MAXMIND_LICENSE_KEY:-}
       # Observability (opt-in; empty = disabled). The worker runs beat, so it
       # also pings the healthchecks.io dead-man's-switches. See observability.py.
       SENTRY_DSN: ${SENTRY_DSN:-}
