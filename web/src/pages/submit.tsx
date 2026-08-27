@@ -42,6 +42,7 @@ interface UploadedArtwork {
   public_sqid: string;
   title: string;
   art_url: string;
+  frame_count: number;
   width: number;
   height: number;
   public_visibility: boolean;
@@ -847,6 +848,7 @@ function SubmitPageContent() {
         public_sqid: data.post.public_sqid,
         title: data.post.title,
         art_url: data.post.art_url,
+        frame_count: data.post.frame_count,
         width: data.post.width,
         height: data.post.height,
         public_visibility: data.post.public_visibility,
@@ -941,7 +943,7 @@ function SubmitPageContent() {
               <Link href={`/p/${uploadedArtwork.public_sqid}`} legacyBehavior>
                 <a className="success-preview">
                   <img
-                    src={ensureCompatibleArtUrl(`${API_BASE_URL}${uploadedArtwork.art_url}`)}
+                    src={ensureCompatibleArtUrl(uploadedArtwork.art_url, uploadedArtwork.frame_count)}
                     alt={uploadedArtwork.title}
                     className="success-image"
                   />
