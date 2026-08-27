@@ -27,6 +27,10 @@ def pytest_configure(config):
     # MAKAPIX_IP_HASH_SALT is likewise required (app.settings.ip_hash_salt
     # raises when unset); deterministic stand-in for bare local runs.
     os.environ.setdefault("MAKAPIX_IP_HASH_SALT", "test-ip-salt")
+    # WEBAUTHN_RP_ID is likewise required (app.settings.webauthn_rp_id raises
+    # when unset). Tests always use this value so the software authenticator's
+    # origin (https://<rp_id>) matches regardless of the container's env.
+    os.environ["WEBAUTHN_RP_ID"] = "test.makapix.club"
 
     api_user = os.getenv("DB_API_WORKER_USER")
     api_pass = os.getenv("DB_API_WORKER_PASSWORD")

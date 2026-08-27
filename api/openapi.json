@@ -7283,6 +7283,86 @@
         "title": "ResetPasswordResponse",
         "type": "object"
       },
+      "RestoreCredentialInfo": {
+        "description": "A stored restore/WebAuthn credential, for the owner's management view.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "credential_id": {
+            "title": "Credential Id",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "transports": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transports"
+          }
+        },
+        "required": [
+          "credential_id",
+          "created_at",
+          "last_used_at",
+          "transports"
+        ],
+        "title": "RestoreCredentialInfo",
+        "type": "object"
+      },
+      "RestoreCredentialList": {
+        "description": "The caller's stored restore/WebAuthn credentials.",
+        "properties": {
+          "credentials": {
+            "items": {
+              "$ref": "#/components/schemas/RestoreCredentialInfo"
+            },
+            "title": "Credentials",
+            "type": "array"
+          }
+        },
+        "required": [
+          "credentials"
+        ],
+        "title": "RestoreCredentialList",
+        "type": "object"
+      },
+      "RestoreRegisterRequest": {
+        "description": "Register a restore credential (docs/zero-tap-signin/PLAN.md).\n\n`response` is the WebAuthn PublicKeyCredential registration-response JSON\nfrom CreateRestoreCredentialResponse, passed through verbatim.",
+        "properties": {
+          "response": {
+            "additionalProperties": true,
+            "title": "Response",
+            "type": "object"
+          }
+        },
+        "required": [
+          "response"
+        ],
+        "title": "RestoreRegisterRequest",
+        "type": "object"
+      },
       "SearchResultPlaylist": {
         "description": "Search result: playlist.",
         "properties": {
@@ -7838,8 +7918,20 @@
         "type": "object"
       },
       "TokenRequest": {
-        "description": "OAuth2-style token request for non-browser (native) clients.\n\nUnlike /auth/login (which puts the refresh token in an HttpOnly cookie), this\nendpoint returns the refresh token in the body so a native client can store it\nin secure storage. `grant_type` selects the flow:\n  - \"password\":           email + password\n  - \"refresh_token\":      refresh_token (rotates, same engine as the cookie flow)\n  - \"authorization_code\": code + code_verifier (server-brokered OAuth; B3)\n  - \"apple_identity_token\": identity_token + nonce (Sign in with Apple;\n    docs/apple-signin/API-CONTRACT.md)",
+        "description": "OAuth2-style token request for non-browser (native) clients.\n\nUnlike /auth/login (which puts the refresh token in an HttpOnly cookie), this\nendpoint returns the refresh token in the body so a native client can store it\nin secure storage. `grant_type` selects the flow:\n  - \"password\":           email + password\n  - \"refresh_token\":      refresh_token (rotates, same engine as the cookie flow)\n  - \"authorization_code\": code + code_verifier (server-brokered OAuth; B3)\n  - \"apple_identity_token\": identity_token + nonce (Sign in with Apple;\n    docs/apple-signin/API-CONTRACT.md)\n  - \"restore_credential\": assertion (WebAuthn authentication response from\n    Android Restore Credentials; docs/zero-tap-signin/PLAN.md)",
         "properties": {
+          "assertion": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assertion"
+          },
           "authorization_code": {
             "anyOf": [
               {
@@ -7914,7 +8006,8 @@
               "password",
               "refresh_token",
               "authorization_code",
-              "apple_identity_token"
+              "apple_identity_token",
+              "restore_credential"
             ],
             "title": "Grant Type",
             "type": "string"
@@ -14489,6 +14582,167 @@
           }
         },
         "summary": "Reset Password",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/v1/auth/restore/challenge": {
+      "post": {
+        "description": "WebAuthn request options for the userless get leg (unauthenticated).\n\nallowCredentials is empty by design: the freshly-migrated device has no\ntokens and no idea who the user is — the discoverable credential's\nuserHandle identifies the account at /auth/token.",
+        "operationId": "restore_credential_challenge_v1_auth_restore_challenge_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Restore Credential Challenge V1 Auth Restore Challenge Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Restore Credential Challenge",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/v1/auth/restore/credentials": {
+      "get": {
+        "description": "The caller's stored restore/WebAuthn credentials (v1-minimal revocation).",
+        "operationId": "restore_credential_list_v1_auth_restore_credentials_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreCredentialList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Restore Credential List",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/v1/auth/restore/credentials/{credential_id}": {
+      "delete": {
+        "description": "Delete one of the caller's credentials (credential_id as base64url).",
+        "operationId": "restore_credential_delete_v1_auth_restore_credentials__credential_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "credential_id",
+            "required": true,
+            "schema": {
+              "title": "Credential Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Restore Credential Delete",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/v1/auth/restore/options": {
+      "post": {
+        "description": "WebAuthn creation options for a discoverable restore credential.",
+        "operationId": "restore_credential_options_v1_auth_restore_options_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Restore Credential Options V1 Auth Restore Options Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Restore Credential Options",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/v1/auth/restore/register": {
+      "post": {
+        "description": "Verify and store the registration response from the authenticator.",
+        "operationId": "restore_credential_register_v1_auth_restore_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreRegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Restore Credential Register",
         "tags": [
           "Auth"
         ]

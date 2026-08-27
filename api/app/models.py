@@ -12,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     SmallInteger,
     String,
     Text,
@@ -67,6 +68,13 @@ class User(Base):
     public_sqid = Column(
         String(16), unique=True, nullable=True, index=True
     )  # Sqids-encoded public ID (set after insert)
+    # WebAuthn user handle (zero-tap sign-in): 32 random bytes minted lazily on
+    # first restore-credential registration. Deliberately NOT public_sqid (public)
+    # and NOT user_key (semi-public via legacy URLs) — assertions carry it inside
+    # device backups, so it must identify the account to us and nobody else.
+    webauthn_user_handle = Column(
+        LargeBinary(32), unique=True, nullable=True, index=True
+    )
     handle = Column(String(50), unique=True, nullable=False, index=True)
     # Confusable skeleton of `handle` (casefold(NFKC) + non-ASCII confusable fold);
     # the uniqueness key that blocks visually-identical handles across scripts.
@@ -262,6 +270,50 @@ class AuthIdentity(Base):
             "provider", "provider_user_id", name="uq_auth_identity_provider_user"
         ),
         Index("ix_auth_identities_user_provider", user_id, provider),
+    )
+
+
+class WebAuthnCredential(Base):
+    """WebAuthn credential (docs/zero-tap-signin/PLAN.md).
+
+    General passkey storage; the first consumer is Android Restore Credentials
+    (silent re-sign-in after device migration). Discoverable-credential flow:
+    the assertion's userHandle (users.webauthn_user_handle) identifies the
+    account, so credential_id only needs to be globally unique, not scoped.
+
+    sign_count is stored and logged on regression but never enforced — restore
+    credentials legitimately assert from cloned backups (PLAN.md decision).
+    """
+
+    __tablename__ = "webauthn_credentials"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    # Raw credential ID bytes as minted by the authenticator (globally unique).
+    credential_id = Column(LargeBinary, nullable=False, unique=True, index=True)
+    # COSE public key bytes, verbatim from registration.
+    public_key = Column(LargeBinary, nullable=False)
+    sign_count = Column(BigInteger, nullable=False, default=0)
+    # Authenticator transports from registration (e.g. ["internal", "hybrid"]).
+    transports = Column(ARRAY(String), nullable=True)
+
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+
+    # passive_deletes: let the DB's ON DELETE CASCADE do the work instead of
+    # the ORM nulling user_id first (which violates NOT NULL).
+    user = relationship(
+        "User",
+        backref=backref(
+            "webauthn_credentials",
+            cascade="all, delete-orphan",
+            passive_deletes=True,
+        ),
     )
 
 
