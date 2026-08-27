@@ -26,10 +26,14 @@
   fail-fast setting (both .envs written: dev=app-dev.makapix.club, prod=makapix.club);
   11 round-trip tests green (tests/test_restore_credentials.py), targeted auth suites green.
 
+## 2026-08-27 (evening) — shipped to dev AND prod, 0004 sent
+- `make check-full` green (7 chunks, 81 files); pushed develop; PR #268 merged to main.
+- Prod deployed (`make deploy` auto-ran migration a1b2c3d4e5f6), `docker restart caddy`.
+- Verified live: app-dev assetlinks carries both relations, apex assetlinks serves
+  get_login_creds, prod + dev `/api/v1/auth/restore/challenge` return correct rpId /
+  empty allowCredentials / UV discouraged.
+- Sent 0004 (endpoints live, notes adopted, M3 is a go).
+
 ## Next
-- [ ] `make check-full`, push develop, PR develop→main, merge
-- [ ] Prod: pull /opt/makapix, `make deploy`, `docker restart caddy`; verify
-      app-dev assetlinks serves get_login_creds + apex assetlinks 200
-- [ ] Live-verify /v1/auth/restore/challenge on development.makapix.club → send 0004
-- [ ] M3: app team e2e via bmgr harness (their side); confirm §2a empirically in their round-trip
-- [ ] M4: app release / joint flip (server side will already be live)
+- [ ] M3: app team e2e via bmgr harness (their side); confirm 0003 §2a empirically — reply 0005
+- [ ] M4: app release (server side already live on prod; no further joint flip needed)
