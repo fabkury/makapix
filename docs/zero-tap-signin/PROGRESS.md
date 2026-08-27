@@ -46,7 +46,21 @@
 - No reply sent (their 0006 stays reserved for the M3 report); prod-account testing is fine as-is
   (owner decision). They verified prod on the wire themselves in 0005, including §2a.
 
+## 2026-08-27 (late) — 0006/0007: M3 done, ship decision
+- 0006 (app): registration confirmed e2e on prod (Blockstore escrow observed); assertion leg
+  physically unverifiable by their bmgr harness (restore key lives in GMS Blockstore, purged on
+  uninstall — needs device-setup restore or D2D). Dev-TLS fix confirmed from their side too.
+- Verified in prod DB: 3 credential rows for the owner account matching their test window;
+  last_used_at NULL everywhere (no assertion, as they said). Deleted superseded rows 1–2, kept 3.
+- 0007 sent: positive registration confirmation; owner decision = SHIP (their option 1) — server
+  assertion leg is soft-authenticator-tested, §2a set defensively on both sides, failure mode is
+  status quo; flagged orphan-row accumulation if the app registers every launch (app-side
+  register-once preferred; server-side pruning only if numbers demand).
+- §2a's real confirmation now arrives with the first genuine migration: watch for a
+  webauthn_credentials row gaining last_used_at / sign_count, and restore_credential grants in logs.
+
 ## Next
-- [ ] M3: app team e2e via bmgr harness against prod (their choice, unblocked) — report at 0006
-- [ ] Optional: a dev-RP device pass if we ever want app-dev.makapix.club config device-verified
-- [ ] M4: app release (server side already live on prod; no further joint flip needed)
+- [ ] App release ships zero-tap (their 0008 will carry the version)
+- [ ] Watch for first real-world assertion (last_used_at set) → report back in the exchange
+- [ ] Optional: dev-RP device pass if we ever want app-dev.makapix.club config device-verified
+- [ ] Server-side orphan pruning only if row counts ever warrant it
