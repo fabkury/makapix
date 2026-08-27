@@ -31,6 +31,7 @@ dependencies = [
     "uvicorn[standard]>=0.29.0",
     "resend>=2.0.0",
     "sqids>=0.4.1",
+    "webauthn>=2.0.0",  # WebAuthn/passkey verification (zero-tap-signin: Android Restore Credentials)
     "better-profanity>=0.7.0",
     "sentry-sdk>=2.0.0"  # Error monitoring (opt-in via SENTRY_DSN); see app/observability.py
 ]
@@ -41,6 +42,7 @@ dev = [
     "pre-commit>=3.7.0",
     "pytest>=8.2.0",
     "pytest-asyncio>=0.23.6",
+    "soft-webauthn>=0.1.4",  # software authenticator for WebAuthn round-trip tests
     "ruff>=0.5.0"
 ]
 

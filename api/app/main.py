@@ -55,9 +55,12 @@ load_dotenv()
 # depends on VAULT_PUBLIC_BASE_URL (the /api/vault fallback mount is gone),
 # so a misconfigured deployment must refuse to start rather than mint dead
 # URLs. The call raises RuntimeError when the variable is unset.
-from .settings import vault_public_base_url  # noqa: E402
+from .settings import vault_public_base_url, webauthn_rp_id  # noqa: E402
 
 vault_public_base_url()
+# Same policy for the WebAuthn RP ID (zero-tap sign-in): an unset value would
+# dead-end every restore-credential registration/assertion, so refuse to start.
+webauthn_rp_id()
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)

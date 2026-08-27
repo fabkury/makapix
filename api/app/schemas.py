@@ -1399,10 +1399,16 @@ class TokenRequest(BaseModel):
       - "authorization_code": code + code_verifier (server-brokered OAuth; B3)
       - "apple_identity_token": identity_token + nonce (Sign in with Apple;
         docs/apple-signin/API-CONTRACT.md)
+      - "restore_credential": assertion (WebAuthn authentication response from
+        Android Restore Credentials; docs/zero-tap-signin/PLAN.md)
     """
 
     grant_type: Literal[
-        "password", "refresh_token", "authorization_code", "apple_identity_token"
+        "password",
+        "refresh_token",
+        "authorization_code",
+        "apple_identity_token",
+        "restore_credential",
     ]
     email: str | None = Field(None, max_length=255)
     password: str | None = Field(None, max_length=100)
@@ -1417,6 +1423,9 @@ class TokenRequest(BaseModel):
     # Apple sends name/email ONLY on the first sign-in; persisted then or never.
     given_name: str | None = Field(None, max_length=100)
     family_name: str | None = Field(None, max_length=100)
+    # --- restore_credential grant ---
+    # WebAuthn PublicKeyCredential authentication-response JSON, verbatim.
+    assertion: dict[str, Any] | None = None
 
 
 class TokenResponse(BaseModel):
@@ -1427,6 +1436,32 @@ class TokenResponse(BaseModel):
     expires_in: int  # access-token lifetime in seconds
     refresh_token: str
     user: UserFull
+
+
+class RestoreRegisterRequest(BaseModel):
+    """Register a restore credential (docs/zero-tap-signin/PLAN.md).
+
+    `response` is the WebAuthn PublicKeyCredential registration-response JSON
+    from CreateRestoreCredentialResponse, passed through verbatim.
+    """
+
+    response: dict[str, Any]
+
+
+class RestoreCredentialInfo(BaseModel):
+    """A stored restore/WebAuthn credential, for the owner's management view."""
+
+    # base64url (no padding) of the raw credential ID — also the DELETE path key.
+    credential_id: str
+    created_at: datetime
+    last_used_at: datetime | None
+    transports: list[str] | None
+
+
+class RestoreCredentialList(BaseModel):
+    """The caller's stored restore/WebAuthn credentials."""
+
+    credentials: list[RestoreCredentialInfo]
 
 
 class EmailOtpRequest(BaseModel):

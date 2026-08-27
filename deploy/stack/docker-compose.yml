@@ -130,6 +130,10 @@ services:
       VAULT_LOCATION: ${VAULT_LOCATION}
       VAULT_PUBLIC_BASE_URL: ${VAULT_PUBLIC_BASE_URL:-}
       MAKAPIX_IP_HASH_SALT: ${MAKAPIX_IP_HASH_SALT:?MAKAPIX_IP_HASH_SALT is required (openssl rand -hex 32)}
+      # WebAuthn RP ID (zero-tap-signin); required — the API fails fast without it.
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-}
+      # Accept debug-signed Android builds for WebAuthn sign-in (dev only).
+      WEBAUTHN_ALLOW_DEBUG_ORIGIN: ${WEBAUTHN_ALLOW_DEBUG_ORIGIN:-}
       # Optional; empty = GeoIP country lookups disabled (country_code NULL).
       MAXMIND_LICENSE_KEY: ${MAXMIND_LICENSE_KEY:-}
       MAKAPIX_ADMIN_USER: ${MAKAPIX_ADMIN_USER}

@@ -23,6 +23,8 @@ the server side is ordinary WebAuthn.
 | Sign count | **Store + log, never block.** Restore credentials legitimately assert from cloned backups, so a strict monotonic check causes false lockouts. Counter regressions are logged as an anomaly signal only. |
 | RP IDs | prod `makapix.club` (apex — credentials valid across subdomains, future web passkeys possible); dev `app-dev.makapix.club` (isolates dev credentials from prod; already serves assetlinks without basic auth — `development.makapix.club` cannot, it's behind basic auth). |
 | Multiple credentials | Allowed — one per device is normal; upsert on `credential_id`. The app may retry registration after `E2eeUnavailableException` (see 0001), so re-registration must be idempotent-friendly. |
+| userVerification / attestation | `userVerification: "discouraged"` in both options payloads and `require_user_verification=False` on both verifies; `attestation: "none"`. Restore credentials are created and asserted **silently** — a UV requirement would fail every assertion (messages/0003 §2a/2b). |
+| Debug-cert origin | Excluded in prod (`WEBAUTHN_ALLOW_DEBUG_ORIGIN`, set only in dev): the origin list gates minting real sessions, unlike App Links (messages/0003 §2c, adopted 2026-08-27). |
 
 ## Architecture
 
@@ -91,8 +93,10 @@ Fail fast if unset when the endpoints are enabled.
 1. **M1 — assetlinks**: apex file in `web/public/`; Caddyfile.global additive entry. (Caddy part
    rides the next main merge; can land with M2's PR.)
 2. **M2 — server**: dependency, migration, challenge store, 4 endpoints + credentials list/delete,
-   `make openapi`, tests (py_webauthn's helpers can mint test credentials), live on
-   development.makapix.club → send message 0003.
+   `make openapi`, tests (soft-webauthn round-trips), live on development.makapix.club → send
+   message **0004** (0003 was taken by the app team's origins-confirmed reply). Per 0003 §3 the
+   develop→main merge + caddy restart happens **before** 0004 goes out, so "endpoints live" and
+   "app can test" coincide.
 3. **M3 — app**: platform channel + Dart wiring; app team verifies with their `bmgr`
    backup→uninstall→reinstall→restore harness against dev.
 4. **M4 — joint prod flip** (as with Apple Sign-In): merge to main, deploy, restart caddy (for the

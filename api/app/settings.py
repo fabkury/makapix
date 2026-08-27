@@ -56,6 +56,40 @@ def ip_hash_salt() -> str:
     return salt
 
 
+def webauthn_rp_id() -> str:
+    """Return the WebAuthn Relying Party ID (required setting).
+
+    Picks which credentials are valid against this deployment: prod uses the
+    apex (`makapix.club`, valid across subdomains), dev uses
+    `app-dev.makapix.club` so dev-registered credentials can never be offered
+    against prod (docs/zero-tap-signin/PLAN.md). Read at call time so tests can
+    monkeypatch the environment.
+    """
+    rp_id = os.environ.get("WEBAUTHN_RP_ID", "").strip()
+    if not rp_id:
+        raise RuntimeError(
+            "WEBAUTHN_RP_ID must be set (prod: makapix.club, "
+            "dev: app-dev.makapix.club); WebAuthn/restore-credential "
+            "options cannot be generated without it"
+        )
+    return rp_id
+
+
+def webauthn_allow_debug_origin() -> bool:
+    """Whether debug-signed Android builds may mint sessions via WebAuthn.
+
+    The expected-origin list gates real session minting (unlike App Links,
+    which only route a URL), so prod accepts only the upload and Play
+    app-signing certs; dev sets this to accept `flutter run` builds too
+    (docs/zero-tap-signin/messages/0003 §2c).
+    """
+    return os.environ.get("WEBAUTHN_ALLOW_DEBUG_ORIGIN", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
 def vault_public_base_url() -> str:
     """Return the public base URL for vault assets (required setting).
 

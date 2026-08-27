@@ -54,6 +54,12 @@ class ErrorCode(StrEnum):
     # Sign in with Apple: identity-token verification failed
     # (docs/apple-signin/API-CONTRACT.md)
     apple_token_invalid = "apple_token_invalid"
+    # Restore credential / WebAuthn (docs/zero-tap-signin/): assertion or
+    # registration failed verification
+    restore_credential_invalid = "restore_credential_invalid"
+    # No stored credential matches the assertion — the app treats this as an
+    # ordinary signed-out start, not an error
+    restore_credential_unknown = "restore_credential_unknown"
     forbidden_role = "forbidden_role"
     not_owner = "not_owner"
     handle_taken = "handle_taken"

@@ -822,6 +822,51 @@ def token(
                     )
                 logger.info(f"Created new user {user.id} via Sign in with Apple")
 
+    elif grant_type == "restore_credential":
+        # Android Restore Credentials (docs/zero-tap-signin/PLAN.md): userless
+        # WebAuthn assertion from a freshly-migrated device; the account is
+        # identified by the userHandle inside the assertion.
+        if not payload.assertion:
+            raise AppError(
+                ErrorCode.validation_error,
+                "assertion is required for the restore_credential grant.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Same per-IP throttle as the password grant (shared login bucket).
+        client_ip = get_client_ip(request)
+        allowed, _ = check_rate_limit(
+            f"ratelimit:login:{client_ip}", limit=20, window_seconds=300
+        )
+        if not allowed:
+            raise AppError(
+                ErrorCode.rate_limited,
+                "Too many login attempts. Please try again later.",
+                status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        from ..services.webauthn_service import (
+            UnknownCredentialError,
+            WebAuthnVerificationError,
+            verify_assertion,
+        )
+
+        try:
+            user = verify_assertion(payload.assertion, db)
+        except UnknownCredentialError:
+            # The app treats this as an ordinary signed-out start, not an error.
+            raise AppError(
+                ErrorCode.restore_credential_unknown,
+                "No credential matches this assertion.",
+                status.HTTP_401_UNAUTHORIZED,
+            )
+        except WebAuthnVerificationError as e:
+            raise AppError(
+                ErrorCode.restore_credential_invalid,
+                str(e),
+                status.HTTP_401_UNAUTHORIZED,
+            )
+
     else:  # pragma: no cover - guarded by the schema Literal
         raise AppError(
             ErrorCode.validation_error,
@@ -843,6 +888,122 @@ def token(
         refresh_token=refresh_token,
         user=schemas.UserFull.model_validate(user),
     )
+
+
+# --- Restore credentials / WebAuthn (docs/zero-tap-signin/PLAN.md) ---------
+# The create leg (authenticated, silent, right after sign-in): options +
+# register. The get leg is /restore/challenge below + the restore_credential
+# grant on /auth/token above. General WebAuthn machinery; Android Restore
+# Credentials is the first consumer.
+
+
+@router.post("/restore/options")
+def restore_credential_options(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """WebAuthn creation options for a discoverable restore credential."""
+    from ..services.webauthn_service import (
+        WebAuthnVerificationError,
+        generate_registration_options_for_user,
+    )
+
+    try:
+        return generate_registration_options_for_user(current_user, db)
+    except WebAuthnVerificationError as e:
+        raise AppError(
+            ErrorCode.internal_error, str(e), status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+
+
+@router.post("/restore/register", status_code=status.HTTP_204_NO_CONTENT)
+def restore_credential_register(
+    payload: schemas.RestoreRegisterRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Verify and store the registration response from the authenticator."""
+    from ..services.webauthn_service import (
+        WebAuthnVerificationError,
+        register_credential,
+    )
+
+    try:
+        register_credential(current_user, payload.response, db)
+    except WebAuthnVerificationError as e:
+        raise AppError(
+            ErrorCode.restore_credential_invalid, str(e), status.HTTP_400_BAD_REQUEST
+        )
+
+
+@router.post("/restore/challenge")
+def restore_credential_challenge(request: Request) -> dict:
+    """WebAuthn request options for the userless get leg (unauthenticated).
+
+    allowCredentials is empty by design: the freshly-migrated device has no
+    tokens and no idea who the user is — the discoverable credential's
+    userHandle identifies the account at /auth/token.
+    """
+    # Own bucket (not the login one): a migrating device probes here before it
+    # knows whether a credential exists, and that must never lock out a real
+    # sign-in attempt that follows.
+    client_ip = get_client_ip(request)
+    allowed, _ = check_rate_limit(
+        f"ratelimit:restorechallenge:{client_ip}", limit=30, window_seconds=300
+    )
+    if not allowed:
+        raise AppError(
+            ErrorCode.rate_limited,
+            "Too many attempts. Please try again later.",
+            status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
+    from ..services.webauthn_service import (
+        WebAuthnVerificationError,
+        generate_assertion_options,
+    )
+
+    try:
+        return generate_assertion_options()
+    except WebAuthnVerificationError as e:
+        raise AppError(
+            ErrorCode.internal_error, str(e), status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+
+
+@router.get("/restore/credentials", response_model=schemas.RestoreCredentialList)
+def restore_credential_list(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> schemas.RestoreCredentialList:
+    """The caller's stored restore/WebAuthn credentials (v1-minimal revocation)."""
+    from ..services.webauthn_service import list_credentials
+
+    return schemas.RestoreCredentialList(
+        credentials=[
+            schemas.RestoreCredentialInfo(**row)
+            for row in list_credentials(current_user, db)
+        ]
+    )
+
+
+@router.delete(
+    "/restore/credentials/{credential_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+def restore_credential_delete(
+    credential_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Delete one of the caller's credentials (credential_id as base64url)."""
+    from ..services.webauthn_service import delete_credential
+
+    if not delete_credential(current_user, credential_id, db):
+        raise AppError(
+            ErrorCode.not_found,
+            "No such credential.",
+            status.HTTP_404_NOT_FOUND,
+        )
 
 
 @router.get(
