@@ -460,9 +460,13 @@ def send_report_alert_email(
     reason_code: str,
     notes: str | None,
     reporter_handle: str | None,
+    post_public_sqid: str | None = None,
 ) -> dict[str, Any] | None:
     """
     Alert the moderation inbox about a new content report (docs/ugc-safety/ D4).
+
+    `post_public_sqid` is the reported post (or a reported comment's parent
+    post) so the link is the canonical /p/ URL.
 
     Throttled by the caller (one email per target per 6 h, D18). Failures are
     logged and swallowed — reporting must never fail because email did.
@@ -483,7 +487,9 @@ def send_report_alert_email(
     notes_str = html_lib.escape(notes_str)
     target_id = html_lib.escape(target_id)
 
-    if target_type == "post":
+    if post_public_sqid:
+        target_url = f"{BASE_URL}/p/{html_lib.escape(post_public_sqid)}"
+    elif target_type == "post":
         target_url = f"{BASE_URL}/post/{target_id}"
     elif target_type == "user":
         target_url = f"{BASE_URL}/u/{target_id}"

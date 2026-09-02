@@ -7,6 +7,7 @@ import SiteMetricsPanel from "../components/SiteMetricsPanel";
 import DownloadStatsPanel from "../components/DownloadStatsPanel";
 import VaultShardingPanel from "../components/VaultShardingPanel";
 import { authenticatedFetch, clearTokens } from "../lib/api";
+import { reportReasonLabel } from "../lib/reportReasons";
 import { ensureCompatibleArtUrl } from "../utils/imageCompat";
 
 // A moderation tool must never make a failed action look like a success. These
@@ -80,6 +81,20 @@ function formatProvenance(p: PostProvenance): string {
   return p.upload_channel ? `${label} · ${p.upload_channel}` : label;
 }
 
+// Resolved target of a report (docs/report-artwork/): post_* for post and
+// comment targets (a comment's parent post), user_* for user targets.
+interface ReportTarget {
+  post_public_sqid: string | null;
+  post_title: string | null;
+  post_art_url: string | null;
+  post_owner_handle: string | null;
+  post_owner_public_sqid: string | null;
+  comment_body: string | null;
+  user_handle: string | null;
+  user_public_sqid: string | null;
+  user_avatar_url: string | null;
+}
+
 interface Report {
   id: string;
   target_type: "user" | "post" | "comment";
@@ -91,32 +106,24 @@ interface Report {
   created_at: string;
   reporter_handle?: string | null;
   mod_notes?: string | null;
+  target?: ReportTarget | null; // null when the target no longer exists
 }
 
-// Human labels for report reason codes (docs/ugc-safety/). Legacy rows may
-// still carry "abuse" -> render as "Harassment or bullying" (D21).
-const REPORT_REASON_LABELS: Record<string, string> = {
-  spam: "Spam or misleading",
-  harassment: "Harassment or bullying",
-  hate: "Hate or discrimination",
-  sexual_explicit: "Sexual or explicit content",
-  violence_gore: "Violence or gore",
-  illegal_csam: "Illegal content or child endangerment",
-  self_harm: "Self-harm or suicide",
-  copyright: "Copyright or IP violation",
-  other: "Something else",
-  abuse: "Harassment or bullying",
-};
-
-const reportReasonLabel = (code: string): string =>
-  REPORT_REASON_LABELS[code] || code;
-
-// Link to a report target where a page exists (post -> /p or /post,
-// user -> /u/{public_sqid}); comments have no dedicated page.
+// Link to a report target where a page exists (post/comment -> the post,
+// user -> the profile); falls back to the legacy /post/{id} redirect when
+// the target could not be resolved.
 const reportTargetHref = (r: Report): string | null => {
+  if (r.target?.post_public_sqid) return `/p/${r.target.post_public_sqid}`;
+  if (r.target?.user_public_sqid) return `/u/${r.target.user_public_sqid}`;
   if (r.target_type === "post") return `/post/${r.target_id}`;
   if (r.target_type === "user") return `/u/${r.target_id}`;
   return null;
+};
+
+const REPORT_TARGET_NOUN: Record<Report["target_type"], string> = {
+  post: "Artwork",
+  comment: "Comment",
+  user: "User",
 };
 
 interface AuditLogEntry {
@@ -230,6 +237,17 @@ type Tab =
   | "metrics"
   | "downloads";
 
+const TABS: Tab[] = [
+  "pending",
+  "reports",
+  "posts",
+  "pulse",
+  "audit",
+  "notes",
+  "metrics",
+  "downloads",
+];
+
 export default function ModDashboardPage() {
   const router = useRouter();
   const [isModerator, setIsModerator] = useState(false);
@@ -317,12 +335,23 @@ export default function ModDashboardPage() {
     }
   }, [checkModeratorStatus]);
 
+  // Deep link (?tab=reports, used by new_report notifications); read once
+  // the router has the query so the initial data load targets the right tab.
   useEffect(() => {
-    if (isModerator) {
+    if (!router.isReady) return;
+    const requested = router.query.tab;
+    if (typeof requested === "string" && (TABS as string[]).includes(requested)) {
+      setActiveTab(requested as Tab);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady]);
+
+  useEffect(() => {
+    if (isModerator && router.isReady) {
       loadTabData(activeTab);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isModerator, activeTab]);
+  }, [isModerator, activeTab, router.isReady]);
 
   useEffect(() => {
     if (selectedPostId && activeTab === "notes") {
@@ -749,16 +778,7 @@ export default function ModDashboardPage() {
 
   if (!isModerator) return null;
 
-  const tabs: Tab[] = [
-    "pending",
-    "reports",
-    "posts",
-    "pulse",
-    "audit",
-    "notes",
-    "metrics",
-    "downloads",
-  ];
+  const tabs = TABS;
   const tabLabels: Record<Tab, string> = {
     pending: "Pending Approval",
     reports: "Reports",
@@ -893,59 +913,104 @@ export default function ModDashboardPage() {
                 <p className="empty">No open reports</p>
               ) : (
                 <>
-                  {reports.map((report) => (
-                    <div key={report.id} className="item-card">
-                      <div className="item-info">
-                        <strong>{report.target_type}</strong> -{" "}
-                        {reportReasonLabel(report.reason_code)}
-                        <p className="item-notes">
-                          {reportTargetHref(report) ? (
-                            <Link href={reportTargetHref(report) as string}>
-                              {report.target_type} {report.target_id}
-                            </Link>
-                          ) : (
-                            <span>
-                              {report.target_type} {report.target_id}
-                            </span>
-                          )}
-                          {" · reported by "}
-                          {report.reporter_handle || "anonymous"}
-                        </p>
-                        {report.notes && (
-                          <p className="item-notes">{report.notes}</p>
+                  {reports.map((report) => {
+                    const target = report.target;
+                    const href = reportTargetHref(report);
+                    const thumbUrl = target?.post_art_url
+                      ? ensureCompatibleArtUrl(target.post_art_url)
+                      : target?.user_avatar_url || null;
+                    return (
+                      <div key={report.id} className="item-card pending-card">
+                        {thumbUrl && href && (
+                          <Link href={href} className="pending-thumbnail">
+                            <img
+                              src={thumbUrl}
+                              alt={target?.post_title || target?.user_handle || ""}
+                              className="pixel-art"
+                              style={{ width: "64px", height: "64px" }}
+                            />
+                          </Link>
                         )}
-                        {report.mod_notes && (
+                        <div className="item-info">
+                          <strong>{REPORT_TARGET_NOUN[report.target_type]}</strong>{" "}
+                          reported for {reportReasonLabel(report.reason_code)}
                           <p className="item-notes">
-                            Mod notes: {report.mod_notes}
+                            {target?.post_public_sqid ? (
+                              <>
+                                <Link href={`/p/${target.post_public_sqid}`}>
+                                  {target.post_title || target.post_public_sqid}
+                                </Link>
+                                {target.post_owner_handle && (
+                                  <>
+                                    {" by "}
+                                    {target.post_owner_public_sqid ? (
+                                      <Link href={`/u/${target.post_owner_public_sqid}`}>
+                                        {target.post_owner_handle}
+                                      </Link>
+                                    ) : (
+                                      target.post_owner_handle
+                                    )}
+                                  </>
+                                )}
+                              </>
+                            ) : target?.user_public_sqid ? (
+                              <Link href={`/u/${target.user_public_sqid}`}>
+                                {target.user_handle || target.user_public_sqid}
+                              </Link>
+                            ) : href ? (
+                              <Link href={href}>
+                                {report.target_type} {report.target_id}
+                              </Link>
+                            ) : (
+                              <span>
+                                {report.target_type} {report.target_id}
+                                {target === null && " (no longer exists)"}
+                              </span>
+                            )}
+                            {" · reported by "}
+                            {report.reporter_handle || "anonymous"}
                           </p>
-                        )}
-                        <p className="item-date">
-                          {new Date(report.created_at).toLocaleString()}
-                        </p>
+                          {target?.comment_body && (
+                            <p className="item-notes">
+                              Comment: &ldquo;{target.comment_body}&rdquo;
+                            </p>
+                          )}
+                          {report.notes && (
+                            <p className="item-notes">Reporter notes: {report.notes}</p>
+                          )}
+                          {report.mod_notes && (
+                            <p className="item-notes">
+                              Mod notes: {report.mod_notes}
+                            </p>
+                          )}
+                          <p className="item-date">
+                            {new Date(report.created_at).toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="item-actions">
+                          <button
+                            onClick={() => resolveReport(report.id, "hide")}
+                            className="action-btn"
+                          >
+                            Hide
+                          </button>
+                          <button
+                            onClick={() => resolveReport(report.id, "take_down")}
+                            className="action-btn danger"
+                            title="Remove from feeds (reversible; does not delete the post)"
+                          >
+                            Take down
+                          </button>
+                          <button
+                            onClick={() => resolveReport(report.id, "none")}
+                            className="action-btn secondary"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
                       </div>
-                      <div className="item-actions">
-                        <button
-                          onClick={() => resolveReport(report.id, "hide")}
-                          className="action-btn"
-                        >
-                          Hide
-                        </button>
-                        <button
-                          onClick={() => resolveReport(report.id, "take_down")}
-                          className="action-btn danger"
-                          title="Remove from feeds (reversible; does not delete the post)"
-                        >
-                          Take down
-                        </button>
-                        <button
-                          onClick={() => resolveReport(report.id, "none")}
-                          className="action-btn secondary"
-                        >
-                          Dismiss
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {reportsCursor && (
                     <button
                       onClick={() => loadReports(false)}

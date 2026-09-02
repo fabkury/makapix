@@ -2,6 +2,16 @@
 
 Update after every work session, newest first.
 
+## 2026-09-02 — report surfaces show the reported artwork (→ docs/report-artwork/)
+
+- First real prod report (copyright, post `5PJM`, dismissed as original
+  work) exposed how bare the surfaces were. Follow-up effort
+  `docs/report-artwork/` populates `new_report` / `report_resolved` with the
+  reported post / comment / user (contract amendment to §6, supersedes
+  message `0003` §4(b)), enriches `GET /report` with a resolved `target`,
+  and rebuilds the dashboard card + notification card. App asked to adopt
+  via `docs/report-artwork/messages/0001`.
+
 ## 2026-07-13 — mod deletions no longer misattributed to authors
 
 - Found while reviewing prod data: BOTH moderator deletion paths set

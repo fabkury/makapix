@@ -187,6 +187,13 @@ preference; unknown types fall back to a generic push — old builds are safe):
 | `new_report` | all moderators/owner | first report on a target within the 6 h throttle window (D18) | "New content report — open the moderation queue" |
 | `report_resolved` | the (logged-in) reporter | moderator resolves the report | "Thanks — we've reviewed your report." No action details. |
 
+> **Amended 2026-09-02** (`docs/report-artwork/`, message `0001` there): both
+> types now carry what was reported — `post_id`/`content_*` for post and
+> comment targets (plus `comment_preview`), and new additive fields
+> `reason_code` + `target_user_{handle,public_sqid,avatar_url}` for user
+> targets. `content_title` is the post title, no longer a summary sentence.
+> Message `0003` §4(b) of this thread is superseded.
+
 ## 7. Compliance mapping (for the store questionnaires)
 
 | Store requirement | Where satisfied |

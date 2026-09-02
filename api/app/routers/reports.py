@@ -75,6 +75,64 @@ def _resolve_target(
     return db.query(models.User).filter(models.User.public_sqid == target_id).first()
 
 
+def _notification_target(db: Session, report: models.Report) -> dict:
+    """Kwargs for create_system_notification that attach the reported thing
+    (docs/report-artwork/): the post (a comment's parent post, with the
+    comment for the excerpt) or the reported user, plus the reason code. A
+    target that has since vanished yields a bare notification.
+    """
+    kwargs: dict = {"reason_code": report.reason_code}
+    try:
+        target = _resolve_target(db, report.target_type, report.target_id)
+    except AppError:
+        return kwargs
+    if isinstance(target, models.Post):
+        kwargs["post"] = target
+    elif isinstance(target, models.Comment):
+        kwargs["post"] = target.post
+        kwargs["comment"] = target
+    elif isinstance(target, models.User):
+        kwargs["target_user"] = target
+    return kwargs
+
+
+def _target_summary(db: Session, report: models.Report) -> schemas.ReportTarget | None:
+    """Resolve a report's target for the moderator listing; None when gone."""
+    try:
+        target = _resolve_target(db, report.target_type, report.target_id)
+    except AppError:
+        return None
+    if target is None:
+        return None
+
+    if isinstance(target, models.User):
+        return schemas.ReportTarget(
+            user_handle=target.handle,
+            user_public_sqid=target.public_sqid,
+            user_avatar_url=target.avatar_url,
+        )
+
+    comment_body: str | None = None
+    if isinstance(target, models.Comment):
+        post = target.post
+        comment_body = target.body[:200] if target.body else None
+        if target.body and len(target.body) > 200:
+            comment_body += "…"
+    else:
+        post = target
+    if post is None:
+        return None
+
+    return schemas.ReportTarget(
+        post_public_sqid=post.public_sqid,
+        post_title=post.title,
+        post_art_url=post.art_url,
+        post_owner_handle=post.owner.handle if post.owner else None,
+        post_owner_public_sqid=post.owner.public_sqid if post.owner else None,
+        comment_body=comment_body,
+    )
+
+
 def _fire_moderator_alerts(
     db: Session, report: models.Report, reporter: models.User | None
 ) -> None:
@@ -91,12 +149,16 @@ def _fire_moderator_alerts(
     if not allowed:
         return
 
+    target_kwargs = _notification_target(db, report)
+    target_post = target_kwargs.get("post")
+
     email_service.send_report_alert_email(
         target_type=report.target_type,
         target_id=report.target_id,
         reason_code=report.reason_code,
         notes=report.notes,
         reporter_handle=reporter.handle if reporter else None,
+        post_public_sqid=target_post.public_sqid if target_post else None,
     )
 
     try:
@@ -120,7 +182,7 @@ def _fire_moderator_alerts(
                 user_id=mod.id,
                 notification_type=NotificationType.NEW_REPORT,
                 actor=system_user,
-                content_title=f"New {report.target_type} report: {report.reason_code}",
+                **target_kwargs,
             )
     except Exception:
         logger.exception("Failed to send new_report notifications")
@@ -252,6 +314,7 @@ def list_reports(
         item = schemas.Report.model_validate(r)
         if r.reporter_id:
             item.reporter_handle = handles.get(r.reporter_id)
+        item.target = _target_summary(db, r)
         items.append(item)
 
     return schemas.Page(items=items, next_cursor=page_data["next_cursor"])
@@ -416,7 +479,7 @@ def update_report(
                     user_id=report.reporter_id,
                     notification_type=NotificationType.REPORT_RESOLVED,
                     actor=ensure_system_user(db),
-                    content_title="Thanks — we've reviewed your report.",
+                    **_notification_target(db, report),
                 )
             except Exception:
                 logger.exception("Failed to send report_resolved notification")

@@ -125,17 +125,27 @@ class SocialNotificationService:
         actor: models.User,
         *,
         content_title: str | None = None,
+        post: models.Post | None = None,
+        comment: models.Comment | None = None,
+        target_user: models.User | None = None,
+        reason_code: str | None = None,
     ) -> models.SocialNotification | None:
         """
-        Create a system notification (no artwork reference).
+        Create a system notification.
 
-        Used for system events like moderator status changes.
+        Used for system events like moderator status changes. Report
+        notifications (docs/report-artwork/) additionally reference what was
+        reported: `post` (a comment's parent post for comment reports, with
+        the comment excerpt in comment_preview) or `target_user`, plus the
+        report's `reason_code`.
 
         Args:
             db: Database session
             user_id: ID of user to notify
             notification_type: 'moderator_granted', 'moderator_revoked', etc.
             actor: The user who performed the action
+            content_title: Free-text title; defaults to the post title when a
+                           post is given
 
         Returns:
             Created notification, or None if skipped (self-action)
@@ -145,15 +155,30 @@ class SocialNotificationService:
             logger.debug(f"Skipping self-notification for user {user_id}")
             return None
 
-        # Create notification record (no post reference)
+        comment_preview = None
+        if comment is not None and comment.body:
+            comment_preview = comment.body[:100]
+            if len(comment.body) > 100:
+                comment_preview += "..."
+
         notification = models.SocialNotification(
             user_id=user_id,
             notification_type=notification_type,
-            post_id=None,  # System notifications have no artwork
+            post_id=post.id if post is not None else None,
             actor_id=actor.id,
             actor_handle=actor.handle,
             actor_avatar_url=actor.avatar_url,
-            content_title=content_title,
+            comment_id=comment.id if comment is not None else None,
+            comment_preview=comment_preview,
+            content_title=(
+                content_title
+                if content_title is not None
+                else (post.title if post is not None else None)
+            ),
+            content_sqid=post.public_sqid if post is not None else None,
+            content_art_url=post.art_url if post is not None else None,
+            target_user_id=target_user.id if target_user is not None else None,
+            reason_code=reason_code,
         )
 
         db.add(notification)
@@ -218,7 +243,10 @@ class SocialNotificationService:
         """
         query = (
             db.query(models.SocialNotification)
-            .options(selectinload(models.SocialNotification.actor))
+            .options(
+                selectinload(models.SocialNotification.actor),
+                selectinload(models.SocialNotification.target_user),
+            )
             .filter(models.SocialNotification.user_id == user_id)
         )
 

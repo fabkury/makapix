@@ -1910,6 +1910,15 @@ class SocialNotification(Base):
     content_sqid = Column(String(50), nullable=True)  # For URL generation
     content_art_url = Column(String(1000), nullable=True)  # For artwork thumbnail
 
+    # Report notifications only (docs/report-artwork/): the reported user for
+    # user-target reports (resolved to handle/sqid/avatar at read time so a
+    # renamed or deleted account never leaves stale copy), and the reporter's
+    # reason code so clients can compose "reported for {reason}".
+    target_user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    reason_code = Column(String(50), nullable=True)
+
     # Status
     is_read = Column(Boolean, nullable=False, default=False, index=True)
     read_at = Column(DateTime(timezone=True), nullable=True)
@@ -1924,12 +1933,25 @@ class SocialNotification(Base):
         "User", foreign_keys=[user_id], back_populates="social_notifications"
     )
     actor = relationship("User", foreign_keys=[actor_id])
+    target_user = relationship("User", foreign_keys=[target_user_id])
     post = relationship("Post")
 
     @property
     def actor_public_sqid(self) -> str | None:
         """Public sqid of the actor, for profile links; None when actor is gone."""
         return self.actor.public_sqid if self.actor is not None else None
+
+    @property
+    def target_user_handle(self) -> str | None:
+        return self.target_user.handle if self.target_user is not None else None
+
+    @property
+    def target_user_public_sqid(self) -> str | None:
+        return self.target_user.public_sqid if self.target_user is not None else None
+
+    @property
+    def target_user_avatar_url(self) -> str | None:
+        return self.target_user.avatar_url if self.target_user is not None else None
 
 
 # ============================================================================

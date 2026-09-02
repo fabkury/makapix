@@ -34,6 +34,11 @@ export interface SocialNotificationItem {
   content_title: string | null;
   content_sqid: string | null;
   content_art_url: string | null;
+  // new_report / report_resolved only (docs/report-artwork/); null otherwise
+  reason_code: string | null;
+  target_user_handle: string | null;
+  target_user_public_sqid: string | null;
+  target_user_avatar_url: string | null;
   is_read: boolean;
   created_at: string;
 }

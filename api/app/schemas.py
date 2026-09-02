@@ -997,6 +997,24 @@ ReportReasonCode = Literal[
 ]
 
 
+class ReportTarget(BaseModel):
+    """What a report points at, resolved for moderator listings
+    (docs/report-artwork/). Post and comment targets fill the post_* fields
+    (a comment's parent post) and comment targets add comment_body; user
+    targets fill the user_* fields. Absent fields are null.
+    """
+
+    post_public_sqid: str | None = None
+    post_title: str | None = None
+    post_art_url: str | None = None
+    post_owner_handle: str | None = None
+    post_owner_public_sqid: str | None = None
+    comment_body: str | None = None  # excerpt, or the tombstone text if removed
+    user_handle: str | None = None
+    user_public_sqid: str | None = None
+    user_avatar_url: str | None = None
+
+
 class Report(BaseModel):
     """Content moderation report."""
 
@@ -1013,6 +1031,8 @@ class Report(BaseModel):
     # replaced). New resolutions store "take_down".
     action_taken: Literal["hide", "take_down", "delete", "ban", "none"] | None = None
     reporter_handle: str | None = None  # populated in moderator listings only
+    # Moderator listings only; null when the target no longer exists.
+    target: ReportTarget | None = None
     created_at: datetime
     updated_at: datetime | None = None  # NULL until first update
 
@@ -2203,6 +2223,13 @@ class SocialNotificationBase(BaseModel):
     content_title: str | None = None
     content_sqid: str | None = None
     content_art_url: str | None = None
+    # new_report / report_resolved only (docs/report-artwork/): the report's
+    # reason code, and — for user-target reports — the reported user (resolved
+    # live; null once the account is gone). Null on every other type.
+    reason_code: str | None = None
+    target_user_handle: str | None = None
+    target_user_public_sqid: str | None = None
+    target_user_avatar_url: str | None = None
 
 
 class SocialNotification(SocialNotificationBase):

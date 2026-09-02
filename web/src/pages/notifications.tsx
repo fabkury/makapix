@@ -7,6 +7,7 @@ import {
   SocialNotificationFull,
 } from "../contexts/SocialNotificationsContext";
 import { ensureCompatibleArtUrl } from "../utils/imageCompat";
+import { reportReasonLabel } from "../lib/reportReasons";
 
 /**
  * Notifications Page.
@@ -95,6 +96,43 @@ export default function NotificationsPage() {
            notification.notification_type === "reputation_change";
   };
 
+  // Report notifications are presented impersonally (a glyph, never the
+  // system actor's avatar) and carry what was reported instead
+  // (docs/report-artwork/): the post in content_*, or the user in
+  // target_user_*.
+  const isReportNotification = (notification: SocialNotificationFull): boolean =>
+    notification.notification_type === "new_report" ||
+    notification.notification_type === "report_resolved";
+
+  // Where the whole card goes; null renders a non-link card.
+  const cardHref = (notification: SocialNotificationFull): string | null => {
+    if (isSystemNotification(notification)) return null;
+    // Moderators land where the Hide / Take down / Dismiss buttons are.
+    if (notification.notification_type === "new_report") {
+      return "/mod-dashboard?tab=reports";
+    }
+    if (notification.content_sqid) return `/p/${notification.content_sqid}`;
+    if (notification.target_user_public_sqid) {
+      return `/u/${notification.target_user_public_sqid}`;
+    }
+    return null;
+  };
+
+  // What a report notification is about, for the copy.
+  const reportSubject = (notification: SocialNotificationFull): string => {
+    const reason = reportReasonLabel(notification.reason_code);
+    if (notification.target_user_handle) {
+      return `${notification.target_user_handle} was reported for ${reason}`;
+    }
+    const title = notification.content_title
+      ? `"${notification.content_title}"`
+      : "an artwork";
+    if (notification.comment_preview) {
+      return `A comment on ${title} was reported for ${reason}`;
+    }
+    return `${title} was reported for ${reason}`;
+  };
+
   // Avatar URLs are absolute vault-subdomain URLs; the relative-path branch is
   // legacy tolerance (the /api/vault form was retired 2026-07-22)
   const resolveAvatarUrl = (url: string): string =>
@@ -119,6 +157,12 @@ export default function NotificationsPage() {
     }
     if (notification.notification_type === "post_approved") {
       return <span className="emoji">{"✅"}</span>;
+    }
+    if (notification.notification_type === "new_report") {
+      return <span className="emoji">{"🚩"}</span>;
+    }
+    if (notification.notification_type === "report_resolved") {
+      return <span className="emoji">{"🛡️"}</span>;
     }
     if (notification.notification_type === "post_promoted") {
       return (
@@ -181,6 +225,10 @@ export default function NotificationsPage() {
     } else if (notification.notification_type === "mod_hashtags_updated") {
       const diff = notification.comment_preview;
       return `A moderator updated the tags on "${title}"${diff ? `: ${diff}` : ""}`;
+    } else if (notification.notification_type === "new_report") {
+      return `New report: ${reportSubject(notification)}`;
+    } else if (notification.notification_type === "report_resolved") {
+      return `Thanks — we've reviewed your report (${reportSubject(notification)})`;
     }
     return `${actor} interacted with "${title}"`;
   };
@@ -222,7 +270,14 @@ export default function NotificationsPage() {
             <ul className="notification-list">
               {notifications.map((notification) => {
                 const isSystem = isSystemNotification(notification);
-                const actorSqid = notification.actor_public_sqid;
+                const isReport = isReportNotification(notification);
+                const href = cardHref(notification);
+                const actorSqid = isReport ? null : notification.actor_public_sqid;
+                // Report notifications about a user show that user's avatar in
+                // the thumbnail slot, tapping to their profile.
+                const targetUserSqid = isReport
+                  ? notification.target_user_public_sqid
+                  : null;
                 const notificationContent = (
                   <>
                     {actorSqid ? (
@@ -264,7 +319,8 @@ export default function NotificationsPage() {
                       <p className="notification-message">
                         {renderNotificationMessage(notification)}
                       </p>
-                      {notification.notification_type === "comment" &&
+                      {(notification.notification_type === "comment" ||
+                        isReport) &&
                         notification.comment_preview && (
                           <p className="comment-preview">
                             &ldquo;{notification.comment_preview}&rdquo;
@@ -298,6 +354,25 @@ export default function NotificationsPage() {
                         />
                       </span>
                     )}
+                    {targetUserSqid && notification.target_user_avatar_url && (
+                      <span
+                        className="artwork-link"
+                        aria-hidden="true"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          router.push(`/u/${targetUserSqid}`);
+                        }}
+                      >
+                        <img
+                          src={resolveAvatarUrl(notification.target_user_avatar_url)}
+                          alt=""
+                          width={64}
+                          height={64}
+                          className="notification-artwork pixel-art"
+                        />
+                      </span>
+                    )}
                     {isSystem && notification.actor_avatar_url && (
                       <img
                         src={resolveAvatarUrl(notification.actor_avatar_url)}
@@ -316,13 +391,13 @@ export default function NotificationsPage() {
                     key={notification.id}
                     className={`notification-item ${!notification.is_read ? "unread" : ""}`}
                   >
-                    {isSystem || !notification.content_sqid ? (
+                    {!href ? (
                       <div className="notification-link system-notification">
                         {notificationContent}
                       </div>
                     ) : (
                       <Link
-                        href={`/p/${notification.content_sqid}`}
+                        href={href}
                         onClick={() => handleNotificationClick(notification)}
                         className="notification-link"
                       >
