@@ -6933,6 +6933,16 @@
             "title": "Status",
             "type": "string"
           },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "target_id": {
             "title": "Target Id",
             "type": "string"
@@ -7039,6 +7049,112 @@
           "label"
         ],
         "title": "ReportReasonEntry",
+        "type": "object"
+      },
+      "ReportTarget": {
+        "description": "What a report points at, resolved for moderator listings\n(docs/report-artwork/). Post and comment targets fill the post_* fields\n(a comment's parent post) and comment targets add comment_body; user\ntargets fill the user_* fields. Absent fields are null.",
+        "properties": {
+          "comment_body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment Body"
+          },
+          "post_art_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Art Url"
+          },
+          "post_owner_handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Owner Handle"
+          },
+          "post_owner_public_sqid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Owner Public Sqid"
+          },
+          "post_public_sqid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Public Sqid"
+          },
+          "post_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Title"
+          },
+          "user_avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Avatar Url"
+          },
+          "user_handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Handle"
+          },
+          "user_public_sqid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Public Sqid"
+          }
+        },
+        "title": "ReportTarget",
         "type": "object"
       },
       "ReportUpdate": {
@@ -7810,6 +7926,50 @@
               }
             ],
             "title": "Post Id"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "target_user_avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target User Avatar Url"
+          },
+          "target_user_handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target User Handle"
+          },
+          "target_user_public_sqid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target User Public Sqid"
           },
           "user_id": {
             "title": "User Id",

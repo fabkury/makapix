@@ -43,6 +43,10 @@ All endpoints require a Bearer token. Base path: `/api/v1`.
   "content_title": "Cool Pixel Art",
   "content_sqid": "abc123",
   "content_art_url": "https://vault.makapix.club/.../art.png",
+  "reason_code": null,
+  "target_user_handle": null,
+  "target_user_public_sqid": null,
+  "target_user_avatar_url": null,
   "is_read": false,
   "created_at": "2026-08-09T02:00:00Z"
 }
@@ -62,8 +66,18 @@ All endpoints require a Bearer token. Base path: `/api/v1`.
 | `content_title` | string? | Title of the related post |
 | `content_sqid` | string? | Public sqid of the related post |
 | `content_art_url` | string? | Art URL of the related post |
+| `reason_code` | string? | `new_report` / `report_resolved` only: the report's reason code (`docs/ugc-safety/` D3 set) |
+| `target_user_handle` | string? | `new_report` / `report_resolved` on a **user** target: the reported user's handle |
+| `target_user_public_sqid` | string? | … their public sqid for `/u/{sqid}` (resolved live; null once deleted) |
+| `target_user_avatar_url` | string? | … their avatar URL |
 | `is_read` | bool | Read state |
 | `created_at` | string | ISO 8601 timestamp |
+
+Report notifications (`docs/report-artwork/`): a **post** report fills
+`post_id` / `content_*` with the reported post; a **comment** report fills
+them with the comment's parent post and puts the comment excerpt in
+`comment_preview`; a **user** report fills only `target_user_*`. The actor is
+always the system user, never the reporter.
 
 ### Notification types
 
@@ -81,8 +95,8 @@ Source of truth: `api/app/constants.py:NotificationType`.
 | `reputation_change` | A moderator changes your reputation |
 | `moderator_granted` | You are granted the moderator role |
 | `moderator_revoked` | Your moderator role is revoked |
-| `new_report` | (moderators) A new content report was filed |
-| `report_resolved` | Your report was reviewed and resolved |
+| `new_report` | (moderators) A new content report was filed — carries the reported post / comment / user |
+| `report_resolved` | Your report was reviewed and resolved — carries the same target, no action details |
 | `remix` | Someone published a Remix of your artwork |
 | `post_approved` | A moderator approved your pending post for public release |
 | `trust_granted` | A moderator granted you Trust (future uploads auto-approved) |

@@ -252,6 +252,92 @@ class TestAlerting:
         )
         assert len(notifs) == 2
 
+    def _mod_inbox(self, client: TestClient, moderator: User) -> list[dict]:
+        r = client.get("/v1/social-notifications/", headers=_auth(moderator))
+        assert r.status_code == 200
+        return [i for i in r.json()["items"] if i["notification_type"] == "new_report"]
+
+    def test_post_report_notification_carries_post(
+        self, client: TestClient, db: Session, moderator, artist
+    ):
+        post = _make_post(db, owner=artist, title="np1")
+        assert (
+            client.post(
+                "/v1/report", json=_report_payload(post, "copyright")
+            ).status_code
+            == 201
+        )
+        (n,) = self._mod_inbox(client, moderator)
+        assert n["post_id"] == post.id
+        assert n["content_sqid"] == post.public_sqid
+        assert n["content_art_url"] == post.art_url
+        assert n["content_title"] == "np1"
+        assert n["reason_code"] == "copyright"
+        assert n["comment_preview"] is None
+        assert n["target_user_handle"] is None
+        assert n["target_user_public_sqid"] is None
+        assert n["target_user_avatar_url"] is None
+
+    def test_comment_report_notification_carries_parent_post(
+        self, client: TestClient, db: Session, moderator, reporter, artist
+    ):
+        post = _make_post(db, owner=artist, title="np2")
+        comment = _make_comment(db, post=post, author=reporter)
+        r = client.post(
+            "/v1/report",
+            json={
+                "target_type": "comment",
+                "target_id": str(comment.id),
+                "reason_code": "spam",
+            },
+        )
+        assert r.status_code == 201
+        (n,) = self._mod_inbox(client, moderator)
+        assert n["post_id"] == post.id
+        assert n["content_sqid"] == post.public_sqid
+        assert n["content_art_url"] == post.art_url
+        assert n["comment_preview"] == "hi there"
+        assert n["reason_code"] == "spam"
+        assert n["target_user_handle"] is None
+
+    def test_user_report_notification_carries_target_user(
+        self, client: TestClient, db: Session, moderator, artist
+    ):
+        artist.avatar_url = "https://example.com/avatar.png"
+        db.commit()
+        r = client.post(
+            "/v1/report",
+            json={
+                "target_type": "user",
+                "target_id": artist.public_sqid,
+                "reason_code": "harassment",
+            },
+        )
+        assert r.status_code == 201
+        (n,) = self._mod_inbox(client, moderator)
+        assert n["post_id"] is None
+        assert n["content_sqid"] is None
+        assert n["content_art_url"] is None
+        assert n["reason_code"] == "harassment"
+        assert n["target_user_handle"] == artist.handle
+        assert n["target_user_public_sqid"] == artist.public_sqid
+        assert n["target_user_avatar_url"] == "https://example.com/avatar.png"
+
+    def test_non_report_notifications_have_null_report_fields(
+        self, client: TestClient, db: Session, moderator, artist
+    ):
+        post = _make_post(db, owner=artist, title="np3")
+        r = client.put(
+            f"/v1/post/{post.id}/reactions/❤️",
+            headers=_auth(moderator),
+        )
+        assert r.status_code == 204, r.text
+        r = client.get("/v1/social-notifications/", headers=_auth(artist))
+        (n,) = r.json()["items"]
+        assert n["notification_type"] == "reaction"
+        assert n["reason_code"] is None
+        assert n["target_user_handle"] is None
+
 
 class TestModeratorTriage:
     def test_patch_user_target_by_sqid_ban(
@@ -362,6 +448,37 @@ class TestModeratorTriage:
             .first()
         )
         assert notif is not None  # D5
+        # Carries the reported post so the reporter sees which report closed
+        # (docs/report-artwork/); no action details (D22).
+        assert notif.post_id == post.id
+        assert notif.content_sqid == post.public_sqid
+        assert notif.content_art_url == post.art_url
+        assert notif.reason_code == "harassment"
+
+    def test_resolve_user_report_notification_carries_target_user(
+        self, client: TestClient, db: Session, moderator, reporter, artist
+    ):
+        r = client.post(
+            "/v1/report",
+            json={
+                "target_type": "user",
+                "target_id": artist.public_sqid,
+                "reason_code": "hate",
+            },
+            headers=_auth(reporter),
+        )
+        client.patch(
+            f"/v1/report/{r.json()['id']}",
+            json={"status": "resolved", "action_taken": "none"},
+            headers=_auth(moderator),
+        )
+        r2 = client.get("/v1/social-notifications/", headers=_auth(reporter))
+        (n,) = [
+            i for i in r2.json()["items"] if i["notification_type"] == "report_resolved"
+        ]
+        assert n["target_user_public_sqid"] == artist.public_sqid
+        assert n["target_user_handle"] == artist.handle
+        assert n["content_sqid"] is None
 
     def test_resolve_anonymous_no_reporter_notification(
         self, client: TestClient, db: Session, moderator, artist
@@ -400,6 +517,80 @@ class TestModeratorTriage:
     def test_list_requires_moderator(self, client: TestClient, reporter):
         r = client.get("/v1/report", headers=_auth(reporter))
         assert r.status_code == 403
+
+    def test_list_reports_resolves_targets(
+        self, client: TestClient, db: Session, moderator, reporter, artist
+    ):
+        post = _make_post(db, owner=artist, title="t5")
+        comment = _make_comment(db, post=post, author=reporter)
+        artist.avatar_url = "https://example.com/a.png"
+        db.commit()
+        assert client.post("/v1/report", json=_report_payload(post)).status_code == 201
+        assert (
+            client.post(
+                "/v1/report",
+                json={
+                    "target_type": "comment",
+                    "target_id": str(comment.id),
+                    "reason_code": "spam",
+                },
+            ).status_code
+            == 201
+        )
+        assert (
+            client.post(
+                "/v1/report",
+                json={
+                    "target_type": "user",
+                    "target_id": artist.public_sqid,
+                    "reason_code": "hate",
+                },
+            ).status_code
+            == 201
+        )
+
+        r = client.get("/v1/report?status=open", headers=_auth(moderator))
+        assert r.status_code == 200
+        by_type = {i["target_type"]: i["target"] for i in r.json()["items"]}
+
+        assert by_type["post"] == {
+            "post_public_sqid": post.public_sqid,
+            "post_title": "t5",
+            "post_art_url": post.art_url,
+            "post_owner_handle": artist.handle,
+            "post_owner_public_sqid": artist.public_sqid,
+            "comment_body": None,
+            "user_handle": None,
+            "user_public_sqid": None,
+            "user_avatar_url": None,
+        }
+        assert by_type["comment"]["post_public_sqid"] == post.public_sqid
+        assert by_type["comment"]["comment_body"] == "hi there"
+        assert by_type["user"] == {
+            "post_public_sqid": None,
+            "post_title": None,
+            "post_art_url": None,
+            "post_owner_handle": None,
+            "post_owner_public_sqid": None,
+            "comment_body": None,
+            "user_handle": artist.handle,
+            "user_public_sqid": artist.public_sqid,
+            "user_avatar_url": "https://example.com/a.png",
+        }
+
+    def test_list_reports_vanished_target_is_null(
+        self, client: TestClient, db: Session, moderator, artist
+    ):
+        post = _make_post(db, owner=artist, title="t6")
+        assert client.post("/v1/report", json=_report_payload(post)).status_code == 201
+        db.query(Report).filter(Report.target_id == str(post.id)).update(
+            {"target_id": "999999999"}
+        )
+        db.commit()
+        r = client.get("/v1/report?status=open", headers=_auth(moderator))
+        assert r.status_code == 200
+        (item,) = r.json()["items"]
+        assert item["target"] is None
 
 
 class TestReporterIpSweep:
