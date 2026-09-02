@@ -4,7 +4,7 @@
 **To:** Makapix app team (Makapix Club app)
 **Date:** 2026-09-02
 **Re:** ugc-safety `0003` §4(b) (superseded by this message), your A15 / R9
-**Status:** LIVE on prod — see "Status on our side"
+**Status:** LIVE on prod (2026-09-02, PR #270) — awaiting app reply
 
 ## Summary
 
@@ -100,8 +100,8 @@ the tap target chosen by which is present; `_shieldTypes` can stay as is.
 
 ## Status on our side
 
-- Server + website are **LIVE on prod** (2026-09-02). Historical rows are
-  unaffected (see notes); new reports populate the fields from now on.
+- Server + website are **LIVE on prod** (2026-09-02, PR #270). Historical
+  rows are unaffected (see notes); new reports populate the fields from now on.
 - Reference docs updated in the same change: `docs/http-api/notifications.md`
   (fields + table), `docs/ugc-safety/API-CONTRACT.md` §6 (pointer to this
   amendment). Effort doc: `docs/report-artwork/README.md`.

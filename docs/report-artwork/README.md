@@ -74,5 +74,9 @@ The full message to the app team: [`messages/0001-server-report-notifications-ar
   `_notification_target` / `_target_summary` in `routers/reports.py`,
   `create_system_notification` grew `post`/`comment`/`target_user`/
   `reason_code`; dashboard card + `?tab=` deep link; notifications page).
-  Alert email links `/p/{sqid}`. Tests in `tests/test_reports.py`. See
-  PROGRESS entries below for the rollout.
+  Alert email links `/p/{sqid}`. Tests in `tests/test_reports.py`.
+  Verified live on dev (one report per target type), `make check-full`
+  green, **PR #270 merged and deployed to prod the same day**. Message
+  `0001` sent to the app team (copy committed to the app repo as
+  `docs/club-server-cr-report-notifications-artwork.md`). Open: app reply
+  `0002` with the adopting build; owner click-test of both cards on prod.
