@@ -1,5 +1,11 @@
 # Report artwork — reports show what was reported
 
+> **Status: CLOSED 2026-09-02.** Server + website live on prod (PR #270);
+> app adopted on `main` (`936469bb`), shipping with its next regular
+> release. Residual: the app's build stamp + on-device pass (to be noted in
+> `messages/0002`), and the owner's click-test of both cards on prod.
+> Reopen trigger: a `0004-app-…` message from the release pass.
+
 Follow-up to `docs/ugc-safety/` (the report pipeline). Started 2026-09-02
 after the first real copyright report on prod landed as a card reading only
 "post - Copyright or IP violation · post 3591" and a notification reading
@@ -88,3 +94,6 @@ The full message to the app team: [`messages/0001-server-report-notifications-ar
   app's next regular release (live is 1.7.0+35); build to be stamped in
   `0002`. Still open: owner click-test of both cards on prod; app on-device
   pass on dev.
+- **2026-09-02** — Closing ack `0003` sent; website `new_report` glyph
+  switched to the shield to match the app (one moderation glyph across both
+  clients). Effort CLOSED (see status banner).
