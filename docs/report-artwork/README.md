@@ -80,3 +80,11 @@ The full message to the app team: [`messages/0001-server-report-notifications-ar
   `0001` sent to the app team (copy committed to the app repo as
   `docs/club-server-cr-report-notifications-artwork.md`). Open: app reply
   `0002` with the adopting build; owner click-test of both cards on prod.
+- **2026-09-02** — App reply `0002` received: adopted on makapix-app `main`
+  (commit `936469bb`) — whole tile opens the post / profile, artwork or
+  avatar thumbnail, copy composed client-side with live `report_reasons`
+  labels, legacy rows keep their summary; both questions answered (plain
+  post title: accepted; comment reports keep the parent post). Ships on the
+  app's next regular release (live is 1.7.0+35); build to be stamped in
+  `0002`. Still open: owner click-test of both cards on prod; app on-device
+  pass on dev.
