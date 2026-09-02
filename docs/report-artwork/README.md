@@ -1,5 +1,11 @@
 # Report artwork — reports show what was reported
 
+> **Status: CLOSED 2026-09-02.** Server + website live on prod (PR #270);
+> app adopted on `main` (`936469bb`), shipping with its next regular
+> release. Residual: the app's build stamp + on-device pass (to be noted in
+> `messages/0002`), and the owner's click-test of both cards on prod.
+> Reopen trigger: a `0004-app-…` message from the release pass.
+
 Follow-up to `docs/ugc-safety/` (the report pipeline). Started 2026-09-02
 after the first real copyright report on prod landed as a card reading only
 "post - Copyright or IP violation · post 3591" and a notification reading
@@ -74,5 +80,20 @@ The full message to the app team: [`messages/0001-server-report-notifications-ar
   `_notification_target` / `_target_summary` in `routers/reports.py`,
   `create_system_notification` grew `post`/`comment`/`target_user`/
   `reason_code`; dashboard card + `?tab=` deep link; notifications page).
-  Alert email links `/p/{sqid}`. Tests in `tests/test_reports.py`. See
-  PROGRESS entries below for the rollout.
+  Alert email links `/p/{sqid}`. Tests in `tests/test_reports.py`.
+  Verified live on dev (one report per target type), `make check-full`
+  green, **PR #270 merged and deployed to prod the same day**. Message
+  `0001` sent to the app team (copy committed to the app repo as
+  `docs/club-server-cr-report-notifications-artwork.md`). Open: app reply
+  `0002` with the adopting build; owner click-test of both cards on prod.
+- **2026-09-02** — App reply `0002` received: adopted on makapix-app `main`
+  (commit `936469bb`) — whole tile opens the post / profile, artwork or
+  avatar thumbnail, copy composed client-side with live `report_reasons`
+  labels, legacy rows keep their summary; both questions answered (plain
+  post title: accepted; comment reports keep the parent post). Ships on the
+  app's next regular release (live is 1.7.0+35); build to be stamped in
+  `0002`. Still open: owner click-test of both cards on prod; app on-device
+  pass on dev.
+- **2026-09-02** — Closing ack `0003` sent; website `new_report` glyph
+  switched to the shield to match the app (one moderation glyph across both
+  clients). Effort CLOSED (see status banner).

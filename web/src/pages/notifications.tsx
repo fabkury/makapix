@@ -158,10 +158,12 @@ export default function NotificationsPage() {
     if (notification.notification_type === "post_approved") {
       return <span className="emoji">{"✅"}</span>;
     }
-    if (notification.notification_type === "new_report") {
-      return <span className="emoji">{"🚩"}</span>;
-    }
-    if (notification.notification_type === "report_resolved") {
+    // Both report types share the shield, matching the app's single
+    // moderation glyph (docs/report-artwork/ message 0002).
+    if (
+      notification.notification_type === "new_report" ||
+      notification.notification_type === "report_resolved"
+    ) {
       return <span className="emoji">{"🛡️"}</span>;
     }
     if (notification.notification_type === "post_promoted") {
