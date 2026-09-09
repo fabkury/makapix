@@ -34,6 +34,11 @@ class DeviceType(str, Enum):
     MOBILE = "mobile"
     TABLET = "tablet"
     PLAYER = "player"  # Physical pixel art player device
+    # Makapix Club mobile app (docs/app-device-type/). APP = platform unknown:
+    # the Dart default User-Agent every pre-contract app build sends.
+    APP = "app"
+    APP_ANDROID = "app_android"
+    APP_IOS = "app_ios"
 
 
 class ViewSource(str, Enum):
@@ -83,10 +88,24 @@ TABLET_PATTERNS = [
 # Custom User-Agent identifier for Makapix physical players
 PLAYER_PATTERN = r"Makapix-Player|PixelFrame|Divoom"
 
+# Makapix Club mobile app (docs/app-device-type/ — the UA contract the app
+# team adopts): `MakapixClub/<version> (<Android|iOS>[; ...])`. Checked before
+# the tablet/mobile heuristics because the parenthetical carries "Android".
+APP_PATTERN = r"\bMakapixClub/"
+APP_ANDROID_PATTERN = r"\bAndroid\b"
+APP_IOS_PATTERN = r"\b(?:iOS|iPadOS|iPhone|iPad)\b"
+# Every app build before that contract sends dart:io's default User-Agent,
+# `Dart/<major.minor> (dart:io)` — platform unknown, still the app.
+DART_DEFAULT_PATTERN = r"\bDart/\d+(?:\.\d+)* \(dart:io\)"
+
 # Compile patterns for performance
 _mobile_regex = re.compile("|".join(MOBILE_PATTERNS), re.IGNORECASE)
 _tablet_regex = re.compile("|".join(TABLET_PATTERNS), re.IGNORECASE)
 _player_regex = re.compile(PLAYER_PATTERN, re.IGNORECASE)
+_app_regex = re.compile(APP_PATTERN)
+_app_android_regex = re.compile(APP_ANDROID_PATTERN, re.IGNORECASE)
+_app_ios_regex = re.compile(APP_IOS_PATTERN, re.IGNORECASE)
+_dart_default_regex = re.compile(DART_DEFAULT_PATTERN)
 
 
 def hash_ip(ip: str) -> str:
@@ -154,6 +173,17 @@ def detect_device_type(user_agent: str | None) -> DeviceType:
     # Check for physical player first (custom User-Agent)
     if _player_regex.search(user_agent):
         return DeviceType.PLAYER
+
+    # Makapix Club app (docs/app-device-type/): contract UA splits by
+    # platform; the pre-contract Dart default UA is the app, platform unknown.
+    if _app_regex.search(user_agent):
+        if _app_android_regex.search(user_agent):
+            return DeviceType.APP_ANDROID
+        if _app_ios_regex.search(user_agent):
+            return DeviceType.APP_IOS
+        return DeviceType.APP
+    if _dart_default_regex.search(user_agent):
+        return DeviceType.APP
 
     # Check for tablet (before mobile, as some tablets match mobile patterns too)
     if _tablet_regex.search(user_agent):

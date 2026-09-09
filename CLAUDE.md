@@ -76,7 +76,7 @@ make clean           # Removes containers AND volumes (10-second grace period)
 ## Device Type Enum
 
 Source of truth: `api/app/utils/view_tracking.py:DeviceType`
-- `desktop`, `mobile`, `tablet`, `player`
+- `desktop`, `mobile`, `tablet` (browsers), `player` (physical player firmware), `app`, `app_android`, `app_ios` (Makapix Club mobile app; `app` = pre-contract build sending Dart's default User-Agent — see `docs/app-device-type/`)
 
 Frontend must mirror in `DEVICE_LABELS` constant (`web/src/components/metrics/DeviceGrid.tsx`).
 

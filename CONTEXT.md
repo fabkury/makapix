@@ -54,3 +54,7 @@ _Avoid_: frame, device (unqualified)
 
 **Web Player**:
 The in-browser fullscreen autoplay mode that rotates through a channel, emulating a Player.
+
+**App**:
+The Makapix Club mobile app (Android / iOS). In device breakdowns it is its own client bucket — `app_android` / `app_ios` when the app identifies itself (`MakapixClub/<version> (<platform>…)` User-Agent), `app` for pre-contract builds that send Dart's default User-Agent. `mobile` / `tablet` mean browsers only. See `docs/app-device-type/`.
+_Avoid_: mobile (for the app), Flutter app
