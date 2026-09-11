@@ -35,7 +35,7 @@ class ArtistStats:
     unique_viewers: int
     total_impressions: int
     views_by_country: dict[str, int]  # Top 10 countries
-    views_by_device: dict[str, int]  # desktop, mobile, tablet, player
+    views_by_device: dict[str, int]  # view_tracking.DeviceType values
     daily_views: list[dict]  # 30 days of {date, views, unique_viewers, impressions}
     # Aggregated reactions and comments
     total_reactions: int

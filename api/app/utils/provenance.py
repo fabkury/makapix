@@ -46,8 +46,11 @@ CLIENT_DECLARABLE_CREATION_METHODS = frozenset(
 # --- source_details -----------------------------------------------------------
 
 SOURCE_DETAILS_MAX_BYTES = 2048
-# Upload devices (L7): the existing DeviceType enum minus "player" — players
-# don't upload. No laptop/smartphone split: not honestly observable.
+# Upload devices (L7): desktop / mobile / tablet — the declared form factor.
+# "player" (players don't upload) and the app_* client buckets
+# (docs/app-device-type/) are not form factors, so the server UA cross-check
+# below records nothing for app uploads; the app declares `device_type` +
+# `editor_platform` itself.
 UPLOAD_DEVICE_TYPES = frozenset(
     {DeviceType.DESKTOP.value, DeviceType.MOBILE.value, DeviceType.TABLET.value}
 )

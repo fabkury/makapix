@@ -1875,7 +1875,7 @@ class PostStatsResponse(BaseModel):
     views_by_country: dict[str, int]  # Top 10 countries: {"US": 50, "BR": 30, ...}
     views_by_device: dict[
         str, int
-    ]  # {"desktop": 40, "mobile": 35, "tablet": 10, "player": 5}
+    ]  # keyed by view_tracking.DeviceType values: {"desktop": 40, "app_android": 5, ...}
     views_by_type: dict[str, int]  # canonical: {"view": 60, "impression": 30}
     daily_views: list[DailyViewCount]  # Last 30 days
     total_reactions: int
@@ -1912,7 +1912,7 @@ class BlogPostStatsResponse(BaseModel):
     views_by_country: dict[str, int]  # Top 10 countries: {"US": 50, "BR": 30, ...}
     views_by_device: dict[
         str, int
-    ]  # {"desktop": 40, "mobile": 35, "tablet": 10, "player": 5}
+    ]  # keyed by view_tracking.DeviceType values: {"desktop": 40, "app_android": 5, ...}
     views_by_type: dict[str, int]  # {"intentional": 60, "listing": 30, "search": 10}
     daily_views: list[DailyViewCount]  # Last 30 days
     total_reactions: int

@@ -1,9 +1,14 @@
 // Device type labels — must mirror api/app/utils/view_tracking.py:DeviceType.
+// "(web)" = browser traffic; the app buckets are the Makapix Club mobile app
+// (docs/app-device-type/): `app` is a pre-contract build (platform unknown).
 export const DEVICE_LABELS: Record<string, string> = {
   desktop: '💻 Desktop',
-  mobile: '📱 Mobile',
-  tablet: '📱 Tablet',
+  mobile: '📱 Mobile (web)',
+  tablet: '📱 Tablet (web)',
   player: '🎮 Player',
+  app: '📲 App',
+  app_android: '🤖 App (Android)',
+  app_ios: '🍎 App (iOS)',
 };
 
 interface DeviceGridProps {
