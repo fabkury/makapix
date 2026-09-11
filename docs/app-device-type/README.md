@@ -1,10 +1,12 @@
 # App device type — the app becomes its own device bucket
 
-> **Status: APP ADOPTED, PROD DEPLOY PENDING (2026-09-11).** Server side on
-> `develop`, verified on dev. App reply `0002` (2026-09-11): contract UA +
-> `intent:"view"` implemented on makapix-app `main` (`58e6586c`), unreleased;
-> the app team will fill in the store build number in `0002` on release day.
-> Remaining: develop → main PR + `make deploy` (migration auto-runs).
+> **Status: LIVE ON PROD (2026-09-11, PR #272).** Migration `c3d4e5f6a7b8`
+> ran at deploy and relabeled 78 raw app Views (desktop → app). App reply
+> `0002`: contract UA + `intent:"view"` implemented on makapix-app `main`
+> (`58e6586c`), unreleased; the app team stamps the store build number into
+> `0002` on release day. Residual: next-day check of the Metrics "Devices"
+> card; the `app` bucket fades into `app_android` / `app_ios` as that
+> release rolls out.
 
 One effort, two items ("two birds, one stone"):
 
@@ -126,10 +128,15 @@ User-Agent: MakapixClub/<app version> (<platform>[; <os version>][; <model>])
   Developer desktop builds send `Windows` / `macOS` / `Linux` → `app` bucket
   (accepted). Their exact strings added to `test_device_detection.py`.
 
+- **2026-09-11** — `make check-full` green; PR #272 merged; `make deploy` on
+  prod. Post-deploy: alembic at `c3d4e5f6a7b8`; last-7-day web Views now read
+  app 78 / desktop 43 / mobile 13 / tablet 3 (was desktop 121); site + API
+  healthy.
+
 ## Reopen / next
 
 - App release carrying `58e6586c` → the app team stamps the build number
   into `0002`; once that build is the majority, the `app` bucket should
   trend to zero on the Metrics tab.
-- Prod: merge develop → main, `make deploy` (migration auto-runs). Check the
-  Metrics tab "Devices" card the next day for `App` rows.
+- Next-day check of the Metrics tab "Devices" card for `App` rows (site
+  page views only carry the new label from deploy time onward).
