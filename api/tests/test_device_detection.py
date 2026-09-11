@@ -38,6 +38,14 @@ CASES = [
     ("MakapixClub/1.9.0 (iPadOS 18.5; iPad)", DeviceType.APP_IOS),
     ("MakapixClub/1.9.0", DeviceType.APP),
     ("MakapixClub/1.9.0 (Fuchsia)", DeviceType.APP),
+    # Exact strings the app ships (message 0002, makapix-app 58e6586c)
+    ("MakapixClub/1.9.0+36 (Android 14; Pixel 8)", DeviceType.APP_ANDROID),
+    ("MakapixClub/1.9.0+36 (iOS 18.5; iPhone15,3)", DeviceType.APP_IOS),
+    ("MakapixClub/1.9.0+36 (iPadOS 18.5; iPad14,3)", DeviceType.APP_IOS),
+    ("MakapixClub/unknown (Android)", DeviceType.APP_ANDROID),
+    ("MakapixClub/unknown (iOS)", DeviceType.APP_IOS),
+    # Developer desktop builds (not in any store) land in the platform-less bucket
+    ("MakapixClub/1.9.0+36 (Windows 10.0.26200)", DeviceType.APP),
     # Makapix Club app — every pre-contract build (dart:io default UA)
     ("Dart/3.12 (dart:io)", DeviceType.APP),
     ("Dart/3.9 (dart:io)", DeviceType.APP),

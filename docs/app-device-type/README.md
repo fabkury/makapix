@@ -1,9 +1,10 @@
 # App device type — the app becomes its own device bucket
 
-> **Status: IN PROGRESS (2026-09-09).** Server side implemented on `develop`,
-> verified on dev; message `0001` sent to the app team (their repo,
-> `messages/0001-app-device-type/`). Awaiting the app's `0002` (UA contract
-> adopted + build number). Prod deploy pending (develop → main PR).
+> **Status: APP ADOPTED, PROD DEPLOY PENDING (2026-09-11).** Server side on
+> `develop`, verified on dev. App reply `0002` (2026-09-11): contract UA +
+> `intent:"view"` implemented on makapix-app `main` (`58e6586c`), unreleased;
+> the app team will fill in the store build number in `0002` on release day.
+> Remaining: develop → main PR + `make deploy` (migration auto-runs).
 
 One effort, two items ("two birds, one stone"):
 
@@ -118,9 +119,17 @@ User-Agent: MakapixClub/<app version> (<platform>[; <os version>][; <model>])
   Message `0001` written here and pushed to the app repo under the new
   `messages/` convention (makapix-app `main` `2e772841`).
 
+- **2026-09-11** — App reply `0002`: UA adopted byte-for-byte on every Dio
+  client (incl. the SSE stream, auth grant, pre-auth, vault download), with
+  sanitized free-form parts and a `MakapixClub/unknown (<platform>)`
+  fallback; `intent:"view"` now sent (closes artwork-views `0001` §4).
+  Developer desktop builds send `Windows` / `macOS` / `Linux` → `app` bucket
+  (accepted). Their exact strings added to `test_device_detection.py`.
+
 ## Reopen / next
 
-- App reply `0002` → note the adopting build; once that build is the
-  majority, the `app` bucket should trend to zero on the Metrics tab.
+- App release carrying `58e6586c` → the app team stamps the build number
+  into `0002`; once that build is the majority, the `app` bucket should
+  trend to zero on the Metrics tab.
 - Prod: merge develop → main, `make deploy` (migration auto-runs). Check the
   Metrics tab "Devices" card the next day for `App` rows.
