@@ -722,7 +722,7 @@ def feed_promoted(
     """
     Promoted posts feed with infinite scroll support.
 
-    Returns promoted posts ordered by creation date (newest first).
+    Returns promoted posts ordered by promotion date (newest promotion first).
     Uses cursor-based pagination for efficient infinite scroll.
     Cached for 5 minutes to reduce database load.
     """
@@ -781,26 +781,45 @@ def feed_promoted(
     # Note: Monitored hashtag filtering is applied in-memory after fetching
     # because this endpoint uses a shared cache across all users.
 
-    # Apply cursor pagination
-    query = apply_cursor_filter(
-        query, models.Post, cursor, "created_at", sort_desc=True
-    )
+    # Keyset pagination on promotion time (coalesced to created_at), tie-broken
+    # on post id. Inlined rather than routed through apply_cursor_filter, which
+    # only knows plain columns. Cursors minted before promoted_at existed carry
+    # a created_at ISO string; grandfathered rows have promoted_at == created_at,
+    # so those cursors still land in the right place.
+    sort_key = models.Post.promoted_order_key()
+    cursor_data = decode_cursor(cursor)
+    if cursor_data:
+        last_id, sort_value = cursor_data
+        try:
+            last_id = int(last_id)
+            sort_value = datetime.fromisoformat(str(sort_value).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            last_id = None
+        if last_id is not None:
+            query = query.filter(
+                or_(
+                    sort_key < sort_value,
+                    (sort_key == sort_value) & (models.Post.id < last_id),
+                )
+            )
 
-    # Order and limit
-    query = query.order_by(models.Post.created_at.desc())
+    query = query.order_by(sort_key.desc(), models.Post.id.desc())
 
-    # Fetch limit + 1 to check if there are more results
-    posts = query.limit(limit + 1).all()
+    # Fetch limit + 1 (with the sort key) to check if there are more results
+    rows = query.add_columns(sort_key).limit(limit + 1).all()
+    next_cursor = None
+    if len(rows) > limit:
+        rows = rows[:limit]
+        last_post, last_key = rows[-1]
+        next_cursor = encode_cursor(str(last_post.id), last_key.isoformat())
+    posts = [row[0] for row in rows]
 
     # Add reaction and comment counts, and user liked status
     annotate_posts_with_counts(db, posts, current_user.id if current_user else None)
 
-    # Create paginated response
-    page_data = create_page_response(posts, limit, cursor, "created_at")
-
     response = schemas.Page(
-        items=[schemas.Post.model_validate(p) for p in page_data["items"]],
-        next_cursor=page_data["next_cursor"],
+        items=[schemas.Post.model_validate(p) for p in posts],
+        next_cursor=next_cursor,
     )
 
     # Cache for 5 minutes

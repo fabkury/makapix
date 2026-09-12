@@ -435,6 +435,15 @@ def query_posts(
     elif request.sort == "reacted_at":
         # Non-reactions channel asking for reacted_at — fall back silently
         query = query.order_by(models.Post.id.desc())
+    elif request.channel == "promoted" and request.sort in (
+        "server_order",
+        "created_at",
+    ):
+        # Promoted channel plays newest-promoted first (docs/promoted-feed-order/);
+        # server-side remap so existing firmware needs no protocol change.
+        query = query.order_by(
+            models.Post.promoted_order_key().desc(), models.Post.id.desc()
+        )
     elif request.sort == "created_at":
         query = query.order_by(models.Post.created_at.desc())
     elif request.sort == "random":
