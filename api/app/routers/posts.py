@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import (
@@ -497,9 +498,14 @@ def list_posts(
 
     # (keyset expression, is-datetime) per sort. `reacted_at` is only present
     # when reacted_at_col was set (guaranteed by the fallback above).
+    # On the promoted set, "created_at" means promotion time (newest promotion
+    # first) so every promoted surface shares one order — docs/promoted-feed-order/.
+    date_key = (
+        models.Post.promoted_order_key() if promoted is True else models.Post.created_at
+    )
     keyset_map = {
-        "created_at": (models.Post.created_at, True),
-        "creation_date": (models.Post.created_at, True),
+        "created_at": (date_key, True),
+        "creation_date": (date_key, True),
         "width": (models.Post.width, False),
         "height": (models.Post.height, False),
         "frame_count": (models.Post.frame_count, False),
@@ -1765,6 +1771,9 @@ def promote_post(
 
     post.promoted = True
     post.promoted_category = payload.category
+    # Always re-stamp: a demote→promote cycle bumps the post to the top of the
+    # promoted feed (docs/promoted-feed-order/).
+    post.promoted_at = datetime.now(timezone.utc)
     db.commit()
 
     # Invalidate promoted feed cache
@@ -1823,6 +1832,7 @@ def demote_post(
 
     post.promoted = False
     post.promoted_category = None
+    post.promoted_at = None
     db.commit()
 
     # Invalidate promoted feed cache

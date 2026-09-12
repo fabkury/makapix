@@ -451,6 +451,10 @@ class Post(Base):
     promoted_category = Column(
         String(50), nullable=True
     )  # frontpage, editor-pick, weekly-pack
+    # When a moderator last promoted the post (docs/promoted-feed-order/).
+    # Stamped on every promote, cleared on demote; pre-existing promoted rows
+    # were grandfathered to created_at. Always read via promoted_order_key().
+    promoted_at = Column(DateTime(timezone=True), nullable=True)
 
     # Timestamps
     created_at = Column(
@@ -545,7 +549,19 @@ class Post(Base):
         Index("ix_posts_hashtags", "hashtags", postgresql_using="gin"),
         Index("ix_posts_owner_created", owner_id, created_at.desc()),
         Index("ix_posts_non_conformant_created", non_conformant, created_at.desc()),
+        Index("ix_posts_promoted_promoted_at", promoted, promoted_at.desc()),
     )
+
+    @classmethod
+    def promoted_order_key(cls):
+        """Sort expression for promoted surfaces: newest promotion first.
+
+        Falls back to created_at so a promoted row that somehow lacks a stamp
+        can never break a keyset (NULL comparisons would drop it silently).
+        Shared by /feed/promoted, /posts?promoted=true and the players'
+        ``promoted`` channel — keep them on this one expression.
+        """
+        return func.coalesce(cls.promoted_at, cls.created_at)
 
     @property
     def has_mkpx(self) -> bool:

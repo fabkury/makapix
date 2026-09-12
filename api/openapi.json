@@ -16648,7 +16648,7 @@
     },
     "/v1/feed/promoted": {
       "get": {
-        "description": "Promoted posts feed with infinite scroll support.\n\nReturns promoted posts ordered by creation date (newest first).\nUses cursor-based pagination for efficient infinite scroll.\nCached for 5 minutes to reduce database load.",
+        "description": "Promoted posts feed with infinite scroll support.\n\nReturns promoted posts ordered by promotion date (newest promotion first).\nUses cursor-based pagination for efficient infinite scroll.\nCached for 5 minutes to reduce database load.",
         "operationId": "feed_promoted_v1_feed_promoted_get",
         "parameters": [
           {

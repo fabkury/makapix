@@ -121,7 +121,7 @@ Query posts from various channels with optional filtering, sorting, and paginati
 
 **Channel behavior:**
 - `"all"` -- All visible posts.
-- `"promoted"` -- Only posts where `promoted=true`.
+- `"promoted"` -- Only posts where `promoted=true`. On this channel `"server_order"` and `"created_at"` both mean **newest promotion first** (the time a moderator promoted the post), not upload order; `"random"` is unaffected.
 - `"user"` -- Only the player owner's posts.
 - `"by_user"` -- Posts by a specific user (requires `user_handle` or `user_sqid`).
 - `"artwork"` -- Protocol compatibility alias (no additional filtering).
