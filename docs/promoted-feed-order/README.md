@@ -1,10 +1,13 @@
 # Promoted feed order — sort by promotion time
 
-> **Status: on `develop`, verified on dev (2026-09-12); prod deploy pending.**
-> Migration `e5f6a7b8c9d0` adds `posts.promoted_at` and grandfathers the
-> existing promoted rows (`promoted_at := created_at`), so the feed order is
-> unchanged at deploy and only diverges as moderators promote. App FYI sent
-> as thread `0002-promoted-feed-order` in the app repo (no app change needed).
+> **Status: LIVE ON PROD (2026-09-12, PR #273).** Migration `e5f6a7b8c9d0`
+> ran at deploy: 289 promoted rows grandfathered (`promoted_at := created_at`),
+> 0 mismatched, 0 stray stamps, index present; the feed's first page was
+> byte-identical before and after the deploy, cursored page 2 and the
+> `/post?promoted=true` remap both 200. Dev live check: a Nov-2025 post
+> promoted via the API led `/api/feed/promoted`, demote restored the order.
+> App FYI pushed as thread `0002-promoted-feed-order` in the app repo
+> (`a0f3a3ad`); no app change needed, reply optional.
 > Reopen trigger: a promoted surface that still shows upload order, or a
 > promoted row with `promoted_at IS NULL` after this migration.
 
