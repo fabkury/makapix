@@ -17,6 +17,19 @@ these. Change a decision here and re-score.
 | D9 | **Player public endpoints** | **Frozen — document as a known leak.** `GET /player/p/{sqid}`, `GET /player/post/{storage_key}`, `GET /player/verify-{user,hashtag,reactions}/…` (unauthenticated, 30 req/min/IP, `Access-Control-Allow-Origin: *`, return `art_url` / `latest_artwork_url`) are part of the firmware contract (players' `.local` web UI calls them cross-origin) and stay as they are. Their residual ceiling is recorded in 03 §Residual risks. |
 | D10 | **Doc form** | Options catalog + comparison matrix + a clearly labeled recommended bundle with phasing, for the owner to accept or reject. |
 
+## Round 3 — open questions closed (owner, 2026-09-14, after reading the catalog)
+
+| # | Topic | Decision |
+|---|---|---|
+| D11 | **Default downloadability (OQ1)** | **Downloadable unless the artist opts out.** New `posts.downloadable` boolean, default `true` (covers the 3,129 no-license posts). Owner and moderators always. The license is displayed and recorded with each download; it does not by itself gate. |
+| D12 | **Frozen player lookup bucket (OQ3)** | **Add a per-IP daily cap** on the existing 30/min bucket shared by `/player/p`, `/player/post`, verify-*: request/response shapes untouched, quota tightened. Measured need: prod saw **1** request to these endpoints in the 14 days to 2026-09-14, so 300/day/IP is ~100× headroom. Firmware team gets an FYI, not a contract change. |
+| D13 | **Per-post OG images (OQ2)** | **Via the gated path with an unfurler allowlist.** When per-post OG ships (separate SSR effort, appraisal F3), `og:image` points at `/api/art/{sqid}/…`; known unfurler User-Agents (Slack, Discord, Bluesky, Mastodon, Telegram, WhatsApp, X, Facebook, LinkedIn, iMessage) get their own small per-IP budget instead of an identity. Spoofers are throttled like anonymous. No public composited card. |
+| D14 | **Starting budgets (OQ4)** | Anonymous **600 posts/hour and 2,000/day** per identity (viewer token *and* IP-hash); members and app **3,000/hour**; downloads **30/hour** per member; moderators exempt. Tune from E1 telemetry; numbers live in settings, not code. |
+| D15 | **Privacy policy (OQ5)** | **Bump with Phase 0**: one plain-English paragraph on per-visitor image-fetch counting (salted IP hashes, hourly/daily budgets) and logged member downloads; effective date bumped once, covering Phase 1 in advance. |
+| D16 | **App Download action (OQ6)** | **The app has one.** F1 therefore changes app behaviour: the download call must carry the JWT and may return 403 `not_downloadable`. It travels in the same app message thread as C3, and the legacy `/download/{storage_key}` stays until that thread closes. |
+| D17 | **ToS wording (A2)** | **Deferred** to the next unrelated terms change; no `TERMS_VERSION` bump in this effort. Phase 0 still shows the rights label (© handle · All rights reserved) where `license` is null; harvesting bans rely on the existing "scrape content in bulk" clause meanwhile. |
+| D18 | **Next step** | Write `PLAN.md` for Phases 0–2, then **stop for owner review** before any code. |
+
 ## Standing invariants that also apply (from other efforts)
 
 - Vault URLs already issued remain valid (vault-resharding D16); legacy

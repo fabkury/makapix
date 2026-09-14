@@ -1,10 +1,9 @@
 # Protect artworks from unintended harvesting
 
-> **Status: BRAINSTORM ONLY (2026-09-14). Nothing implemented.** This folder
-> is an options catalog with pros / cons / costs / risks per approach, a
-> comparison matrix, and a clearly labeled recommended bundle for the owner
-> to accept, trim, or reject. No code, config, or contract has changed.
-> Next step: owner picks a bundle → a PLAN.md is written → implementation.
+> **Status: PLAN WRITTEN, AWAITING OWNER REVIEW (2026-09-14). Nothing
+> implemented.** Options catalog → owner decisions D1–D18 → `PLAN.md`
+> (Phase 0 needs no contract change; Phase 1 opens an app thread). No code,
+> config, or contract has changed. Next step: owner reviews `PLAN.md`.
 
 ## Problem
 
@@ -29,10 +28,11 @@ exact exposure map.
 
 | File | What it holds |
 |---|---|
-| [DECISIONS.md](DECISIONS.md) | Owner decisions from the 2026-09-14 clarification rounds (D1–D10). They constrain every option below. |
+| [DECISIONS.md](DECISIONS.md) | Owner decisions from the 2026-09-14 clarification rounds: D1–D10 (constraints) and D11–D18 (closed open questions). |
+| [PLAN.md](PLAN.md) | The implementation plan for the accepted bundle: Phase 0 (no contract change), Phase 1 (gated path + app contract), Phase 2 triggers, verification, rollback, risks. |
 | [01-current-state.md](01-current-state.md) | Verified exposure map: every surface that leaks artwork bytes or URLs, existing controls, hard constraints, and the honest ceiling. |
 | [02-options.md](02-options.md) | The options catalog, grouped in families A–G, each with PROS / CONS / COSTS / RISKS. Includes explicitly rejected approaches and why. |
-| [03-matrix-and-recommendation.md](03-matrix-and-recommendation.md) | Scoring matrix against the success bar, the recommended phased bundle, residual risks that remain by decision, and open questions. |
+| [03-matrix-and-recommendation.md](03-matrix-and-recommendation.md) | Scoring matrix against the success bar, the recommended phased bundle, residual risks that remain by decision, and the (now closed) open questions. |
 | [PROGRESS.md](PROGRESS.md) | Log. Update after any step. |
 
 ## One-paragraph summary of the recommendation

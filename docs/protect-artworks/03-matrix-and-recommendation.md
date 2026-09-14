@@ -93,13 +93,16 @@ re-read whenever those decisions are revisited.
 | **Screenshots / DevTools** | Pixel art is lossless at integer scale; a headless browser driven by an agent renders and captures. Deterrents raise effort only. | D5, physics |
 | **Cheap identities** | One email = one member budget; proxy pools = many anonymous budgets. Budgets slow and attribute; they do not stop. | D7 |
 
-## 4. Open questions for the owner
+## 4. Open questions — CLOSED 2026-09-14
 
-| # | Question | Why it matters |
+All six were answered in round 3 and recorded as D11–D18 in
+[DECISIONS.md](DECISIONS.md); the plan in [PLAN.md](PLAN.md) folds them in.
+
+| # | Question | Answer |
 |---|---|---|
-| OQ1 | **Default for no-license posts under F1** (3,129 of 3,147 prod posts): (a) downloadable by members unless the artist opts out, (b) not downloadable unless the artist opts in, (c) downloadable only when a CC license is set. | (b)/(c) make Download disappear for ~99% of the catalog on day one; (a) keeps today's behaviour but attributed. |
-| OQ2 | **Per-post OG images** (backlog F3) under D2: a composited OG card is a public, unauthenticated, nearest-neighbour copy of the art (lossless) — a throttled but enumerable leak. Options: generic site card only; card with the art at a *non-integer* scale plus frame chrome (still recoverable, just annoying); per-post card served through the gated path with a bot-UA allowlist for unfurlers. | Decides whether social sharing previews are worth one more public copy of every artwork. |
-| OQ3 | **Per-IP daily cap on the frozen player lookup bucket** (§3 first row): acceptable as "same contract, tighter quota", or does D9 mean the numbers are frozen too? | It is the difference between "catalog in 2 hours per IP" and "catalog in weeks per IP" on the biggest residual. |
-| OQ4 | **Budget numbers** for Phase 0/1: anonymous posts/hour, member posts/hour, app parity with members, download rate. Proposed starting points: anon 600/h and 2,000/day; member 3,000/h; download 30/h. | Too low breaks the Web Player's random channel and the app's feeds; too high is cosmetic. E1 Phase 0 data should set them. |
-| OQ5 | **Disclosure**: are per-identity image counters and download events (E1/F1/E4) covered by the current privacy policy wording on salted IP hashes, or does the policy need a line (and an effective-date bump)? | The policy is deliberately plain-English and honest; new tracking should appear in it. |
-| OQ6 | **App download feature**: does the Flutter app expose a Download action today? If so F1 changes its behaviour and belongs in the same message thread as C3. | Avoids a second contract change later. |
+| OQ1 | Default for no-license posts under F1 | Downloadable unless the artist opts out (D11) |
+| OQ2 | Per-post OG images under D2 | Gated path + unfurler allowlist (D13) |
+| OQ3 | Per-IP daily cap on the frozen player lookup bucket | Yes, 300/day/IP (D12) |
+| OQ4 | Budget numbers | anon 600/h + 2,000/day; member 3,000/h; download 30/h (D14) |
+| OQ5 | Privacy policy timing | Bump with Phase 0 (D15) |
+| OQ6 | App Download action | Exists → same thread as C3 (D16). ToS wording deferred (D17). |
