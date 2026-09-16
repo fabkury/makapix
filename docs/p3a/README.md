@@ -15,4 +15,4 @@ self-contained and say what reply (if any) you expect.
 
 | # | Date | Topic | Status |
 |---|------|-------|--------|
-| 0001 | 2026-09-16 | Server → p3a: send a `p3a/<firmware>` User-Agent | server side live on develop; awaiting `0002-p3a-…` with the firmware version that ships it |
+| 0001 | 2026-09-16 | Server → p3a: send a `p3a/<firmware>` User-Agent | server side LIVE on prod 2026-09-16 (PR #274); awaiting `0002-p3a-…` with the firmware version that ships it |
