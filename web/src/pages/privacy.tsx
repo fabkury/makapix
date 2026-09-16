@@ -8,7 +8,7 @@ export default function PrivacyPage() {
         <article className="policy-article">
           <h1>Privacy Policy</h1>
 
-          <p className="effective-date">Effective date: July 6, 2026</p>
+          <p className="effective-date">Effective date: September 16, 2026</p>
 
           <p className="lead">
             Makapix Club is a small, community-run social network for pixel artists and DIY
@@ -71,7 +71,10 @@ export default function PrivacyPage() {
             <strong>Technical necessities.</strong> Like nearly every website, our servers
             briefly process your IP address to deliver pages and to enforce rate limits that
             protect the service from abuse. These transient records expire automatically and
-            are not added to our database.
+            are not added to our database. Our web server also keeps a plain access log
+            (requested address, IP address, browser or device signature, timestamp) for up
+            to 90 days, which we use to detect abuse and to understand how devices such as
+            players reach the service; it is not linked to your account.
           </p>
 
           <p>
