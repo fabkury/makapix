@@ -119,6 +119,17 @@ services:
       - NEXT_PUBLIC_API_BASE_URL=https://development.makapix.club
     labels:
       caddy: development.makapix.club
+      # Access log for the main site (API + pages). Until 2026-09-16 only the
+      # vault host had one, so /api/* traffic carried no client IP or
+      # User-Agent anywhere durable (docs/p3a/ message 0001). JSON, same
+      # rotation as vault-access.log; read from the worker's /var/log/caddy
+      # mount. Retention is stated on the /privacy page — keep them in sync.
+      caddy.log.output: "file /var/log/caddy/main-dev-access.log"
+      caddy.log.output.roll_size: 50mb
+      caddy.log.output.roll_keep: 10
+      caddy.log.output.roll_keep_for: 90d
+      caddy.log.format: json
+      caddy.log.level: INFO
       # Block search engines
       caddy.header.X-Robots-Tag: "noindex, nofollow, noarchive"
       # Security headers (parity with prod; see prod overlay for rationale).

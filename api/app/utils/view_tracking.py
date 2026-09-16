@@ -85,8 +85,10 @@ TABLET_PATTERNS = [
     r"Kindle",
 ]
 
-# Custom User-Agent identifier for Makapix physical players
-PLAYER_PATTERN = r"Makapix-Player|PixelFrame|Divoom"
+# Custom User-Agent identifiers for Makapix physical players. `p3a/<firmware>`
+# is the contract asked of the p3a firmware team (docs/p3a/ message 0001);
+# `Makapix-Player` is the older generic token and stays accepted.
+PLAYER_PATTERN = r"Makapix-Player|\bp3a/|PixelFrame|Divoom"
 
 # Makapix Club mobile app (docs/app-device-type/ — the UA contract the app
 # team adopts): `MakapixClub/<version> (<Android|iOS>[; ...])`. Checked before

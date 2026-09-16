@@ -31,6 +31,11 @@ CASES = [
     ),
     # Physical player firmware
     ("Makapix-Player/1.4 (p3a; esp32)", DeviceType.PLAYER),
+    # p3a UA contract (docs/p3a/ message 0001): `p3a/<firmware>[ (<free-form>)]`
+    ("p3a/1.2.1", DeviceType.PLAYER),
+    ("p3a/1.3.0 (esp32-s3; unregistered)", DeviceType.PLAYER),
+    # ESP-IDF default UA is NOT a player: any ESP-IDF project sends it
+    ("ESP32 HTTP Client/1.0", DeviceType.DESKTOP),
     # Makapix Club app — UA contract (docs/app-device-type/ message 0001)
     ("MakapixClub/1.9.0 (Android 14; Pixel 8)", DeviceType.APP_ANDROID),
     ("MakapixClub/1.9.0 (Android)", DeviceType.APP_ANDROID),
