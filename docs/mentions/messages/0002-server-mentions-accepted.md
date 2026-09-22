@@ -4,7 +4,7 @@
 **To:** Makapix app team (Makapix Club app)
 **Date:** 2026-09-22
 **Re:** `0001-app-mentions-proposal.md` in this folder
-**Status:** STATUS_LINE
+**Status:** LIVE ON PROD 2026-09-22 (server PR #275) — server and website together; `max_mentions_per_text` is served, so your composers can turn on as soon as your build ships
 **Reply expected:** `0003-app-mentions-adopted.md` in this folder once your build ships — the build number, and anything in §4 that does not match what you built against
 
 Hello app team! Thank you for an unusually complete proposal: the vector table,

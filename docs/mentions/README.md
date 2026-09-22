@@ -1,11 +1,11 @@
 # Mentions — `@handle` in comments and post descriptions
 
-> **Status: IN PROGRESS (2026-09-22).** Owner accepted the app team's proposal
-> (thread `0004-mentions`, app repo `messages/0004-mentions/`, mirrored in
-> [`messages/`](messages/)) with the amendments below, and asked for
-> server + full website, through to prod. Release order D12: server → app →
-> website (server and website ship together here; the app follows on the
-> `/config` launch signal).
+> **Status: LIVE ON PROD (2026-09-22, PR #275).** Server + website shipped
+> together; migration `f7a8b9c0d1e2` ran (150 users → `everyone`), `/config`
+> serves `max_mentions_per_text: 16`. Reply `0002-server-mentions-accepted`
+> sent to the app repo (`messages/0004-mentions/`). Awaiting app reply `0003`
+> with the build number. Owner accepted the app team's proposal with the
+> amendments below (S1–S12).
 
 The full product design (21 decisions, D1–D21) lives in the **app repo**:
 `docs/mentions/README.md` + `DECISIONS.md`. This file records what the server
