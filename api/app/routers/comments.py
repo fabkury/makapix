@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -22,9 +23,12 @@ from ..errors import AppError, ErrorCode
 from ..services.social_notifications import SocialNotificationService
 from ..services.rate_limit import check_rate_limit
 from ..services.profanity import contains_profanity
+from ..utils import mentions
 from ..utils.audit import log_moderation_action
 from ..utils.visibility import get_accessible_post_or_404
 from .comment_likes import annotate_comments_with_likes
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/post", tags=["Comments"])
 
@@ -138,6 +142,8 @@ def list_comments(
     # Annotate comments with like counts
     current_user_id = current_user.id if isinstance(current_user, models.User) else None
     annotate_comments_with_likes(db, valid_comments, current_user_id)
+    # Resolve every mention on the page in one lookup (docs/mentions/)
+    mentions.prime(db, (c.body for c in valid_comments))
 
     return schemas.Page(
         items=[schemas.Comment.model_validate(c) for c in valid_comments],
@@ -177,7 +183,8 @@ def create_comment(
         )
 
     # Profanity filter: reject comments containing inappropriate language
-    if contains_profanity(payload.body):
+    # (mention markup is not prose — sqids are checked out of it)
+    if contains_profanity(mentions.strip_markup(payload.body)):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Comment contains inappropriate language",
@@ -243,6 +250,11 @@ def create_comment(
         if parent is not None and parent.author_id is not None:
             ensure_not_blocked(db, current_user.id, parent.author_id)
 
+    # Mentions: keep only those the writer may make; anonymous writers cannot
+    # mention at all (docs/mentions/ D3/D4). Never an error.
+    writer = current_user if isinstance(current_user, models.User) else None
+    sanitized = mentions.sanitize(db, writer, payload.body)
+
     # Create comment with appropriate author identification
     comment = models.Comment(
         post_id=id,
@@ -250,7 +262,7 @@ def create_comment(
         author_ip=current_user.ip if isinstance(current_user, AnonymousUser) else None,
         parent_id=payload.parent_id,
         depth=depth,
-        body=payload.body,
+        body=sanitized.text,
     )
     db.add(comment)
     db.commit()
@@ -285,6 +297,21 @@ def create_comment(
                     actor=actor,
                     comment=comment,
                 )
+
+    # Mention notifications last: recipients who just got `comment` or
+    # `comment_reply` for this comment are skipped (N1 precedence). Never
+    # fail the committed comment over a notification hiccup.
+    if writer is not None and sanitized.mentioned_ids:
+        try:
+            mentions.notify_mentions(
+                db,
+                writer=writer,
+                post=target_post,
+                recipient_ids=sanitized.mentioned_ids,
+                comment=comment,
+            )
+        except Exception:
+            logger.exception("Failed to send mention notifications")
 
     # Reload comment with author relationship to ensure display name is available
     comment = (
@@ -324,8 +351,34 @@ def update_comment(
 
     require_ownership(comment.author_id, current_user)
 
-    comment.body = payload.body
+    # Mentions: the author is the writer (also when a moderator edits);
+    # notify only recipients new to this edit (N4 — notify_mentions also
+    # skips anyone already notified for this comment).
+    author = (
+        current_user
+        if comment.author_id == current_user.id
+        else db.get(models.User, comment.author_id)
+    )
+    previous_ids = set(mentions.mentioned_user_ids(db, comment.body))
+    sanitized = mentions.sanitize(db, author, payload.body)
+
+    comment.body = sanitized.text
     db.commit()
+
+    added_ids = [i for i in sanitized.mentioned_ids if i not in previous_ids]
+    if added_ids and author is not None:
+        try:
+            post = db.get(models.Post, comment.post_id)
+            if post is not None:
+                mentions.notify_mentions(
+                    db,
+                    writer=author,
+                    post=post,
+                    recipient_ids=added_ids,
+                    comment=comment,
+                )
+        except Exception:
+            logger.exception("Failed to send mention notifications")
 
     # Reload comment with author relationship to ensure display name is available
     comment = (

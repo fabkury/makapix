@@ -115,8 +115,11 @@ def _target_summary(db: Session, report: models.Report) -> schemas.ReportTarget 
     comment_body: str | None = None
     if isinstance(target, models.Comment):
         post = target.post
-        comment_body = target.body[:200] if target.body else None
-        if target.body and len(target.body) > 200:
+        from ..utils.mentions import render_orm
+
+        body = render_orm(target, target.body)[0]  # plain rendering
+        comment_body = body[:200] if body else None
+        if body and len(body) > 200:
             comment_body += "…"
     else:
         post = target

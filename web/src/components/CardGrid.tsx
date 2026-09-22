@@ -9,6 +9,7 @@ import { ensureCompatibleArtUrl } from "../utils/imageCompat";
 import SelectedPostOverlay from "./SelectedPostOverlay";
 import { usePlayerBarOptional } from "../contexts/PlayerBarContext";
 import { authenticatedFetch } from "../lib/api";
+import type { MentionRef } from "../lib/mentions";
 
 interface PostOwner {
   id: string;
@@ -22,6 +23,8 @@ interface Post {
   public_sqid: string;
   title: string;
   description?: string;
+  description_markup?: string | null;
+  mentions?: MentionRef[];
   hashtags?: string[];
   art_url: string;
   width: number;
@@ -167,6 +170,8 @@ export default function CardGrid({
         public_sqid: p.public_sqid,
         title: p.title,
         description: p.description,
+        description_markup: p.description_markup,
+        mentions: p.mentions,
         art_url: p.art_url,
         owner: p.owner
           ? {

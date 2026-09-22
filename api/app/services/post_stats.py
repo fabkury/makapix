@@ -41,6 +41,12 @@ def annotate_posts_with_counts(
 
     post_ids = [post.id for post in posts]
 
+    # Resolve every description mention on the page in one lookup, ahead of
+    # serialization (docs/mentions/ S6)
+    from ..utils.mentions import prime
+
+    prime(db, (post.description for post in posts))
+
     # Get reaction counts for all posts in one query
     reaction_counts = (
         db.query(models.Reaction.post_id, func.count(models.Reaction.id).label("count"))

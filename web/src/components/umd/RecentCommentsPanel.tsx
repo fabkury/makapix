@@ -7,6 +7,8 @@ import { useState, useEffect, useCallback } from 'react';
 import CollapsiblePanel from './CollapsiblePanel';
 import { authenticatedFetch } from '../../lib/api';
 import { ensureCompatibleArtUrl } from '../../utils/imageCompat';
+import MentionText from '../MentionText';
+import { commentMentionSource, type MentionRef } from '../../lib/mentions';
 
 interface Comment {
   id: string;
@@ -15,6 +17,10 @@ interface Comment {
   post_title: string;
   post_art_url: string | null;
   body: string;
+  // The UMD list serves plain `body` today (docs/mentions/ S12); render links
+  // if the server ever adds the markup fields.
+  body_markup?: string;
+  mentions?: MentionRef[];
   hidden_by_mod: boolean;
   created_at: string;
 }
@@ -155,7 +161,9 @@ export default function RecentCommentsPanel({ sqid }: RecentCommentsPanelProps) 
                     )}
                     <div className="comment-details">
                       <div className="comment-meta">{formatDateTime(comment.created_at)}</div>
-                      <div className="comment-body">{comment.body}</div>
+                      <div className="comment-body">
+                        <MentionText source={commentMentionSource(comment)} />
+                      </div>
                     </div>
                   </div>
                   <div className="comment-actions">

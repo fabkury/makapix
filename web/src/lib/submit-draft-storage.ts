@@ -5,6 +5,8 @@
  * their work when navigating away. Uses sessionStorage for tab-specific drafts.
  */
 
+import type { PickedMention } from './mentions';
+
 export interface ImageInfo {
   width: number;
   height: number;
@@ -26,6 +28,9 @@ export interface SubmitDraftData {
   // Form fields
   title: string;
   description: string;
+  // @-mention picks for the description (docs/mentions/); older drafts lack
+  // it and restore with no picks (the handles stay as plain text).
+  descriptionMentions?: PickedMention[];
   hashtags: string;
   postAsHidden: boolean;
   // Remix permission (docs/artwork-provenance/). Pre-lineage drafts stored

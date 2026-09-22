@@ -19,6 +19,13 @@ import {
   getModerationConfig,
 } from "../../lib/api";
 import ReportDialog from "../../components/ReportDialog";
+import MentionText from "../../components/MentionText";
+import MentionTextarea, { useMentionDraft } from "../../components/MentionTextarea";
+import {
+  composerStateOf,
+  descriptionMentionSource,
+  type MentionRef,
+} from "../../lib/mentions";
 import { MONITORED_HASHTAGS } from "../../lib/constants";
 import { ensureCompatibleArtUrl } from "../../utils/imageCompat";
 import {
@@ -47,6 +54,9 @@ interface Post {
   public_sqid: string;
   title: string;
   description?: string;
+  // Mentions (docs/mentions/); absent on servers that predate them
+  description_markup?: string | null;
+  mentions?: MentionRef[];
   hashtags?: string[];
   mod_hashtags?: string[];
   art_url: string;
@@ -139,7 +149,7 @@ export default function PostPage() {
   // Edit mode state
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState("");
-  const [editDescription, setEditDescription] = useState("");
+  const editDescription = useMentionDraft();
   const [editHashtags, setEditHashtags] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -1093,7 +1103,10 @@ export default function PostPage() {
   const handleEditClick = () => {
     if (!post) return;
     setEditTitle(post.title || "");
-    setEditDescription(post.description || "");
+    // Markup → `@handle` text + pre-seeded picks, so an unchanged save
+    // round-trips the stored markup.
+    const { text, picks } = composerStateOf(descriptionMentionSource(post));
+    editDescription.reset(text, picks);
     setEditRemixable(ndLicense ? false : (post.remixable ?? true));
     // Only artist-controlled tags are editable; mod-owned tags are shown as
     // read-only chips and re-merged server-side (docs/mod-hashtags/ D10).
@@ -1128,7 +1141,7 @@ export default function PostPage() {
         {
           body: JSON.stringify({
             title: editTitle.trim(),
-            description: editDescription,
+            description: editDescription.toMarkup(),
             hashtags: hashtagsArray,
             remixable: editRemixable,
           }),
@@ -1594,9 +1607,7 @@ export default function PostPage() {
 
             {post.description && (
               <div className="post-description">
-                {post.description.split("\n").map((line, i) => (
-                  <p key={i}>{line}</p>
-                ))}
+                <MentionText source={descriptionMentionSource(post)} paragraphs />
               </div>
             )}
 
@@ -1781,10 +1792,10 @@ export default function PostPage() {
 
                 <div className="edit-field">
                   <label htmlFor="edit-description">Description</label>
-                  <textarea
+                  <MentionTextarea
+                    {...editDescription.bind}
+                    postId={post.id}
                     id="edit-description"
-                    value={editDescription}
-                    onChange={(e) => setEditDescription(e.target.value)}
                     placeholder="Describe your artwork..."
                     rows={4}
                     maxLength={5000}
@@ -2694,7 +2705,7 @@ export default function PostPage() {
           margin-bottom: 8px;
         }
 
-        .edit-field textarea,
+        .edit-field :global(textarea),
         .edit-field input {
           width: 100%;
           padding: 12px;
@@ -2713,19 +2724,19 @@ export default function PostPage() {
           padding: 12px;
         }
 
-        .edit-field textarea:focus,
+        .edit-field :global(textarea:focus),
         .edit-field input:focus {
           outline: none;
           border-color: var(--accent-cyan);
         }
 
-        .edit-field textarea:disabled,
+        .edit-field :global(textarea:disabled),
         .edit-field input:disabled {
           opacity: 0.6;
           cursor: not-allowed;
         }
 
-        .edit-field textarea {
+        .edit-field :global(textarea) {
           min-height: 100px;
           resize: vertical;
         }

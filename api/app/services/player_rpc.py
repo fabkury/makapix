@@ -43,6 +43,7 @@ from ..player_protocol.schemas import (
     SubmitReactionRequest,
     SubmitReactionResponse,
 )
+from ..utils.mentions import plain_text
 from ..utils.monitored_hashtags import (
     apply_monitored_hashtag_filter,
     post_has_unapproved_monitored_hashtags,
@@ -741,7 +742,7 @@ def get_comments(
                 comment_id=comment.id,
                 post_id=comment.post_id,
                 author_handle=comment.author.handle if comment.author else None,
-                body=comment.body,
+                body=plain_text(db, comment.body),  # players never see markup
                 depth=comment.depth,
                 parent_id=comment.parent_id,
                 created_at=comment.created_at,

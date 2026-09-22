@@ -2981,6 +2981,7 @@ def process_bdr_job(self, bdr_id: str) -> dict[str, Any]:
     from . import models, vault
     from .db import SessionLocal
     from .sqids_config import sqids
+    from .utils.mentions import plain_text
 
     db = SessionLocal()
     try:
@@ -3068,7 +3069,7 @@ def process_bdr_job(self, bdr_id: str) -> dict[str, Any]:
                         {
                             "id": str(comment.id),
                             "author_handle": author_handle,
-                            "body": comment.body,
+                            "body": plain_text(db, comment.body),
                             "created_at": comment.created_at.isoformat(),
                         }
                     )
@@ -3152,7 +3153,7 @@ def process_bdr_job(self, bdr_id: str) -> dict[str, Any]:
                             "sqid": post.public_sqid,
                             "filename": artwork_filename,
                             "title": post.title,
-                            "description": post.description,
+                            "description": plain_text(db, post.description),
                             "created_at": post.created_at.isoformat(),
                             "width": post.width,
                             "height": post.height,

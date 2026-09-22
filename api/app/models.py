@@ -142,6 +142,11 @@ class User(Base):
     approved_hashtags = Column(
         ARRAY(String(50)), nullable=False, default=list
     )  # Monitored hashtags the user has opted into viewing
+    # Who may @mention this user (docs/mentions/): everyone | following
+    # (only members this user follows) | nobody. See utils/mentions.py.
+    mention_policy = Column(
+        String(16), nullable=False, default="everyone", server_default="everyone"
+    )
 
     # Timestamps
     created_at = Column(

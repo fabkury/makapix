@@ -12,13 +12,15 @@ interface SelectProps {
   options: SelectOption[];
   placeholder?: string;
   disabled?: boolean;
+  /** Lets a <label htmlFor> (e.g. kit Field) name the trigger. */
+  id?: string;
 }
 
-export function Select({ value, onValueChange, options, placeholder = "Select...", disabled }: SelectProps) {
+export function Select({ value, onValueChange, options, placeholder = "Select...", disabled, id }: SelectProps) {
   return (
     <>
       <SelectPrimitive.Root value={value} onValueChange={onValueChange} disabled={disabled}>
-        <SelectPrimitive.Trigger className="select-trigger">
+        <SelectPrimitive.Trigger id={id} className="select-trigger">
           <SelectPrimitive.Value placeholder={placeholder} />
           <SelectPrimitive.Icon className="select-icon">
             <IconChevronDown size={14} />

@@ -207,6 +207,15 @@ export default function NotificationsPage() {
       return `${actor} commented on "${title}"`;
     } else if (notification.notification_type === "comment_reply") {
       return `${actor} replied to your comment on "${title}"`;
+    } else if (notification.notification_type === "mention") {
+      // comment_id null = a mention in the post's description (docs/mentions/)
+      if (notification.comment_id === null) {
+        return `${actor} mentioned you in the description of "${title}"`;
+      }
+      if (notification.comment_id) {
+        return `${actor} mentioned you in a comment on "${title}"`;
+      }
+      return `${actor} mentioned you on "${title}"`;
     } else if (notification.notification_type === "comment_like") {
       return `${actor} liked your comment on "${title}"`;
     } else if (notification.notification_type === "moderator_granted") {
@@ -263,8 +272,9 @@ export default function NotificationsPage() {
             </div>
             <p>No notifications yet</p>
             <span className="empty-hint">
-              When someone reacts to or comments on your artwork, follows you,
-              or when you receive system notifications, you&apos;ll see them here.
+              When someone reacts to or comments on your artwork, mentions you,
+              follows you, or when you receive system notifications, you&apos;ll
+              see them here.
             </span>
           </div>
         ) : (
@@ -322,6 +332,7 @@ export default function NotificationsPage() {
                         {renderNotificationMessage(notification)}
                       </p>
                       {(notification.notification_type === "comment" ||
+                        notification.notification_type === "mention" ||
                         isReport) &&
                         notification.comment_preview && (
                           <p className="comment-preview">

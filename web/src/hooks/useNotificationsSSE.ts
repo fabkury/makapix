@@ -13,6 +13,7 @@ export interface SocialNotificationItem {
     | 'reaction'
     | 'comment'
     | 'comment_reply'
+    | 'mention'
     | 'comment_like'
     | 'follow'
     | 'post_promoted'
@@ -31,6 +32,9 @@ export interface SocialNotificationItem {
   actor_public_sqid: string | null;
   emoji: string | null;
   comment_preview: string | null;
+  // The comment a comment/comment_reply/mention is about; null for a mention
+  // in a post description (docs/mentions/). Absent on older servers.
+  comment_id?: string | null;
   content_title: string | null;
   content_sqid: string | null;
   content_art_url: string | null;

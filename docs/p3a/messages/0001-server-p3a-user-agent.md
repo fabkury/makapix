@@ -4,7 +4,7 @@
 **To:** p3a player firmware team
 **Date:** 2026-09-16
 **Re:** New standing thread (`docs/p3a/`, see README); follow-up to the cert-renewal thread, which is closed
-**Status:** server side on `develop` (detection rule + test), no deploy dependency
+**Status:** server side live on prod since 2026-09-16 (PR #274: detection rule + test, main-site access log), no deploy dependency on your side
 **Reply expected:** `0002-p3a-user-agent-adopted.md` in this folder, with the firmware version that ships it
 
 Hello p3a team! One small ask, no compatibility cliff, no deadline.

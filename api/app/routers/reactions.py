@@ -453,6 +453,10 @@ def get_widget_data(
     current_user_id = current_user.id if isinstance(current_user, models.User) else None
     annotate_comments_with_likes(db, valid_comments, current_user_id)
 
+    # Resolve every mention in the thread in one lookup (docs/mentions/)
+    from ..utils import mentions
+
+    mentions.prime(db, (c.body for c in valid_comments))
     comments = [schemas.Comment.model_validate(c) for c in valid_comments]
 
     # ===== VIEWS COUNT =====

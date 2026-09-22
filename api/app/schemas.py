@@ -146,6 +146,9 @@ class Config(BaseModel):
     # Presence of this key is the clients' mod-hashtags feature-discovery
     # signal (docs/mod-hashtags/API-CONTRACT.md §2).
     max_mod_hashtags_per_post: int = 16
+    # Presence of this key is the clients' mentions launch signal: composers
+    # offer @-candidates only when it is present (docs/mentions/, D5).
+    max_mentions_per_text: int = 16
     # NOTE: populated from vault.ALLOWED_SMALL_DIMENSIONS by the /config endpoint
     # (single source of truth). The default below mirrors it for constructibility.
     allowed_dimensions: list[tuple[int, int]] = [
@@ -173,6 +176,38 @@ class Config(BaseModel):
     # UGC-safety block (docs/ugc-safety/); its presence is the clients'
     # feature gate + launch signal (D17). Populated by the /config endpoint.
     moderation: ModerationConfig | None = None
+
+
+# ============================================================================
+# MENTIONS (docs/mentions/)
+# ============================================================================
+
+
+class MentionRef(BaseModel):
+    """A sqid in a text's `<@SQID>` markup, resolved at read time."""
+
+    public_sqid: str
+    handle: str  # the account's CURRENT handle
+    avatar_url: str | None = None
+
+
+class MentionCandidate(BaseModel):
+    """One row of GET /user/mention-candidates."""
+
+    handle: str
+    public_sqid: str
+    avatar_url: str | None = None
+    # Why this user is offered, in rank order:
+    # owner (post owner) > thread (commented on the post) > following
+    # (the caller follows them) > follower (they follow the caller) > search
+    reason: Literal["owner", "thread", "following", "follower", "search"]
+
+
+class MentionCandidatesResponse(BaseModel):
+    items: list[MentionCandidate]
+
+
+MentionPolicy = Literal["everyone", "following", "nobody"]
 
 
 # ============================================================================
@@ -264,6 +299,9 @@ class UserFull(UserPublic):
         False  # Privilege to auto-approve public visibility for uploads
     )
     approved_hashtags: list[str] = Field(default_factory=list)
+    # Who may @mention this user: everyone | following (only members this user
+    # follows) | nobody (docs/mentions/, D11)
+    mention_policy: MentionPolicy = "everyone"
 
 
 class UserCreate(BaseModel):
@@ -288,6 +326,7 @@ class UserUpdate(BaseModel):
     # bypassing the upload pipeline.
     hidden_by_user: bool | None = None
     approved_hashtags: list[str] | None = None
+    mention_policy: MentionPolicy | None = None
 
 
 class AvatarFromPostRequest(BaseModel):
@@ -343,7 +382,12 @@ class Post(BaseModel):
     kind: Literal["artwork"]
     owner_id: int
     title: str
+    # Plain rendering: each `<@SQID>` mention replaced by `@handle` (resolved
+    # at read). `description_markup` is the stored source and `mentions` the
+    # resolved sqids in it (docs/mentions/). Populated from the ORM.
     description: str | None = None
+    description_markup: str | None = None
+    mentions: list[MentionRef] = []
     hashtags: list[str] = []
     # Moderator-owned subset of `hashtags`; only moderators can change these
     # (docs/mod-hashtags/API-CONTRACT.md)
@@ -415,6 +459,21 @@ class Post(BaseModel):
     child_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def render_description_mentions(cls, data, handler):
+        """From the ORM: serve the plain rendering in `description` and the
+        stored markup beside it (docs/mentions/ S6)."""
+        instance = handler(data)
+        if hasattr(data, "_sa_instance_state"):
+            from .utils.mentions import render_orm
+
+            instance.description_markup = data.description
+            plain, refs = render_orm(data, data.description)
+            instance.description = plain
+            instance.mentions = [MentionRef(**ref) for ref in refs]
+        return instance
 
 
 class PostUpdate(BaseModel):
@@ -605,7 +664,11 @@ class Comment(BaseModel):
     author_ip: str | None = Field(default=None, exclude=True)
     parent_id: UUID | None = None
     depth: int = Field(..., ge=0, le=2)
+    # Plain rendering (`<@SQID>` → `@handle`); `body_markup` is the stored
+    # source and `mentions` its resolved sqids (docs/mentions/).
     body: str
+    body_markup: str | None = None
+    mentions: list[MentionRef] = []
     hidden_by_mod: bool
     deleted_by_owner: bool
     deleted_by_mod: bool = False
@@ -638,6 +701,15 @@ class Comment(BaseModel):
             instance.like_count = data._like_count
         if hasattr(data, "_liked_by_me"):
             instance.liked_by_me = data._liked_by_me
+
+        # Mentions: plain rendering in `body`, stored markup beside it
+        if hasattr(data, "_sa_instance_state"):
+            from .utils.mentions import render_orm
+
+            instance.body_markup = data.body
+            plain, refs = render_orm(data, data.body)
+            instance.body = plain
+            instance.mentions = [MentionRef(**ref) for ref in refs]
 
         return instance
 
@@ -2219,6 +2291,10 @@ class SocialNotificationBase(BaseModel):
     actor_avatar_url: str | None = None  # For system notifications
     actor_public_sqid: str | None = None  # For /u/{sqid} profile links
     emoji: str | None = None
+    # The comment a comment/comment_reply/mention notification is about. For
+    # `mention`, null means the mention is in the post's description
+    # (docs/mentions/).
+    comment_id: UUID | None = None
     comment_preview: str | None = None
     content_title: str | None = None
     content_sqid: str | None = None

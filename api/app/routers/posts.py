@@ -57,7 +57,7 @@ from ..utils.monitored_hashtags import (
 from ..utils.view_tracking import record_view, ViewSource
 from ..utils.site_tracking import record_site_event
 from ..utils.visibility import can_access_post
-from ..utils import provenance
+from ..utils import mentions, provenance
 from ..utils.lineage import (
     create_lineage_links,
     notify_remix_published,
@@ -748,6 +748,10 @@ async def upload_artwork(
     # Parse hashtags (comma-separated)
     parsed_hashtags = normalize_hashtags(hashtags.split(","), cap=64)
 
+    # Mentions in the description: keep only those the uploader may make
+    # (docs/mentions/); flattened silently otherwise.
+    sanitized_description = mentions.sanitize(db, current_user, description)
+
     # Determine public visibility based on user's auto_public_approval privilege
     public_visibility = getattr(current_user, "auto_public_approval", False)
 
@@ -805,7 +809,7 @@ async def upload_artwork(
         owner_id=current_user.id,
         kind="artwork",
         title=title,
-        description=description,
+        description=sanitized_description.text,
         hashtags=parsed_hashtags,
         art_url="",  # Will be updated after saving to vault
         width=width,
@@ -976,6 +980,21 @@ async def upload_artwork(
             notify_remix_published(db, post, current_user, parents)
         except Exception as e:
             logger.error(f"Failed to send remix notifications for post {post.id}: {e}")
+
+    # Description mentions notify now only for an auto-approved upload; a
+    # pending one holds them until approval (docs/mentions/ S3).
+    if sanitized_description.mentioned_ids:
+        try:
+            mentions.notify_mentions(
+                db,
+                writer=current_user,
+                post=post,
+                recipient_ids=sanitized_description.mentioned_ids,
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to send mention notifications for post {post.id}: {e}"
+            )
 
     # Record site event for upload
     record_site_event(request, "upload", user=current_user)
@@ -1264,10 +1283,19 @@ def update_post(
     require_ownership(post.owner_id, current_user)
 
     hashtags_changed = False
+    added_mention_ids: list[int] = []
     if payload.title is not None:
         post.title = payload.title
     if payload.description is not None:
-        post.description = payload.description
+        # The description is the owner's voice, also when a moderator edits
+        # it: mentionability and notifications use the owner (docs/mentions/
+        # S8). Only recipients new to this edit are notified (N4).
+        previous_ids = set(mentions.mentioned_user_ids(db, post.description))
+        sanitized = mentions.sanitize(db, post.owner, payload.description)
+        post.description = sanitized.text
+        added_mention_ids = [
+            i for i in sanitized.mentioned_ids if i not in previous_ids
+        ]
     if payload.hashtags is not None:
         # The submitted list is the artist-controlled tags; mod-owned tags are
         # re-merged so artists can't remove them (docs/mod-hashtags/ D10).
@@ -1311,6 +1339,14 @@ def update_post(
         cache_invalidate("feed:recent:*")
         cache_invalidate("feed:promoted:*")
         cache_invalidate("hashtags:*")
+
+    if added_mention_ids and post.owner is not None:
+        try:
+            mentions.notify_mentions(
+                db, writer=post.owner, post=post, recipient_ids=added_mention_ids
+            )
+        except Exception as e:
+            logger.error(f"Failed to send mention notifications for post {id}: {e}")
 
     return schemas.Post.model_validate(post)
 
@@ -1899,6 +1935,13 @@ def approve_public_visibility(
         )
     except Exception as e:
         logger.error(f"Failed to send post_approved notification for post {id}: {e}")
+
+    # Release the mention notifications held while the post was pending, in
+    # its description and its comments (docs/mentions/ S3).
+    try:
+        mentions.release_held_mentions(db, post)
+    except Exception as e:
+        logger.error(f"Failed to release held mentions for post {id}: {e}")
 
     return schemas.PublicVisibilityResponse(post_id=id, public_visibility=True)
 

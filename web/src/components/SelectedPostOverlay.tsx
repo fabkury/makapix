@@ -17,6 +17,8 @@ import {
   getModerationConfig,
 } from "../lib/api";
 import { PLAYER_BAR_HEIGHT } from "./PlayerBarDynamic";
+import MentionText from "./MentionText";
+import { descriptionMentionSource, type MentionRef } from "../lib/mentions";
 import ReportDialog from "./ReportDialog";
 import UseAsAvatarDialog from "./UseAsAvatarDialog";
 import SPOCommentsOverlay from "./SPOCommentsOverlay";
@@ -31,6 +33,9 @@ export interface SelectedPostOverlayPost {
   public_sqid: string;
   title: string;
   description?: string;
+  // Mentions (docs/mentions/); absent on servers that predate them
+  description_markup?: string | null;
+  mentions?: MentionRef[];
   art_url: string;
   owner_id?: number;
   owner?: {
@@ -2466,7 +2471,9 @@ export default function SelectedPostOverlay({
                   : {}),
               }}
             >
-              {post.description || null}
+              {post.description ? (
+                <MentionText source={descriptionMentionSource(post)} />
+              ) : null}
             </div>
           </motion.div>
         </AnimatePresence>

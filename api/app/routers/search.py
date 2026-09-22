@@ -129,18 +129,25 @@ def search_all(
 
     # Search posts with trigram similarity
     if "posts" in types:
+        # Mention markup (`<@SQID>`) is not prose: match the description with
+        # it stripped (docs/mentions/ S12)
+        from ..utils.mentions import MENTION_SQL_PATTERN
+
+        searchable_description = func.regexp_replace(
+            models.Post.description, MENTION_SQL_PATTERN, " ", "g"
+        )
         post_query = db.query(
             models.Post,
             func.greatest(
                 func.similarity(models.Post.title, q_normalized),
                 func.coalesce(
-                    func.similarity(models.Post.description, q_normalized), 0.0
+                    func.similarity(searchable_description, q_normalized), 0.0
                 ),
             ).label("similarity"),
         ).filter(
             or_(
                 func.similarity(models.Post.title, q_normalized) > 0.1,
-                func.similarity(models.Post.description, q_normalized) > 0.1,
+                func.similarity(searchable_description, q_normalized) > 0.1,
             )
         )
 
@@ -175,7 +182,7 @@ def search_all(
                     func.greatest(
                         func.similarity(models.Post.title, q_normalized),
                         func.coalesce(
-                            func.similarity(models.Post.description, q_normalized), 0.0
+                            func.similarity(searchable_description, q_normalized), 0.0
                         ),
                     )
                     < float(last_similarity)
@@ -189,7 +196,7 @@ def search_all(
                 func.greatest(
                     func.similarity(models.Post.title, q_normalized),
                     func.coalesce(
-                        func.similarity(models.Post.description, q_normalized), 0.0
+                        func.similarity(searchable_description, q_normalized), 0.0
                     ),
                 ).desc(),
                 models.Post.created_at.desc(),

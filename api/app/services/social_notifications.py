@@ -76,15 +76,15 @@ class SocialNotificationService:
                 )
                 return None
 
-        # Prepare comment preview
+        # Prepare comment preview — the plain rendering, so stored mention
+        # markup never reaches an inbox (docs/mentions/ S12)
+        from ..utils.mentions import preview
+
         comment_preview = None
         comment_id = None
         if comment:
             comment_id = comment.id
-            if comment.body:
-                comment_preview = comment.body[:100]
-                if len(comment.body) > 100:
-                    comment_preview += "..."
+            comment_preview = preview(db, comment.body)
         elif extra_preview:
             comment_preview = extra_preview
 
@@ -155,11 +155,9 @@ class SocialNotificationService:
             logger.debug(f"Skipping self-notification for user {user_id}")
             return None
 
-        comment_preview = None
-        if comment is not None and comment.body:
-            comment_preview = comment.body[:100]
-            if len(comment.body) > 100:
-                comment_preview += "..."
+        from ..utils.mentions import preview
+
+        comment_preview = preview(db, comment.body) if comment is not None else None
 
         notification = models.SocialNotification(
             user_id=user_id,

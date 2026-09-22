@@ -126,7 +126,37 @@ Update user profile. Requires ownership.
 }
 ```
 
+`mention_policy` — who may @mention this user: `everyone` (default),
+`following` (only members **this user follows**), or `nobody`. Any other value
+is a 422. Returned on the full user object (`/auth/me`, this response), never
+on public profiles.
+
 **Response (200):** Updated user object
+
+## Mention Candidates
+
+### GET /user/mention-candidates
+
+Users the caller may @mention, ranked for an autocomplete
+([`docs/mentions/`](../mentions/README.md)). Requires authentication.
+Rate limit: 120 requests/minute per user (429).
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `q` | string | null | Handle prefix, matched on the handle skeleton (case- and confusable-insensitive). Empty → contextual tiers only |
+| `post_id` | integer | null | Enables the `owner`/`thread` tiers; ignored if the caller cannot access the post |
+| `limit` | integer | 8 | 1–20 |
+
+```json
+{"items": [
+  {"handle": "artist", "public_sqid": "m8gPq", "avatar_url": "https://...", "reason": "owner"}
+]}
+```
+
+`reason` ∈ `owner` · `thread` · `following` · `follower` · `search`, ranked in
+that order, then by handle. Applies exactly the write path's mentionability
+rule (browse visibility — the site owner included — no block either way, the
+target's `mention_policy`) and never lists the caller.
 
 ## Upload Avatar
 
