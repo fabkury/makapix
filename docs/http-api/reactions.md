@@ -166,6 +166,21 @@ Get comments for a post.
 }
 ```
 
+**Mentions** ([`docs/mentions/`](../mentions/README.md)). A comment body may
+carry `<@SQID>` mention markup (SQID = a user's `public_sqid`). Every comment
+payload (list, create, edit, `GET /post/{id}/widget-data`) serves:
+
+| Field | Content |
+|---|---|
+| `body` | Plain rendering: each `<@SQID>` replaced by the target's current `@handle` (`@user` for a deleted account). What legacy clients display. |
+| `body_markup` | The stored source, with `<@SQID>` (equals `body` when there are no mentions). |
+| `mentions` | `[{public_sqid, handle, avatar_url}]` — the resolved sqids, in order of first appearance. |
+
+`POST`/`PATCH` accept markup in `body`. A mention the writer may not make
+(target hidden from `/user/browse`, a block either way, the target's
+`mention_policy`), mentions past 16 per text, and all mentions from anonymous
+commenters are silently flattened to plain `@handle` text — never an error.
+
 ### Add Comment
 
 #### POST /post/{post_id}/comments

@@ -7,8 +7,33 @@ import {
   getMyBlocks,
   unblockUser,
   BlockedUserEntry,
+  MentionPolicy,
 } from '../../../lib/api';
 import { MONITORED_HASHTAGS } from '../../../lib/constants';
+import Field from '../../../components/kit/Field';
+import { Select } from '../../../components/kit/Select';
+
+// Who may @mention the user (docs/mentions/). "following" means people the
+// USER follows — the copy has to say so, since it is easy to read backwards.
+const MENTION_POLICY_OPTIONS: { value: MentionPolicy; label: string; helper: string }[] = [
+  {
+    value: 'everyone',
+    label: 'Everyone',
+    helper: "Any member can mention you, except people you've blocked or who have blocked you.",
+  },
+  {
+    value: 'following',
+    label: 'Only people you follow',
+    helper:
+      "Only members you follow can mention you. Someone who follows you, but whom you don't follow back, can't.",
+  },
+  {
+    value: 'nobody',
+    label: 'Nobody',
+    helper:
+      "Nobody can mention you. People can still type your handle as plain text, but it won't link to your profile or notify you.",
+  },
+];
 
 export default function ContentSettingsPage() {
   const router = useRouter();
@@ -34,6 +59,12 @@ export default function ContentSettingsPage() {
   const [blocksError, setBlocksError] = useState<string | null>(null);
   const [blocksCursor, setBlocksCursor] = useState<string | null>(null);
   const [unblocking, setUnblocking] = useState<string | null>(null);
+
+  // Mentions policy; null hides the control (server without mentions).
+  const [mentionPolicy, setMentionPolicy] = useState<MentionPolicy | null>(null);
+  const [policySaving, setPolicySaving] = useState(false);
+  const [policyError, setPolicyError] = useState<string | null>(null);
+  const [policySaved, setPolicySaved] = useState(false);
 
   const API_BASE_URL =
     typeof window !== 'undefined'
@@ -76,6 +107,11 @@ export default function ContentSettingsPage() {
         );
         setSelected(approved);
         setInitial(approved);
+        setMentionPolicy(
+          MENTION_POLICY_OPTIONS.some((o) => o.value === me.mention_policy)
+            ? me.mention_policy
+            : null
+        );
       } catch (err: any) {
         setError(err.message || 'Failed to load your settings');
       } finally {
@@ -193,6 +229,47 @@ export default function ContentSettingsPage() {
     }
   };
 
+  // Saves on change, like a toggle.
+  const handlePolicyChange = async (next: string) => {
+    if (!userKey || !mentionPolicy || next === mentionPolicy) return;
+    const previous = mentionPolicy;
+    setMentionPolicy(next as MentionPolicy);
+    setPolicySaving(true);
+    setPolicyError(null);
+    setPolicySaved(false);
+
+    try {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${userKey}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mention_policy: next }),
+      });
+
+      if (response.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        setMentionPolicy(previous);
+        setPolicyError(
+          typeof errData.detail === 'string' ? errData.detail : 'Failed to save changes'
+        );
+        return;
+      }
+
+      const updated = await response.json();
+      if (updated.mention_policy) setMentionPolicy(updated.mention_policy);
+      setPolicySaved(true);
+    } catch (err: any) {
+      setMentionPolicy(previous);
+      setPolicyError(err.message || 'Failed to save changes');
+    } finally {
+      setPolicySaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <Layout title="Loading...">
@@ -307,6 +384,33 @@ export default function ContentSettingsPage() {
             </button>
           </div>
         </section>
+
+        {mentionPolicy && (
+          <section className="settings-card">
+            <h2>Mentions</h2>
+            <p className="section-intro">
+              Members can @mention you in comments and artwork descriptions. A
+              mention links to your profile and sends you a notification.
+            </p>
+
+            <Field
+              id="mention-policy"
+              label="Who can mention you"
+              helper={MENTION_POLICY_OPTIONS.find((o) => o.value === mentionPolicy)?.helper}
+            >
+              <Select
+                id="mention-policy"
+                value={mentionPolicy}
+                onValueChange={handlePolicyChange}
+                options={MENTION_POLICY_OPTIONS.map(({ value, label }) => ({ value, label }))}
+                disabled={policySaving}
+              />
+            </Field>
+
+            {policyError && <p className="save-error">{policyError}</p>}
+            {policySaved && <p className="save-success">Saved.</p>}
+          </section>
+        )}
 
         <section className="settings-card">
           <h2>Blocked users</h2>

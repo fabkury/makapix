@@ -150,6 +150,120 @@ def browse_users(
     )
 
 
+# GET /user/mention-candidates rate limit (docs/mentions/ S4). Clients debounce
+# 250 ms and cancel in flight, so a fast typist costs about one request/word.
+MENTION_CANDIDATES_PER_MINUTE = 120
+
+
+@router.get("/mention-candidates", response_model=schemas.MentionCandidatesResponse)
+def mention_candidates(
+    q: str | None = Query(None, max_length=64),
+    post_id: int | None = None,
+    limit: int = Query(8, ge=1, le=20),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.MentionCandidatesResponse:
+    """
+    Users the caller may @mention, ranked for an autocomplete (docs/mentions/).
+
+    Tiers, in rank order: `owner` (the post's owner) · `thread` (commented on
+    the post) · `following` (the caller follows them) · `follower` (they follow
+    the caller) · `search`; alphabetical within a tier. `q` is a prefix matched
+    on the handle skeleton (so casing and confusables behave like uniqueness);
+    without `q` only the contextual tiers are returned. `post_id` enables
+    `owner`/`thread` and is ignored when the caller cannot access the post.
+
+    Applies exactly the mentionability rule the write path uses
+    (`utils.mentions.mentionable_users_query`) and excludes the caller.
+    """
+    from sqlalchemy import case, select
+
+    from ..services.rate_limit import check_rate_limit
+    from ..utils.handle_normalize import compute_handle_skeleton
+    from ..utils.mentions import mentionable_users_query
+    from ..utils.visibility import can_access_post
+
+    allowed, _ = check_rate_limit(
+        f"ratelimit:mention_candidates:{current_user.id}",
+        limit=MENTION_CANDIDATES_PER_MINUTE,
+        window_seconds=60,
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Please slow down.",
+        )
+
+    User = models.User
+    tiers: list[tuple[str, object]] = []
+
+    post = db.get(models.Post, post_id) if post_id is not None else None
+    if post is not None and can_access_post(post, current_user):
+        tiers.append(("owner", User.id == post.owner_id))
+        thread_authors = select(models.Comment.author_id).where(
+            models.Comment.post_id == post.id,
+            models.Comment.author_id.isnot(None),
+            models.Comment.deleted_by_owner == False,  # noqa: E712
+            models.Comment.deleted_by_mod == False,  # noqa: E712
+            models.Comment.hidden_by_mod == False,  # noqa: E712
+        )
+        tiers.append(("thread", User.id.in_(thread_authors)))
+    tiers.append(
+        (
+            "following",
+            User.id.in_(
+                select(models.Follow.following_id).where(
+                    models.Follow.follower_id == current_user.id
+                )
+            ),
+        )
+    )
+    tiers.append(
+        (
+            "follower",
+            User.id.in_(
+                select(models.Follow.follower_id).where(
+                    models.Follow.following_id == current_user.id
+                )
+            ),
+        )
+    )
+    reasons = [name for name, _ in tiers] + ["search"]
+    search_rank = len(tiers)
+    rank = case(
+        *[(predicate, i) for i, (_, predicate) in enumerate(tiers)],
+        else_=search_rank,
+    ).label("rank")
+
+    query = (
+        mentionable_users_query(db, current_user)
+        .filter(User.id != current_user.id)
+        .add_columns(rank)
+    )
+
+    skeleton = compute_handle_skeleton(q) if q else ""
+    if skeleton:
+        escaped = skeleton.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        query = query.filter(User.handle_normalized.like(escaped + "%", escape="\\"))
+    else:
+        query = query.filter(rank < search_rank)
+
+    rows = query.order_by(rank, User.handle_normalized, User.id).limit(limit).all()
+
+    return schemas.MentionCandidatesResponse(
+        items=[
+            schemas.MentionCandidate(
+                handle=user.handle,
+                public_sqid=user.public_sqid,
+                avatar_url=user.avatar_url,
+                reason=reasons[user_rank],
+            )
+            for user, user_rank in rows
+            if user.public_sqid
+        ]
+    )
+
+
 @router.get("", response_model=schemas.Page[schemas.UserFull])
 def list_users_admin(
     q: str | None = None,
@@ -490,6 +604,11 @@ def update_user(
                 f"Allowed values: {', '.join(sorted(MONITORED_HASHTAGS))}",
             )
         user.approved_hashtags = list(payload.approved_hashtags)
+
+    # Who may @mention this user (docs/mentions/ D11); the schema restricts
+    # the value to everyone | following | nobody.
+    if payload.mention_policy is not None:
+        user.mention_policy = payload.mention_policy
 
     db.commit()
     db.refresh(user)

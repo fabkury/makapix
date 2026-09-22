@@ -100,11 +100,13 @@ Source of truth: `api/app/constants.py:NotificationType`.
 | `remix` | Someone published a Remix of your artwork |
 | `post_approved` | A moderator approved your pending post for public release |
 | `trust_granted` | A moderator granted you Trust (future uploads auto-approved) |
+| `mention` | Someone @mentioned you — in a comment (`comment_id` set) or in a post description (`comment_id` null). Same fields as `comment_reply`; `comment_preview` is the plain rendering. Held while the post awaits approval; see [`docs/mentions/`](../mentions/README.md) |
 
 ### Rate limiting
 
 Notification creation is limited to 720/hour per actor–recipient pair;
-self-actions never notify.
+self-actions never notify. `mention` notifications additionally stop after
+256/hour per writer (the mentions still link).
 
 ### Retention
 

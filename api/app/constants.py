@@ -54,3 +54,6 @@ class NotificationType(StrEnum):
     # The user was granted Trust (auto_public_approval): future uploads are
     # auto-approved. System notification, actor is the granting moderator.
     TRUST_GRANTED = "trust_granted"
+    # The recipient was @mentioned in a comment (comment_id set) or in a post
+    # description (comment_id null); actor is the writer (docs/mentions/).
+    MENTION = "mention"

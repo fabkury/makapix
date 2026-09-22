@@ -603,9 +603,13 @@ PULSE_TYPES = ("post", "comment", "post_reaction", "comment_like", "player", "pr
 _PULSE_PREVIEW_LEN = 140
 
 
-def _pulse_preview(body: str | None) -> str | None:
+def _pulse_preview(body: str | None, db: Session | None = None) -> str | None:
     if body is None:
         return None
+    if db is not None:
+        from ..utils.mentions import plain_text
+
+        body = plain_text(db, body)  # stored mention markup → @handle
     if len(body) <= _PULSE_PREVIEW_LEN:
         return body
     return body[: _PULSE_PREVIEW_LEN - 1] + "…"
@@ -747,7 +751,7 @@ def pulse(
                     **_pulse_actor(c.author, c.author_ip),
                     **_pulse_post_context(c.post),
                     # Mods see the preserved pre-deletion body until purged
-                    comment_preview=_pulse_preview(c.original_body or c.body),
+                    comment_preview=_pulse_preview(c.original_body or c.body, db),
                     is_reply=c.parent_id is not None,
                     flags=flags,
                     has_original_body=c.original_body is not None,
@@ -787,7 +791,9 @@ def pulse(
                     created_at=cl.created_at,
                     **_pulse_actor(cl.user, None),
                     **_pulse_post_context(comment.post if comment else None),
-                    comment_preview=_pulse_preview(comment.body if comment else None),
+                    comment_preview=_pulse_preview(
+                        comment.body if comment else None, db
+                    ),
                 )
             )
 

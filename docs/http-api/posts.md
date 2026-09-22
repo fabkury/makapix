@@ -223,6 +223,12 @@ Notes:
   moderator-owned tags (`mod_hashtags`) are re-merged automatically — artists
   cannot remove them. The response body is the source of truth.
 - `hidden_by_mod` is ignored unless the caller is a moderator.
+- `description` (here and on `POST /post/upload`) may carry `<@SQID>` mention
+  markup; post payloads serve `description` as the plain rendering plus
+  `description_markup` and `mentions` beside it, like comments
+  ([reactions.md](reactions.md#comments), [`docs/mentions/`](../mentions/README.md)).
+  Mentionability and the `mention` notification's actor are always the post
+  owner, also when a moderator edits. Newly added recipients only are notified.
 
 ## Moderator Hashtags
 
@@ -373,7 +379,9 @@ profile for every viewer (new-post UX, 2026-08). Hiding a post outright is
 ### POST /post/{id}/approve-public
 
 Approve public visibility. Moderator only. Sends the author a
-`post_approved` notification.
+`post_approved` notification, and releases the `mention` notifications held
+while the post was pending (its description and live comments; each
+recipient at most once).
 
 **Response (201):**
 

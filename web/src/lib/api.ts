@@ -754,6 +754,76 @@ export function getModerationConfig(): Promise<ModerationConfig | null> {
   return moderationConfigPromise;
 }
 
+// ---------------------------------------------------------------------------
+// Mentions (docs/mentions/)
+// ---------------------------------------------------------------------------
+
+export interface MentionsConfig {
+  max_mentions_per_text: number;
+}
+
+let mentionsConfigPromise: Promise<MentionsConfig | null> | null = null;
+
+/**
+ * Capability discovery for mentions: GET /api/config -> max_mentions_per_text.
+ * Presence of the key is the launch signal; when absent the composers stay
+ * plain textareas. Cached for the page lifetime.
+ */
+export function getMentionsConfig(): Promise<MentionsConfig | null> {
+  if (!mentionsConfigPromise) {
+    mentionsConfigPromise = fetch(`${publicBaseUrl}/api/config`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((cfg) => {
+        const max = cfg?.max_mentions_per_text;
+        return typeof max === "number" && max > 0
+          ? { max_mentions_per_text: max }
+          : null;
+      })
+      .catch(() => null);
+  }
+  return mentionsConfigPromise;
+}
+
+export type MentionCandidateReason =
+  | "owner"
+  | "thread"
+  | "following"
+  | "follower"
+  | "search";
+
+export interface MentionCandidate {
+  handle: string;
+  public_sqid: string;
+  avatar_url: string | null;
+  reason: MentionCandidateReason;
+}
+
+/**
+ * GET /api/user/mention-candidates. Auth required. `postId` (integer post id)
+ * enables the owner/thread tiers. Returns [] on any non-OK response (incl.
+ * the 429 rate limit) so the composer just shows nothing; aborts propagate.
+ */
+export async function getMentionCandidates(
+  q: string,
+  postId: number | null | undefined,
+  signal?: AbortSignal,
+  limit = 8,
+): Promise<MentionCandidate[]> {
+  const params = new URLSearchParams({ q, limit: String(limit) });
+  if (postId != null) params.set("post_id", String(postId));
+  const resp = await authenticatedFetch(
+    `${publicBaseUrl}/api/user/mention-candidates?${params.toString()}`,
+    { signal },
+  );
+  if (!resp.ok) return [];
+  const data = (await resp.json().catch(() => null)) as {
+    items?: MentionCandidate[];
+  } | null;
+  return Array.isArray(data?.items) ? data!.items : [];
+}
+
+export type MentionPolicy = "everyone" | "following" | "nobody";
+
 export interface BlockedUserEntry {
   public_sqid: string;
   handle: string;
@@ -903,6 +973,7 @@ export interface MeResponse {
     public_sqid?: string;
     handle: string;
     avatar_url?: string | null;
+    mention_policy?: MentionPolicy;
   };
   capabilities?: MeCapabilities | null;
 }

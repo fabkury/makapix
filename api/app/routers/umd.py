@@ -16,6 +16,7 @@ from .. import models, schemas
 from ..auth import require_moderator, require_owner
 from ..deps import get_db
 from ..sqids_config import decode_user_sqid
+from ..utils import mentions
 from ..utils.audit import log_moderation_action
 from ..constants import NotificationType
 from ..services.social_notifications import SocialNotificationService
@@ -301,7 +302,7 @@ def get_user_comments(
                 post_public_sqid=post.public_sqid if post else "",
                 post_title=post.title if post else "[Deleted]",
                 post_art_url=post.art_url if post else None,
-                body=comment.body,
+                body=mentions.plain_text(db, comment.body),
                 hidden_by_mod=comment.hidden_by_mod,
                 created_at=comment.created_at,
             )

@@ -3,6 +3,9 @@ import { useRouter } from 'next/router';
 import { authenticatedFetch, authenticatedPostJson, clearTokens, getModerationConfig } from '../lib/api';
 import CommentLikeUsersOverlay from './CommentLikeUsersOverlay';
 import ReportDialog from './ReportDialog';
+import MentionText from './MentionText';
+import MentionTextarea, { useMentionDraft } from './MentionTextarea';
+import { commentMentionSource, type MentionRef } from '../lib/mentions';
 
 interface ReactionTotals {
   totals: Record<string, number>;
@@ -18,6 +21,9 @@ interface Comment {
   parent_id: string | null;
   depth: number;
   body: string;
+  // Mentions (docs/mentions/); absent on servers that predate them
+  body_markup?: string;
+  mentions?: MentionRef[];
   hidden_by_mod: boolean;
   deleted_by_owner: boolean;
   deleted_by_mod: boolean;
@@ -83,9 +89,11 @@ export default function CommentsAndReactions({
   const [comments, setComments] = useState<Comment[]>([]);
   const [loadingReactions, setLoadingReactions] = useState(true);
   const [loadingComments, setLoadingComments] = useState(true);
-  const [commentBody, setCommentBody] = useState('');
+  // Mentions are artwork-only; the deprecated blog keeps plain text.
+  const isArtwork = contentType === 'artwork';
+  const commentDraft = useMentionDraft();
+  const replyDraft = useMentionDraft();
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
-  const [replyBody, setReplyBody] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
   const [foldedComments, setFoldedComments] = useState<Set<string>>(new Set());
   const [showCommentLikeUsers, setShowCommentLikeUsers] = useState<string | null>(null);
@@ -214,12 +222,13 @@ export default function CommentsAndReactions({
 
   const handleSubmitComment = async (e: React.FormEvent, parentId: string | null = null) => {
     e.preventDefault();
-    const body = parentId ? replyBody : commentBody;
-    if (!body.trim()) return;
+    const draft = parentId ? replyDraft : commentDraft;
+    if (!draft.text.trim()) return;
+    const body = draft.toMarkup().trim();
 
     setSubmittingComment(true);
     try {
-      const payload: { body: string; parent_id?: string } = { body: body.trim() };
+      const payload: { body: string; parent_id?: string } = { body };
       if (parentId) payload.parent_id = parentId;
 
       await authenticatedPostJson<{ id: string }>(
@@ -227,12 +236,8 @@ export default function CommentsAndReactions({
         payload
       );
 
-      if (parentId) {
-        setReplyBody('');
-        setReplyingTo(null);
-      } else {
-        setCommentBody('');
-      }
+      draft.reset();
+      if (parentId) setReplyingTo(null);
       await loadComments();
     } catch (error) {
       if (error instanceof Error && error.message.includes('401')) {
@@ -378,7 +383,11 @@ export default function CommentsAndReactions({
         {!isFolded && (
           <div className="makapix-comment-content">
             <div className="makapix-comment-body">
-              {isDeleted ? deletedCommentLabel(comment) : comment.body}
+              {isDeleted
+                ? deletedCommentLabel(comment)
+                : isArtwork
+                  ? <MentionText source={commentMentionSource(comment)} />
+                  : comment.body}
             </div>
             {!isDeleted && (
               <div className="makapix-comment-actions">
@@ -431,18 +440,19 @@ export default function CommentsAndReactions({
                 className="makapix-reply-form"
                 onSubmit={(e) => handleSubmitComment(e, comment.id)}
               >
-                <textarea
+                <MentionTextarea
+                  {...replyDraft.bind}
+                  mentions={isArtwork}
+                  postId={isArtwork ? Number(contentId) : null}
                   className="makapix-comment-input"
                   placeholder="Write a reply..."
-                  value={replyBody}
-                  onChange={(e) => setReplyBody(e.target.value)}
                   maxLength={2000}
                 />
                 <div className="makapix-reply-actions">
-                  <button type="submit" className="makapix-comment-submit" disabled={!replyBody.trim() || submittingComment}>
+                  <button type="submit" className="makapix-comment-submit" disabled={!replyDraft.text.trim() || submittingComment}>
                     {submittingComment ? 'Posting...' : 'Post Reply'}
                   </button>
-                  <button type="button" className="makapix-reply-cancel" onClick={() => { setReplyingTo(null); setReplyBody(''); }}>
+                  <button type="button" className="makapix-reply-cancel" onClick={() => { setReplyingTo(null); replyDraft.reset(); }}>
                     Cancel
                   </button>
                 </div>
@@ -497,17 +507,18 @@ export default function CommentsAndReactions({
         
         {/* Comment Form */}
         <form className="makapix-comment-form" onSubmit={(e) => handleSubmitComment(e, null)}>
-          <textarea
+          <MentionTextarea
+            {...commentDraft.bind}
+            mentions={isArtwork}
+            postId={isArtwork ? Number(contentId) : null}
             className="makapix-comment-input"
             placeholder={`Add a comment... ${isAuthenticated ? '' : '(posting as guest)'}`}
-            value={commentBody}
-            onChange={(e) => setCommentBody(e.target.value)}
             maxLength={2000}
           />
           <button
             type="submit"
             className="makapix-comment-submit"
-            disabled={!commentBody.trim() || submittingComment}
+            disabled={!commentDraft.text.trim() || submittingComment}
           >
             {submittingComment ? 'Posting...' : 'Post Comment'}
           </button>

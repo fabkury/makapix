@@ -18,6 +18,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
+from ..utils.mentions import plain_text
 from ..auth import get_current_user
 from ..cache import cache_invalidate
 from ..deps import get_db
@@ -175,7 +176,7 @@ def list_pmd_posts(
                 id=post.id,
                 public_sqid=post.public_sqid,
                 title=post.title,
-                description=post.description,
+                description=plain_text(db, post.description),
                 created_at=post.created_at,
                 width=post.width,
                 height=post.height,

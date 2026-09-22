@@ -18,6 +18,7 @@ import Notice from '../components/kit/Notice';
 import Dialog from '../components/kit/Dialog';
 import Disclosure from '../components/kit/Disclosure';
 import { ensureCompatibleArtUrl } from '../utils/imageCompat';
+import MentionTextarea, { useMentionDraft } from '../components/MentionTextarea';
 import {
   saveDraft,
   loadDraft,
@@ -216,7 +217,9 @@ function SubmitPageContent() {
 
   // Form inputs
   const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
+  // Description with @-mentions (docs/mentions/): display text + picks
+  const descriptionDraft = useMentionDraft();
+  const { text: description, picks: descriptionPicks, reset: resetDescription } = descriptionDraft;
   const [hashtags, setHashtags] = useState('');
   const [postAsHidden, setPostAsHidden] = useState(false);
   // Remixable (docs/artwork-provenance/ L4): default allow; ND licenses force
@@ -393,7 +396,7 @@ function SubmitPageContent() {
   const restoreFromDraft = useCallback(async (draft: SubmitDraftData) => {
     // Restore form fields
     setTitle(draft.title);
-    setDescription(draft.description);
+    resetDescription(draft.description, draft.descriptionMentions ?? []);
     setHashtags(draft.hashtags);
     setPostAsHidden(draft.postAsHidden);
     setRemixable(draft.remixable ?? true);
@@ -427,7 +430,7 @@ function SubmitPageContent() {
         return null;
       });
     }
-  }, []);
+  }, [resetDescription]);
 
   // Restore saved draft on first load
   useEffect(() => {
@@ -494,6 +497,7 @@ function SubmitPageContent() {
         imageInfo,
         title,
         description,
+        descriptionMentions: descriptionPicks,
         hashtags,
         postAsHidden,
         remixable,
@@ -517,6 +521,7 @@ function SubmitPageContent() {
     imageInfo,
     title,
     description,
+    descriptionPicks,
     hashtags,
     postAsHidden,
     remixable,
@@ -669,7 +674,7 @@ function SubmitPageContent() {
     setImageDataUrl(null);
     setValidationErrors([]);
     setTitle('');
-    setDescription('');
+    resetDescription();
     setHashtags('');
     setPostAsHidden(false);
     setRemixable(true);
@@ -813,7 +818,7 @@ function SubmitPageContent() {
         formData.append('image', fileToUpload);
       }
       formData.append('title', title.trim() || selectedFile.name.replace(/\.[^/.]+$/, ''));
-      formData.append('description', description.trim());
+      formData.append('description', descriptionDraft.toMarkup().trim());
       formData.append('hashtags', hashtags.trim());
       formData.append('hidden_by_user', postAsHidden.toString());
       if (selectedLicenseId !== null) {
@@ -1077,7 +1082,7 @@ function SubmitPageContent() {
               </Field>
 
               <Field id="description" label="Description" optional count={{ value: description.length, max: 5000 }}>
-                <textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} rows={4} maxLength={5000} className="form-textarea" />
+                <MentionTextarea {...descriptionDraft.bind} id="description" rows={4} maxLength={5000} className="form-textarea" />
               </Field>
 
               <Field
@@ -1406,6 +1411,10 @@ function SubmitPageContent() {
         .form-input:focus, .form-textarea:focus, .form-select:focus { outline: none; border-color: var(--accent-cyan); box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.15); }
         .form-input.mono { font-family: monospace; }
         .form-textarea { resize: vertical; min-height: 100px; }
+        /* The description is a MentionTextarea (a child component), so its
+           textarea needs the unscoped selectors. */
+        .form-column :global(textarea.form-textarea) { width: 100%; background: var(--bg-tertiary); border: 1px solid var(--bg-tertiary); color: var(--text-primary); border-radius: 8px; padding: 12px 16px; font-size: 1rem; transition: border-color var(--transition-fast), box-shadow var(--transition-fast); resize: vertical; min-height: 100px; }
+        .form-column :global(textarea.form-textarea:focus) { outline: none; border-color: var(--accent-cyan); box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.15); }
         .form-select { appearance: auto; width: 100%; }
         .form-label { font-size: 0.9rem; color: var(--text-secondary); }
         .tabs { display: flex; border-radius: 8px; overflow: hidden; border: 1px solid var(--bg-tertiary); }

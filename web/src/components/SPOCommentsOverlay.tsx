@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom';
 import { authenticatedFetch, authenticatedPostJson, getModerationConfig } from '../lib/api';
 import CommentLikeUsersOverlay from './CommentLikeUsersOverlay';
 import ReportDialog from './ReportDialog';
+import MentionText from './MentionText';
+import MentionTextarea, { useMentionDraft } from './MentionTextarea';
+import { commentMentionSource, type MentionRef } from '../lib/mentions';
 
 interface Comment {
   id: string;
@@ -11,6 +14,9 @@ interface Comment {
   parent_id: string | null;
   depth: number;
   body: string;
+  // Mentions (docs/mentions/); absent on servers that predate them
+  body_markup?: string;
+  mentions?: MentionRef[];
   hidden_by_mod: boolean;
   deleted_by_owner: boolean;
   deleted_by_mod: boolean;
@@ -63,9 +69,9 @@ export default function SPOCommentsOverlay({
 }: SPOCommentsOverlayProps) {
   const [comments, setComments] = useState<Comment[]>(initialComments);
   const [loading, setLoading] = useState(false);
-  const [commentBody, setCommentBody] = useState('');
+  const commentDraft = useMentionDraft();
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
-  const [replyBody, setReplyBody] = useState('');
+  const replyDraft = useMentionDraft();
   const [submitting, setSubmitting] = useState(false);
   const [showCommentLikeUsers, setShowCommentLikeUsers] = useState<string | null>(null);
 
@@ -109,15 +115,15 @@ export default function SPOCommentsOverlay({
 
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!commentBody.trim() || submitting) return;
+    if (!commentDraft.text.trim() || submitting) return;
 
     setSubmitting(true);
     try {
       await authenticatedPostJson<{ id: string }>(
         `${API_BASE_URL}/api/post/${postId}/comments`,
-        { body: commentBody.trim() }
+        { body: commentDraft.toMarkup().trim() }
       );
-      setCommentBody('');
+      commentDraft.reset();
       await loadComments();
     } catch (error) {
       console.error('Failed to submit comment:', error);
@@ -128,15 +134,15 @@ export default function SPOCommentsOverlay({
   };
 
   const handleSubmitReply = async (parentId: string) => {
-    if (!replyBody.trim() || submitting) return;
+    if (!replyDraft.text.trim() || submitting) return;
 
     setSubmitting(true);
     try {
       await authenticatedPostJson<{ id: string }>(
         `${API_BASE_URL}/api/post/${postId}/comments`,
-        { body: replyBody.trim(), parent_id: parentId }
+        { body: replyDraft.toMarkup().trim(), parent_id: parentId }
       );
-      setReplyBody('');
+      replyDraft.reset();
       setReplyingTo(null);
       await loadComments();
     } catch (error) {
@@ -289,7 +295,9 @@ export default function SPOCommentsOverlay({
               marginBottom: 6,
               wordWrap: 'break-word',
             }}>
-              {isDeleted ? deletedCommentLabel(comment) : comment.body}
+              {isDeleted
+                ? deletedCommentLabel(comment)
+                : <MentionText source={commentMentionSource(comment)} />}
             </div>
             {!isDeleted && (
               <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -389,9 +397,9 @@ export default function SPOCommentsOverlay({
                 }}
                 style={{ marginTop: 8 }}
               >
-                <textarea
-                  value={replyBody}
-                  onChange={(e) => setReplyBody(e.target.value)}
+                <MentionTextarea
+                  {...replyDraft.bind}
+                  postId={postId}
                   placeholder={`Reply to ${authorName}...`}
                   maxLength={2000}
                   style={{
@@ -411,7 +419,7 @@ export default function SPOCommentsOverlay({
                 <div style={{ display: 'flex', marginTop: 8 }}>
                   <button
                     type="submit"
-                    disabled={!replyBody.trim() || submitting}
+                    disabled={!replyDraft.text.trim() || submitting}
                     style={{
                       padding: '6px 16px',
                       background: '#00d4ff',
@@ -420,8 +428,8 @@ export default function SPOCommentsOverlay({
                       borderRadius: 8,
                       fontSize: 13,
                       fontWeight: 600,
-                      cursor: !replyBody.trim() || submitting ? 'not-allowed' : 'pointer',
-                      opacity: !replyBody.trim() || submitting ? 0.5 : 1,
+                      cursor: !replyDraft.text.trim() || submitting ? 'not-allowed' : 'pointer',
+                      opacity: !replyDraft.text.trim() || submitting ? 0.5 : 1,
                       marginRight: 8,
                     }}
                   >
@@ -431,7 +439,7 @@ export default function SPOCommentsOverlay({
                     type="button"
                     onClick={() => {
                       setReplyingTo(null);
-                      setReplyBody('');
+                      replyDraft.reset();
                     }}
                     style={{
                       padding: '6px 16px',
@@ -536,9 +544,9 @@ export default function SPOCommentsOverlay({
           {/* Comment Input */}
           <div style={{ padding: 16, borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
             <form onSubmit={handleSubmitComment}>
-              <textarea
-                value={commentBody}
-                onChange={(e) => setCommentBody(e.target.value)}
+              <MentionTextarea
+                {...commentDraft.bind}
+                postId={postId}
                 placeholder="Add a comment..."
                 maxLength={2000}
                 style={{
@@ -556,7 +564,7 @@ export default function SPOCommentsOverlay({
               />
               <button
                 type="submit"
-                disabled={!commentBody.trim() || submitting}
+                disabled={!commentDraft.text.trim() || submitting}
                 style={{
                   marginTop: 8,
                   padding: '10px 20px',
@@ -566,8 +574,8 @@ export default function SPOCommentsOverlay({
                   borderRadius: 10,
                   fontSize: 14,
                   fontWeight: 600,
-                  cursor: !commentBody.trim() || submitting ? 'not-allowed' : 'pointer',
-                  opacity: !commentBody.trim() || submitting ? 0.5 : 1,
+                  cursor: !commentDraft.text.trim() || submitting ? 'not-allowed' : 'pointer',
+                  opacity: !commentDraft.text.trim() || submitting ? 0.5 : 1,
                 }}
               >
                 {submitting ? 'Posting...' : 'Post Comment'}

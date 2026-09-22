@@ -5,6 +5,8 @@ import { useRouter } from 'next/router';
 import { authenticatedFetch, getAccessToken } from '../lib/api';
 import { PLAYER_BAR_HEIGHT } from './PlayerBarDynamic';
 import { ensureCompatibleArtUrl } from '../utils/imageCompat';
+import MentionText from './MentionText';
+import { descriptionMentionSource, type MentionRef } from '../lib/mentions';
 
 type Rect = { left: number; top: number; width: number; height: number };
 
@@ -13,6 +15,8 @@ export interface SelectedArtworkOverlayPost {
   public_sqid: string;
   title: string;
   description?: string;
+  description_markup?: string | null;
+  mentions?: MentionRef[];
   art_url: string;
   width: number;
   height: number;
@@ -1218,7 +1222,9 @@ export default function SelectedArtworkOverlay({
               transition={{ duration: reduceMotion ? 0 : 0.2 }}
             >
               <div style={postFooterTextStyles}>{post.title}</div>
-              <div style={postFooterTextStyles}>{post.description || ''}</div>
+              <div style={postFooterTextStyles}>
+                <MentionText source={descriptionMentionSource(post)} />
+              </div>
             </motion.div>
           </AnimatePresence>
         </motion.div>

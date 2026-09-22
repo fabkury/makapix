@@ -1972,6 +1972,17 @@
             "title": "Body",
             "type": "string"
           },
+          "body_markup": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Markup"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -2010,6 +2021,14 @@
             "default": false,
             "title": "Liked By Me",
             "type": "boolean"
+          },
+          "mentions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MentionRef"
+            },
+            "title": "Mentions",
+            "type": "array"
           },
           "parent_id": {
             "anyOf": [
@@ -2265,6 +2284,11 @@
           "max_hashtags_per_post": {
             "default": 64,
             "title": "Max Hashtags Per Post",
+            "type": "integer"
+          },
+          "max_mentions_per_text": {
+            "default": 16,
+            "title": "Max Mentions Per Text",
             "type": "integer"
           },
           "max_mod_hashtags_per_post": {
@@ -3390,6 +3414,94 @@
           "remaining"
         ],
         "title": "MeUploadsQuota",
+        "type": "object"
+      },
+      "MentionCandidate": {
+        "description": "One row of GET /user/mention-candidates.",
+        "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "handle": {
+            "title": "Handle",
+            "type": "string"
+          },
+          "public_sqid": {
+            "title": "Public Sqid",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "owner",
+              "thread",
+              "following",
+              "follower",
+              "search"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "handle",
+          "public_sqid",
+          "reason"
+        ],
+        "title": "MentionCandidate",
+        "type": "object"
+      },
+      "MentionCandidatesResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MentionCandidate"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "MentionCandidatesResponse",
+        "type": "object"
+      },
+      "MentionRef": {
+        "description": "A sqid in a text's `<@SQID>` markup, resolved at read time.",
+        "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "handle": {
+            "title": "Handle",
+            "type": "string"
+          },
+          "public_sqid": {
+            "title": "Public Sqid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_sqid",
+          "handle"
+        ],
+        "title": "MentionRef",
         "type": "object"
       },
       "MkpxUploadConfig": {
@@ -5051,6 +5163,17 @@
             ],
             "title": "Description"
           },
+          "description_markup": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description Markup"
+          },
           "dwell_time_ms": {
             "default": 30000,
             "title": "Dwell Time Ms",
@@ -5134,6 +5257,14 @@
               }
             ],
             "title": "Max Frame Duration Ms"
+          },
+          "mentions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MentionRef"
+            },
+            "title": "Mentions",
+            "type": "array"
           },
           "metadata_modified_at": {
             "format": "date-time",
@@ -5398,6 +5529,17 @@
             ],
             "title": "Description"
           },
+          "description_markup": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description Markup"
+          },
           "dwell_time_ms": {
             "default": 30000,
             "title": "Dwell Time Ms",
@@ -5481,6 +5623,14 @@
               }
             ],
             "title": "Max Frame Duration Ms"
+          },
+          "mentions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MentionRef"
+            },
+            "title": "Mentions",
+            "type": "array"
           },
           "metadata_modified_at": {
             "format": "date-time",
@@ -7843,6 +7993,18 @@
             ],
             "title": "Actor Public Sqid"
           },
+          "comment_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment Id"
+          },
           "comment_preview": {
             "anyOf": [
               {
@@ -8757,6 +8919,16 @@
             "title": "Id",
             "type": "integer"
           },
+          "mention_policy": {
+            "default": "everyone",
+            "enum": [
+              "everyone",
+              "following",
+              "nobody"
+            ],
+            "title": "Mention Policy",
+            "type": "string"
+          },
           "non_conformant": {
             "title": "Non Conformant",
             "type": "boolean"
@@ -9266,6 +9438,22 @@
               }
             ],
             "title": "Hidden By User"
+          },
+          "mention_policy": {
+            "anyOf": [
+              {
+                "enum": [
+                  "everyone",
+                  "following",
+                  "nobody"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mention Policy"
           },
           "tagline": {
             "anyOf": [
@@ -21456,6 +21644,90 @@
           }
         ],
         "summary": "Remove Highlight",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/v1/user/mention-candidates": {
+      "get": {
+        "description": "Users the caller may @mention, ranked for an autocomplete (docs/mentions/).\n\nTiers, in rank order: `owner` (the post's owner) · `thread` (commented on\nthe post) · `following` (the caller follows them) · `follower` (they follow\nthe caller) · `search`; alphabetical within a tier. `q` is a prefix matched\non the handle skeleton (so casing and confusables behave like uniqueness);\nwithout `q` only the contextual tiers are returned. `post_id` enables\n`owner`/`thread` and is ignored when the caller cannot access the post.\n\nApplies exactly the mentionability rule the write path uses\n(`utils.mentions.mentionable_users_query`) and excludes the caller.",
+        "operationId": "mention_candidates_v1_user_mention_candidates_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "post_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Post Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MentionCandidatesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Mention Candidates",
         "tags": [
           "Users"
         ]

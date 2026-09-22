@@ -379,7 +379,9 @@ Remove a previously added reaction.
 
 ### get_comments
 
-Fetch comments for a post (top-level + replies, depth ≤ 2).
+Fetch comments for a post (top-level + replies, depth ≤ 2). `body` is always
+the plain rendering: `<@SQID>` mention markup arrives as `@handle`
+([`docs/mentions/`](../mentions/README.md)); players never see markup.
 
 **Request**
 
