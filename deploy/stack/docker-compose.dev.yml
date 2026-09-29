@@ -81,7 +81,7 @@ services:
       # Dev-only: fresh dev player certs are 1095-day, so with the default
       # 90-day window every device self-renewal attempt would 400 until 2029.
       # Widen the window so firmware e2e tests can renew immediately.
-      # Read at import time — recreate the container to apply. Prod keeps 90.
+      # Read at import time — recreate the container to apply. Prod uses 200 (see prod overlay).
       CERT_RENEWAL_THRESHOLD_DAYS: "3650"
     deploy:
       resources:

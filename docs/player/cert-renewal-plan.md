@@ -20,10 +20,12 @@ owner-gated endpoint `POST /u/{sqid}/player/{player_id}/renew-cert`, which
 requires the account owner to log into the web app. That does not scale to a
 fleet and is not "hands-off."
 
-The renewal window opens `CERT_RENEWAL_THRESHOLD_DAYS` (90) before expiry, so
-the earliest device window opens **2026-09-13** (confirmed from the prod
-earliest expiry above). **This mechanism must be live and in firmware before
-then.**
+The renewal window opens `CERT_RENEWAL_THRESHOLD_DAYS` before expiry. With the
+original 90-day value the earliest device window opened **2026-09-13**
+(confirmed from the prod earliest expiry above); the mechanism was live on both
+sides well before then. **Production now runs `CERT_RENEWAL_THRESHOLD_DAYS=200`
+(since 2026-09-29, `deploy/stack/docker-compose.prod.yml`)** — see
+[CA trust-anchor expiry](#ca-trust-anchor-expiry-2026-10-25) below for why.
 
 ## Design
 
@@ -73,9 +75,14 @@ from the token.
 
 - **Request body:** none.
 - **Guard:** allowed only if the current cert is within
-  `CERT_RENEWAL_THRESHOLD_DAYS` (90) of expiry **or already expired**; otherwise
-  `400`. (Mirrors the owner endpoint; tunable.)
-- **Rate limit:** per-player (e.g. 10/day) **and** per-IP (e.g. 30/hour).
+  `CERT_RENEWAL_THRESHOLD_DAYS` of expiry **or already expired**; otherwise
+  `400`. (Mirrors the owner endpoint; tunable. Code default 90; **prod 200**
+  since 2026-09-29; dev 3650 so fresh 3-year dev certs can renew in tests.)
+- **Rate limit:** per-player 10/day **and** per-IP 30/hour. The per-player
+  budget is a **fixed 24 h window from the first renewal of the period**, not a
+  rolling one (observed by the firmware team in e2e T5 — a device that burned
+  its budget gets a fresh one at the next window boundary, not 24 h after each
+  individual mint).
 - **Action:** mint a fresh cert+key with `CN = player_key` and validity
   `CERT_VALIDITY_DAYS` (3 years); update `cert_pem`, `key_pem`,
   `cert_serial_number`, `cert_issued_at`, `cert_expires_at`. **Do not revoke the
@@ -143,6 +150,38 @@ so a device is never bricked by an expired MQTT trust anchor.
 2. Firmware adds the renewal loop alongside the `ca_pem` refresh loop (same
    fetch + atomic-replace machinery); ideally one firmware update covers both.
 3. After the first renewal, every cert is 3-year, so the cadence drops sharply.
+
+## CA trust-anchor expiry (2026-10-25)
+
+The MQTT CA was re-issued on 2026-05-27 with a 10-year certificate (same key).
+The **previous CA certificate — same key, 365-day validity — expires
+2026-10-25 02:08 UTC**. A device stores `ca_pem` when it is provisioned and does
+not re-fetch it on its own (zero `/credentials` re-fetches and zero
+`renew-cert` calls in production access logs Sep 16–29, 2026), and mbedTLS
+rejects a chain whose trusted root has expired. So every player provisioned
+before 2026-05-27 fails the broker handshake from that date unless it has
+obtained the new `ca_pem` first. On 2026-09-29 that was **15 of 29 registered
+production players** (client certs expiring 2026-12-12 → 2027-04-16).
+
+The only path that delivers a new `ca_pem` to fielded firmware is a successful
+`POST /player/renew-cert` (firmware ≥ 1.1.0 force-renews at the third
+consecutive handshake failure and un-latches only on a `200`). With the 90-day
+guard, a device whose client cert still had more than 90 days left would get a
+`400` and stay dark until its window opened (up to 2027-01-16). Hence
+**`CERT_RENEWAL_THRESHOLD_DAYS=200` on production**: every pre-re-issue cert is
+inside the window (the furthest was 199 days out on 2026-09-29), so ≥ 1.1.0
+devices renew on their next hourly check — receiving the 10-year CA — before
+the old one expires, and any that come back online later self-heal via the
+handshake-failure path. The wider window is permanent; it only means devices
+renew earlier, and renewed certs are 3-year so the cadence stays low.
+
+Devices on firmware < 1.1.0 cannot renew at all and must be updated (or
+re-provisioned) by their owners — the 2026-07-24 owner email covered them.
+
+**Follow-up for firmware (see `docs/cert-renewal/messages/0010`):** a periodic
+`ca_pem` refresh (or renewing on any server-cert verification failure
+regardless of the client cert's age) would make future CA rotations
+independent of the renewal window.
 
 ## Future enhancements (out of scope for v1)
 
