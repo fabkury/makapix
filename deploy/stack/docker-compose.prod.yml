@@ -56,6 +56,14 @@ services:
       MQTT_BROKER_HOST: makapix-prod-mqtt
       MQTT_PUBLIC_HOST: makapix.club
       MQTT_PUBLIC_PORT: 8883
+      # Player cert self-renewal window (days before expiry; code default 90).
+      # Raised to 200 on 2026-09-29: devices provisioned before the 2026-05-27
+      # CA re-issue still trust only the OLD CA cert, which expires 2026-10-25,
+      # and firmware can only refresh ca_pem through a successful renew-cert.
+      # Their client certs run to 2027-04-16 at the latest (199 days), so 200
+      # lets every one of them renew now. Read at import time — recreate the
+      # container to apply. See docs/player/cert-renewal-plan.md.
+      CERT_RENEWAL_THRESHOLD_DAYS: "200"
 
   # ---------------------------------------------------------------------------
   # Worker
