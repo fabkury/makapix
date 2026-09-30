@@ -168,8 +168,6 @@ export default function SiteMetricsPanel() {
     () => (displayedStats ? zipHourly(displayedStats.hourly_views, displayedStats.hourly_unique_visitors) : []),
     [displayedStats]
   );
-  const signupTrend = useMemo(() => toPoints(stats?.daily_signups), [stats]);
-  const postTrend = useMemo(() => toPoints(stats?.daily_posts), [stats]);
   const playerTrend = useMemo(() => toPoints(stats?.daily_player_views), [stats]);
 
   const countryItems = useMemo<BarListItem[]>(
@@ -305,28 +303,10 @@ export default function SiteMetricsPanel() {
             data={hourlyTraffic}
             granularity="hour"
             primaryName="Page views"
-            primaryColor={CHART.cyan}
-            secondaryName="Unique visitors"
-            secondaryColor={CHART.pink}
-            height={260}
-          />
-        </ChartCard>
-        <ChartCard title="New signups" subtitle="Last 14 days · not affected by the visitor filter">
-          <TrendChart
-            data={signupTrend}
-            granularity="day"
-            primaryName="Signups"
             primaryColor={CHART.blue}
-            height={200}
-          />
-        </ChartCard>
-        <ChartCard title="New posts" subtitle="Last 14 days · not affected by the visitor filter">
-          <TrendChart
-            data={postTrend}
-            granularity="day"
-            primaryName="Posts"
-            primaryColor={CHART.purple}
-            height={200}
+            secondaryName="Unique visitors"
+            secondaryColor={CHART.amber}
+            height={260}
           />
         </ChartCard>
         {pageItems.length > 0 && (
