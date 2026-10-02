@@ -187,6 +187,8 @@ def create_playlist(
         hidden_by_mod=False,
         non_conformant=False,
         public_visibility=False,
+        # Owed a bump at its first approval (docs/feed-bump/ D11)
+        pending_listing="first",
         promoted=False,
         promoted_category=None,
         metadata_modified_at=now,

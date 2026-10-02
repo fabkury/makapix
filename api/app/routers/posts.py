@@ -500,8 +500,12 @@ def list_posts(
     # when reacted_at_col was set (guaranteed by the fallback above).
     # On the promoted set, "created_at" means promotion time (newest promotion
     # first) so every promoted surface shares one order — docs/promoted-feed-order/.
+    # Everywhere else, "created_at" means listing time in both directions
+    # (newest bump/upload first) — docs/feed-bump/ D3/D17.
     date_key = (
-        models.Post.promoted_order_key() if promoted is True else models.Post.created_at
+        models.Post.promoted_order_key()
+        if promoted is True
+        else models.Post.feed_order_key()
     )
     keyset_map = {
         "created_at": (date_key, True),
@@ -825,6 +829,8 @@ async def upload_artwork(
         alpha_actual=alpha_actual,
         hash=file_hash,
         public_visibility=public_visibility,
+        # A pending upload is owed a bump at its first approval (feed-bump D11)
+        pending_listing=None if public_visibility else "first",
         hidden_by_user=user_hidden,
         metadata_modified_at=now,
         artwork_modified_at=now,
@@ -1068,13 +1074,12 @@ def list_recent_posts(
     # Note: Monitored hashtag filtering is applied in-memory after fetching
     # because this endpoint uses a shared cache across all users.
 
-    # Apply cursor pagination
-    query = apply_cursor_filter(
-        query, models.Post, cursor, "created_at", sort_desc=True
-    )
+    # Apply cursor pagination (listing time, docs/feed-bump/ D3; pre-deploy
+    # created_at cursors resume correctly since listed_at was backfilled from it)
+    query = apply_cursor_filter(query, models.Post, cursor, "listed_at", sort_desc=True)
 
     # Order and limit
-    query = query.order_by(models.Post.created_at.desc())
+    query = query.order_by(models.Post.feed_order_key().desc(), models.Post.id.desc())
 
     # Fetch limit + 1 to check if there are more results
     posts = query.limit(limit + 1).all()
@@ -1083,7 +1088,7 @@ def list_recent_posts(
     annotate_posts_with_counts(db, posts, current_user.id if current_user else None)
 
     # Create paginated response
-    page_data = create_page_response(posts, limit, cursor, "created_at")
+    page_data = create_page_response(posts, limit, cursor, "listed_at")
 
     response = schemas.Page(
         items=[schemas.Post.model_validate(p) for p in page_data["items"]],
@@ -2470,12 +2475,12 @@ def list_post_children(
                 ),
             )
         )
-    query = apply_cursor_filter(
-        query, models.Post, cursor, "created_at", sort_desc=True
-    )
-    query = query.order_by(models.Post.created_at.desc()).limit(limit + 1)
+    query = apply_cursor_filter(query, models.Post, cursor, "listed_at", sort_desc=True)
+    query = query.order_by(
+        models.Post.feed_order_key().desc(), models.Post.id.desc()
+    ).limit(limit + 1)
     children = query.all()
-    page_data = create_page_response(children, limit, cursor)
+    page_data = create_page_response(children, limit, cursor, "listed_at")
     annotate_posts_with_counts(db, page_data["items"], current_user.id)
     return schemas.Page(
         items=[schemas.Post.model_validate(p) for p in page_data["items"]],

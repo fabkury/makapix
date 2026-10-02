@@ -190,7 +190,7 @@ def search_all(
                     else True
                 )
 
-        # Order by similarity descending, then by created_at
+        # Order by similarity descending, then by listing time (feed-bump D3)
         posts_with_similarity = (
             post_query.order_by(
                 func.greatest(
@@ -199,7 +199,7 @@ def search_all(
                         func.similarity(searchable_description, q_normalized), 0.0
                     ),
                 ).desc(),
-                models.Post.created_at.desc(),
+                models.Post.feed_order_key().desc(),
             )
             .limit((limit // len(types)) + 1)
             .all()
@@ -243,7 +243,7 @@ def search_all(
 
             # Limit results
             hashtag_posts = (
-                post_query.order_by(models.Post.created_at.desc())
+                post_query.order_by(models.Post.feed_order_key().desc())
                 .limit(limit // len(types))
                 .all()
             )
@@ -328,12 +328,12 @@ async def list_hashtags(
                 hashtag_counts[hashtag] = {
                     "tag": hashtag,
                     "count": 0,
-                    "most_recent": post.created_at,
+                    "most_recent": post.listed_at,
                 }
             hashtag_counts[hashtag]["count"] += 1
             # Update most recent timestamp
-            if post.created_at > hashtag_counts[hashtag]["most_recent"]:
-                hashtag_counts[hashtag]["most_recent"] = post.created_at
+            if post.listed_at > hashtag_counts[hashtag]["most_recent"]:
+                hashtag_counts[hashtag]["most_recent"] = post.listed_at
 
     # Convert to list and sort
     hashtag_items = list(hashtag_counts.values())
@@ -440,12 +440,10 @@ async def list_hashtag_posts(
     # because this endpoint uses a shared cache across all users.
 
     # Apply cursor pagination
-    query = apply_cursor_filter(
-        query, models.Post, cursor, "created_at", sort_desc=True
-    )
+    query = apply_cursor_filter(query, models.Post, cursor, "listed_at", sort_desc=True)
 
-    # Order and limit
-    query = query.order_by(models.Post.created_at.desc())
+    # Order and limit (listing time, feed-bump D3)
+    query = query.order_by(models.Post.feed_order_key().desc(), models.Post.id.desc())
 
     # Fetch limit + 1 to check if there are more results
     posts = query.limit(limit + 1).all()
@@ -454,7 +452,7 @@ async def list_hashtag_posts(
     annotate_posts_with_counts(db, posts, current_user.id if current_user else None)
 
     # Create paginated response
-    page_data = create_page_response(posts, limit, cursor, "created_at")
+    page_data = create_page_response(posts, limit, cursor, "listed_at")
 
     response = schemas.Page(
         items=[schemas.Post.model_validate(p) for p in page_data["items"]],
@@ -574,14 +572,14 @@ async def list_hashtags_with_stats(
                     "artwork_count": 0,
                     "reaction_count": 0,
                     "comment_count": 0,
-                    "most_recent": post.created_at,
+                    "most_recent": post.listed_at,
                 }
             hashtag_stats[hashtag]["artwork_count"] += 1
             hashtag_stats[hashtag]["reaction_count"] += post_reactions
             hashtag_stats[hashtag]["comment_count"] += post_comments
             # Update most recent timestamp
-            if post.created_at > hashtag_stats[hashtag]["most_recent"]:
-                hashtag_stats[hashtag]["most_recent"] = post.created_at
+            if post.listed_at > hashtag_stats[hashtag]["most_recent"]:
+                hashtag_stats[hashtag]["most_recent"] = post.listed_at
 
     # Convert to list and sort
     hashtag_items = list(hashtag_stats.values())
@@ -887,7 +885,11 @@ def feed_following(
     # Apply monitored hashtag filtering
     query = apply_monitored_hashtag_filter(query, models.Post, current_user)
 
-    posts = query.order_by(models.Post.created_at.desc()).limit(limit).all()
+    posts = (
+        query.order_by(models.Post.feed_order_key().desc(), models.Post.id.desc())
+        .limit(limit)
+        .all()
+    )
 
     # Add reaction and comment counts, and user liked status
     annotate_posts_with_counts(db, posts, current_user.id)
