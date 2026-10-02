@@ -47,3 +47,8 @@
   Tests +5 (35 in `test_feed_bump.py`); full suite green; live on dev. Reply
   `messages/p3a/0003-server-sort-keys-live.md`; awaiting p3a 0004 (release).
   **Owe the app a one-line FYI on `Post.promoted_at` in our next 0006 reply (D23).**
+- **D21–D23 shipped to prod (2026-10-02, PR #279).** Prod: `/feed/promoted` order
+  identical to pre-deploy; `fields=…,promoted_at` returns real promotion times;
+  `query_posts` payloads carry `listed_at` everywhere and `promoted_at` on promoted
+  posts. Feed caches invalidated after deploy (pre-deploy cached pages lacked
+  `promoted_at`). p3a 0003 sent with this status.

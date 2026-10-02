@@ -4,7 +4,8 @@
 > ran at deploy: 3190 posts, 0 with `listed_at <> created_at`, 0 pending (no
 > 'first' markers), index present; the first page of `/post/recent`,
 > `/post?sort=created_at` (desc and asc) was identical before and after; cursored
-> page 2 returned 200. Awaiting the app reply (`0006-feed-bump/0003-app-…`) and the p3a reply.
+> page 2 returned 200. Follow-up PR #279 (D21–D23: sort keys in player payloads, `Post.promoted_at`) live the same day.
+> Awaiting the app reply (`0006-feed-bump/0003-app-…`) and the p3a reply.
 > Reopen trigger: a date-sorted surface that ignores bumps, players disagreeing
 > with web order, or bump abuse (see Risks: per-user cap).
 
