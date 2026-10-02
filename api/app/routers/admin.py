@@ -491,9 +491,10 @@ def pending_approval(
     """
     List posts pending public visibility approval (moderator only).
 
-    Returns posts where public_visibility is False, ordered by creation date (newest first).
+    Returns posts where public_visibility is False, newest artwork first.
     These are artworks uploaded by users without auto_public_approval privilege
-    that need moderator review before appearing in Recent Artworks and search results.
+    that need moderator review before appearing in Recent Artworks and search results,
+    including older posts whose artwork such a user replaced (re-queued for review).
     """
     query = db.query(models.Post).filter(
         models.Post.public_visibility == False,
@@ -502,16 +503,20 @@ def pending_approval(
         models.Post.deleted_by_user == False,  # Exclude user-deleted posts
     )
 
-    # Apply cursor pagination
+    # Order by artwork time, not upload time, so a re-queued replacement
+    # (docs/feed-bump/ D7) surfaces at the top instead of at its old upload
+    # date. For never-replaced posts the two are equal.
     query = apply_cursor_filter(
-        query, models.Post, cursor, "created_at", sort_desc=True
+        query, models.Post, cursor, "artwork_modified_at", sort_desc=True
     )
 
     # Order and limit
-    query = query.order_by(models.Post.created_at.desc()).limit(limit + 1)
+    query = query.order_by(
+        models.Post.artwork_modified_at.desc(), models.Post.id.desc()
+    ).limit(limit + 1)
     posts = query.all()
 
-    page_data = create_page_response(posts, limit, cursor)
+    page_data = create_page_response(posts, limit, cursor, "artwork_modified_at")
 
     return schemas.Page(
         items=_admin_post_items(db, page_data["items"]),

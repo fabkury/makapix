@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import base64
 import json
+from datetime import datetime
 from typing import Any
+
+from sqlalchemy import DateTime
 
 # Cursor format: base64-encoded JSON {"id": last_record_id, "sort": sort_field_value}.
 # Keyset pagination without OFFSET; cursors are opaque strings to clients.
@@ -114,11 +117,12 @@ def apply_cursor_filter(
         except Exception:
             return query
 
-    # Cast sort_value to appropriate type based on sort_field
-    if sort_field == "created_at":
+    # Cast sort_value to appropriate type based on sort_field: any timestamp
+    # column round-trips through the cursor as an ISO string.
+    if sort_field == "created_at" or isinstance(
+        getattr(sort_column, "type", None), DateTime
+    ):
         # Parse ISO format datetime string to Python datetime object
-        from datetime import datetime
-
         if isinstance(sort_value, str):
             try:
                 # Handle both 'Z' suffix and timezone offsets
@@ -173,6 +177,10 @@ def create_page_response(
             if sort_field == "created_at" and hasattr(last_item, "created_at"):
                 next_cursor = encode_cursor(
                     str(last_item.id), last_item.created_at.isoformat()
+                )
+            elif isinstance(getattr(last_item, sort_field, None), datetime):
+                next_cursor = encode_cursor(
+                    str(last_item.id), getattr(last_item, sort_field).isoformat()
                 )
             elif sort_field == "handle" and hasattr(last_item, "handle"):
                 next_cursor = encode_cursor(str(last_item.id), last_item.handle)

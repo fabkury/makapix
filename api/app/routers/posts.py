@@ -2204,6 +2204,12 @@ async def replace_artwork(
     post.metadata_modified_at = now
     post.artwork_modified_at = now
 
+    # Re-moderation (docs/feed-bump/ D7): an owner without Trust sends the new
+    # bytes back to the approval queue — otherwise an approved post could be
+    # swapped for anything. Applies to promoted posts too.
+    if not current_user.auto_public_approval:
+        post.public_visibility = False
+
     # Provenance describes the current bytes (D5): snapshot the outgoing
     # declared values into _server.replaced[], then apply the new declaration
     # — undeclared fields become honest unknowns, they do NOT carry over.
@@ -2325,9 +2331,11 @@ async def replace_artwork(
     except Exception as e:
         logger.error(f"Failed to queue SSAFPP task for post {post.id}: {e}")
 
-    # Cached feed payloads embed art_url, which just changed
+    # Cached feed payloads embed art_url, which just changed (and the post
+    # may have left public listings, D7)
     cache_invalidate("feed:recent:*")
     cache_invalidate("feed:promoted:*")
+    cache_invalidate("hashtags:*")
 
     # Notify owners of parents that were *newly* linked by this replace —
     # re-declared existing parents were skipped, so no duplicate pings.
@@ -2357,6 +2365,8 @@ async def replace_artwork(
             "width": post.width,
             "height": post.height,
             "frame_count": post.frame_count,
+            # False = pending moderator approval (docs/feed-bump/ D7)
+            "public_visibility": post.public_visibility,
         },
     }
 
