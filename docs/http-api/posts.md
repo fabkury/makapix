@@ -176,6 +176,7 @@ Get a single post by its public sqid. No authentication required.
   "visible": true,
   "promoted": false,
   "promoted_at": null,
+  "listed_at": "2024-01-15T09:00:00Z",
   "public_visibility": true,
   "reaction_count": 5,
   "comment_count": 2,
@@ -197,6 +198,12 @@ Get a single post by its public sqid. No authentication required.
 `promoted_at` is the time a moderator last promoted the post (the key
 Recommended / `GET /feed/promoted` sorts on), `null` unless `promoted` is true.
 Like any `Post` field it can be selected with `fields=` on `/feed/promoted`.
+
+`listed_at` is when the post was last placed at the top of the date-sorted
+feeds — the key `sort=created_at` and the other date feeds order by
+(`docs/feed-bump/`). It equals `created_at` until the post is bumped (an
+artwork replacement with `bump=true`, or its first moderator approval). An
+owner with Trust can bump again from `listed_at` + 7 days.
 
 ## Get Post by Storage Key
 

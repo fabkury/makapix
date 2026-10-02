@@ -5252,6 +5252,18 @@
             ],
             "title": "License Id"
           },
+          "listed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Listed At"
+          },
           "max_frame_duration_ms": {
             "anyOf": [
               {
@@ -5629,6 +5641,18 @@
               }
             ],
             "title": "License Id"
+          },
+          "listed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Listed At"
           },
           "max_frame_duration_ms": {
             "anyOf": [

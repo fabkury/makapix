@@ -47,6 +47,7 @@ Replacements are a mix of real new versions and small fixes (owner,
 | D21 | Payload sort keys (p3a 0002) | Firmware 1.x re-sorts its cache by `created_at`, so players get the keys themselves: `listed_at` is mandatory on every `query_posts` post payload; `promoted_at` (= `promoted_order_key()`, i.e. `coalesce(promoted_at, created_at)`) is present on promoted posts only (`query_posts` drops nulls). **D8 is amended:** `promoted_at` joins the public `Post` schema (null unless promoted), which also makes it selectable via `fields=` on `/feed/promoted`; `listed_at` stays out of `Post`. This reverses promoted-feed-order D4 (owner, 2026-10-02, option A). |
 | D22 | Playlists | Playlist payloads carry the same `listed_at` / `promoted_at`. |
 | D23 | App notice | No separate message: the next server reply on app thread `0006-feed-bump` includes a one-line FYI that `Post.promoted_at` exists. |
+| D24 | Public `listed_at` (app 0003 idea) | `listed_at` joins the public `Post` schema (never null; equals `created_at` until a bump), so the app can show "can show as new again on <date>" (`listed_at` + 7 days, Trusted owners) before a replace. **Fully reverses D8.** The app's other gap (untrusted artists on pre-1.12.1 builds aren't told their replacement went back to review) is accepted; no server-side notification. |
 
 ## Surfaces
 
