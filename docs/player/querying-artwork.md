@@ -278,6 +278,8 @@ By default, responses include only mandatory fields to minimize payload size. Re
 | `art_url` | string | Full URL to artwork |
 | `storage_shard` | string | Opaque relative vault path (e.g. `"23/16"`). Use verbatim — do not parse, validate, or assume a fixed depth; the number of components may change |
 | `native_format` | string | Original file format |
+| `listed_at` | datetime | Listing time — sort by this to match the server order (equals `created_at` until the post is bumped) |
+| `promoted_at` | datetime | Only on promoted posts: promotion time, the `promoted` channel's sort key |
 
 ### Optional Fields
 

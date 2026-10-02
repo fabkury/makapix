@@ -301,6 +301,10 @@ class ArtworkPostPayload(BaseModel):
     art_url: str
     storage_shard: str  # Always included for vault path resolution
     native_format: str | None  # File format (png, gif, webp, bmp)
+    # Sort keys the firmware plays by (docs/feed-bump/ D21): listing time on
+    # every channel; promotion time only on promoted posts (dropped as null).
+    listed_at: datetime
+    promoted_at: datetime | None = None
 
     # Optional fields (included only if requested via include_fields)
     owner_handle: str | None = None
@@ -322,6 +326,9 @@ class PlaylistPostPayload(BaseModel):
     owner_handle: str
     created_at: datetime
     metadata_modified_at: datetime
+    # Same sort keys as artwork payloads (docs/feed-bump/ D21, D22)
+    listed_at: datetime
+    promoted_at: datetime | None = None
 
     total_artworks: int
     dwell_time_ms: int

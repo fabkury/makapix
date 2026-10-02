@@ -667,3 +667,95 @@ def test_bumped_post_leads_recent_feed(client, db, vault_tmp):
     _replace_bump(client, owner, post_id, (58, 68, 78, 255))
     resp = client.get("/post/recent?limit=5")
     assert resp.json()["items"][0]["id"] == post_id
+
+
+# ---------------------------------------------------------------------------
+# D21/D22 — sort keys in payloads (p3a 0002): listed_at on every player
+# payload, promoted_at on promoted posts (players + public Post schema)
+# ---------------------------------------------------------------------------
+
+
+def _payloads(player, db, mock_publish, **kwargs) -> dict[int, dict]:
+    request = QueryPostsRequest(
+        request_id=f"rq-{uuid.uuid4().hex[:6]}",
+        player_key=player.player_key,
+        **kwargs,
+    )
+    _handle_query_posts(player, request, db)
+    payload = mock_publish.call_args[1]["payload"]
+    return {p["post_id"]: p for p in payload["posts"]}
+
+
+def _iso(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+@patch("app.mqtt.player_requests.publish")
+def test_player_payload_carries_listed_at(mock_publish: MagicMock, player, db, trio):
+    bumped, older, _ = trio["posts"]
+    got = _payloads(
+        player, db, mock_publish, channel="hashtag", hashtag=trio["tag"], limit=50
+    )
+    assert _iso(got[bumped.id]["listed_at"]) == bumped.listed_at
+    # never bumped → equals created_at, so the device's fallback is seamless
+    assert got[older.id]["listed_at"] == got[older.id]["created_at"]
+    # not promoted → the key is absent (query_posts drops nulls)
+    assert "promoted_at" not in got[older.id]
+
+
+@patch("app.mqtt.player_requests.publish")
+def test_player_promoted_channel_carries_promoted_at(
+    mock_publish: MagicMock, player, db
+):
+    owner = _make_user(db)
+    stamped = _make_post(db, owner=owner, created_at=BASE, public=True)
+    legacy = _make_post(
+        db, owner=owner, created_at=BASE - timedelta(days=1), public=True
+    )
+    promoted_at = NOW() + timedelta(days=40)  # leads the channel
+    stamped.promoted, stamped.promoted_at = True, promoted_at
+    legacy.promoted, legacy.promoted_at = True, None  # pre-stamp row
+    db.commit()
+
+    got = _payloads(player, db, mock_publish, channel="promoted", limit=50)
+    assert _iso(got[stamped.id]["promoted_at"]) == promoted_at
+    # falls back to created_at, the value the server sorts on
+    assert _iso(got[legacy.id]["promoted_at"]) == legacy.created_at
+
+
+def test_playlist_payload_carries_sort_keys(db):
+    from app.services.player_rpc import _build_playlist_payload
+
+    owner = _make_user(db)
+    playlist = _make_post(db, owner=owner, created_at=BASE, public=True)
+    playlist.kind = "playlist"
+    playlist.listed_at = BASE + timedelta(days=2)
+    playlist.promoted, playlist.promoted_at = True, BASE + timedelta(days=1)
+    db.commit()
+
+    payload = _build_playlist_payload(playlist, db)
+    assert payload.listed_at == BASE + timedelta(days=2)
+    assert payload.promoted_at == BASE + timedelta(days=1)
+
+
+def test_feed_promoted_fields_accepts_promoted_at(client, db):
+    owner = _make_user(db)
+    post = _make_post(db, owner=owner, created_at=BASE, public=True)
+    promoted_at = NOW() + timedelta(days=41)
+    post.promoted, post.promoted_at = True, promoted_at
+    db.commit()
+
+    resp = client.get(
+        "/feed/promoted?fields=id,storage_key,created_at,artwork_modified_at,"
+        "promoted_at&limit=5"
+    )
+    assert resp.status_code == 200, resp.text
+    item = resp.json()["items"][0]
+    assert item["id"] == post.id
+    assert _iso(item["promoted_at"]) == promoted_at
+
+
+def test_post_schema_promoted_at_null_unless_promoted(client, trio):
+    resp = client.get(f"/post?hashtag={trio['tag']}&sort=created_at")
+    assert resp.status_code == 200, resp.text
+    assert all(item["promoted_at"] is None for item in resp.json()["items"])

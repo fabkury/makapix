@@ -432,6 +432,10 @@ class Post(BaseModel):
     )
     promoted: bool
     promoted_category: str | None = None
+    # When the post was (last) promoted — the key promoted surfaces sort on
+    # (docs/promoted-feed-order/, exposed by docs/feed-bump/ D21). Null unless
+    # promoted; falls back to created_at like Post.promoted_order_key().
+    promoted_at: datetime | None = None
     created_at: datetime
     updated_at: datetime | None = None
     owner: UserPublic | None = None
@@ -474,6 +478,15 @@ class Post(BaseModel):
             instance.description = plain
             instance.mentions = [MentionRef(**ref) for ref in refs]
         return instance
+
+    @model_validator(mode="after")
+    def coalesce_promoted_at(self):
+        """promoted_at mirrors promoted_order_key(): set iff promoted."""
+        if not self.promoted:
+            self.promoted_at = None
+        elif self.promoted_at is None:
+            self.promoted_at = self.created_at
+        return self
 
 
 class PostUpdate(BaseModel):

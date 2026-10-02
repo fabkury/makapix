@@ -189,6 +189,8 @@ feeds. The `created_at` field in payloads stays the original posting date.
 | `art_url` | string | Full URL to artwork file |
 | `storage_shard` | string | Opaque relative vault path (e.g. `"23/16"`). Use verbatim — do not parse, validate, or assume a fixed depth; the number of components may change |
 | `native_format` | string? | File format: `"png"`, `"gif"`, `"webp"`, `"bmp"`, or null |
+| `listed_at` | string | ISO 8601 listing time — the key `server_order`/`created_at` sort on (see Sort order). Equals `created_at` until the post is bumped (artwork replacement, or its first moderator approval) |
+| `promoted_at` | string | **Only on promoted posts** (absent otherwise). ISO 8601 promotion time — the key the `promoted` channel sorts on; falls back to `created_at` for legacy promotions |
 
 **Artwork post optional fields (only included if requested via `include_fields`):**
 
@@ -213,6 +215,8 @@ feeds. The `created_at` field in payloads stays the original posting date.
 | `owner_handle` | string | Playlist owner's handle |
 | `created_at` | string | ISO 8601 timestamp |
 | `metadata_modified_at` | string | ISO 8601 timestamp |
+| `listed_at` | string | ISO 8601 listing time (same meaning as on artwork posts) |
+| `promoted_at` | string | Only on promoted playlists (same meaning as on artwork posts) |
 | `total_artworks` | int | Number of artworks in the playlist |
 | `dwell_time_ms` | int | Display time per artwork in milliseconds |
 
