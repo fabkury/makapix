@@ -40,3 +40,10 @@
   `messages/p3a/0001-…` needs the owner to relay it.
 - Open: app reply `0003-app-…` (toggle + release version); p3a reply on local
   sorting; watch for bump abuse (per-user daily cap is the lever).
+- **p3a 0002 (2026-10-02):** firmware 1.x re-sorts its cache by created_at →
+  owner chose option A (D21–D23): `listed_at` (always) + `promoted_at` (promoted
+  posts) on every `query_posts` payload, artworks and playlists; `Post.promoted_at`
+  public (null unless promoted) → selectable via `fields=` on `/feed/promoted`.
+  Tests +5 (35 in `test_feed_bump.py`); full suite green; live on dev. Reply
+  `messages/p3a/0003-server-sort-keys-live.md`; awaiting p3a 0004 (release).
+  **Owe the app a one-line FYI on `Post.promoted_at` in our next 0006 reply (D23).**
