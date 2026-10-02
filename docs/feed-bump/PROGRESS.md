@@ -31,3 +31,12 @@
   (the two stamps differ by up to ~1 s at upload — prod: 15 of 3190 artworks
   qualify). Docs: MQTT protocol, player querying guide, HTTP API posts.md.
   Tests: `test_feed_bump.py` 30 total.
+- **Shipped to prod (2026-10-02, PR #278, merge `90f8730`).** Prod checks: alembic
+  head `a8b9c0d1e2f3`; 3190 posts, 0 listed_at ≠ created_at, 0 pending; index
+  present; first pages of `/post/recent` and `/post?sort=created_at` (both orders)
+  byte-identical to the pre-deploy snapshot; page 2 via cursor 200.
+- App thread renumbered **0005 → 0006-feed-bump** (the app took 0005 for
+  localized-text); 0001 + 0002 pushed to the app repo (`89ac261a`). p3a kickoff
+  `messages/p3a/0001-…` needs the owner to relay it.
+- Open: app reply `0003-app-…` (toggle + release version); p3a reply on local
+  sorting; watch for bump abuse (per-user daily cap is the lever).

@@ -1,8 +1,12 @@
 # Feed bump — replaced artworks return to the top of feeds
 
-> **Status: PLAN (2026-10-02), owner-approved decisions below; Phase 1 in
-> progress. All phases ship to prod together (D16).** Precedent: `docs/promoted-feed-order/` (same shape — a
-> dedicated sort column instead of rewriting `created_at`).
+> **Status: LIVE ON PROD (2026-10-02, PR #278).** Migration `a8b9c0d1e2f3`
+> ran at deploy: 3190 posts, 0 with `listed_at <> created_at`, 0 pending (no
+> 'first' markers), index present; the first page of `/post/recent`,
+> `/post?sort=created_at` (desc and asc) was identical before and after; cursored
+> page 2 returned 200. Awaiting the app reply (`0006-feed-bump/0003-app-…`) and the p3a reply.
+> Reopen trigger: a date-sorted surface that ignores bumps, players disagreeing
+> with web order, or bump abuse (see Risks: per-user cap).
 
 ## Problem
 
