@@ -105,6 +105,8 @@ def _build_artwork_payload(
         art_url=post.art_url or "",
         storage_shard=post.storage_shard or "",
         native_format=next((f.format for f in post.files if f.is_native), None),
+        listed_at=post.listed_at,
+        promoted_at=post.promoted_sort_at,
         # Optional fields (None if not requested)
         owner_handle=post.owner.handle if "owner_handle" in include else None,
         metadata_modified_at=(
@@ -152,6 +154,8 @@ def _build_playlist_payload(
         owner_handle=playlist_post.owner.handle,
         created_at=playlist_post.created_at,
         metadata_modified_at=playlist_post.metadata_modified_at,
+        listed_at=playlist_post.listed_at,
+        promoted_at=playlist_post.promoted_sort_at,
         total_artworks=int(total_artworks),
         dwell_time_ms=int(
             getattr(playlist_post, "dwell_time_ms", DEFAULT_DWELL_MS)

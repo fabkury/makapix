@@ -31,3 +31,19 @@
   (the two stamps differ by up to ~1 s at upload — prod: 15 of 3190 artworks
   qualify). Docs: MQTT protocol, player querying guide, HTTP API posts.md.
   Tests: `test_feed_bump.py` 30 total.
+- **Shipped to prod (2026-10-02, PR #278, merge `90f8730`).** Prod checks: alembic
+  head `a8b9c0d1e2f3`; 3190 posts, 0 listed_at ≠ created_at, 0 pending; index
+  present; first pages of `/post/recent` and `/post?sort=created_at` (both orders)
+  byte-identical to the pre-deploy snapshot; page 2 via cursor 200.
+- App thread renumbered **0005 → 0006-feed-bump** (the app took 0005 for
+  localized-text); 0001 + 0002 pushed to the app repo (`89ac261a`). p3a kickoff
+  `messages/p3a/0001-…` needs the owner to relay it.
+- Open: app reply `0003-app-…` (toggle + release version); p3a reply on local
+  sorting; watch for bump abuse (per-user daily cap is the lever).
+- **p3a 0002 (2026-10-02):** firmware 1.x re-sorts its cache by created_at →
+  owner chose option A (D21–D23): `listed_at` (always) + `promoted_at` (promoted
+  posts) on every `query_posts` payload, artworks and playlists; `Post.promoted_at`
+  public (null unless promoted) → selectable via `fields=` on `/feed/promoted`.
+  Tests +5 (35 in `test_feed_bump.py`); full suite green; live on dev. Reply
+  `messages/p3a/0003-server-sort-keys-live.md`; awaiting p3a 0004 (release).
+  **Owe the app a one-line FYI on `Post.promoted_at` in our next 0006 reply (D23).**

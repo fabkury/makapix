@@ -175,6 +175,7 @@ Get a single post by its public sqid. No authentication required.
   "artwork_modified_at": "2024-01-15T09:00:00Z",
   "visible": true,
   "promoted": false,
+  "promoted_at": null,
   "public_visibility": true,
   "reaction_count": 5,
   "comment_count": 2,
@@ -192,6 +193,10 @@ Get a single post by its public sqid. No authentication required.
   }
 }
 ```
+
+`promoted_at` is the time a moderator last promoted the post (the key
+Recommended / `GET /feed/promoted` sorts on), `null` unless `promoted` is true.
+Like any `Post` field it can be selected with `fields=` on `/feed/promoted`.
 
 ## Get Post by Storage Key
 

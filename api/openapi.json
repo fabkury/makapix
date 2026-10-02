@@ -5345,6 +5345,18 @@
             "title": "Promoted",
             "type": "boolean"
           },
+          "promoted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promoted At"
+          },
           "promoted_category": {
             "anyOf": [
               {
@@ -5710,6 +5722,18 @@
           "promoted": {
             "title": "Promoted",
             "type": "boolean"
+          },
+          "promoted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promoted At"
           },
           "promoted_category": {
             "anyOf": [

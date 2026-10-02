@@ -1,8 +1,12 @@
 # Feed bump — replaced artworks return to the top of feeds
 
-> **Status: PLAN (2026-10-02), owner-approved decisions below; Phase 1 in
-> progress. All phases ship to prod together (D16).** Precedent: `docs/promoted-feed-order/` (same shape — a
-> dedicated sort column instead of rewriting `created_at`).
+> **Status: LIVE ON PROD (2026-10-02, PR #278).** Migration `a8b9c0d1e2f3`
+> ran at deploy: 3190 posts, 0 with `listed_at <> created_at`, 0 pending (no
+> 'first' markers), index present; the first page of `/post/recent`,
+> `/post?sort=created_at` (desc and asc) was identical before and after; cursored
+> page 2 returned 200. Awaiting the app reply (`0006-feed-bump/0003-app-…`) and the p3a reply.
+> Reopen trigger: a date-sorted surface that ignores bumps, players disagreeing
+> with web order, or bump abuse (see Risks: per-user cap).
 
 ## Problem
 
@@ -39,6 +43,9 @@ Replacements are a mix of real new versions and small fixes (owner,
 | D18 | Web UI | The web filter label "Creation Date" is renamed to **"Date"**. The permalink shows **"Updated <date>"** when `artwork_modified_at > created_at` (any replacement, bumped or not). No feed-card marker in v1. No API change. |
 | D19 | p3a gate | The prod deploy does **not** wait for p3a's reply on local sorting. Worst case, bumps don't move on devices until a protocol follow-up. |
 | D20 | Messages | Kickoffs were sent before coding (2026-10-02): app thread `0006-feed-bump` (copy in `messages/app/`), p3a thread in `messages/p3a/`. A follow-up with dev test instructions goes to the app team when Phase 3 is live on dev. |
+| D21 | Payload sort keys (p3a 0002) | Firmware 1.x re-sorts its cache by `created_at`, so players get the keys themselves: `listed_at` is mandatory on every `query_posts` post payload; `promoted_at` (= `promoted_order_key()`, i.e. `coalesce(promoted_at, created_at)`) is present on promoted posts only (`query_posts` drops nulls). **D8 is amended:** `promoted_at` joins the public `Post` schema (null unless promoted), which also makes it selectable via `fields=` on `/feed/promoted`; `listed_at` stays out of `Post`. This reverses promoted-feed-order D4 (owner, 2026-10-02, option A). |
+| D22 | Playlists | Playlist payloads carry the same `listed_at` / `promoted_at`. |
+| D23 | App notice | No separate message: the next server reply on app thread `0006-feed-bump` includes a one-line FYI that `Post.promoted_at` exists. |
 
 ## Surfaces
 

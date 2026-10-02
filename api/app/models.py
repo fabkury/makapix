@@ -593,6 +593,13 @@ class Post(Base):
         return func.coalesce(cls.promoted_at, cls.created_at)
 
     @property
+    def promoted_sort_at(self):
+        """Python twin of promoted_order_key() for payloads: None unless promoted."""
+        if not self.promoted:
+            return None
+        return self.promoted_at or self.created_at
+
+    @property
     def has_mkpx(self) -> bool:
         """Whether an .mkpx layers file is attached (schemas.Post reads this)."""
         return self.mkpx_file_bytes is not None
