@@ -455,3 +455,215 @@ def test_player_all_channel_uses_listed_at(mock_publish: MagicMock, player, db, 
     got = _query(player, db, mock_publish, channel="all", limit=50)
     # bumped is listed 30 days ahead, so it leads the whole channel
     assert got[0] == trio["desc"][0]
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — bump at replace (D4–D6) and at approval (D11)
+# ---------------------------------------------------------------------------
+
+NOW = lambda: datetime.now(timezone.utc)  # noqa: E731
+
+
+def _replace_bump(client, user, post_id, color, bump: bool | None = None) -> dict:
+    data = {} if bump is None else {"bump": "true" if bump else "false"}
+    r = client.post(
+        f"/v1/post/{post_id}/replace-artwork",
+        files={"image": ("new.png", _png(color), "image/png")},
+        data=data,
+        headers=_auth(user),
+    )
+    assert r.status_code == 200, r.text
+    return r.json()["post"]
+
+
+def _set_listed(db, post_id: int, listed_at: datetime) -> None:
+    post = db.get(Post, post_id)
+    post.listed_at = listed_at
+    db.commit()
+
+
+def _listed(db, post_id: int) -> datetime:
+    db.expire_all()
+    return db.get(Post, post_id).listed_at
+
+
+def _approve(client, mod, post_id):
+    r = client.post(f"/v1/post/{post_id}/approve-public", headers=_auth(mod))
+    assert r.status_code == 201, r.text
+
+
+def test_trusted_replace_bumps_by_default(client, db, vault_tmp):
+    owner = _make_user(db, trusted=True)
+    post_id = _upload(client, owner, (17, 27, 37, 255))
+    _set_listed(db, post_id, NOW() - timedelta(days=8))
+
+    before = NOW()
+    body = _replace_bump(client, owner, post_id, (47, 57, 67, 255))
+    assert body["bumped"] is True
+    assert body["bump_skipped_reason"] is None
+    listed = _listed(db, post_id)
+    assert listed >= before
+    assert datetime.fromisoformat(body["bump_available_at"]) == listed + timedelta(
+        days=7
+    )
+    # created_at is never rewritten (D1)
+    assert db.get(Post, post_id).created_at < listed
+
+
+def test_trusted_replace_opt_out(client, db, vault_tmp):
+    owner = _make_user(db, trusted=True)
+    post_id = _upload(client, owner, (18, 28, 38, 255))
+    old = NOW() - timedelta(days=8)
+    _set_listed(db, post_id, old)
+
+    body = _replace_bump(client, owner, post_id, (48, 58, 68, 255), bump=False)
+    assert body["bumped"] is False
+    assert body["bump_skipped_reason"] == "opted_out"
+    assert _listed(db, post_id) == old
+
+
+@pytest.mark.parametrize(
+    "age, bumps",
+    [
+        (timedelta(days=6, hours=23), False),
+        (timedelta(days=7, minutes=1), True),
+    ],
+)
+def test_trusted_replace_cooldown_boundary(client, db, vault_tmp, age, bumps):
+    owner = _make_user(db, trusted=True)
+    post_id = _upload(client, owner, (19, 29, 39 + int(bumps), 255))
+    old = NOW() - age
+    _set_listed(db, post_id, old)
+
+    body = _replace_bump(client, owner, post_id, (49, 59, 69 + int(bumps), 255))
+    assert body["bumped"] is bumps
+    if bumps:
+        assert _listed(db, post_id) > old
+    else:
+        assert body["bump_skipped_reason"] == "cooldown"
+        assert datetime.fromisoformat(body["bump_available_at"]) == old + timedelta(
+            days=7
+        )
+        assert _listed(db, post_id) == old
+
+
+def test_trusted_replace_in_first_week_does_not_bump(client, db, vault_tmp):
+    owner = _make_user(db, trusted=True)
+    post_id = _upload(client, owner, (20, 30, 40, 255))
+    body = _replace_bump(client, owner, post_id, (50, 60, 70, 255))
+    assert body["bump_skipped_reason"] == "cooldown"
+
+
+def test_untrusted_replace_bumps_at_approval(client, db, vault_tmp):
+    owner = _make_user(db)
+    mod = _make_user(db, roles=["user", "moderator"])
+    post_id = _upload(client, owner, (21, 31, 41, 255))
+    _approve(client, mod, post_id)  # consumes 'first'
+    old = NOW() - timedelta(days=8)
+    _set_listed(db, post_id, old)
+
+    body = _replace_bump(client, owner, post_id, (51, 61, 71, 255))
+    assert body["bumped"] is False
+    assert body["bump_skipped_reason"] == "not_trusted"
+    assert body["public_visibility"] is False
+    db.expire_all()
+    assert db.get(Post, post_id).pending_listing == "replace"
+    assert _listed(db, post_id) == old
+
+    before = NOW()
+    _approve(client, mod, post_id)
+    assert _listed(db, post_id) >= before
+    assert db.get(Post, post_id).pending_listing is None
+
+
+def test_untrusted_replace_approval_respects_cooldown(client, db, vault_tmp):
+    owner = _make_user(db)
+    mod = _make_user(db, roles=["user", "moderator"])
+    post_id = _upload(client, owner, (22, 32, 42, 255))
+    _approve(client, mod, post_id)
+    recent = NOW() - timedelta(days=2)
+    _set_listed(db, post_id, recent)
+
+    _replace_bump(client, owner, post_id, (52, 62, 72, 255))
+    _approve(client, mod, post_id)
+    assert _listed(db, post_id) == recent
+    assert db.get(Post, post_id).pending_listing is None
+
+
+def test_untrusted_replace_opt_out_never_bumps(client, db, vault_tmp):
+    owner = _make_user(db)
+    mod = _make_user(db, roles=["user", "moderator"])
+    post_id = _upload(client, owner, (23, 33, 43, 255))
+    _approve(client, mod, post_id)
+    old = NOW() - timedelta(days=8)
+    _set_listed(db, post_id, old)
+
+    body = _replace_bump(client, owner, post_id, (53, 63, 73, 255), bump=False)
+    assert body["bump_skipped_reason"] == "opted_out"
+    db.expire_all()
+    assert db.get(Post, post_id).pending_listing is None
+    _approve(client, mod, post_id)
+    assert _listed(db, post_id) == old
+
+
+def test_untrusted_replace_of_never_approved_post_keeps_first(client, db, vault_tmp):
+    owner = _make_user(db)
+    post_id = _upload(client, owner, (24, 34, 44, 255))
+    _replace_bump(client, owner, post_id, (54, 64, 74, 255), bump=False)
+    db.expire_all()
+    assert db.get(Post, post_id).pending_listing == "first"
+
+
+def test_first_approval_bumps_without_cooldown(client, db, vault_tmp):
+    owner = _make_user(db)
+    mod = _make_user(db, roles=["user", "moderator"])
+    post_id = _upload(client, owner, (25, 35, 45, 255))
+    old = NOW() - timedelta(days=3)
+    _set_listed(db, post_id, old)
+
+    before = NOW()
+    _approve(client, mod, post_id)
+    assert _listed(db, post_id) >= before
+    assert db.get(Post, post_id).pending_listing is None
+
+
+def test_revoke_then_reapprove_does_not_bump(client, db, vault_tmp):
+    owner = _make_user(db)
+    mod = _make_user(db, roles=["user", "moderator"])
+    post_id = _upload(client, owner, (26, 36, 46, 255))
+    _approve(client, mod, post_id)
+    old = NOW() - timedelta(days=8)
+    _set_listed(db, post_id, old)
+
+    r = client.delete(f"/v1/post/{post_id}/approve-public", headers=_auth(mod))
+    assert r.status_code in (200, 201, 204), r.text
+    _approve(client, mod, post_id)
+    assert _listed(db, post_id) == old
+
+
+def test_bump_leaves_promotion_order_alone(client, db, vault_tmp):
+    owner = _make_user(db, trusted=True)
+    post_id = _upload(client, owner, (27, 37, 47, 255))
+    promoted_at = NOW() - timedelta(days=20)
+    post = db.get(Post, post_id)
+    post.promoted = True
+    post.promoted_at = promoted_at
+    post.listed_at = NOW() - timedelta(days=8)
+    db.commit()
+
+    assert _replace_bump(client, owner, post_id, (57, 67, 77, 255))["bumped"]
+    db.expire_all()
+    assert db.get(Post, post_id).promoted_at == promoted_at
+
+
+def test_bumped_post_leads_recent_feed(client, db, vault_tmp):
+    owner = _make_user(db, trusted=True)
+    post_id = _upload(client, owner, (28, 38, 48, 255))
+    post = db.get(Post, post_id)
+    post.created_at = post.listed_at = BASE - timedelta(days=60)
+    db.commit()
+    _make_post(db, owner=owner, created_at=NOW(), public=True)
+
+    _replace_bump(client, owner, post_id, (58, 68, 78, 255))
+    resp = client.get("/post/recent?limit=5")
+    assert resp.json()["items"][0]["id"] == post_id

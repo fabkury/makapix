@@ -10,7 +10,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import (
@@ -84,6 +84,11 @@ from ..vault import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/post", tags=["Posts"])
+
+# Minimum time between two placements of a post at the top of the feeds
+# (docs/feed-bump/ D5). Measured from listed_at, so it also blocks a bump in a
+# post's first week.
+FEED_BUMP_COOLDOWN = timedelta(days=7)
 
 
 def get_upload_rate_limit(user: models.User) -> tuple[int, int]:
@@ -1913,6 +1918,15 @@ def approve_public_visibility(
         )
 
     post.public_visibility = True
+    # Owed bump (docs/feed-bump/ D11): a first approval always lists the post
+    # now; a re-queued replacement that asked for a bump does if the cooldown
+    # holds at approval time. Revoke → re-approve carries no marker.
+    now = datetime.now(timezone.utc)
+    if post.pending_listing == "first" or (
+        post.pending_listing == "replace" and now - post.listed_at >= FEED_BUMP_COOLDOWN
+    ):
+        post.listed_at = now
+    post.pending_listing = None
     db.commit()
 
     # Invalidate feed caches since public visibility changed
@@ -2007,10 +2021,19 @@ async def replace_artwork(
     creation_method: str | None = Form(None),
     source_details: str | None = Form(None),
     remixed_from: str | None = Form(None),
+    # Feed bump (docs/feed-bump/ D4): opt-out — move the post back to the top
+    # of the date-sorted feeds unless the artist says it's a small fix.
+    bump: bool = Form(True),
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Replace the artwork of an existing post (app edit feature)"""
+    """Replace the artwork of an existing post (app edit feature).
+
+    With `bump` (default true) the post returns to the top of every
+    date-sorted feed: at once for owners with Trust, at most once per 7 days;
+    for other owners the replacement goes back to moderation and the bump
+    happens when a moderator approves it.
+    """
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post or post.kind != "artwork":
         raise HTTPException(status_code=404, detail="Post not found")
@@ -2211,9 +2234,26 @@ async def replace_artwork(
 
     # Re-moderation (docs/feed-bump/ D7): an owner without Trust sends the new
     # bytes back to the approval queue — otherwise an approved post could be
-    # swapped for anything. Applies to promoted posts too.
+    # swapped for anything. Applies to promoted posts too. A requested bump
+    # is owed at approval instead (D11/D12); a never-approved post keeps its
+    # 'first' marker.
+    bumped = False
+    bump_skipped_reason: str | None = None
+    bump_available_at: datetime | None = None
     if not current_user.auto_public_approval:
         post.public_visibility = False
+        if post.pending_listing != "first":
+            post.pending_listing = "replace" if bump else None
+        bump_skipped_reason = "not_trusted" if bump else "opted_out"
+    elif not bump:
+        bump_skipped_reason = "opted_out"
+    elif now - post.listed_at < FEED_BUMP_COOLDOWN:
+        bump_skipped_reason = "cooldown"
+        bump_available_at = post.listed_at + FEED_BUMP_COOLDOWN
+    else:
+        post.listed_at = now
+        bumped = True
+        bump_available_at = now + FEED_BUMP_COOLDOWN
 
     # Provenance describes the current bytes (D5): snapshot the outgoing
     # declared values into _server.replaced[], then apply the new declaration
@@ -2372,6 +2412,11 @@ async def replace_artwork(
             "frame_count": post.frame_count,
             # False = pending moderator approval (docs/feed-bump/ D7)
             "public_visibility": post.public_visibility,
+            "bumped": bumped,
+            "bump_skipped_reason": bump_skipped_reason,
+            "bump_available_at": (
+                bump_available_at.isoformat() if bump_available_at else None
+            ),
         },
     }
 

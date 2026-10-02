@@ -1557,6 +1557,11 @@
       },
       "Body_replace_artwork_v1_post__id__replace_artwork_post": {
         "properties": {
+          "bump": {
+            "default": true,
+            "title": "Bump",
+            "type": "boolean"
+          },
           "client": {
             "anyOf": [
               {
@@ -20259,7 +20264,7 @@
     },
     "/v1/post/{id}/replace-artwork": {
       "post": {
-        "description": "Replace the artwork of an existing post (app edit feature)",
+        "description": "Replace the artwork of an existing post (app edit feature).\n\nWith `bump` (default true) the post returns to the top of every\ndate-sorted feed: at once for owners with Trust, at most once per 7 days;\nfor other owners the replacement goes back to moderation and the bump\nhappens when a moderator approves it.",
         "operationId": "replace_artwork_v1_post__id__replace_artwork_post",
         "parameters": [
           {

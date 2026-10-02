@@ -136,8 +136,8 @@ Note: Hashtag should not include the `#` prefix.
 
 | Sort | Description |
 |------|-------------|
-| `server_order` | Default insertion order (newest first) |
-| `created_at` | Chronological order (newest first) |
+| `server_order` | Newest listing first: upload/approval time, or a later artwork replacement that bumped the post (same order as the website and app) |
+| `created_at` | Same as `server_order` (the payload's `created_at` stays the original posting date) |
 | `random` | Random order (use `random_seed` for reproducibility) |
 
 ### Random with Seed

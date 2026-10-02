@@ -243,7 +243,7 @@ export function FilterButton({ onFilterChange, initialFilters = {}, isLoading = 
 
   // Simplified sort options
   const sortOptions = [
-    { value: "created_at", label: "Creation Date" },
+    { value: "created_at", label: "Date" },
     { value: "reactions", label: "Reactions" },
     { value: "file_bytes", label: "File Size" },
   ];

@@ -315,6 +315,17 @@ Replace the image of an existing post. Requires ownership.
 | Field | Type | Required |
 |-------|------|----------|
 | `image` | file | Yes |
+| `bump` | boolean | No (default `true`) — move the post back to the top of the date-sorted feeds |
+
+Provenance/lineage fields (`client`, `creation_method`, `source_details`,
+`remixed_from`) are covered in `docs/artwork-provenance/`.
+
+**Feed bump** (`docs/feed-bump/`): for an owner with Trust
+(`auto_public_approval`), `bump=true` places the post at the top of every
+date-sorted feed immediately, at most once per 7 days per post (counting from
+upload). For other owners the replacement goes back to moderator review
+(`public_visibility=false`) and a requested bump is applied when a moderator
+approves it, if the 7 days have passed by then. `created_at` never changes.
 
 **Response (200):**
 
@@ -327,10 +338,18 @@ Replace the image of an existing post. Requires ownership.
     "art_url": "https://...",
     "width": 64,
     "height": 64,
-    "frame_count": 1
+    "frame_count": 1,
+    "public_visibility": true,
+    "bumped": true,
+    "bump_skipped_reason": null,
+    "bump_available_at": "2026-10-09T12:00:00+00:00"
   }
 }
 ```
+
+`bump_skipped_reason`: `"opted_out"` | `"cooldown"` | `"not_trusted"` (bump
+deferred to approval) | `null`. `bump_available_at` is set on `"cooldown"`
+and after a bump.
 
 **Errors:**
 
