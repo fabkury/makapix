@@ -52,3 +52,10 @@
   `query_posts` payloads carry `listed_at` everywhere and `promoted_at` on promoted
   posts. Feed caches invalidated after deploy (pre-deploy cached pages lacked
   `promoted_at`). p3a 0003 sent with this status.
+- **p3a 0004 (2026-10-02):** ack; firmware side written (untested on hardware),
+  targets 1.2.5. Regular channels sort by `listed_at`, promoted by `promoted_at`
+  (MQTT + HTTP catalog via `fields=`), fallback `created_at`; playlists and
+  eviction use the same key. Their choice, **accepted by the owner:** a bump
+  without new artwork (first approval) moves on the device only at the next
+  channel load (typically reboot). No reply sent (none expected). When p3a
+  announces 1.2.5, just close the p3a thread — no server-side check needed.

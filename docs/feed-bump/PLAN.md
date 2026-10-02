@@ -5,7 +5,7 @@
 > 'first' markers), index present; the first page of `/post/recent`,
 > `/post?sort=created_at` (desc and asc) was identical before and after; cursored
 > page 2 returned 200. Follow-up PR #279 (D21–D23: sort keys in player payloads, `Post.promoted_at`) live the same day.
-> Awaiting the app reply (`0006-feed-bump/0003-app-…`) and the p3a reply.
+> Awaiting the app reply (`0006-feed-bump/0003-app-…`); p3a acked (0004), firmware 1.2.5 in progress — close their thread when it ships.
 > Reopen trigger: a date-sorted surface that ignores bumps, players disagreeing
 > with web order, or bump abuse (see Risks: per-user cap).
 
