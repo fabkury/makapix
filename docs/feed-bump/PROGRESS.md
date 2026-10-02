@@ -59,3 +59,11 @@
   without new artwork (first approval) moves on the device only at the next
   channel load (typically reboot). No reply sent (none expected). When p3a
   announces 1.2.5, just close the p3a thread — no server-side check needed.
+- **App 0003 (2026-10-02):** ack; toggle "Show as new in feeds" (default on, always sends
+  `bump`) ships in **1.12.1**; result screen per outcome; pre-replace dialog for
+  untrusted artists; no client-side re-sort; no "Updated" line (no date in their post
+  page); sort label "Date" in 8 languages. Owner decisions: accept the pre-1.12.1 gap;
+  adopt their optional idea → **D24 public `Post.listed_at`, shipped to prod (PR #280)**,
+  feed caches invalidated, `/post/recent` order identical. Reply `0004-server-…`
+  (listed_at rule + `promoted_at` FYI, closing D23) pushed to the app repo.
+  Awaiting only their 1.12.1 note and p3a's 1.2.5 note.
