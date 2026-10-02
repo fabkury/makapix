@@ -1557,6 +1557,11 @@
       },
       "Body_replace_artwork_v1_post__id__replace_artwork_post": {
         "properties": {
+          "bump": {
+            "default": true,
+            "title": "Bump",
+            "type": "boolean"
+          },
           "client": {
             "anyOf": [
               {
@@ -13220,7 +13225,7 @@
     },
     "/v1/admin/pending-approval": {
       "get": {
-        "description": "List posts pending public visibility approval (moderator only).\n\nReturns posts where public_visibility is False, ordered by creation date (newest first).\nThese are artworks uploaded by users without auto_public_approval privilege\nthat need moderator review before appearing in Recent Artworks and search results.",
+        "description": "List posts pending public visibility approval (moderator only).\n\nReturns posts where public_visibility is False, newest artwork first.\nThese are artworks uploaded by users without auto_public_approval privilege\nthat need moderator review before appearing in Recent Artworks and search results,\nincluding older posts whose artwork such a user replaced (re-queued for review).",
         "operationId": "pending_approval_v1_admin_pending_approval_get",
         "parameters": [
           {
@@ -20259,7 +20264,7 @@
     },
     "/v1/post/{id}/replace-artwork": {
       "post": {
-        "description": "Replace the artwork of an existing post (app edit feature)",
+        "description": "Replace the artwork of an existing post (app edit feature).\n\nWith `bump` (default true) the post returns to the top of every\ndate-sorted feed: at once for owners with Trust, at most once per 7 days;\nfor other owners the replacement goes back to moderation and the bump\nhappens when a moderator approves it.",
         "operationId": "replace_artwork_v1_post__id__replace_artwork_post",
         "parameters": [
           {

@@ -445,8 +445,13 @@ def query_posts(
         query = query.order_by(
             models.Post.promoted_order_key().desc(), models.Post.id.desc()
         )
-    elif request.sort == "created_at":
-        query = query.order_by(models.Post.created_at.desc())
+    elif request.sort in ("server_order", "created_at"):
+        # Every other channel plays newest listing first (docs/feed-bump/ D9),
+        # the same order as the web/app feeds; server-side remap so existing
+        # firmware needs no protocol change.
+        query = query.order_by(
+            models.Post.feed_order_key().desc(), models.Post.id.desc()
+        )
     elif request.sort == "random":
         # Use random seed if provided for reproducible ordering
         if request.random_seed is not None:
@@ -456,7 +461,7 @@ def query_posts(
             db.execute(text("SELECT setseed(:seed)"), {"seed": seed_value})
         query = query.order_by(func.random())
     else:
-        # "server_order" - use id order (insertion order)
+        # Unknown sort (schema-validated, so unreachable): insertion order
         query = query.order_by(models.Post.id.desc())
 
     # Apply cursor pagination

@@ -65,6 +65,7 @@ interface Post {
   frame_count?: number;
   owner_id: string;
   created_at: string;
+  artwork_modified_at?: string;
   kind?: string;
   hidden_by_user?: boolean;
   hidden_by_mod?: boolean;
@@ -121,6 +122,20 @@ function formatFileSizeCompact(bytes: number): string {
   if (value >= 100) return `${Math.round(value)} ${units[i]}`;
   if (value >= 10) return `${value.toFixed(1)} ${units[i]}`;
   return `${value.toFixed(2)} ${units[i]}`;
+}
+
+// The artwork was replaced after posting (docs/feed-bump/ D18). At upload the
+// two stamps differ by a fraction of a second, hence the one-minute margin.
+function wasArtworkReplaced(post: {
+  created_at: string;
+  artwork_modified_at?: string;
+}): boolean {
+  if (!post.artwork_modified_at) return false;
+  return (
+    new Date(post.artwork_modified_at).getTime() -
+      new Date(post.created_at).getTime() >
+    60_000
+  );
 }
 
 function formatDateTime(isoString: string): string {
@@ -1509,6 +1524,12 @@ export default function PostPage() {
 
             <div className="post-tech-info">
               {formatDateTime(post.created_at)}
+              {wasArtworkReplaced(post) && post.artwork_modified_at && (
+                <>
+                  <span className="tech-separator">•</span>
+                  Updated {formatDateTime(post.artwork_modified_at)}
+                </>
+              )}
               <span className="tech-separator">•</span>
               <span
                 className={

@@ -745,8 +745,10 @@ def verify_hashtag(
     capped = count > 100
     count = min(count, 100)
 
-    # Latest artwork by created_at
-    latest = base_query.order_by(models.Post.created_at.desc()).first()
+    # Latest artwork by listing time (same order as the feeds, feed-bump D3)
+    latest = base_query.order_by(
+        models.Post.feed_order_key().desc(), models.Post.id.desc()
+    ).first()
 
     preview = _artwork_preview(latest) if latest else {}
     response = schemas.HashtagVerifyResponse(

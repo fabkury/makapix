@@ -10,7 +10,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import (
@@ -84,6 +84,11 @@ from ..vault import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/post", tags=["Posts"])
+
+# Minimum time between two placements of a post at the top of the feeds
+# (docs/feed-bump/ D5). Measured from listed_at, so it also blocks a bump in a
+# post's first week.
+FEED_BUMP_COOLDOWN = timedelta(days=7)
 
 
 def get_upload_rate_limit(user: models.User) -> tuple[int, int]:
@@ -500,8 +505,12 @@ def list_posts(
     # when reacted_at_col was set (guaranteed by the fallback above).
     # On the promoted set, "created_at" means promotion time (newest promotion
     # first) so every promoted surface shares one order — docs/promoted-feed-order/.
+    # Everywhere else, "created_at" means listing time in both directions
+    # (newest bump/upload first) — docs/feed-bump/ D3/D17.
     date_key = (
-        models.Post.promoted_order_key() if promoted is True else models.Post.created_at
+        models.Post.promoted_order_key()
+        if promoted is True
+        else models.Post.feed_order_key()
     )
     keyset_map = {
         "created_at": (date_key, True),
@@ -825,6 +834,8 @@ async def upload_artwork(
         alpha_actual=alpha_actual,
         hash=file_hash,
         public_visibility=public_visibility,
+        # A pending upload is owed a bump at its first approval (feed-bump D11)
+        pending_listing=None if public_visibility else "first",
         hidden_by_user=user_hidden,
         metadata_modified_at=now,
         artwork_modified_at=now,
@@ -1068,13 +1079,12 @@ def list_recent_posts(
     # Note: Monitored hashtag filtering is applied in-memory after fetching
     # because this endpoint uses a shared cache across all users.
 
-    # Apply cursor pagination
-    query = apply_cursor_filter(
-        query, models.Post, cursor, "created_at", sort_desc=True
-    )
+    # Apply cursor pagination (listing time, docs/feed-bump/ D3; pre-deploy
+    # created_at cursors resume correctly since listed_at was backfilled from it)
+    query = apply_cursor_filter(query, models.Post, cursor, "listed_at", sort_desc=True)
 
     # Order and limit
-    query = query.order_by(models.Post.created_at.desc())
+    query = query.order_by(models.Post.feed_order_key().desc(), models.Post.id.desc())
 
     # Fetch limit + 1 to check if there are more results
     posts = query.limit(limit + 1).all()
@@ -1083,7 +1093,7 @@ def list_recent_posts(
     annotate_posts_with_counts(db, posts, current_user.id if current_user else None)
 
     # Create paginated response
-    page_data = create_page_response(posts, limit, cursor, "created_at")
+    page_data = create_page_response(posts, limit, cursor, "listed_at")
 
     response = schemas.Page(
         items=[schemas.Post.model_validate(p) for p in page_data["items"]],
@@ -1908,6 +1918,15 @@ def approve_public_visibility(
         )
 
     post.public_visibility = True
+    # Owed bump (docs/feed-bump/ D11): a first approval always lists the post
+    # now; a re-queued replacement that asked for a bump does if the cooldown
+    # holds at approval time. Revoke → re-approve carries no marker.
+    now = datetime.now(timezone.utc)
+    if post.pending_listing == "first" or (
+        post.pending_listing == "replace" and now - post.listed_at >= FEED_BUMP_COOLDOWN
+    ):
+        post.listed_at = now
+    post.pending_listing = None
     db.commit()
 
     # Invalidate feed caches since public visibility changed
@@ -2002,10 +2021,19 @@ async def replace_artwork(
     creation_method: str | None = Form(None),
     source_details: str | None = Form(None),
     remixed_from: str | None = Form(None),
+    # Feed bump (docs/feed-bump/ D4): opt-out — move the post back to the top
+    # of the date-sorted feeds unless the artist says it's a small fix.
+    bump: bool = Form(True),
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Replace the artwork of an existing post (app edit feature)"""
+    """Replace the artwork of an existing post (app edit feature).
+
+    With `bump` (default true) the post returns to the top of every
+    date-sorted feed: at once for owners with Trust, at most once per 7 days;
+    for other owners the replacement goes back to moderation and the bump
+    happens when a moderator approves it.
+    """
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post or post.kind != "artwork":
         raise HTTPException(status_code=404, detail="Post not found")
@@ -2204,6 +2232,29 @@ async def replace_artwork(
     post.metadata_modified_at = now
     post.artwork_modified_at = now
 
+    # Re-moderation (docs/feed-bump/ D7): an owner without Trust sends the new
+    # bytes back to the approval queue — otherwise an approved post could be
+    # swapped for anything. Applies to promoted posts too. A requested bump
+    # is owed at approval instead (D11/D12); a never-approved post keeps its
+    # 'first' marker.
+    bumped = False
+    bump_skipped_reason: str | None = None
+    bump_available_at: datetime | None = None
+    if not current_user.auto_public_approval:
+        post.public_visibility = False
+        if post.pending_listing != "first":
+            post.pending_listing = "replace" if bump else None
+        bump_skipped_reason = "not_trusted" if bump else "opted_out"
+    elif not bump:
+        bump_skipped_reason = "opted_out"
+    elif now - post.listed_at < FEED_BUMP_COOLDOWN:
+        bump_skipped_reason = "cooldown"
+        bump_available_at = post.listed_at + FEED_BUMP_COOLDOWN
+    else:
+        post.listed_at = now
+        bumped = True
+        bump_available_at = now + FEED_BUMP_COOLDOWN
+
     # Provenance describes the current bytes (D5): snapshot the outgoing
     # declared values into _server.replaced[], then apply the new declaration
     # — undeclared fields become honest unknowns, they do NOT carry over.
@@ -2325,9 +2376,11 @@ async def replace_artwork(
     except Exception as e:
         logger.error(f"Failed to queue SSAFPP task for post {post.id}: {e}")
 
-    # Cached feed payloads embed art_url, which just changed
+    # Cached feed payloads embed art_url, which just changed (and the post
+    # may have left public listings, D7)
     cache_invalidate("feed:recent:*")
     cache_invalidate("feed:promoted:*")
+    cache_invalidate("hashtags:*")
 
     # Notify owners of parents that were *newly* linked by this replace —
     # re-declared existing parents were skipped, so no duplicate pings.
@@ -2357,6 +2410,13 @@ async def replace_artwork(
             "width": post.width,
             "height": post.height,
             "frame_count": post.frame_count,
+            # False = pending moderator approval (docs/feed-bump/ D7)
+            "public_visibility": post.public_visibility,
+            "bumped": bumped,
+            "bump_skipped_reason": bump_skipped_reason,
+            "bump_available_at": (
+                bump_available_at.isoformat() if bump_available_at else None
+            ),
         },
     }
 
@@ -2460,12 +2520,12 @@ def list_post_children(
                 ),
             )
         )
-    query = apply_cursor_filter(
-        query, models.Post, cursor, "created_at", sort_desc=True
-    )
-    query = query.order_by(models.Post.created_at.desc()).limit(limit + 1)
+    query = apply_cursor_filter(query, models.Post, cursor, "listed_at", sort_desc=True)
+    query = query.order_by(
+        models.Post.feed_order_key().desc(), models.Post.id.desc()
+    ).limit(limit + 1)
     children = query.all()
-    page_data = create_page_response(children, limit, cursor)
+    page_data = create_page_response(children, limit, cursor, "listed_at")
     annotate_posts_with_counts(db, page_data["items"], current_user.id)
     return schemas.Page(
         items=[schemas.Post.model_validate(p) for p in page_data["items"]],

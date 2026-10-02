@@ -119,6 +119,13 @@ Query posts from various channels with optional filtering, sorting, and paginati
 | `criteria` | array | `[]` | AMP field filter criteria (0-64 items, AND-ed together) |
 | `include_fields` | array? | null | Optional fields to include in artwork payloads |
 
+**Sort order:** on every channel except `"promoted"` and `"reactions"`,
+`"server_order"` and `"created_at"` both mean **newest listing first**: the
+time a post was last placed at the top of the feeds — its upload (or
+moderator approval), or a later artwork replacement the artist chose to
+"bump" (`docs/feed-bump/`). This is the same order as the website and app
+feeds. The `created_at` field in payloads stays the original posting date.
+
 **Channel behavior:**
 - `"all"` -- All visible posts.
 - `"promoted"` -- Only posts where `promoted=true`. On this channel `"server_order"` and `"created_at"` both mean **newest promotion first** (the time a moderator promoted the post), not upload order; `"random"` is unaffected.

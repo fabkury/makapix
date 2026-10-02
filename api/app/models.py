@@ -17,6 +17,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
     func,
     text,
 )
@@ -481,6 +482,18 @@ class Post(Base):
         index=True,
     )
 
+    # Feed position (docs/feed-bump/): when the post was last placed at the
+    # top of the date-sorted feeds. Equals created_at until a bump (replace
+    # with bump=true, or a moderator approval that owes one). Always read via
+    # feed_order_key(). created_at stays the "posted on" date.
+    listed_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    # Bump owed at the next moderator approval: 'first' (never approved yet)
+    # or 'replace' (an untrusted owner's replacement asked for a bump). NULL =
+    # approval doesn't bump. Consumed and cleared by approve-public (D11/D12).
+    pending_listing = Column(String(8), nullable=True)
+
     # Display timing (milliseconds)
     dwell_time_ms = Column(Integer, nullable=False, default=30000)
 
@@ -555,7 +568,18 @@ class Post(Base):
         Index("ix_posts_owner_created", owner_id, created_at.desc()),
         Index("ix_posts_non_conformant_created", non_conformant, created_at.desc()),
         Index("ix_posts_promoted_promoted_at", promoted, promoted_at.desc()),
+        Index("ix_posts_listed_at", listed_at.desc(), text("id DESC")),
     )
+
+    @classmethod
+    def feed_order_key(cls):
+        """Sort expression for the date-sorted feeds: newest listing first.
+
+        Every non-promoted date sort — /post, /post/recent, hashtags,
+        following, children, search, and the players' query_posts — uses this
+        one expression so web, app and players agree (docs/feed-bump/ D3).
+        """
+        return cls.listed_at
 
     @classmethod
     def promoted_order_key(cls):
@@ -572,6 +596,17 @@ class Post(Base):
     def has_mkpx(self) -> bool:
         """Whether an .mkpx layers file is attached (schemas.Post reads this)."""
         return self.mkpx_file_bytes is not None
+
+
+@event.listens_for(Post, "before_insert")
+def _post_listed_at_follows_created_at(mapper, connection, target) -> None:
+    """A post inserted with an explicit created_at is listed at that time.
+
+    Without one, both columns take the same server-side now() (one
+    transaction timestamp), so listed_at == created_at either way.
+    """
+    if target.listed_at is None and target.created_at is not None:
+        target.listed_at = target.created_at
 
 
 class PostLineage(Base):
