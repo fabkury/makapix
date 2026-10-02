@@ -38,7 +38,7 @@ Replacements are a mix of real new versions and small fixes (owner,
 | D17 | Sort direction | `sort=created_at`/`creation_date` uses the listing time in **both** directions (`order=asc` too). One key, no special cases. |
 | D18 | Web UI | The web filter label "Creation Date" is renamed to **"Date"**. The permalink shows **"Updated <date>"** when `artwork_modified_at > created_at` (any replacement, bumped or not). No feed-card marker in v1. No API change. |
 | D19 | p3a gate | The prod deploy does **not** wait for p3a's reply on local sorting. Worst case, bumps don't move on devices until a protocol follow-up. |
-| D20 | Messages | Kickoffs were sent before coding (2026-10-02): app thread `0005-feed-bump` (copy in `messages/app/`), p3a thread in `messages/p3a/`. A follow-up with dev test instructions goes to the app team when Phase 3 is live on dev. |
+| D20 | Messages | Kickoffs were sent before coding (2026-10-02): app thread `0006-feed-bump` (copy in `messages/app/`), p3a thread in `messages/p3a/`. A follow-up with dev test instructions goes to the app team when Phase 3 is live on dev. |
 
 ## Surfaces
 

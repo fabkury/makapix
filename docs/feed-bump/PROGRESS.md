@@ -15,7 +15,7 @@
 - Next: Phase 2 (`listed_at` + `pending_listing` migration, sort-key swap).
 - Decisions D17–D20 added (sort both directions, web label "Date", permalink
   "Updated", no p3a gate, kickoffs sent first). Kickoff messages: app thread
-  `0005-feed-bump` (app repo commit `4efb93d5`, not pushed), p3a in
+  `0006-feed-bump` (app repo `messages/0006-feed-bump/`; renumbered from 0005, which the app took for localized-text), p3a in
   `messages/p3a/0001-…`.
 - **Phase 2 done:** migration `a8b9c0d1e2f3` (listed_at backfill + NOT NULL +
   `ix_posts_listed_at (listed_at DESC, id DESC)`; pending_listing + D13

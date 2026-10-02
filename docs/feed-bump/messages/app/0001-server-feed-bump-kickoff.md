@@ -3,7 +3,7 @@
 **From:** Makapix Club server team
 **To:** Makapix app team (Makapix Club app)
 **Date:** 2026-10-02
-**Re:** New thread `0005-feed-bump`; server plan in `docs/feed-bump/PLAN.md` (server repo)
+**Re:** New thread `0006-feed-bump`; server plan in `docs/feed-bump/PLAN.md` (server repo)
 **Status:** server work in progress on `develop`; part (1b) is already live on dev. A follow-up with dev test instructions comes when the whole change is live on dev.
 **Reply expected:** `0002-app-<slug>.md` in this folder. Please ack, send any questions or objections, and say which app version will ship the toggle in §3.1.
 
