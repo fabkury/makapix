@@ -35,6 +35,10 @@ Replacements are a mix of real new versions and small fixes (owner,
 | D14 | Re-approval notifications | Re-approving a re-queued replacement sends `POST_APPROVED` again (existing behaviour, desirable); held mentions release idempotently (`mentions.release_held_mentions`). |
 | D15 | Remix notifications | Unchanged: replace still notifies newly linked parents immediately, as create does for pending posts. |
 | D16 | Shipping | Phases 1–3 ship to prod in one deploy; plan and Phase 1 are committed to `develop` but not pushed yet. |
+| D17 | Sort direction | `sort=created_at`/`creation_date` uses the listing time in **both** directions (`order=asc` too). One key, no special cases. |
+| D18 | Web UI | The web filter label "Creation Date" is renamed to **"Date"**. The permalink shows **"Updated <date>"** when `artwork_modified_at > created_at` (any replacement, bumped or not). No feed-card marker in v1. No API change. |
+| D19 | p3a gate | The prod deploy does **not** wait for p3a's reply on local sorting. Worst case, bumps don't move on devices until a protocol follow-up. |
+| D20 | Messages | Kickoffs were sent before coding (2026-10-02): app thread `0005-feed-bump` (copy in `messages/app/`), p3a thread in `messages/p3a/`. A follow-up with dev test instructions goes to the app team when Phase 3 is live on dev. |
 
 ## Surfaces
 
@@ -107,7 +111,9 @@ composite with the visibility filters only if the plan needs it.
    continuity across a bump; promoted order unaffected. Approval (D11):
    first approval bumps; re-queued replacement bumps only with
    `'replace'` marker + cooldown at approval; revoke → re-approve doesn't.
-4. **Coordination** (owner relays, batched):
+4. **Coordination** (owner relays, batched; kickoffs sent 2026-10-02, D20). Web:
+   rename the sort label and add the permalink "Updated" line (D18). Then the
+   app follow-up with dev test instructions:
    - App thread: the `bump` default is ON (the app needs a "Move to top of feeds"
      toggle, default checked); new response fields; untrusted replacements
      now go back to approval; any client-side sort or dedupe by `created_at`
