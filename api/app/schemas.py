@@ -436,6 +436,10 @@ class Post(BaseModel):
     # (docs/promoted-feed-order/, exposed by docs/feed-bump/ D21). Null unless
     # promoted; falls back to created_at like Post.promoted_order_key().
     promoted_at: datetime | None = None
+    # When the post was last placed at the top of the date-sorted feeds — the
+    # key they sort on (docs/feed-bump/ D24). Equals created_at until a bump.
+    # Optional only so pre-D24 cached payloads still validate; never null.
+    listed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime | None = None
     owner: UserPublic | None = None
@@ -480,12 +484,15 @@ class Post(BaseModel):
         return instance
 
     @model_validator(mode="after")
-    def coalesce_promoted_at(self):
-        """promoted_at mirrors promoted_order_key(): set iff promoted."""
+    def coalesce_sort_keys(self):
+        """promoted_at mirrors promoted_order_key(): set iff promoted.
+        listed_at is never null (pre-D24 cache entries lack it)."""
         if not self.promoted:
             self.promoted_at = None
         elif self.promoted_at is None:
             self.promoted_at = self.created_at
+        if self.listed_at is None:
+            self.listed_at = self.created_at
         return self
 
 

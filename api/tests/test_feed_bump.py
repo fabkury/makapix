@@ -759,3 +759,42 @@ def test_post_schema_promoted_at_null_unless_promoted(client, trio):
     resp = client.get(f"/post?hashtag={trio['tag']}&sort=created_at")
     assert resp.status_code == 200, resp.text
     assert all(item["promoted_at"] is None for item in resp.json()["items"])
+
+
+# ---------------------------------------------------------------------------
+# D24 — Post.listed_at is public (app 0003 idea: show the cooldown date
+# before the replace)
+# ---------------------------------------------------------------------------
+
+
+def test_post_schema_carries_listed_at(client, trio):
+    bumped, older, _ = trio["posts"]
+    resp = client.get(f"/post?hashtag={trio['tag']}&sort=created_at")
+    assert resp.status_code == 200, resp.text
+    items = {item["id"]: item for item in resp.json()["items"]}
+    assert _iso(items[bumped.id]["listed_at"]) == bumped.listed_at
+    assert items[older.id]["listed_at"] == items[older.id]["created_at"]
+
+
+def test_post_schema_listed_at_tolerates_stale_cache_payload(client, trio):
+    from app import schemas
+
+    resp = client.get(f"/post?hashtag={trio['tag']}&sort=created_at")
+    item = resp.json()["items"][0]
+    item.pop("listed_at")  # a page cached before the field existed
+    post = schemas.Post(**item)
+    assert post.listed_at == post.created_at
+
+
+def test_feed_fields_accepts_listed_at(client, db):
+    owner = _make_user(db)
+    post = _make_post(db, owner=owner, created_at=BASE, public=True)
+    post.promoted, post.promoted_at = True, NOW() + timedelta(days=42)
+    db.commit()
+    resp = client.get("/feed/promoted?fields=id,listed_at&limit=1")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["items"][0] == {
+        "id": post.id,
+        "listed_at": resp.json()["items"][0]["listed_at"],
+    }
+    assert _iso(resp.json()["items"][0]["listed_at"]) == BASE
