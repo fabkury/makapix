@@ -1,7 +1,8 @@
 """Tests for the standardized v1 error envelope (errors.py).
 
 The v1 API serializes non-2xx responses as {"error": {"code","message","details"?}}.
-Non-versioned surfaces keep FastAPI's default {"detail": ...} shape.
+Non-versioned surfaces keep FastAPI's default {"detail": ...} shape, with the
+stable `code` (and `details`) beside it (docs/localized-text/ D2).
 """
 
 from __future__ import annotations
@@ -18,11 +19,12 @@ def test_v1_not_found_uses_envelope(client):
 
 
 def test_non_v1_not_found_keeps_legacy_detail_shape(client):
-    # Hardware/player and legacy surfaces must keep the default {detail} shape.
+    # Hardware/player and legacy surfaces keep the default {detail} shape;
+    # the stable code rides beside it.
     r = client.get("/player/this-route-does-not-exist")
     assert r.status_code == 404
     body = r.json()
-    assert body == {"detail": "Not Found"}
+    assert body == {"detail": "Not Found", "code": "not_found"}
 
 
 def test_v1_validation_error_uses_envelope(client):
@@ -39,6 +41,7 @@ def test_legacy_root_validation_error_keeps_detail_shape(client):
     r = client.post("/auth/login", json={})
     assert r.status_code == 422
     assert "detail" in r.json()
+    assert r.json()["code"] == "validation_error"
 
 
 def test_openapi_published_at_versioned_path_with_api_server(client):

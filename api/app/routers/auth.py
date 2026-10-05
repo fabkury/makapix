@@ -51,7 +51,8 @@ from ..services.email_verification import (
 from ..services.rate_limit import check_rate_limit
 from ..services.email_normalization import normalize_email
 from ..constants import TERMS_VERSION
-from ..utils.handles import generate_default_handle, validate_handle, is_handle_taken
+from ..utils.handle_normalize import check_handle, handle_invalid_error
+from ..utils.handles import generate_default_handle, is_handle_taken
 from ..utils.site_tracking import record_site_event
 
 logger = logging.getLogger(__name__)
@@ -161,23 +162,31 @@ def validate_password(password: str) -> tuple[bool, str | None]:
         - is_valid: True if password meets requirements
         - error_message: None if valid, error description if invalid
     """
+    weakness = password_weakness(password)
+    return (True, None) if weakness is None else (False, weakness[1])
+
+
+def password_weakness(password: str) -> tuple[str, str] | None:
+    """``(reason, message)`` when `password` fails `validate_password`, else None.
+
+    reason: required | too_short | no_letter | no_digit (`weak_password` details).
+    """
     if not password:
-        return False, "Password is required"
+        return "required", "Password is required"
 
     if len(password) < PASSWORD_MIN_LENGTH:
-        return False, f"Password must be at least {PASSWORD_MIN_LENGTH} characters long"
+        return (
+            "too_short",
+            f"Password must be at least {PASSWORD_MIN_LENGTH} characters long",
+        )
 
-    # Check for at least one letter
-    has_letter = any(c.isalpha() for c in password)
-    if not has_letter:
-        return False, "Password must contain at least one letter"
+    if not any(c.isalpha() for c in password):
+        return "no_letter", "Password must contain at least one letter"
 
-    # Check for at least one number
-    has_number = any(c.isdigit() for c in password)
-    if not has_number:
-        return False, "Password must contain at least one number"
+    if not any(c.isdigit() for c in password):
+        return "no_digit", "Password must contain at least one number"
 
-    return True, None
+    return None
 
 
 def generate_random_password(length: int = 12) -> str:
@@ -218,14 +227,34 @@ def _require_strong_password(password: str) -> None:
     Uses the same rules as `validate_password`; surfaces a stable `weak_password`
     code so native clients can branch without parsing the message.
     """
-    is_valid, error_message = validate_password(password)
-    if not is_valid:
+    weakness = password_weakness(password)
+    if weakness is not None:
+        reason, message = weakness
         raise AppError(
             ErrorCode.weak_password,
-            error_message or "Password does not meet requirements.",
+            message,
             status.HTTP_400_BAD_REQUEST,
-            details={"field": "password"},
+            details={
+                "field": "password",
+                "reason": reason,
+                "min_length": PASSWORD_MIN_LENGTH,
+            },
         )
+
+
+def _email_taken_details(db: Session, user: models.User) -> dict | None:
+    """`email_taken` details: the existing account's provider, when it has just one."""
+    providers = {i.provider for i in get_user_identities(db, user.id)}
+    return {"provider": providers.pop()} if len(providers) == 1 else None
+
+
+def _handle_taken(handle: str) -> AppError:
+    return AppError(
+        ErrorCode.handle_taken,
+        "This handle is already taken",
+        status.HTTP_409_CONFLICT,
+        details={"handle": handle},
+    )
 
 
 def _send_verification_otp(db: Session, user: models.User, email: str) -> None:
@@ -240,7 +269,7 @@ def _send_verification_otp(db: Session, user: models.User, email: str) -> None:
 
     try:
         code = create_verification_otp(db, user.id, email)
-        send_verification_otp_email(email, code, user.handle)
+        send_verification_otp_email(email, code, user.handle, user.locale)
     except ValueError:
         logger.info("Verification OTP cap reached for user %s; not resending", user.id)
 
@@ -294,9 +323,11 @@ def register(
     if existing_user:
         # A verified account always 409s, regardless of path.
         if existing_user.email_verified:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="An account with this email already exists",
+            raise AppError(
+                ErrorCode.email_taken,
+                "An account with this email already exists",
+                status.HTTP_409_CONFLICT,
+                details=_email_taken_details(db, existing_user),
             )
         # Unverified + chosen password → resume sign-up (A2 §3A): update the password
         # to the one just typed, (re)send a fresh OTP, return 200.
@@ -322,6 +353,8 @@ def register(
             from ..services.email_verification import invalidate_pending_verifications
 
             invalidate_pending_verifications(db, existing_user.id)
+            if payload.locale is not None:
+                existing_user.locale = payload.locale
             _send_verification_otp(db, existing_user, email)
             response.status_code = status.HTTP_200_OK
             return schemas.RegisterResponse(
@@ -332,9 +365,11 @@ def register(
                 verification_method="otp",
             )
         # Unverified, no password → website path, unchanged 409.
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="pending_verification",
+        # Message kept as the literal code: shipped app builds substring-match it.
+        raise AppError(
+            ErrorCode.pending_verification,
+            "pending_verification",
+            status.HTTP_409_CONFLICT,
         )
 
     # Rate limiting: 30 registrations per hour per IP
@@ -367,6 +402,7 @@ def register(
         email_verified=False,  # Requires email verification
         roles=["user"],
         terms_version_accepted=TERMS_VERSION,  # D26: signup = acceptance
+        locale=payload.locale,
     )
     db.add(user)
     try:
@@ -383,9 +419,10 @@ def register(
         db.rollback()
         error_str = str(e.orig) if hasattr(e, "orig") else str(e)
         if "email" in error_str.lower():
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="An account with this email already exists",
+            raise AppError(
+                ErrorCode.email_taken,
+                "An account with this email already exists",
+                status.HTTP_409_CONFLICT,
             )
         logger.error(f"Failed to create user: {e}", exc_info=True)
         raise HTTPException(
@@ -406,9 +443,10 @@ def register(
         # Clean up user if identity creation fails
         db.delete(user)
         db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="An account with this email already exists",
+        raise AppError(
+            ErrorCode.email_taken,
+            "An account with this email already exists",
+            status.HTTP_409_CONFLICT,
         )
     except Exception as e:
         db.rollback()
@@ -494,26 +532,29 @@ def login(
     )
 
     if user and not user.email_verified:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Email not verified. Please check your email for verification link.",
+        raise AppError(
+            ErrorCode.email_not_verified,
+            "Email not verified. Please check your email for verification link.",
+            status.HTTP_403_FORBIDDEN,
         )
 
     # Find identity and verify password
     identity = find_identity_by_password(db, email, payload.password)
 
     if not identity:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
+        raise AppError(
+            ErrorCode.invalid_credentials,
+            "Invalid email or password",
+            status.HTTP_401_UNAUTHORIZED,
         )
 
     # Get user
     user = db.query(models.User).filter(models.User.id == identity.user_id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
+        raise AppError(
+            ErrorCode.invalid_credentials,
+            "User not found",
+            status.HTTP_401_UNAUTHORIZED,
         )
 
     # Note: Email verification is checked BEFORE password verification (above)
@@ -604,14 +645,14 @@ def token(
         identity = find_identity_by_password(db, email, payload.password)
         if not identity:
             raise AppError(
-                ErrorCode.unauthorized,
+                ErrorCode.invalid_credentials,
                 "Invalid email or password.",
                 status.HTTP_401_UNAUTHORIZED,
             )
         user = db.query(models.User).filter(models.User.id == identity.user_id).first()
         if not user:
             raise AppError(
-                ErrorCode.unauthorized,
+                ErrorCode.invalid_credentials,
                 "Invalid email or password.",
                 status.HTTP_401_UNAUTHORIZED,
             )
@@ -756,7 +797,7 @@ def token(
                     # without one. Apple resends the email after the user removes
                     # the app from their Apple ID sign-in settings.
                     raise AppError(
-                        ErrorCode.bad_request,
+                        ErrorCode.apple_email_missing,
                         "Apple did not provide an email address for this account. "
                         "Remove this app under Settings → Apple ID → Sign-In & "
                         "Security → Sign in with Apple, then try again.",
@@ -769,10 +810,11 @@ def token(
                 )
                 if existing:
                     raise AppError(
-                        ErrorCode.conflict,
+                        ErrorCode.email_taken,
                         "An account with this email already exists. Please log in "
                         "with your existing account.",
                         status.HTTP_409_CONFLICT,
+                        details=_email_taken_details(db, existing),
                     )
 
                 # Create user — OAuth users are pre-verified by the provider.
@@ -795,7 +837,7 @@ def token(
                 except IntegrityError:
                     db.rollback()
                     raise AppError(
-                        ErrorCode.conflict,
+                        ErrorCode.email_taken,
                         "An account with this email already exists. Please log in "
                         "with your existing account.",
                         status.HTTP_409_CONFLICT,
@@ -1074,25 +1116,22 @@ def change_password(
         db, current_user.email, payload.current_password
     )
     if not identity:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Current password is incorrect",
+        raise AppError(
+            ErrorCode.current_password_incorrect,
+            "Current password is incorrect",
+            status.HTTP_400_BAD_REQUEST,
         )
 
     # Validate new password
-    is_valid, error_message = validate_password(payload.new_password)
-    if not is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=error_message,
-        )
+    _require_strong_password(payload.new_password)
 
     # Update password
     success = update_password(db, current_user.id, payload.new_password)
     if not success:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to change password",
+        raise AppError(
+            ErrorCode.password_login_unsupported,
+            "Failed to change password",
+            status.HTTP_400_BAD_REQUEST,
         )
 
     return schemas.ChangePasswordResponse(
@@ -1119,9 +1158,10 @@ def change_handle(
     """
     # Require email verification to change handle
     if not current_user.email_verified:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Email verification required to change handle.",
+        raise AppError(
+            ErrorCode.email_not_verified,
+            "Email verification required to change handle.",
+            status.HTTP_403_FORBIDDEN,
         )
 
     # Prevent owner from changing their handle
@@ -1135,12 +1175,9 @@ def change_handle(
     new_handle = payload.new_handle.strip()
 
     # Validate handle format
-    is_valid, error_msg = validate_handle(new_handle)
-    if not is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid handle: {error_msg}",
-        )
+    handle_error = handle_invalid_error(new_handle)
+    if handle_error is not None:
+        raise handle_error
 
     # Check if same as current (case-insensitive comparison)
     if new_handle.lower() == current_user.handle.lower():
@@ -1164,10 +1201,7 @@ def change_handle(
                 db.refresh(current_user)
             except IntegrityError:
                 db.rollback()
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="This handle is already taken",
-                )
+                raise _handle_taken(new_handle)
 
             return schemas.ChangeHandleResponse(
                 message="Handle updated successfully",
@@ -1181,10 +1215,7 @@ def change_handle(
 
     # Check if handle is already taken (case-insensitive)
     if is_handle_taken(db, new_handle, exclude_user_id=current_user.id):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="This handle is already taken",
-        )
+        raise _handle_taken(new_handle)
 
     # Store old handle for audit
     old_handle = current_user.handle
@@ -1207,10 +1238,7 @@ def change_handle(
         db.refresh(current_user)
     except IntegrityError:
         db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="This handle is already taken",
-        )
+        raise _handle_taken(new_handle)
 
     logger.info(
         f"User {current_user.id} changed handle from '{old_handle}' to '{new_handle}'"
@@ -1243,12 +1271,13 @@ def check_handle_availability(
     handle = payload.handle.strip()
 
     # Validate handle format first
-    is_valid, error_msg = validate_handle(handle)
-    if not is_valid:
+    problem = check_handle(handle)
+    if problem is not None:
         return schemas.CheckHandleAvailabilityResponse(
             handle=handle,
             available=False,
-            message=f"Invalid handle: {error_msg}",
+            message=f"Invalid handle: {problem.message}",
+            reason=problem.reason,
         )
 
     # Check if handle is taken (excluding current user if authenticated)
@@ -1260,6 +1289,7 @@ def check_handle_availability(
             handle=handle,
             available=False,
             message="This handle is already taken",
+            reason="taken",
         )
 
     return schemas.CheckHandleAvailabilityResponse(
@@ -1487,28 +1517,23 @@ def reset_password(
     user = db.query(models.User).filter(models.User.id == reset_token.user_id).first()
 
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found.",
+        raise AppError(
+            ErrorCode.user_not_found, "User not found.", status.HTTP_404_NOT_FOUND
         )
 
     # Check if user is allowed to authenticate
     check_user_can_authenticate(user)
 
     # Validate new password
-    is_valid, error_message = validate_password(payload.new_password)
-    if not is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=error_message,
-        )
+    _require_strong_password(payload.new_password)
 
     # Update password
     success = update_password(db, user.id, payload.new_password)
     if not success:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to reset password. This account may not support password login.",
+        raise AppError(
+            ErrorCode.password_login_unsupported,
+            "Failed to reset password. This account may not support password login.",
+            status.HTTP_400_BAD_REQUEST,
         )
 
     # Mark token as used
@@ -1579,7 +1604,9 @@ def request_email_otp(
     if user and not user.email_verified:
         try:
             code = create_verification_otp(db, user.id, email)
-            send_verification_otp_email(email, code, user.handle)
+            send_verification_otp_email(
+                email, code, user.handle, payload.locale or user.locale
+            )
         except ValueError:
             pass  # per-user hourly cap; keep the response generic
     return schemas.OtpMessageResponse(
@@ -1631,7 +1658,9 @@ def request_password_otp(
     if user:
         try:
             code = create_reset_otp(db, user.id)
-            send_password_reset_otp_email(email, code, user.handle)
+            send_password_reset_otp_email(
+                email, code, user.handle, payload.locale or user.locale
+            )
         except ValueError:
             pass
     return schemas.OtpMessageResponse(
@@ -1659,14 +1688,10 @@ def confirm_password_otp(
             status.HTTP_400_BAD_REQUEST,
         )
     check_user_can_authenticate(user)
-    is_valid, error_message = validate_password(payload.new_password)
-    if not is_valid:
-        raise AppError(
-            ErrorCode.validation_error, error_message, status.HTTP_400_BAD_REQUEST
-        )
+    _require_strong_password(payload.new_password)
     if not update_password(db, user.id, payload.new_password):
         raise AppError(
-            ErrorCode.bad_request,
+            ErrorCode.password_login_unsupported,
             "Failed to reset password. This account may not support password login.",
             status.HTTP_400_BAD_REQUEST,
         )
@@ -1715,9 +1740,10 @@ def unlink_provider(
     try:
         deleted = delete_identity(db, identity_id, current_user.id)
         if not deleted:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot unlink the last authentication method",
+            raise AppError(
+                ErrorCode.last_auth_method,
+                "Cannot unlink the last authentication method",
+                status.HTTP_400_BAD_REQUEST,
             )
     except ValueError as e:
         raise HTTPException(
@@ -1832,9 +1858,10 @@ def github_callback(
             state_data = json.loads(_b64url_decode(state).decode())
         except Exception as e:
             logger.warning(f"Failed to decode OAuth state: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid OAuth state. Please try again.",
+            raise AppError(
+                ErrorCode.oauth_state_invalid,
+                "Invalid OAuth state. Please try again.",
+                status.HTTP_400_BAD_REQUEST,
             )
 
         # Extract native (server-brokered) flow params BEFORE validating the
@@ -1853,9 +1880,10 @@ def github_callback(
             logger.warning(
                 "OAuth state verification failed (nonce mismatch or missing)"
             )
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid OAuth state. Please try again.",
+            raise AppError(
+                ErrorCode.oauth_state_invalid,
+                "Invalid OAuth state. Please try again.",
+                status.HTTP_400_BAD_REQUEST,
             )
 
         # Exchange code for GitHub access token
@@ -1880,8 +1908,8 @@ def github_callback(
                 if "error" in token_response:
                     error_msg = f"GitHub OAuth error: {token_response.get('error_description', token_response.get('error', 'Unknown error'))}"
                     logger.error(error_msg)
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg
+                    raise AppError(
+                        ErrorCode.github_failed, error_msg, status.HTTP_400_BAD_REQUEST
                     )
 
                 github_access_token = token_response["access_token"]
@@ -1959,9 +1987,10 @@ def github_callback(
 
         except httpx.HTTPError as e:
             logger.error(f"HTTP error during GitHub OAuth flow: {e}", exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to authenticate with GitHub: {str(e)}",
+            raise AppError(
+                ErrorCode.github_failed,
+                f"Failed to authenticate with GitHub: {str(e)}",
+                status.HTTP_400_BAD_REQUEST,
             )
 
         # Find or create Makapix user via GitHub identity
@@ -2057,9 +2086,11 @@ def github_callback(
                         logger.error(
                             f"Email {email_to_use} already registered for user {existing_user.id}"
                         )
-                        raise HTTPException(
-                            status_code=status.HTTP_409_CONFLICT,
-                            detail="An account with this email already exists. Please log in with your existing account.",
+                        raise AppError(
+                            ErrorCode.email_taken,
+                            "An account with this email already exists. Please log in with your existing account.",
+                            status.HTTP_409_CONFLICT,
+                            details=_email_taken_details(db, existing_user),
                         )
 
                 # Create user - OAuth users are pre-verified by the provider.
@@ -2228,6 +2259,7 @@ def github_callback(
                 native_app_state,
                 "access_denied",
                 str(he.detail) if he.detail else "Authentication failed",
+                getattr(he, "code", None),
             )
         # Web flow: the popup is a browser window, so render a branded HTML
         # error page instead of the framework's JSON.
@@ -2260,11 +2292,18 @@ def _native_oauth_error_redirect(
     app_state: str | None,
     error: str,
     description: str,
+    error_code: str | None = None,
 ):
-    """302 to the app's custom scheme carrying error/error_description/state."""
+    """302 to the app's custom scheme carrying error/error_description/state.
+
+    `error` stays an OAuth value; the specific Makapix code (email_taken,
+    oauth_state_invalid, github_failed) rides in `error_code` when known.
+    """
     from fastapi.responses import RedirectResponse
 
     params = {"error": error, "error_description": description}
+    if error_code:
+        params["error_code"] = str(error_code)
     if app_state:
         params["state"] = app_state
     resp = RedirectResponse(url=f"{redirect_uri}?{urlencode(params)}", status_code=302)
@@ -2340,9 +2379,10 @@ def exchange_github_code(
             token_response = token_http_resp.json()
 
             if "error" in token_response:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"GitHub OAuth error: {token_response['error_description']}",
+                raise AppError(
+                    ErrorCode.github_failed,
+                    f"GitHub OAuth error: {token_response['error_description']}",
+                    status.HTTP_400_BAD_REQUEST,
                 )
 
             access_token = token_response["access_token"]
@@ -2362,9 +2402,10 @@ def exchange_github_code(
             verified_email = _github_primary_verified_email(client, access_token)
 
     except httpx.HTTPError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to authenticate with GitHub: {str(e)}",
+        raise AppError(
+            ErrorCode.github_failed,
+            f"Failed to authenticate with GitHub: {str(e)}",
+            status.HTTP_400_BAD_REQUEST,
         )
 
     # Find or create Makapix user via GitHub identity
@@ -2627,6 +2668,7 @@ def get_me(
     )
     uploads = schemas.MeUploadsQuota(
         window=f"{up_window // 3600}h" if up_window % 3600 == 0 else f"{up_window}s",
+        window_seconds=up_window,
         limit=up_limit,
         remaining=get_rate_limit_remaining(up_key, up_limit),
         reset_at=reset_at,

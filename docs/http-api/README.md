@@ -61,11 +61,32 @@ These endpoints work without authentication:
 
 ### Error Response
 
+Under `/v1` (the app-facing API), every error uses the envelope:
+
 ```json
 {
-  "detail": "Error message describing what went wrong"
+  "error": {
+    "code": "post_not_found",
+    "message": "Post not found",
+    "details": { "...": "..." }
+  }
 }
 ```
+
+Unversioned paths (players, `/pmd`, `/admin/user`, the website's legacy root
+copies) keep FastAPI's `detail`, with the same stable `code` (and `details`,
+when present) beside it:
+
+```json
+{
+  "detail": "Player not found",
+  "code": "player_not_found"
+}
+```
+
+`code` is a value of `ErrorCode` (`api/app/errors.py`); plain errors carry the
+status fallback (`not_found`, `forbidden`, …). Clients should branch on `code`
+and treat `message` / `detail` as display text.
 
 ### Paginated Response
 

@@ -21,6 +21,10 @@ Policy (see docs/http-api/authentication.md "Handle Rules"):
 from __future__ import annotations
 
 import unicodedata
+from typing import TYPE_CHECKING, Any, NamedTuple
+
+if TYPE_CHECKING:
+    from ..errors import AppError
 
 HANDLE_MIN_LENGTH = 3
 HANDLE_MAX_LENGTH = 32
@@ -90,47 +94,109 @@ def is_allowed_handle_char(ch: str) -> bool:
     return category[0] == "L" or category == "Nd" or category in ("Mn", "Mc")
 
 
+class HandleProblem(NamedTuple):
+    """Why a handle failed validation.
+
+    ``reason`` is a stable code (empty|too_short|too_long|bad_edge|bad_char|
+    no_alnum); ``details`` is the `handle_invalid` error payload (reason, the
+    length limits, and ``position``/``char`` for bad_char).
+    """
+
+    reason: str
+    message: str
+    details: dict[str, Any]
+
+
+def check_handle(
+    handle: str | None,
+    min_length: int = HANDLE_MIN_LENGTH,
+    max_length: int = HANDLE_MAX_LENGTH,
+) -> HandleProblem | None:
+    """Validate a handle. Returns ``None`` when valid, else a :class:`HandleProblem`."""
+
+    def problem(reason: str, message: str, **extra: Any) -> HandleProblem:
+        details = {
+            "reason": reason,
+            "min_length": min_length,
+            "max_length": max_length,
+            **extra,
+        }
+        return HandleProblem(reason, message, details)
+
+    if handle is None:
+        return problem("empty", "Handle cannot be empty")
+
+    h = normalize_handle(handle)
+    if not h:
+        return problem("empty", "Handle cannot be empty or whitespace-only")
+
+    length = len(h)
+    if length < min_length:
+        return problem(
+            "too_short",
+            f"Handle must be at least {min_length} character"
+            f"{'s' if min_length != 1 else ''}",
+        )
+    if length > max_length:
+        return problem("too_long", f"Handle must be at most {max_length} characters")
+
+    if h[0] in "-_" or h[-1] in "-_":
+        return problem(
+            "bad_edge", "Handle cannot start or end with a hyphen or underscore"
+        )
+
+    has_alnum = False
+    for i, ch in enumerate(h):
+        if not is_allowed_handle_char(ch):
+            return problem(
+                "bad_char",
+                f"Handle has an unsupported character at position {i + 1}: "
+                f"'{ch}' (U+{ord(ch):04X}). Use letters, digits, hyphen, or underscore.",
+                position=i + 1,
+                char=ch,
+            )
+        if ch.isalpha() or unicodedata.category(ch) == "Nd":
+            has_alnum = True
+
+    if not has_alnum:
+        return problem("no_alnum", "Handle must contain at least one letter or digit")
+
+    return None
+
+
 def validate_handle(
     handle: str | None,
     min_length: int = HANDLE_MIN_LENGTH,
     max_length: int = HANDLE_MAX_LENGTH,
 ) -> tuple[bool, str | None]:
     """Validate a handle. Returns ``(True, None)`` or ``(False, error_message)``."""
-    if handle is None:
-        return False, "Handle cannot be empty"
+    found = check_handle(handle, min_length, max_length)
+    return (True, None) if found is None else (False, found.message)
 
-    h = normalize_handle(handle)
-    if not h:
-        return False, "Handle cannot be empty or whitespace-only"
 
-    length = len(h)
-    if length < min_length:
-        return (
-            False,
-            f"Handle must be at least {min_length} character"
-            f"{'s' if min_length != 1 else ''}",
-        )
-    if length > max_length:
-        return False, f"Handle must be at most {max_length} characters"
+def handle_invalid_error(
+    handle: str | None,
+    min_length: int = HANDLE_MIN_LENGTH,
+    max_length: int = HANDLE_MAX_LENGTH,
+) -> AppError | None:
+    """The ``handle_invalid`` AppError to raise for ``handle``, or ``None`` if valid.
 
-    if h[0] in "-_" or h[-1] in "-_":
-        return False, "Handle cannot start or end with a hyphen or underscore"
+    Message is ``"Invalid handle: <reason text>"`` (what the routers always sent).
+    """
+    found = check_handle(handle, min_length, max_length)
+    if found is None:
+        return None
+    # Imported lazily: this module stays importable from models/migrations.
+    from fastapi import status
 
-    has_alnum = False
-    for i, ch in enumerate(h):
-        if not is_allowed_handle_char(ch):
-            return (
-                False,
-                f"Handle has an unsupported character at position {i + 1}: "
-                f"'{ch}' (U+{ord(ch):04X}). Use letters, digits, hyphen, or underscore.",
-            )
-        if ch.isalpha() or unicodedata.category(ch) == "Nd":
-            has_alnum = True
+    from ..errors import AppError, ErrorCode
 
-    if not has_alnum:
-        return False, "Handle must contain at least one letter or digit"
-
-    return True, None
+    return AppError(
+        ErrorCode.handle_invalid,
+        f"Invalid handle: {found.message}",
+        status.HTTP_400_BAD_REQUEST,
+        details=found.details,
+    )
 
 
 def compute_handle_skeleton(handle: str) -> str:

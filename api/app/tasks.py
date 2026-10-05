@@ -2944,6 +2944,23 @@ def process_ssafpp(self, post_id: int) -> dict[str, Any]:
 # ============================================================================
 
 
+# BDR failure reasons: `error_code` -> the fixed `error_message` stored on the
+# row. The API derives `error_code` back from the message (no column for it).
+BDR_ERROR_MESSAGES = {
+    "user_not_found": "User not found",
+    "no_posts": "No posts found",
+    "internal": "Something went wrong while preparing your download.",
+}
+
+
+class BDRFailure(ValueError):
+    """A known BDR failure whose message is safe to show the user."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(BDR_ERROR_MESSAGES[code])
+        self.code = code
+
+
 @celery_app.task(
     name="app.tasks.process_bdr_job",
     bind=True,
@@ -3011,7 +3028,7 @@ def process_bdr_job(self, bdr_id: str) -> dict[str, Any]:
         # Load user info
         user = db.query(models.User).filter(models.User.id == bdr.user_id).first()
         if not user:
-            raise ValueError("User not found")
+            raise BDRFailure("user_not_found")
 
         user_sqid = user.public_sqid or sqids.encode([user.id])
 
@@ -3019,7 +3036,7 @@ def process_bdr_job(self, bdr_id: str) -> dict[str, Any]:
         posts = db.query(models.Post).filter(models.Post.id.in_(bdr.post_ids)).all()
 
         if not posts:
-            raise ValueError("No posts found")
+            raise BDRFailure("no_posts")
 
         # Build metadata
         metadata = {
@@ -3220,6 +3237,7 @@ def process_bdr_job(self, bdr_id: str) -> dict[str, Any]:
                     artwork_count=len(posts),
                     download_url=f"{os.getenv('BASE_URL', 'https://makapix.club')}/u/{user_sqid}/posts?bdr={bdr_id}",
                     expires_at=bdr.expires_at,
+                    locale=user.locale,
                 )
             except Exception as e:
                 logger.error(f"Failed to send BDR email: {e}")
@@ -3245,7 +3263,10 @@ def process_bdr_job(self, bdr_id: str) -> dict[str, Any]:
             )
             if bdr:
                 bdr.status = "failed"
-                bdr.error_message = str(e)[:500]  # Truncate long errors
+                # Never store raw exception text (shown to users); it's logged above
+                bdr.error_message = BDR_ERROR_MESSAGES[
+                    e.code if isinstance(e, BDRFailure) else "internal"
+                ]
                 bdr.completed_at = datetime.now(timezone.utc)
                 db.commit()
         except Exception as update_error:

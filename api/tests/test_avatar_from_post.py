@@ -321,13 +321,13 @@ def test_delete_avatar_clears_attribution(client, db, user, vault_tmp):
     assert user.avatar_source_post_id is None
 
 
-def test_oversized_artwork_400(client, db, user, vault_tmp, monkeypatch):
+def test_oversized_artwork_413(client, db, user, vault_tmp, monkeypatch):
     from app import avatar_vault
 
     post = _make_post(db, user, {"png": _png_bytes()}, "png", promoted=True)
     monkeypatch.setattr(avatar_vault, "MAX_AVATAR_SIZE_BYTES", 10)
 
     resp = _from_post(client, user, post.public_sqid, user)
-    assert resp.status_code == 400, resp.text
+    assert resp.status_code == 413, resp.text
     db.refresh(user)
     assert user.avatar_url is None

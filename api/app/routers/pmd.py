@@ -19,9 +19,10 @@ from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas
 from ..utils.mentions import plain_text
-from ..auth import get_current_user
+from ..auth import forbidden_role, get_current_user
 from ..cache import cache_invalidate
 from ..deps import get_db
+from ..errors import AppError, ErrorCode
 from ..services.post_stats import get_view_counts
 from ..sqids_config import decode_user_sqid
 from ..utils.audit import log_moderation_action
@@ -60,28 +61,35 @@ def get_target_user(
 
     # Require moderator for cross-user access
     if "moderator" not in current_user.roles and "owner" not in current_user.roles:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Moderator role required to access other users' PMD",
-        )
+        raise forbidden_role("moderator")
 
     # Look up target user
     user_id = decode_user_sqid(target_sqid)
     if user_id is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise AppError(ErrorCode.user_not_found, "User not found", 404)
 
     target_user = db.query(models.User).filter(models.User.id == user_id).first()
     if not target_user or target_user.public_sqid != target_sqid:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise AppError(ErrorCode.user_not_found, "User not found", 404)
 
     # Protect owner - cannot access owner's PMD unless you ARE the owner
     if "owner" in target_user.roles and target_user.id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot access the site owner's PMD",
+        raise AppError(
+            ErrorCode.owner_protected,
+            "Cannot access the site owner's PMD",
+            status.HTTP_403_FORBIDDEN,
         )
 
     return target_user
+
+
+def _posts_not_owned(requested_ids: list[int], found_ids: set[int]) -> AppError:
+    return AppError(
+        ErrorCode.posts_not_owned,
+        "Some posts not found or not owned by target user",
+        400,
+        details={"missing_ids": sorted(set(requested_ids) - found_ids)},
+    )
 
 
 @router.get("/posts", response_model=schemas.PMDPostsResponse)
@@ -230,9 +238,7 @@ def execute_batch_action(
     )
 
     if len(posts) != len(request.post_ids):
-        raise HTTPException(
-            status_code=400, detail="Some posts not found or not owned by target user"
-        )
+        raise _posts_not_owned(request.post_ids, {p.id for p in posts})
 
     # Execute action
     now = datetime.now(timezone.utc)
@@ -344,9 +350,7 @@ def batch_change_license(
     )
 
     if len(posts) != len(request.post_ids):
-        raise HTTPException(
-            status_code=400, detail="Some posts not found or not owned by target user"
-        )
+        raise _posts_not_owned(request.post_ids, {p.id for p in posts})
 
     # Update license for all posts
     for post in posts:
@@ -408,27 +412,26 @@ def create_bdr(
     )
 
     if today_count >= BDR_DAILY_LIMIT:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Daily limit of {BDR_DAILY_LIMIT} download requests reached. Try again tomorrow.",
+        raise AppError(
+            ErrorCode.bdr_daily_limit,
+            f"Daily limit of {BDR_DAILY_LIMIT} download requests reached. Try again tomorrow.",
+            429,
+            details={"limit": BDR_DAILY_LIMIT},
         )
 
     # Verify all posts belong to target user and are artwork
-    valid_count = (
-        db.query(func.count(models.Post.id))
-        .filter(
+    valid_ids = {
+        row[0]
+        for row in db.query(models.Post.id).filter(
             models.Post.id.in_(request.post_ids),
             models.Post.owner_id == target_user.id,
             models.Post.kind == "artwork",
             models.Post.deleted_by_user == False,
         )
-        .scalar()
-    )
+    }
 
-    if valid_count != len(request.post_ids):
-        raise HTTPException(
-            status_code=400, detail="Some posts not found or not owned by target user"
-        )
+    if len(valid_ids) != len(request.post_ids):
+        raise _posts_not_owned(request.post_ids, valid_ids)
 
     # Create BDR record (under target user's ID so they can download their data)
     bdr = models.BatchDownloadRequest(
@@ -487,6 +490,7 @@ def list_bdrs(
         download_url = None
         if bdr.status == "ready" and bdr.file_path:
             download_url = f"/api/pmd/bdr/{bdr.id}/download"
+        error_code, error_message = _bdr_error(bdr)
 
         items.append(
             schemas.BDRItem(
@@ -496,7 +500,8 @@ def list_bdrs(
                 created_at=bdr.created_at,
                 completed_at=bdr.completed_at,
                 expires_at=bdr.expires_at,
-                error_message=bdr.error_message,
+                error_code=error_code,
+                error_message=error_message,
                 download_url=download_url,
             )
         )
@@ -539,15 +544,15 @@ def download_bdr(
     )
 
     if not bdr:
-        raise HTTPException(status_code=404, detail="Download not found")
+        raise AppError(ErrorCode.bdr_not_found, "Download not found", 404)
 
     if bdr.status != "ready":
-        raise HTTPException(
-            status_code=400, detail=f"Download not ready (status: {bdr.status})"
+        raise AppError(
+            ErrorCode.bdr_not_ready, f"Download not ready (status: {bdr.status})", 400
         )
 
     if bdr.expires_at and datetime.now(timezone.utc) > bdr.expires_at:
-        raise HTTPException(status_code=410, detail="Download link has expired")
+        raise AppError(ErrorCode.bdr_expired, "Download link has expired", 410)
 
     # Stream file from vault
     vault_path = Path(os.getenv("VAULT_LOCATION", "/vault")) / bdr.file_path
@@ -567,6 +572,22 @@ def download_bdr(
 # ============================================================================
 
 
+def _bdr_error(bdr: models.BatchDownloadRequest) -> tuple[str | None, str | None]:
+    """`(error_code, error_message)` for a BDR, derived from the stored message.
+
+    Rows failed before error codes existed may hold raw exception text; those
+    become `internal` with the fixed message.
+    """
+    from ..tasks import BDR_ERROR_MESSAGES
+
+    if not bdr.error_message:
+        return None, None
+    for code, message in BDR_ERROR_MESSAGES.items():
+        if bdr.error_message == message:
+            return code, message
+    return "internal", BDR_ERROR_MESSAGES["internal"]
+
+
 def get_user_bdrs(db: Session, user_id: int) -> list[models.BatchDownloadRequest]:
     """Get user's recent BDRs (for SSE updates)."""
     return (
@@ -583,6 +604,7 @@ def bdr_to_dict(bdr: models.BatchDownloadRequest) -> dict:
     download_url = None
     if bdr.status == "ready" and bdr.file_path:
         download_url = f"/api/pmd/bdr/{bdr.id}/download"
+    error_code, error_message = _bdr_error(bdr)
 
     return {
         "id": str(bdr.id),
@@ -591,7 +613,8 @@ def bdr_to_dict(bdr: models.BatchDownloadRequest) -> dict:
         "created_at": bdr.created_at.isoformat() if bdr.created_at else None,
         "completed_at": bdr.completed_at.isoformat() if bdr.completed_at else None,
         "expires_at": bdr.expires_at.isoformat() if bdr.expires_at else None,
-        "error_message": bdr.error_message,
+        "error_code": error_code,
+        "error_message": error_message,
         "download_url": download_url,
     }
 

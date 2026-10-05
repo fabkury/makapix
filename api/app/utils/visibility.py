@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy.orm import Session
+
+from ..errors import AppError, ErrorCode
 
 if TYPE_CHECKING:
     from .. import models
@@ -80,7 +82,7 @@ def get_accessible_post_or_404(
 
     post = db.query(models.Post).filter(models.Post.id == post_id).first()
     if post is None or not can_access_post(post, user):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
     return post

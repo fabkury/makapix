@@ -1,0 +1,22 @@
+{
+  "greeting_named": "Hi {handle},",
+  "greeting_anonymous": "Hi there,",
+  "footer": "Makapix Club · makapix.club",
+
+  "verify_subject": "Your Makapix Club verification code",
+  "verify_intro": "Here is your code to verify your email address on Makapix Club:",
+  "code_expiry": "It expires in 10 minutes.",
+  "verify_ignore": "If you didn't ask for this code, you can ignore this email.",
+
+  "reset_subject": "Your Makapix Club password reset code",
+  "reset_intro": "Here is your code to reset your Makapix Club password:",
+  "reset_ignore": "If you didn't ask to reset your password, you can ignore this email. Your password has not changed.",
+
+  "bdr_subject": "Your Makapix Club download is ready",
+  "bdr_ready": "Your batch download is ready.",
+  "bdr_count": "Artworks: {count}",
+  "bdr_button": "Download",
+  "bdr_expiry": "This link expires on {expires}.",
+  "bdr_fallback_link": "If the button doesn't work, copy this link into your browser:",
+  "bdr_why": "You're receiving this because you requested a batch download on Makapix Club. If you didn't, you can ignore this email."
+}

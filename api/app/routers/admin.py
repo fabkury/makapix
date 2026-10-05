@@ -19,6 +19,7 @@ from ..auth import (
 )
 from ..constants import NotificationType
 from ..deps import get_db
+from ..errors import AppError, ErrorCode
 from ..utils.audit import log_moderation_action
 from ..utils.view_tracking import truncate_ip
 from ..pagination import (
@@ -32,19 +33,45 @@ from ..services.social_notifications import SocialNotificationService
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
+def _get_user_by_key_or_sqid(db: Session, id: str) -> models.User:
+    """Resolve a ban/hide target given as a user_key (UUID) or a public sqid.
+
+    These routes shadow umd.py's sqid twins (this router is included first, at
+    the root and under /v1), so they serve both the UUID and the sqid callers.
+    """
+    from .umd import get_user_by_sqid_or_404
+
+    try:
+        user_key = UUID(id)
+    except ValueError:
+        return get_user_by_sqid_or_404(db, id)
+    user = db.query(models.User).filter(models.User.user_key == user_key).first()
+    if not user:
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
+        )
+    return user
+
+
 @router.post(
     "/user/{id}/ban",
     response_model=schemas.BanResponse,
     status_code=status.HTTP_201_CREATED,
 )
 def ban_user(
-    id: UUID,
-    payload: schemas.BanUserRequest,
+    id: str,
+    payload: schemas.BanUserRequest | None = None,
+    duration_days: int | None = Query(
+        None, ge=1, le=365, description="Ban duration in days (null = permanent)"
+    ),
     db: Session = Depends(get_db),
     moderator: models.User = Depends(require_moderator),
 ) -> schemas.BanResponse:
     """
-    Ban user (moderator only).
+    Ban user (moderator only). `id` is the user_key (UUID) or the public sqid.
+
+    The duration comes from the JSON body, or from the `duration_days` query
+    parameter when there is no body (the sqid callers).
 
     Banning a user prevents them from authenticating but does NOT delete their account.
     The user profile and all associated data remain in the database indefinitely.
@@ -60,23 +87,22 @@ def ban_user(
     """
     from datetime import datetime, timedelta, timezone
 
-    # Look up by user_key (UUID)
-    user = db.query(models.User).filter(models.User.user_key == id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
+    user = _get_user_by_key_or_sqid(db, id)
 
     # Block if target is owner AND actor is not the target
     if "owner" in user.roles and user.id != moderator.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot manage the site owner",
+        raise AppError(
+            ErrorCode.owner_protected,
+            "Cannot manage the site owner",
+            status.HTTP_403_FORBIDDEN,
         )
 
+    if payload is not None:
+        duration_days = payload.duration_days or duration_days
+
     # Permanent ban uses the sentinel (NOT NULL, which would read as "not banned").
-    if payload.duration_days:
-        until = datetime.now(timezone.utc) + timedelta(days=payload.duration_days)
+    if duration_days:
+        until = datetime.now(timezone.utc) + timedelta(days=duration_days)
     else:
         until = models.PERMANENT_BAN_UNTIL
 
@@ -90,8 +116,9 @@ def ban_user(
         action="ban_user",
         target_type="user",
         target_id=user.id,
-        reason_code=payload.reason_code,
-        note=payload.note or payload.reason,
+        reason_code=payload.reason_code if payload else None,
+        note=(payload and (payload.note or payload.reason))
+        or f"Duration: {f'{duration_days} days' if duration_days else 'permanent'}",
     )
 
     return schemas.BanResponse(status="banned", until=until)
@@ -99,7 +126,7 @@ def ban_user(
 
 @router.delete("/user/{id}/ban", status_code=status.HTTP_204_NO_CONTENT)
 def unban_user(
-    id: UUID,
+    id: str,
     db: Session = Depends(get_db),
     moderator: models.User = Depends(require_moderator),
 ) -> None:
@@ -109,18 +136,14 @@ def unban_user(
     Removes the ban by setting banned_until to NULL, allowing the user to
     authenticate again immediately. Does not delete the user's profile or data.
     """
-    # Look up by user_key (UUID)
-    user = db.query(models.User).filter(models.User.user_key == id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
+    user = _get_user_by_key_or_sqid(db, id)
 
     # Block if target is owner AND actor is not the target
     if "owner" in user.roles and user.id != moderator.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot manage the site owner",
+        raise AppError(
+            ErrorCode.owner_protected,
+            "Cannot manage the site owner",
+            status.HTTP_403_FORBIDDEN,
         )
 
     user.banned_until = None
@@ -155,8 +178,8 @@ def promote_moderator(
     # Look up by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Ensure user is authenticated
@@ -213,15 +236,16 @@ def demote_moderator(
     # Look up by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Prevent demoting owner from moderator
     if "owner" in user.roles:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Owner cannot be demoted from moderator role",
+        raise AppError(
+            ErrorCode.owner_protected,
+            "Owner cannot be demoted from moderator role",
+            status.HTTP_403_FORBIDDEN,
         )
 
     # Prevent modifying own roles
@@ -251,25 +275,21 @@ def demote_moderator(
 
 @router.post("/user/{id}/hide", status_code=status.HTTP_201_CREATED)
 def hide_user(
-    id: UUID,
+    id: str,
     db: Session = Depends(get_db),
     moderator: models.User = Depends(require_moderator),
-) -> None:
+) -> dict:
     """
     Hide user profile (moderator only).
     """
-    # Look up by user_key (UUID)
-    user = db.query(models.User).filter(models.User.user_key == id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
+    user = _get_user_by_key_or_sqid(db, id)
 
     # Block if target is owner AND actor is not the target
     if "owner" in user.roles and user.id != moderator.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot manage the site owner",
+        raise AppError(
+            ErrorCode.owner_protected,
+            "Cannot manage the site owner",
+            status.HTTP_403_FORBIDDEN,
         )
 
     user.hidden_by_mod = True
@@ -284,28 +304,26 @@ def hide_user(
         target_id=user.id,
     )
 
+    return {"status": "hidden"}
+
 
 @router.delete("/user/{id}/hide", status_code=status.HTTP_204_NO_CONTENT)
 def unhide_user(
-    id: UUID,
+    id: str,
     db: Session = Depends(get_db),
     moderator: models.User = Depends(require_moderator),
 ) -> None:
     """
     Unhide user profile (moderator only).
     """
-    # Look up by user_key (UUID)
-    user = db.query(models.User).filter(models.User.user_key == id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
+    user = _get_user_by_key_or_sqid(db, id)
 
     # Block if target is owner AND actor is not the target
     if "owner" in user.roles and user.id != moderator.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot manage the site owner",
+        raise AppError(
+            ErrorCode.owner_protected,
+            "Cannot manage the site owner",
+            status.HTTP_403_FORBIDDEN,
         )
 
     user.hidden_by_mod = False
@@ -341,15 +359,16 @@ def grant_auto_approval(
     # Look up by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Block if target is owner AND actor is not the target
     if "owner" in user.roles and user.id != moderator.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot manage the site owner",
+        raise AppError(
+            ErrorCode.owner_protected,
+            "Cannot manage the site owner",
+            status.HTTP_403_FORBIDDEN,
         )
 
     user.auto_public_approval = True
@@ -393,15 +412,16 @@ def revoke_auto_approval(
     # Look up by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Block if target is owner AND actor is not the target
     if "owner" in user.roles and user.id != moderator.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot manage the site owner",
+        raise AppError(
+            ErrorCode.owner_protected,
+            "Cannot manage the site owner",
+            status.HTTP_403_FORBIDDEN,
         )
 
     user.auto_public_approval = False

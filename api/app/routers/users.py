@@ -23,15 +23,19 @@ from ..auth import (
     check_ownership,
     get_current_user,
     get_current_user_optional,
+    not_owner,
     require_moderator,
     require_ownership,
 )
 from ..constants import MONITORED_HASHTAGS, NotificationType
+from ..avatar_vault import ALLOWED_FORMATS as AVATAR_ALLOWED_FORMATS
 from ..avatar_vault import ALLOWED_MIME_TYPES as AVATAR_ALLOWED_MIME_TYPES
 from ..avatar_vault import get_avatar_url, save_avatar_image
 from ..avatar_vault import try_delete_avatar_by_public_url
 from ..deps import get_db
-from ..utils.handles import validate_handle, is_handle_taken
+from ..errors import AppError, ErrorCode
+from ..utils.handle_normalize import handle_invalid_error
+from ..utils.handles import is_handle_taken
 from ..pagination import (
     apply_cursor_filter,
     create_page_response,
@@ -346,15 +350,15 @@ def create_user(
     """
     # Validate handle format and uniqueness (confusable-aware)
     new_handle = (payload.handle or "").strip()
-    is_valid, error_msg = validate_handle(new_handle)
-    if not is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid handle: {error_msg}",
-        )
+    handle_error = handle_invalid_error(new_handle)
+    if handle_error:
+        raise handle_error
     if is_handle_taken(db, new_handle):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="Handle already taken"
+        raise AppError(
+            ErrorCode.handle_taken,
+            "Handle already taken",
+            status.HTTP_409_CONFLICT,
+            details={"handle": new_handle},
         )
 
     # PLACEHOLDER: Create user (in production this would be done during OAuth)
@@ -393,29 +397,29 @@ def get_user_by_sqid(
 
     user_id = decode_user_sqid(public_sqid)
     if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Query user
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Verify public_sqid matches (safety check)
     if user.public_sqid != public_sqid:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Check if user is hidden and current user doesn't have permission to see it
     if user.hidden_by_user and (
         not current_user or not check_ownership(user.id, current_user)
     ):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Hide unverified users from public view (unless moderator or self)
@@ -424,15 +428,15 @@ def get_user_by_sqid(
     )
     is_own_profile = current_user and current_user.id == user.id
     if not user.email_verified and not is_moderator and not is_own_profile:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Hide owner from ALL view (only owner can see own profile)
     is_target_owner = "owner" in (user.roles or [])
     if is_target_owner and not is_own_profile:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Return UserFull for moderators/owners, UserPublic for others
@@ -457,16 +461,16 @@ def get_user(
     # Look up by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Check if user is hidden and current user doesn't have permission to see it
     if user.hidden_by_user and (
         not current_user or not check_ownership(user.id, current_user)
     ):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Hide unverified users from public view (unless moderator or self)
@@ -475,15 +479,15 @@ def get_user(
     )
     is_own_profile = current_user and current_user.id == user.id
     if not user.email_verified and not is_moderator and not is_own_profile:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Hide owner from ALL view (only owner can see own profile)
     is_target_owner = "owner" in (user.roles or [])
     if is_target_owner and not is_own_profile:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Return UserFull for moderators/owners, UserPublic for others
@@ -506,8 +510,8 @@ def update_user(
     # Look up by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Authorization:
@@ -529,10 +533,7 @@ def update_user(
                     detail="Moderators cannot edit other moderators",
                 )
         else:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to access this resource",
-            )
+            raise not_owner()
 
     # Update handle if provided
     if payload.handle is not None:
@@ -547,18 +548,17 @@ def update_user(
         new_handle = payload.handle.strip()
 
         # Validate handle format
-        is_valid, error_msg = validate_handle(new_handle)
-        if not is_valid:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid handle: {error_msg}",
-            )
+        handle_error = handle_invalid_error(new_handle)
+        if handle_error:
+            raise handle_error
 
         # Check if handle is already taken (case-insensitive, excluding current user)
         if is_handle_taken(db, new_handle, exclude_user_id=user.id):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Handle already taken",
+            raise AppError(
+                ErrorCode.handle_taken,
+                "Handle already taken",
+                status.HTTP_409_CONFLICT,
+                details={"handle": new_handle},
             )
 
         # Preserve original case
@@ -583,9 +583,11 @@ def update_user(
         ):
             user.hidden_by_user = payload.hidden_by_user
         else:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only moderators can change hidden_by_user for other users",
+            raise AppError(
+                ErrorCode.forbidden_role,
+                "Only moderators can change hidden_by_user for other users",
+                status.HTTP_403_FORBIDDEN,
+                details={"required": "moderator"},
             )
 
     # Update approved_hashtags (users can only set their own, moderators can set for anyone)
@@ -609,6 +611,10 @@ def update_user(
     # the value to everyone | following | nobody.
     if payload.mention_policy is not None:
         user.mention_policy = payload.mention_policy
+
+    # Language for our emails (docs/localized-text/ D6); explicit null clears.
+    if "locale" in payload.model_fields_set:
+        user.locale = payload.locale
 
     db.commit()
     db.refresh(user)
@@ -638,10 +644,7 @@ def _authorize_avatar_edit(current_user: models.User, user: models.User) -> None
                     detail="Moderators cannot edit other moderators",
                 )
         else:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to access this resource",
-            )
+            raise not_owner()
 
 
 @router.post(
@@ -661,8 +664,8 @@ async def upload_user_avatar(
     """
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     _authorize_avatar_edit(current_user, user)
@@ -682,9 +685,7 @@ async def upload_user_avatar(
 
     file_content = await image.read()
     if not file_content:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file"
-        )
+        raise AppError(ErrorCode.image_empty, "Empty file", status.HTTP_400_BAD_REQUEST)
 
     # Determine MIME type
     mime_type = (image.content_type or "").lower()
@@ -704,9 +705,11 @@ async def upload_user_avatar(
         }
         mime_type = ext_to_mime.get(ext, "")
         if mime_type not in AVATAR_ALLOWED_MIME_TYPES:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid image format. Allowed formats: PNG, JPEG, GIF, WebP",
+            raise AppError(
+                ErrorCode.image_format_unsupported,
+                "Invalid image format. Allowed formats: PNG, JPEG, GIF, WebP",
+                status.HTTP_400_BAD_REQUEST,
+                details={"allowed": AVATAR_ALLOWED_FORMATS},
             )
 
     # Validate the actual bytes decode as an image — don't trust the client
@@ -719,9 +722,10 @@ async def upload_user_avatar(
     try:
         Image.open(BytesIO(file_content)).verify()
     except (UnidentifiedImageError, OSError, ValueError):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File is not a valid image.",
+        raise AppError(
+            ErrorCode.image_invalid,
+            "File is not a valid image.",
+            status.HTTP_400_BAD_REQUEST,
         )
 
     # Refuse if the vault is at its free-space floor. Avatars previously bypassed
@@ -731,18 +735,17 @@ async def upload_user_avatar(
     try:
         ensure_vault_headroom(len(file_content))
     except VaultFullError:
-        raise HTTPException(
-            status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
-            detail="Storage is temporarily full. Please try again later.",
+        raise AppError(
+            ErrorCode.storage_full,
+            "Storage is temporarily full. Please try again later.",
+            status.HTTP_507_INSUFFICIENT_STORAGE,
         )
 
     from uuid import uuid4
 
     avatar_id = uuid4()
-    try:
-        save_avatar_image(avatar_id, file_content, mime_type)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    # Raises AppError (image_format_unsupported / file_too_large, 413).
+    save_avatar_image(avatar_id, file_content, mime_type)
 
     extension = AVATAR_ALLOWED_MIME_TYPES[mime_type]
     # Remove the previous avatar file (if it was one of ours) so replacing an
@@ -774,8 +777,8 @@ def delete_user_avatar(
     """
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     _authorize_avatar_edit(current_user, user)
@@ -867,8 +870,8 @@ def set_avatar_from_post(
     """
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     _authorize_avatar_edit(current_user, user)
@@ -902,13 +905,14 @@ def set_avatar_from_post(
         or post.public_sqid != payload.post_sqid
         or not can_access_post(post, current_user)
     ):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
     if post.kind != "artwork" or post.storage_key is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This post has no artwork image",
+        raise AppError(
+            ErrorCode.post_has_no_artwork,
+            "This post has no artwork image",
+            status.HTTP_400_BAD_REQUEST,
         )
 
     file_content, mime_type = _read_post_bytes_for_avatar(post)
@@ -918,18 +922,17 @@ def set_avatar_from_post(
     try:
         ensure_vault_headroom(len(file_content))
     except VaultFullError:
-        raise HTTPException(
-            status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
-            detail="Storage is temporarily full. Please try again later.",
+        raise AppError(
+            ErrorCode.storage_full,
+            "Storage is temporarily full. Please try again later.",
+            status.HTTP_507_INSUFFICIENT_STORAGE,
         )
 
     from uuid import uuid4
 
     avatar_id = uuid4()
-    try:
-        save_avatar_image(avatar_id, file_content, mime_type)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    # Raises AppError (image_format_unsupported / file_too_large, 413).
+    save_avatar_image(avatar_id, file_content, mime_type)
 
     extension = AVATAR_ALLOWED_MIME_TYPES[mime_type]
     old_avatar_url = user.avatar_url
@@ -959,8 +962,8 @@ def delete_user_account(
     # Look up by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     require_ownership(user.id, current_user)
@@ -1047,8 +1050,8 @@ def get_user_recent_blog_posts(
     # Look up user by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     query = (
@@ -1101,8 +1104,8 @@ def get_user_blog_posts(
     # Look up user by user_key (UUID)
     user = db.query(models.User).filter(models.User.user_key == id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     query = (
@@ -1184,8 +1187,8 @@ def get_artist_dashboard(
         user = db.query(models.User).filter(models.User.public_sqid == user_key).first()
 
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Authorization: owner of profile OR moderator/owner role
@@ -1193,10 +1196,7 @@ def get_artist_dashboard(
     is_moderator = "moderator" in current_user.roles or "owner" in current_user.roles
 
     if not is_owner and not is_moderator:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to view this artist dashboard",
-        )
+        raise not_owner("You don't have permission to view this artist dashboard")
 
     # Get aggregated artist stats
     artist_stats = get_artist_stats(db, user.user_key)
@@ -1315,8 +1315,8 @@ def get_user_profile_enhanced(
 
     user_id = decode_user_sqid(public_sqid)
     if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Query user with badges
@@ -1330,13 +1330,13 @@ def get_user_profile_enhanced(
         .first()
     )
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     if user.public_sqid != public_sqid:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Check if user is hidden
@@ -1345,21 +1345,21 @@ def get_user_profile_enhanced(
         "moderator" in current_user.roles or "owner" in current_user.roles
     )
     if user.hidden_by_user and not is_own_profile and not is_moderator:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Hide unverified users from public view (unless moderator or self)
     if not user.email_verified and not is_own_profile and not is_moderator:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Hide owner from ALL view (only owner can see own profile)
     is_target_owner = "owner" in (user.roles or [])
     if is_target_owner and not is_own_profile:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Get tag badges
@@ -1491,14 +1491,14 @@ def follow_user(
 
     user_id = decode_user_sqid(public_sqid)
     if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     target_user = db.query(models.User).filter(models.User.id == user_id).first()
     if not target_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Can't follow yourself
@@ -1579,14 +1579,14 @@ def unfollow_user(
 
     user_id = decode_user_sqid(public_sqid)
     if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     target_user = db.query(models.User).filter(models.User.id == user_id).first()
     if not target_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Delete follow relationship if it exists
@@ -1628,7 +1628,6 @@ def block_user(
     the pair are refused both ways (D11).
     """
     from ..sqids_config import decode_user_sqid
-    from ..errors import AppError, ErrorCode
     from ..utils.blocks import MAX_BLOCKS_PER_USER
     from sqlalchemy import func, or_ as sa_or
 
@@ -1639,8 +1638,8 @@ def block_user(
         else None
     )
     if not target_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     if target_user.id == current_user.id:
@@ -1705,8 +1704,8 @@ def unblock_user(
         else None
     )
     if not target_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     db.query(models.UserBlock).filter(
@@ -1732,14 +1731,14 @@ def get_user_followers(
 
     user_id = decode_user_sqid(public_sqid)
     if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Get total count (only verified users)
@@ -1798,14 +1797,14 @@ def get_user_following(
 
     user_id = decode_user_sqid(public_sqid)
     if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Get total count (only verified users)
@@ -1868,14 +1867,14 @@ def get_user_highlights(
 
     user_id = decode_user_sqid(public_sqid)
     if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     highlights = (
@@ -1926,15 +1925,12 @@ def add_highlight(
     # Check if post exists and belongs to user
     post = db.query(models.Post).filter(models.Post.id == payload.post_id).first()
     if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     if post.owner_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only highlight your own posts",
-        )
+        raise not_owner("You can only highlight your own posts")
 
     if post.deleted_by_user:
         raise HTTPException(
@@ -2106,14 +2102,14 @@ def get_user_reacted_posts(
 
     user_id = decode_user_sqid(public_sqid)
     if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Subquery: latest reaction per post for this user (deduplicate artworks).

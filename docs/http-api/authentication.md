@@ -195,6 +195,12 @@ Redirects to GitHub for authentication.
 
 GitHub redirects here after authentication. Sets tokens and redirects to app.
 
+Native (server-brokered) flow failures redirect to the app's registered redirect
+URI with `error` (an OAuth value: `access_denied` or `server_error`),
+`error_description` (human text), `state` (the app's state, when known), and,
+when the server knows the specific cause, `error_code`: `email_taken`,
+`oauth_state_invalid`, or `github_failed`.
+
 ### POST /auth/github/exchange
 
 Exchange GitHub code for tokens (SPA flow).
@@ -322,6 +328,10 @@ Requires authentication.
   "message": "This handle is available"
 }
 ```
+
+When `available` is false, `reason` says why: `taken`, `reserved`, or a
+`handle_invalid` reason (`empty`, `too_short`, `too_long`, `bad_edge`,
+`bad_char`, `no_alnum`). It is `null` when the handle is available.
 
 ## Welcome Flow
 

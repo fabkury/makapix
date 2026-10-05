@@ -524,7 +524,7 @@ export default function UserProfilePage() {
       return;
     }
     try {
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${user.id}/ban`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${user.user_key}/ban`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json'
@@ -555,7 +555,7 @@ export default function UserProfilePage() {
       return;
     }
     try {
-      const response = await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${user.id}/ban`, {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/admin/user/${user.user_key}/ban`, {
         method: 'DELETE',
       });
       

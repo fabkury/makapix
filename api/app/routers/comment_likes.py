@@ -12,6 +12,7 @@ from .. import models, schemas
 from ..auth import get_current_user, get_current_user_or_anonymous, AnonymousUser
 from ..constants import NotificationType
 from ..deps import get_db
+from ..errors import AppError, ErrorCode
 from ..services.social_notifications import SocialNotificationService
 from ..services.rate_limit import check_rate_limit
 
@@ -88,9 +89,10 @@ def like_comment(
         .first()
     )
     if not comment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Comment not found.",
+        raise AppError(
+            ErrorCode.comment_not_found,
+            "Comment not found.",
+            status.HTTP_404_NOT_FOUND,
         )
 
     # Interaction guard (docs/ugc-safety/ D11): a block in either direction

@@ -6,7 +6,6 @@ Accessible via /u/{sqid}/manage in the frontend.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -15,6 +14,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..auth import require_moderator, require_owner
 from ..deps import get_db
+from ..errors import AppError, ErrorCode
 from ..sqids_config import decode_user_sqid
 from ..utils import mentions
 from ..utils.audit import log_moderation_action
@@ -29,19 +29,19 @@ def get_user_by_sqid_or_404(db: Session, sqid: str) -> models.User:
     """Look up user by public_sqid, raise 404 if not found."""
     user_id = decode_user_sqid(sqid)
     if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     if user.public_sqid != sqid:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     return user
@@ -50,9 +50,10 @@ def get_user_by_sqid_or_404(db: Session, sqid: str) -> models.User:
 def protect_owner(target: models.User, actor: models.User) -> None:
     """Raise 403 if target is owner and actor is not the owner themselves."""
     if "owner" in target.roles and target.id != actor.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot manage the site owner",
+        raise AppError(
+            ErrorCode.owner_protected,
+            "Cannot manage the site owner",
+            status.HTTP_403_FORBIDDEN,
         )
 
 
@@ -324,8 +325,8 @@ def hide_comment(
     """Hide comment (moderator only)."""
     comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
     if not comment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
+        raise AppError(
+            ErrorCode.comment_not_found, "Comment not found", status.HTTP_404_NOT_FOUND
         )
 
     comment.hidden_by_mod = True
@@ -352,8 +353,8 @@ def unhide_comment(
     """Unhide comment (moderator only)."""
     comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
     if not comment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
+        raise AppError(
+            ErrorCode.comment_not_found, "Comment not found", status.HTTP_404_NOT_FOUND
         )
 
     comment.hidden_by_mod = False
@@ -378,8 +379,8 @@ def delete_comment(
     """Delete comment permanently (moderator only)."""
     comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
     if not comment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
+        raise AppError(
+            ErrorCode.comment_not_found, "Comment not found", status.HTTP_404_NOT_FOUND
         )
 
     # Store info for audit before deletion
@@ -586,126 +587,9 @@ def distrust_user(
     )
 
 
-@router.post("/user/{sqid}/hide", status_code=status.HTTP_201_CREATED)
-def hide_user(
-    sqid: str,
-    db: Session = Depends(get_db),
-    moderator: models.User = Depends(require_moderator),
-) -> dict:
-    """Hide user profile (moderator only)."""
-    user = get_user_by_sqid_or_404(db, sqid)
-    protect_owner(user, moderator)
-
-    user.hidden_by_mod = True
-    db.commit()
-
-    # Log to audit
-    log_moderation_action(
-        db=db,
-        actor_id=moderator.id,
-        action="hide_user",
-        target_type="user",
-        target_id=user.id,
-    )
-
-    return {"status": "hidden"}
-
-
-@router.delete("/user/{sqid}/hide", status_code=status.HTTP_204_NO_CONTENT)
-def unhide_user(
-    sqid: str,
-    db: Session = Depends(get_db),
-    moderator: models.User = Depends(require_moderator),
-) -> None:
-    """Unhide user profile (moderator only)."""
-    user = get_user_by_sqid_or_404(db, sqid)
-    protect_owner(user, moderator)
-
-    user.hidden_by_mod = False
-    db.commit()
-
-    # Log to audit
-    log_moderation_action(
-        db=db,
-        actor_id=moderator.id,
-        action="unhide_user",
-        target_type="user",
-        target_id=user.id,
-    )
-
-
-@router.post("/user/{sqid}/ban", status_code=status.HTTP_201_CREATED)
-def ban_user(
-    sqid: str,
-    duration_days: int | None = Query(
-        None, ge=1, le=365, description="Ban duration in days (null = permanent)"
-    ),
-    db: Session = Depends(get_db),
-    moderator: models.User = Depends(require_moderator),
-) -> dict:
-    """
-    Ban user (moderator only).
-
-    Banning a user prevents them from authenticating but does NOT delete their account.
-    The user profile and all associated data remain in the database.
-
-    - No duration (None) = permanent ban (banned_until = PERMANENT_BAN_UNTIL)
-    - With duration = temporary ban (banned_until = current_time + duration_days)
-
-    Note: There is no automatic cleanup of banned user profiles. They remain in the
-    database indefinitely unless manually deleted by an administrator.
-    """
-    user = get_user_by_sqid_or_404(db, sqid)
-    protect_owner(user, moderator)
-
-    # Permanent ban uses the sentinel (NOT NULL, which would read as "not banned").
-    if duration_days:
-        until = datetime.now(timezone.utc) + timedelta(days=duration_days)
-    else:
-        until = models.PERMANENT_BAN_UNTIL
-
-    user.banned_until = until
-    db.commit()
-
-    # Log to audit
-    log_moderation_action(
-        db=db,
-        actor_id=moderator.id,
-        action="ban_user",
-        target_type="user",
-        target_id=user.id,
-        note=f"Duration: {'permanent' if duration_days is None else f'{duration_days} days'}",
-    )
-
-    return {"status": "banned", "until": until}
-
-
-@router.delete("/user/{sqid}/ban", status_code=status.HTTP_204_NO_CONTENT)
-def unban_user(
-    sqid: str,
-    db: Session = Depends(get_db),
-    moderator: models.User = Depends(require_moderator),
-) -> None:
-    """
-    Unban user (moderator only).
-
-    Removes the ban by setting banned_until to NULL, allowing the user to
-    authenticate again immediately. Does not delete the user's profile or data.
-    """
-    user = get_user_by_sqid_or_404(db, sqid)
-    protect_owner(user, moderator)
-
-    user.banned_until = None
-    db.commit()
-
-    # Log to audit
-    log_moderation_action(
-        db=db,
-        actor_id=moderator.id,
-        action="unban_user",
-        target_type="user",
-        target_id=user.id,
-    )
+# Ban/unban and hide/unhide by sqid are served by routers/admin.py: its
+# `/admin/user/{id}/ban|hide` routes are included first (root and /v1), so
+# twins here were unreachable. Those handlers accept a user_key or a sqid.
 
 
 @router.get("/user/{sqid}/email", response_model=schemas.EmailRevealResponse)

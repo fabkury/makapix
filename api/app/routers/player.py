@@ -21,6 +21,7 @@ from ..auth import (
     require_ownership,
 )
 from ..deps import get_db
+from ..errors import AppError, ErrorCode
 from ..sqids_config import decode_user_sqid
 
 
@@ -32,16 +33,14 @@ def get_user_by_sqid(sqid: str, db: Session) -> models.User:
     """
     user_id = decode_user_sqid(sqid)
     if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     return user
@@ -174,9 +173,11 @@ def register_player(
         .count()
     )
     if player_count >= MAX_PLAYERS_PER_USER:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Maximum {MAX_PLAYERS_PER_USER} players allowed per user",
+        raise AppError(
+            ErrorCode.player_limit_reached,
+            f"Maximum {MAX_PLAYERS_PER_USER} players allowed per user",
+            status.HTTP_400_BAD_REQUEST,
+            details={"max": MAX_PLAYERS_PER_USER},
         )
 
     # Find player by registration code
@@ -192,16 +193,18 @@ def register_player(
     )
 
     if not player:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Invalid or expired registration code",
+        raise AppError(
+            ErrorCode.registration_code_invalid,
+            "Invalid or expired registration code",
+            status.HTTP_404_NOT_FOUND,
         )
 
     # Check if already registered
     if player.owner_id is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Player already registered",
+        raise AppError(
+            ErrorCode.player_already_registered,
+            "Player already registered",
+            status.HTTP_400_BAD_REQUEST,
         )
 
     # Register player
@@ -1175,9 +1178,8 @@ def get_player(
     )
 
     if not player:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Player not found",
+        raise AppError(
+            ErrorCode.player_not_found, "Player not found", status.HTTP_404_NOT_FOUND
         )
 
     return schemas.PlayerPublic.model_validate(player)
@@ -1202,9 +1204,8 @@ def update_player(
     )
 
     if not player:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Player not found",
+        raise AppError(
+            ErrorCode.player_not_found, "Player not found", status.HTTP_404_NOT_FOUND
         )
 
     if payload.name is not None:
@@ -1234,9 +1235,8 @@ def download_player_certs(
     )
 
     if not player:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Player not found",
+        raise AppError(
+            ErrorCode.player_not_found, "Player not found", status.HTTP_404_NOT_FOUND
         )
 
     if not player.cert_pem or not player.key_pem:
@@ -1292,9 +1292,8 @@ def rotate_player_token_owner(
         .first()
     )
     if not player:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Player not found",
+        raise AppError(
+            ErrorCode.player_not_found, "Player not found", status.HTTP_404_NOT_FOUND
         )
 
     from ..services import player_tokens
@@ -1323,9 +1322,8 @@ def delete_player(
     )
 
     if not player:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Player not found",
+        raise AppError(
+            ErrorCode.player_not_found, "Player not found", status.HTTP_404_NOT_FOUND
         )
 
     from ..services.player_teardown import teardown_player
@@ -1354,9 +1352,8 @@ def send_player_command(
     )
 
     if not player:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Player not found",
+        raise AppError(
+            ErrorCode.player_not_found, "Player not found", status.HTTP_404_NOT_FOUND
         )
 
     # Check rate limits
@@ -1395,16 +1392,16 @@ def send_player_command(
         # Fetch post details
         post = db.query(models.Post).filter(models.Post.id == payload.post_id).first()
         if not post:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Post not found",
+            raise AppError(
+                ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
             )
 
         # Check visibility
         if not post.visible or post.hidden_by_mod or post.non_conformant:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Post is not visible",
+            raise AppError(
+                ErrorCode.post_not_visible,
+                "Post is not visible",
+                status.HTTP_403_FORBIDDEN,
             )
 
         native_pf = next((f for f in post.files if f.is_native), None)
@@ -1432,9 +1429,10 @@ def send_player_command(
             # Validate that the user exists
             target_user = get_user_by_sqid(payload.user_sqid, db)
             if not target_user:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="User not found",
+                raise AppError(
+                    ErrorCode.user_not_found,
+                    "User not found",
+                    status.HTTP_404_NOT_FOUND,
                 )
             resolved_channel = payload.channel_name or "by_user"
             if resolved_channel not in ("by_user", "reactions"):
@@ -1544,15 +1542,15 @@ def send_command_to_all_players(
 
         post = db.query(models.Post).filter(models.Post.id == payload.post_id).first()
         if not post:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Post not found",
+            raise AppError(
+                ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
             )
 
         if not post.visible or post.hidden_by_mod or post.non_conformant:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Post is not visible",
+            raise AppError(
+                ErrorCode.post_not_visible,
+                "Post is not visible",
+                status.HTTP_403_FORBIDDEN,
             )
 
         native_pf = next((f for f in post.files if f.is_native), None)
@@ -1580,9 +1578,10 @@ def send_command_to_all_players(
             # Validate that the user exists
             target_user = get_user_by_sqid(payload.user_sqid, db)
             if not target_user:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="User not found",
+                raise AppError(
+                    ErrorCode.user_not_found,
+                    "User not found",
+                    status.HTTP_404_NOT_FOUND,
                 )
             resolved_channel = payload.channel_name or "by_user"
             if resolved_channel not in ("by_user", "reactions"):
@@ -1674,9 +1673,8 @@ def renew_player_certificate(
     )
 
     if not player:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Player not found",
+        raise AppError(
+            ErrorCode.player_not_found, "Player not found", status.HTTP_404_NOT_FOUND
         )
 
     # Check if renewal is needed
@@ -1755,8 +1753,8 @@ def _get_owned_player(
         .first()
     )
     if not player:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Player not found"
+        raise AppError(
+            ErrorCode.player_not_found, "Player not found", status.HTTP_404_NOT_FOUND
         )
     return player
 
@@ -1765,12 +1763,11 @@ def _require_capability(player: models.Player, feature: str) -> dict[str, Any]:
     caps = player.capabilities or {}
     spec = caps.get(feature)
     if spec is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": "unsupported_command",
-                "feature": feature,
-            },
+        raise AppError(
+            ErrorCode.unsupported_command,
+            f"This player does not support {feature}",
+            status.HTTP_400_BAD_REQUEST,
+            details={"feature": feature},
         )
     return spec
 
@@ -1836,14 +1833,11 @@ def set_player_brightness(
     player = _get_owned_player(sqid, player_id, db, current_user)
     spec = _require_capability(player, "brightness")
     if not (spec["min"] <= payload.value <= spec["max"]):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": "invalid_value",
-                "feature": "brightness",
-                "min": spec["min"],
-                "max": spec["max"],
-            },
+        raise AppError(
+            ErrorCode.invalid_value,
+            f"Brightness must be between {spec['min']} and {spec['max']}",
+            status.HTTP_400_BAD_REQUEST,
+            details={"feature": "brightness", "min": spec["min"], "max": spec["max"]},
         )
     command_id = _send_optional_command(
         db,
@@ -1868,13 +1862,11 @@ def set_player_rotation(
     player = _get_owned_player(sqid, player_id, db, current_user)
     spec = _require_capability(player, "rotation")
     if payload.value not in spec["values"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": "invalid_value",
-                "feature": "rotation",
-                "allowed": spec["values"],
-            },
+        raise AppError(
+            ErrorCode.invalid_value,
+            f"Rotation must be one of: {', '.join(map(str, spec['values']))}",
+            status.HTTP_400_BAD_REQUEST,
+            details={"feature": "rotation", "allowed": spec["values"]},
         )
     command_id = _send_optional_command(
         db,
@@ -1899,13 +1891,11 @@ def set_player_mirror(
     player = _get_owned_player(sqid, player_id, db, current_user)
     spec = _require_capability(player, "mirror")
     if payload.value not in spec["values"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": "invalid_value",
-                "feature": "mirror",
-                "allowed": spec["values"],
-            },
+        raise AppError(
+            ErrorCode.invalid_value,
+            f"Mirror must be one of: {', '.join(map(str, spec['values']))}",
+            status.HTTP_400_BAD_REQUEST,
+            details={"feature": "mirror", "allowed": spec["values"]},
         )
     command_id = _send_optional_command(
         db,

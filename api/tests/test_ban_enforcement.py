@@ -33,8 +33,9 @@ def test_active_user_passes():
 def test_deactivated_user_blocked():
     with pytest.raises(HTTPException) as exc:
         check_user_can_authenticate(_user(deactivated=True))
-    assert exc.value.status_code == 401
+    assert exc.value.status_code == 403
     assert "deactivated" in exc.value.detail.lower()
+    assert exc.value.code == "account_deactivated"
 
 
 def test_temp_ban_future_aware_blocks_without_typeerror():
@@ -42,7 +43,7 @@ def test_temp_ban_future_aware_blocks_without_typeerror():
     until = datetime.now(timezone.utc) + timedelta(days=1)
     with pytest.raises(HTTPException) as exc:
         check_user_can_authenticate(_user(banned_until=until))
-    assert exc.value.status_code == 401
+    assert exc.value.status_code == 403
     assert "banned" in exc.value.detail.lower()
 
 
@@ -51,7 +52,7 @@ def test_temp_ban_future_naive_blocks():
     until = datetime.utcnow() + timedelta(days=1)  # naive
     with pytest.raises(HTTPException) as exc:
         check_user_can_authenticate(_user(banned_until=until))
-    assert exc.value.status_code == 401
+    assert exc.value.status_code == 403
 
 
 def test_expired_temp_ban_allows_login():
@@ -63,8 +64,26 @@ def test_permanent_ban_sentinel_blocks():
     """Permanent ban via the sentinel is enforced (was a no-op when stored as NULL)."""
     with pytest.raises(HTTPException) as exc:
         check_user_can_authenticate(_user(banned_until=models.PERMANENT_BAN_UNTIL))
-    assert exc.value.status_code == 401
+    assert exc.value.status_code == 403
     assert "banned" in exc.value.detail.lower()
+    assert exc.value.code == "account_banned"
+    assert exc.value.details == {"banned_until": None, "permanent": True}
+
+
+def test_temp_ban_details_carry_until():
+    until = datetime.now(timezone.utc) + timedelta(days=1)
+    with pytest.raises(HTTPException) as exc:
+        check_user_can_authenticate(_user(banned_until=until))
+    assert exc.value.code == "account_banned"
+    assert exc.value.details["permanent"] is False
+    assert exc.value.details["banned_until"] == until.isoformat()
+
+
+def test_player_path_keeps_401():
+    """The player-token path passes 401 so the firmware contract is unchanged."""
+    with pytest.raises(HTTPException) as exc:
+        check_user_can_authenticate(_user(deactivated=True), 401)
+    assert exc.value.status_code == 401
 
 
 def test_permanent_ban_sentinel_is_far_future():
