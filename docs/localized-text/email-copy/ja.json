@@ -1,0 +1,19 @@
+{
+  "greeting_named": "{handle} さん",
+  "greeting_anonymous": "こんにちは。",
+  "footer": "Makapix Club · makapix.club",
+  "verify_subject": "Makapix Club の確認コード",
+  "verify_intro": "Makapix Club でメールアドレスを確認するためのコードは次のとおりです。",
+  "code_expiry": "このコードの有効期限は10分です。",
+  "verify_ignore": "このコードをリクエストした覚えがない場合は、このメールを無視してください。",
+  "reset_subject": "Makapix Club のパスワード再設定コード",
+  "reset_intro": "Makapix Club のパスワードを再設定するためのコードは次のとおりです。",
+  "reset_ignore": "パスワードの再設定をリクエストした覚えがない場合は、このメールを無視してください。パスワードは変更されていません。",
+  "bdr_subject": "Makapix Club のダウンロードの準備ができました",
+  "bdr_ready": "一括ダウンロードの準備ができました。",
+  "bdr_count": "作品数：{count}",
+  "bdr_button": "ダウンロード",
+  "bdr_expiry": "このリンクの有効期限は {expires} です。",
+  "bdr_fallback_link": "ボタンが機能しない場合は、このリンクをコピーしてブラウザに貼り付けてください。",
+  "bdr_why": "このメールは、Makapix Club で一括ダウンロードをリクエストされたためお送りしています。お心当たりがない場合は、このメールを無視してください。"
+}

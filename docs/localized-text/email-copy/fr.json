@@ -1,0 +1,19 @@
+{
+  "greeting_named": "Bonjour {handle},",
+  "greeting_anonymous": "Bonjour,",
+  "footer": "Makapix Club · makapix.club",
+  "verify_subject": "Votre code de vérification Makapix Club",
+  "verify_intro": "Voici votre code pour vérifier votre adresse e-mail sur Makapix Club :",
+  "code_expiry": "Il expire dans 10 minutes.",
+  "verify_ignore": "Si vous n'avez pas demandé ce code, vous pouvez ignorer cet e-mail.",
+  "reset_subject": "Votre code de réinitialisation du mot de passe Makapix Club",
+  "reset_intro": "Voici votre code pour réinitialiser votre mot de passe Makapix Club :",
+  "reset_ignore": "Si vous n'avez pas demandé à réinitialiser votre mot de passe, vous pouvez ignorer cet e-mail. Votre mot de passe n'a pas été modifié.",
+  "bdr_subject": "Votre téléchargement Makapix Club est prêt",
+  "bdr_ready": "Votre téléchargement groupé est prêt.",
+  "bdr_count": "Œuvres : {count}",
+  "bdr_button": "Télécharger",
+  "bdr_expiry": "Ce lien expire le {expires}.",
+  "bdr_fallback_link": "Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :",
+  "bdr_why": "Vous recevez cet e-mail car vous avez demandé un téléchargement groupé sur Makapix Club. Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet e-mail."
+}

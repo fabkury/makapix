@@ -1,0 +1,19 @@
+{
+  "greeting_named": "Hallo {handle}!",
+  "greeting_anonymous": "Hallo!",
+  "footer": "Makapix Club · makapix.club",
+  "verify_subject": "Dein Bestätigungscode für Makapix Club",
+  "verify_intro": "Hier ist dein Code, um deine E-Mail-Adresse bei Makapix Club zu bestätigen:",
+  "code_expiry": "Er läuft in 10 Minuten ab.",
+  "verify_ignore": "Wenn du diesen Code nicht angefordert hast, kannst du diese E-Mail ignorieren.",
+  "reset_subject": "Dein Code zum Zurücksetzen des Passworts für Makapix Club",
+  "reset_intro": "Hier ist dein Code, um dein Passwort für Makapix Club zurückzusetzen:",
+  "reset_ignore": "Wenn du das Zurücksetzen deines Passworts nicht angefordert hast, kannst du diese E-Mail ignorieren. Dein Passwort wurde nicht geändert.",
+  "bdr_subject": "Dein Download von Makapix Club steht bereit",
+  "bdr_ready": "Dein Sammel-Download ist bereit.",
+  "bdr_count": "Werke: {count}",
+  "bdr_button": "Herunterladen",
+  "bdr_expiry": "Dieser Link läuft am {expires} ab.",
+  "bdr_fallback_link": "Falls der Button nicht funktioniert, kopiere diesen Link in deinen Browser:",
+  "bdr_why": "Du erhältst diese E-Mail, weil du bei Makapix Club einen Sammel-Download angefordert hast. Falls das nicht du warst, kannst du diese E-Mail ignorieren."
+}
