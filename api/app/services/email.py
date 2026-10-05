@@ -5,9 +5,12 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime
+from html import escape
 from typing import Any
 
 import resend
+
+from .email_copy import copy_for
 
 logger = logging.getLogger(__name__)
 
@@ -26,16 +29,51 @@ def _init_resend() -> bool:
     return True
 
 
-def _otp_html(greeting: str, intro: str, code: str) -> str:
-    return (
-        f"<p>{greeting}</p><p>{intro}</p>"
-        f"<h2 style='letter-spacing:6px;font-family:monospace'>{code}</h2>"
-        f"<p>This code expires in 10 minutes. If you didn't request it, ignore this email.</p>"
+def _greeting(strings: dict[str, str], handle: str | None) -> str:
+    if handle:
+        return strings["greeting_named"].format(handle=handle)
+    return strings["greeting_anonymous"]
+
+
+def _layout_html(lang: str, paragraphs_html: str, footer: str) -> str:
+    """The shared shell: single cyan accent on gray (site palette), no images."""
+    return f"""<!DOCTYPE html>
+<html lang="{escape(lang)}">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:24px;background:#f2f2f2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#222;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-top:4px solid #00d4ff;border-radius:8px;padding:28px;">
+{paragraphs_html}
+  </div>
+  <p style="max-width:560px;margin:16px auto 0;text-align:center;color:#888;font-size:12px;">{escape(footer)}</p>
+</body>
+</html>
+"""
+
+
+def _otp_message(
+    locale: str | None, handle: str | None, code: str, kind: str
+) -> tuple[str, str, str]:
+    """(subject, html, text) for a verification ("verify") or reset ("reset") code."""
+    strings = copy_for(locale)
+    greeting = _greeting(strings, handle)
+    intro = strings[f"{kind}_intro"]
+    expiry = strings["code_expiry"]
+    ignore = strings[f"{kind}_ignore"]
+    html = _layout_html(
+        locale or "en",
+        f"""    <p>{escape(greeting)}</p>
+    <p>{escape(intro)}</p>
+    <p style="font-family:monospace;font-size:32px;font-weight:bold;letter-spacing:6px;margin:20px 0;">{escape(code)}</p>
+    <p>{escape(expiry)}</p>
+    <p style="color:#666;font-size:14px;">{escape(ignore)}</p>""",
+        strings["footer"],
     )
+    text = f"{greeting}\n\n{intro}\n\n{code}\n\n{expiry}\n\n{ignore}\n\n-- \n{strings['footer']}\n"
+    return strings[f"{kind}_subject"], html, text
 
 
 def send_verification_otp_email(
-    to_email: str, code: str, handle: str | None = None
+    to_email: str, code: str, handle: str | None = None, locale: str | None = None
 ) -> dict[str, Any] | None:
     """Send a short numeric email-verification OTP (native client flow, §3.4)."""
     if not _init_resend():
@@ -43,14 +81,15 @@ def send_verification_otp_email(
             f"Email sending disabled - would send verification OTP to {to_email}"
         )
         return None
-    greeting = f"Hi {handle}!" if handle else "Hi there!"
+    subject, html, text = _otp_message(locale, handle, code, "verify")
     try:
         return resend.Emails.send(
             {
                 "from": RESEND_FROM_EMAIL,
                 "to": [to_email],
-                "subject": "Your Makapix verification code",
-                "html": _otp_html(greeting, "Your Makapix verification code is:", code),
+                "subject": subject,
+                "html": html,
+                "text": text,
             }
         )
     except Exception as e:  # pragma: no cover - network
@@ -59,7 +98,7 @@ def send_verification_otp_email(
 
 
 def send_password_reset_otp_email(
-    to_email: str, code: str, handle: str | None = None
+    to_email: str, code: str, handle: str | None = None, locale: str | None = None
 ) -> dict[str, Any] | None:
     """Send a short numeric password-reset OTP (native client flow, §3.4)."""
     if not _init_resend():
@@ -67,16 +106,15 @@ def send_password_reset_otp_email(
             f"Email sending disabled - would send password reset OTP to {to_email}"
         )
         return None
-    greeting = f"Hi {handle}!" if handle else "Hi there!"
+    subject, html, text = _otp_message(locale, handle, code, "reset")
     try:
         return resend.Emails.send(
             {
                 "from": RESEND_FROM_EMAIL,
                 "to": [to_email],
-                "subject": "Your Makapix password reset code",
-                "html": _otp_html(
-                    greeting, "Your Makapix password reset code is:", code
-                ),
+                "subject": subject,
+                "html": html,
+                "text": text,
             }
         )
     except Exception as e:  # pragma: no cover - network
@@ -336,6 +374,7 @@ def send_bdr_ready_email(
     artwork_count: int,
     download_url: str,
     expires_at: datetime,
+    locale: str | None = None,
 ) -> dict[str, Any] | None:
     """
     Send email notification when a Batch Download Request is ready.
@@ -346,6 +385,7 @@ def send_bdr_ready_email(
         artwork_count: Number of artworks in the download
         download_url: Full URL to access the download
         expires_at: When the download link expires
+        locale: The user's stored locale (None = English)
 
     Returns:
         Resend API response if successful, None if email sending is disabled or fails
@@ -354,92 +394,41 @@ def send_bdr_ready_email(
         logger.info(f"Email sending disabled - would send BDR ready to {to_email}")
         return None
 
-    greeting = f"Hi {handle}!" if handle else "Hi there!"
+    strings = copy_for(locale)
+    greeting = _greeting(strings, handle)
+    ready = strings["bdr_ready"]
+    count = strings["bdr_count"].format(count=artwork_count)
+    # Numeric on purpose: nothing for translators to inflect (D7).
+    expiry = strings["bdr_expiry"].format(
+        expires=expires_at.strftime("%Y-%m-%d %H:%M UTC")
+    )
+    fallback = strings["bdr_fallback_link"]
+    why = strings["bdr_why"]
+    url = escape(download_url)
 
-    # Format expiration date nicely
-    expires_str = expires_at.strftime("%B %d, %Y at %I:%M %p UTC")
-
-    html_content = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Your Makapix download is ready!</title>
-</head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
-        <h1 style="color: white; margin: 0; font-size: 24px;">🎨 Your Download is Ready!</h1>
-    </div>
-
-    <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
-        <p style="margin-top: 0; font-size: 18px;">{greeting}</p>
-
-        <p>Great news! Your batch download containing <strong>{artwork_count} artwork{"s" if artwork_count != 1 else ""}</strong> is ready.</p>
-
-        <div style="text-align: center; margin: 30px 0;">
-            <a href="{download_url}"
-               style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                      color: white;
-                      text-decoration: none;
-                      padding: 15px 30px;
-                      border-radius: 5px;
-                      font-weight: bold;
-                      display: inline-block;">
-                📦 Download Your Artworks
-            </a>
-        </div>
-
-        <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 15px; margin: 20px 0;">
-            <p style="margin: 0; color: #856404;">
-                <strong>⏰ Important:</strong> This download link will expire on <strong>{expires_str}</strong>.
-                Make sure to download your artworks before then!
-            </p>
-        </div>
-
-        <p style="color: #666; font-size: 14px;">
-            If the button doesn't work, copy and paste this link into your browser:
-        </p>
-        <p style="color: #666; font-size: 12px; word-break: break-all;">
-            <a href="{download_url}" style="color: #667eea;">{download_url}</a>
-        </p>
-
-        <hr style="border: none; border-top: 1px solid #ddd; margin: 25px 0;">
-
-        <p style="color: #999; font-size: 12px; margin-bottom: 0;">
-            You're receiving this email because you requested a batch download on Makapix Club.<br>
-            If you didn't request this download, you can safely ignore this email.
-        </p>
-    </div>
-
-    <div style="text-align: center; padding: 20px; color: #999; font-size: 12px;">
-        <p>© 2025 Makapix Club. Share your pixel art with the world.</p>
-    </div>
-</body>
-</html>
-"""
-
-    text_content = f"""{greeting}
-
-Great news! Your batch download containing {artwork_count} artwork{"s" if artwork_count != 1 else ""} is ready.
-
-Download your artworks here:
-{download_url}
-
-⏰ Important: This download link will expire on {expires_str}. Make sure to download your artworks before then!
-
----
-You're receiving this email because you requested a batch download on Makapix Club.
-If you didn't request this download, you can safely ignore this email.
-
-© 2025 Makapix Club. Share your pixel art with the world.
-"""
+    html_content = _layout_html(
+        locale or "en",
+        f"""    <p>{escape(greeting)}</p>
+    <p>{escape(ready)}<br>{escape(count)}</p>
+    <p style="text-align:center;margin:28px 0;">
+      <a href="{url}" style="background:#00d4ff;color:#111;text-decoration:none;padding:12px 28px;border-radius:6px;font-weight:bold;display:inline-block;">{escape(strings["bdr_button"])}</a>
+    </p>
+    <p>{escape(expiry)}</p>
+    <p style="color:#666;font-size:14px;">{escape(fallback)}<br><a href="{url}" style="color:#0090b0;word-break:break-all;">{url}</a></p>
+    <hr style="border:none;border-top:1px solid #ddd;margin:24px 0;">
+    <p style="color:#888;font-size:12px;margin-bottom:0;">{escape(why)}</p>""",
+        strings["footer"],
+    )
+    text_content = (
+        f"{greeting}\n\n{ready}\n{count}\n\n{download_url}\n\n{expiry}\n\n"
+        f"-- \n{why}\n{strings['footer']}\n"
+    )
 
     try:
         params: resend.Emails.SendParams = {
             "from": RESEND_FROM_EMAIL,
             "to": [to_email],
-            "subject": f"🎨 Your Makapix download is ready! ({artwork_count} artworks)",
+            "subject": strings["bdr_subject"],
             "html": html_content,
             "text": text_content,
         }

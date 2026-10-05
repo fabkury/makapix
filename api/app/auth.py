@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from . import models
 from .deps import get_db
+from .errors import AppError, ErrorCode
 
 logger = logging.getLogger(__name__)
 
@@ -118,25 +119,38 @@ def user_can_authenticate(user: "models.User") -> bool:
     return _auth_block_reason(user) is None
 
 
-def check_user_can_authenticate(user: "models.User") -> None:
+def check_user_can_authenticate(
+    user: "models.User", http_status: int = status.HTTP_403_FORBIDDEN
+) -> None:
     """
     Check if a user is allowed to authenticate.
-    Raises HTTPException if the user is banned or deactivated.
+    Raises AppError (account_banned / account_deactivated) if not.
 
     This function should be called during login, token refresh, and any other
     authentication flow to ensure consistent authorization checks.
+
+    403 by default, not 401: the app answers every 401 with refresh-and-retry,
+    so a 401 never reached the screen as itself (docs/localized-text/ D4).
+    The player-token path passes 401 to keep the firmware contract unchanged.
     """
     reason = _auth_block_reason(user)
     if reason == "deactivated":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Account deactivated",
+        raise AppError(
+            ErrorCode.account_deactivated, "Account deactivated", http_status
         )
 
     if reason == "banned":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Account banned",
+        permanent = _as_utc_aware(user.banned_until) >= models.PERMANENT_BAN_UNTIL
+        raise AppError(
+            ErrorCode.account_banned,
+            "Account banned",
+            http_status,
+            details={
+                "banned_until": (
+                    None if permanent else _as_utc_aware(user.banned_until).isoformat()
+                ),
+                "permanent": permanent,
+            },
         )
 
 
@@ -357,8 +371,8 @@ async def get_current_user(
         return user
 
     except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired"
+        raise AppError(
+            ErrorCode.token_expired, "Token expired", status.HTTP_401_UNAUTHORIZED
         )
     except jwt.InvalidTokenError:
         raise HTTPException(
@@ -414,8 +428,9 @@ def get_current_player(
     ):
         _fail()
 
-    # Block banned/deactivated owners, consistent with user authentication.
-    check_user_can_authenticate(player.owner)
+    # Block banned/deactivated owners, consistent with user authentication
+    # (but still 401 here: the player-facing contract predates the 403 codes).
+    check_user_can_authenticate(player.owner, status.HTTP_401_UNAUTHORIZED)
 
     return player
 
@@ -438,15 +453,34 @@ async def get_current_user_optional(
         return None
 
 
+def forbidden_role(required: str) -> AppError:
+    """403 `forbidden_role` for a caller lacking `required` ("moderator"/"owner")."""
+    message = (
+        "Owner role required"
+        if required == "owner"
+        else "Moderator or owner role required"
+    )
+    return AppError(
+        ErrorCode.forbidden_role,
+        message,
+        status.HTTP_403_FORBIDDEN,
+        details={"required": required},
+    )
+
+
+def not_owner(
+    message: str = "You don't have permission to access this resource",
+) -> AppError:
+    """403 `not_owner`: the caller does not own the resource (and isn't a mod)."""
+    return AppError(ErrorCode.not_owner, message, status.HTTP_403_FORBIDDEN)
+
+
 def require_moderator(user: models.User = Depends(get_current_user)) -> models.User:
     """
     Require that the current user has moderator or owner role.
     """
     if "moderator" not in user.roles and "owner" not in user.roles:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Moderator or owner role required",
-        )
+        raise forbidden_role("moderator")
     return user
 
 
@@ -455,9 +489,7 @@ def require_owner(user: models.User = Depends(get_current_user)) -> models.User:
     Require that the current user has owner role.
     """
     if "owner" not in user.roles:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Owner role required"
-        )
+        raise forbidden_role("owner")
     return user
 
 
@@ -475,9 +507,10 @@ def ensure_not_owner_self(user: models.User, actor: models.User) -> None:
     Raises 403 Forbidden if trying to modify own owner role.
     """
     if is_owner(user) and user.id == actor.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You cannot modify your own owner status",
+        raise AppError(
+            ErrorCode.owner_protected,
+            "You cannot modify your own owner status",
+            status.HTTP_403_FORBIDDEN,
         )
 
 
@@ -488,8 +521,10 @@ def ensure_not_owner(user: models.User) -> None:
     Raises 403 Forbidden if trying to modify owner.
     """
     if is_owner(user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Cannot modify owner role"
+        raise AppError(
+            ErrorCode.owner_protected,
+            "Cannot modify owner role",
+            status.HTTP_403_FORBIDDEN,
         )
 
 
@@ -533,10 +568,7 @@ def require_ownership(resource_owner_id: int, current_user: models.User) -> None
     Raises 403 Forbidden if not authorized.
     """
     if not check_ownership(resource_owner_id, current_user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to access this resource",
-        )
+        raise not_owner()
 
 
 # ============================================================================

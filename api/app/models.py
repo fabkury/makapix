@@ -148,6 +148,9 @@ class User(Base):
     mention_policy = Column(
         String(16), nullable=False, default="everyone", server_default="everyone"
     )
+    # Language the app shows this user, as a BCP 47 tag (docs/localized-text/
+    # D6); NULL = English. Picks the language of the emails we send them.
+    locale = Column(String(35), nullable=True)
 
     # Timestamps
     created_at = Column(

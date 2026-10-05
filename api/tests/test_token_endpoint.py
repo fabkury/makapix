@@ -70,7 +70,7 @@ def test_password_grant_wrong_password(client, db):
         json={"grant_type": "password", "email": email, "password": "wrong-pw"},
     )
     assert r.status_code == 401
-    assert r.json()["error"]["code"] == "unauthorized"
+    assert r.json()["error"]["code"] == "invalid_credentials"
 
 
 def test_password_grant_unverified_email(client, db):

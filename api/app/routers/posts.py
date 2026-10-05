@@ -35,6 +35,7 @@ from ..auth import (
     check_ownership,
     get_current_user,
     get_current_user_optional,
+    not_owner,
     require_moderator,
     require_ownership,
 )
@@ -140,6 +141,34 @@ def validate_mkpx_upload(mkpx: UploadFile) -> int:
             status.HTTP_422_UNPROCESSABLE_ENTITY,
         )
     return size
+
+
+def amp_inspection_error(error_info: dict) -> AppError:
+    """Map a failed AMP inspection's `error.code` to a stable AppError."""
+    from ..amp.constants import ALLOWED_EXTENSIONS, MAX_CANVAS_SIZE, MAX_FILE_SIZE_BYTES
+
+    amp_code = error_info.get("code")
+    message = error_info.get("message", "Unknown error during image inspection")
+    if amp_code == "INVALID_DIMENSIONS":
+        return AppError(
+            ErrorCode.dimensions_invalid,
+            message,
+            details={**(error_info.get("details") or {}), "max": MAX_CANVAS_SIZE},
+        )
+    if amp_code == "FILE_TOO_LARGE":
+        return AppError(
+            ErrorCode.file_too_large,
+            message,
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            details={"max_bytes": MAX_FILE_SIZE_BYTES},
+        )
+    if amp_code in ("UNSUPPORTED_FORMAT", "INVALID_EXTENSION"):
+        return AppError(
+            ErrorCode.image_format_unsupported,
+            message,
+            details={"allowed": sorted(e.lstrip(".") for e in ALLOWED_EXTENSIONS)},
+        )
+    return AppError(ErrorCode.image_invalid, message)
 
 
 @router.get("", response_model=schemas.Page[schemas.Post])
@@ -666,9 +695,11 @@ async def upload_artwork(
         db, current_user, file_size + mkpx_size
     )
     if not quota_allowed:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=format_quota_error(used, quota),
+        raise AppError(
+            ErrorCode.quota_exceeded,
+            format_quota_error(used, quota),
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            details={"used_bytes": used, "limit_bytes": quota},
         )
 
     # Save to temporary file for AMP inspection
@@ -712,15 +743,9 @@ async def upload_artwork(
 
         # Check if AMP inspection succeeded
         if not amp_result.get("success"):
-            error_info = amp_result.get("error", {})
-            error_message = error_info.get(
-                "message", "Unknown error during image inspection"
-            )
-            logger.warning(f"AMP inspection failed: {error_message}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=error_message,
-            )
+            error = amp_inspection_error(amp_result.get("error", {}))
+            logger.warning(f"AMP inspection failed: {error.detail}")
+            raise error
 
         # Extract metadata from AMP result
         metadata = amp_result["metadata"]
@@ -953,9 +978,10 @@ async def upload_artwork(
             delete_mkpx_from_vault(post.storage_key, post.storage_shard)
         if isinstance(e, VaultFullError):
             logger.error(f"Vault below free-space floor during upload: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Storage temporarily unavailable. Please try again later.",
+            raise AppError(
+                ErrorCode.storage_unavailable,
+                "Storage temporarily unavailable. Please try again later.",
+                status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         logger.error(f"Failed to save artwork to vault: {e}")
         raise HTTPException(
@@ -1145,14 +1171,14 @@ def get_post_by_storage_key(
     )
 
     if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Check visibility
     if not can_access_post(post, current_user):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Add reaction and comment counts
@@ -1203,7 +1229,9 @@ async def register_view(
 
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
+        )
 
     # Self-views are accepted but never counted
     if current_user is not None and post.owner_id == current_user.id:
@@ -1286,8 +1314,8 @@ def update_post(
     # (docs/mod-hashtags/DECISIONS.md D17).
     post = db.query(models.Post).filter(models.Post.id == id).with_for_update().first()
     if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     require_ownership(post.owner_id, current_user)
@@ -1385,27 +1413,27 @@ def update_mod_hashtags(
     # Playlist rows can't serialize as schemas.Post, and a soft-deleted post
     # would notify the artist with a dead link (D18).
     if not post or post.kind != "artwork" or post.deleted_by_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     new_mod = normalize_hashtags(payload.hashtags, cap=None)
     if len(new_mod) > MAX_MOD_HASHTAGS_PER_POST:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=(
-                f"At most {MAX_MOD_HASHTAGS_PER_POST} moderator hashtags per "
-                f"post ({len(new_mod)} after normalization)."
-            ),
+        raise AppError(
+            ErrorCode.mod_hashtags_limit,
+            f"At most {MAX_MOD_HASHTAGS_PER_POST} moderator hashtags per "
+            f"post ({len(new_mod)} after normalization).",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            details={"max": MAX_MOD_HASHTAGS_PER_POST, "count": len(new_mod)},
         )
     too_long = [t for t in new_mod if len(t) > MAX_HASHTAG_LENGTH]
     if too_long:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=(
-                f"Hashtags longer than {MAX_HASHTAG_LENGTH} characters: "
-                f"{', '.join(too_long)}"
-            ),
+        raise AppError(
+            ErrorCode.hashtag_too_long,
+            f"Hashtags longer than {MAX_HASHTAG_LENGTH} characters: "
+            f"{', '.join(too_long)}",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            details={"max_length": MAX_HASHTAG_LENGTH},
         )
 
     old_mod = post.mod_hashtags or []
@@ -1463,8 +1491,8 @@ def _get_mkpx_target_post(db: Session, id: int) -> models.Post:
     """
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post or post.kind != "artwork" or post.deleted_by_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
     return post
 
@@ -1504,9 +1532,11 @@ async def attach_mkpx(
         owner = post.owner or current_user
         quota_allowed, used, quota = check_storage_quota(db, owner, delta)
         if not quota_allowed:
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=format_quota_error(used, quota),
+            raise AppError(
+                ErrorCode.quota_exceeded,
+                format_quota_error(used, quota),
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                details={"used_bytes": used, "limit_bytes": quota},
             )
 
     from datetime import datetime, timezone
@@ -1520,9 +1550,10 @@ async def attach_mkpx(
         )
     except VaultFullError as e:
         logger.error(f"Vault below free-space floor during mkpx attach: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Storage temporarily unavailable. Please try again later.",
+        raise AppError(
+            ErrorCode.storage_unavailable,
+            "Storage temporarily unavailable. Please try again later.",
+            status.HTTP_503_SERVICE_UNAVAILABLE,
         )
     except (OSError, ValueError) as e:
         logger.error(f"Failed to save mkpx for post {id}: {e}")
@@ -1555,9 +1586,10 @@ def detach_mkpx(
     require_ownership(post.owner_id, current_user)
 
     if post.mkpx_file_bytes is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Post has no layers file attached",
+        raise AppError(
+            ErrorCode.mkpx_not_attached,
+            "Post has no layers file attached",
+            status.HTTP_404_NOT_FOUND,
         )
 
     # Best-effort file removal; the DB columns are the source of truth and
@@ -1589,8 +1621,8 @@ def delete_post(
     """
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     require_ownership(post.owner_id, current_user)
@@ -1631,8 +1663,8 @@ def permanent_delete_post(
     """
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Delete all artwork format variants + upscaled version
@@ -1675,11 +1707,12 @@ def permanent_delete_post(
         db.delete(post)
         db.commit()
     except Exception as e:
-        logger.error(f"Failed to delete post {id} from database: {e}", exc_info=True)
+        logger.exception(f"Failed to delete post {id} from database: {e}")
         db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete post: {str(e)}",
+        raise AppError(
+            ErrorCode.internal_error,
+            "Failed to delete post.",
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
     # Invalidate caches
@@ -1706,8 +1739,8 @@ def hide_post(
     """
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     by = payload.by if payload else "user"
@@ -1715,9 +1748,11 @@ def hide_post(
     if by == "mod":
         # Check moderator role
         if "moderator" not in current_user.roles and "owner" not in current_user.roles:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Moderator role required to hide posts as moderator",
+            raise AppError(
+                ErrorCode.forbidden_role,
+                "Moderator role required to hide posts as moderator",
+                status.HTTP_403_FORBIDDEN,
+                details={"required": "moderator"},
             )
         post.hidden_by_mod = True
         # Log to audit
@@ -1755,15 +1790,16 @@ def unhide_post(
     """
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Prevent restoring deleted posts
     if post.deleted_by_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Deleted posts cannot be restored",
+        raise AppError(
+            ErrorCode.post_deleted,
+            "Deleted posts cannot be restored",
+            status.HTTP_400_BAD_REQUEST,
         )
 
     # Check if user is owner or moderator
@@ -1811,8 +1847,8 @@ def promote_post(
     """
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     post.promoted = True
@@ -1872,8 +1908,8 @@ def demote_post(
     """
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     post.promoted = False
@@ -1913,8 +1949,8 @@ def approve_public_visibility(
     """
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     post.public_visibility = True
@@ -1984,8 +2020,8 @@ def revoke_public_visibility(
     """
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     post.public_visibility = False
@@ -2036,13 +2072,12 @@ async def replace_artwork(
     """
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post or post.kind != "artwork":
-        raise HTTPException(status_code=404, detail="Post not found")
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
+        )
 
     if post.owner_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to modify this post",
-        )
+        raise not_owner("Not authorized to modify this post")
 
     # Rate-limit replacements on the shared upload bucket. Without this, replace
     # is an unbounded disk/CPU amplification loop: each call writes up to 5 MB,
@@ -2087,9 +2122,11 @@ async def replace_artwork(
         owner = post.owner or current_user
         quota_allowed, used, quota = check_storage_quota(db, owner, delta)
         if not quota_allowed:
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=format_quota_error(used, quota),
+            raise AppError(
+                ErrorCode.quota_exceeded,
+                format_quota_error(used, quota),
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                details={"used_bytes": used, "limit_bytes": quota},
             )
 
     # Save to temporary file for AMP inspection (preserve extension if possible)
@@ -2129,14 +2166,7 @@ async def replace_artwork(
             )
 
         if not amp_result.get("success"):
-            error_info = amp_result.get("error", {})
-            error_message = error_info.get(
-                "message", "Unknown error during image inspection"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=error_message,
-            )
+            raise amp_inspection_error(amp_result.get("error", {}))
 
         metadata = amp_result["metadata"]
         width = metadata["width"]
@@ -2161,9 +2191,10 @@ async def replace_artwork(
 
         # Disallow redundant replacement (same hash as current artwork)
         if post.hash and file_hash == post.hash:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Artwork is identical to current artwork",
+            raise AppError(
+                ErrorCode.artwork_unchanged,
+                "Artwork is identical to current artwork",
+                status.HTTP_400_BAD_REQUEST,
             )
 
         # Also disallow replacing with an artwork that already exists elsewhere
@@ -2178,9 +2209,11 @@ async def replace_artwork(
             .first()
         )
         if existing:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Artwork already exists",
+            raise AppError(
+                ErrorCode.artwork_duplicate,
+                "Artwork already exists",
+                status.HTTP_409_CONFLICT,
+                details={"post_id": existing.id, "sqid": existing.public_sqid},
             )
 
     finally:
@@ -2286,9 +2319,21 @@ async def replace_artwork(
         db.flush()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Artwork already exists",
+        dup = (
+            db.query(models.Post)
+            .filter(
+                models.Post.kind == "artwork",
+                models.Post.hash == file_hash,
+                models.Post.id != id,
+                models.Post.deleted_by_user == False,
+            )
+            .first()
+        )
+        raise AppError(
+            ErrorCode.artwork_duplicate,
+            "Artwork already exists",
+            status.HTTP_409_CONFLICT,
+            details=({"post_id": dup.id, "sqid": dup.public_sqid} if dup else None),
         )
 
     # Delete all existing PostFile rows and create new native row
@@ -2357,9 +2402,10 @@ async def replace_artwork(
                 pass
         if isinstance(e, VaultFullError):
             logger.error(f"Vault below free-space floor during replace: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Storage temporarily unavailable. Please try again later.",
+            raise AppError(
+                ErrorCode.storage_unavailable,
+                "Storage temporarily unavailable. Please try again later.",
+                status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         logger.error(f"Failed to replace artwork in vault: {e}")
         raise HTTPException(
@@ -2435,8 +2481,8 @@ def list_post_parents(
     """
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post or post.kind != "artwork" or not can_access_post(post, current_user):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     links = (
@@ -2492,8 +2538,8 @@ def list_post_children(
 
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post or post.kind != "artwork" or not can_access_post(post, current_user):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     query = (

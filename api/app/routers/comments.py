@@ -14,6 +14,7 @@ from ..auth import (
     AnonymousUser,
     get_current_user,
     get_current_user_or_anonymous,
+    not_owner,
     require_moderator,
     require_ownership,
 )
@@ -31,6 +32,17 @@ from .comment_likes import annotate_comments_with_likes
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/post", tags=["Comments"])
+
+
+def _reject_profanity(body: str) -> None:
+    """Profanity filter shared by create and edit (mention markup is not prose
+    — sqids are checked out of it)."""
+    if contains_profanity(mentions.strip_markup(body)):
+        raise AppError(
+            ErrorCode.comment_profanity,
+            "Comment contains inappropriate language",
+            status.HTTP_400_BAD_REQUEST,
+        )
 
 
 @router.get("/{id}/comments", response_model=schemas.Page[schemas.Comment])
@@ -183,12 +195,7 @@ def create_comment(
         )
 
     # Profanity filter: reject comments containing inappropriate language
-    # (mention markup is not prose — sqids are checked out of it)
-    if contains_profanity(mentions.strip_markup(payload.body)):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Comment contains inappropriate language",
-        )
+    _reject_profanity(payload.body)
 
     # Enforce post visibility (and 404 a nonexistent id instead of later hitting
     # an unhandled FK violation). You cannot comment on a post you cannot see;
@@ -204,9 +211,11 @@ def create_comment(
     )
 
     if comment_count >= 1000:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Maximum comments per post (1000) exceeded",
+        raise AppError(
+            ErrorCode.comment_cap_reached,
+            "Maximum comments per post (1000) exceeded",
+            status.HTTP_409_CONFLICT,
+            details={"max": 1000},
         )
 
     # Validate parent comment and calculate depth
@@ -219,8 +228,10 @@ def create_comment(
             .first()
         )
         if not parent or parent.post_id != id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid parent comment"
+            raise AppError(
+                ErrorCode.parent_comment_not_found,
+                "Invalid parent comment",
+                status.HTTP_400_BAD_REQUEST,
             )
 
         # Validate parent depth is valid (< 2)
@@ -338,8 +349,8 @@ def update_comment(
     """
     comment = db.query(models.Comment).filter(models.Comment.id == commentId).first()
     if not comment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
+        raise AppError(
+            ErrorCode.comment_not_found, "Comment not found", status.HTTP_404_NOT_FOUND
         )
 
     # Anonymous comments cannot be edited
@@ -350,6 +361,8 @@ def update_comment(
         )
 
     require_ownership(comment.author_id, current_user)
+
+    _reject_profanity(payload.body)
 
     # Mentions: the author is the writer (also when a moderator edits);
     # notify only recipients new to this edit (N4 — notify_mentions also
@@ -406,8 +419,8 @@ def delete_comment(
     """
     comment = db.query(models.Comment).filter(models.Comment.id == commentId).first()
     if not comment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
+        raise AppError(
+            ErrorCode.comment_not_found, "Comment not found", status.HTTP_404_NOT_FOUND
         )
 
     # Check ownership
@@ -421,23 +434,14 @@ def delete_comment(
                 "moderator" not in current_user.roles
                 and "owner" not in current_user.roles
             ):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You don't have permission to delete this comment",
-                )
+                raise not_owner("You don't have permission to delete this comment")
     else:
         # Anonymous user: check by IP
         if comment.author_id is not None:
             # Comment was created by authenticated user, anonymous can't delete it
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to delete this comment",
-            )
+            raise not_owner("You don't have permission to delete this comment")
         if comment.author_ip != current_user.ip:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to delete this comment",
-            )
+            raise not_owner("You don't have permission to delete this comment")
         is_author = True
 
     if comment.deleted_by_owner or comment.deleted_by_mod:
@@ -485,8 +489,8 @@ def undelete_comment(
     """Undelete comment (moderator only)."""
     comment = db.query(models.Comment).filter(models.Comment.id == commentId).first()
     if not comment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
+        raise AppError(
+            ErrorCode.comment_not_found, "Comment not found", status.HTTP_404_NOT_FOUND
         )
 
     comment.deleted_by_owner = False
@@ -524,13 +528,14 @@ def purge_comment_original_body(
     """
     comment = db.query(models.Comment).filter(models.Comment.id == commentId).first()
     if not comment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
+        raise AppError(
+            ErrorCode.comment_not_found, "Comment not found", status.HTTP_404_NOT_FOUND
         )
     if not (comment.deleted_by_owner or comment.deleted_by_mod):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Comment is not deleted",
+        raise AppError(
+            ErrorCode.comment_not_deleted,
+            "Comment is not deleted",
+            status.HTTP_400_BAD_REQUEST,
         )
 
     comment.original_body = None
@@ -558,8 +563,8 @@ def hide_comment(
     """Hide comment (moderator only)."""
     comment = db.query(models.Comment).filter(models.Comment.id == commentId).first()
     if not comment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
+        raise AppError(
+            ErrorCode.comment_not_found, "Comment not found", status.HTTP_404_NOT_FOUND
         )
 
     comment.hidden_by_mod = True
@@ -588,8 +593,8 @@ def unhide_comment(
     """Unhide comment (moderator only)."""
     comment = db.query(models.Comment).filter(models.Comment.id == commentId).first()
     if not comment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
+        raise AppError(
+            ErrorCode.comment_not_found, "Comment not found", status.HTTP_404_NOT_FOUND
         )
 
     comment.hidden_by_mod = False

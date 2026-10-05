@@ -73,8 +73,8 @@ def get_post_by_sqid(
 
     post_id = decode_sqid(public_sqid)
     if post_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Query post with owner and license relationships
@@ -86,20 +86,20 @@ def get_post_by_sqid(
     )
 
     if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Verify public_sqid matches (safety check)
     if post.public_sqid != public_sqid:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Check visibility
     if not can_access_post(post, current_user):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Add reaction and comment counts (view_count is the denormalized
@@ -134,19 +134,19 @@ def download_mkpx_by_sqid(
 
     post_id = decode_sqid(public_sqid)
     if post_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     post = db.query(models.Post).filter(models.Post.id == post_id).first()
     if not post or post.public_sqid != public_sqid:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     if not can_access_post(post, current_user):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Remixable gate (docs/artwork-provenance/PLAN.md L11): the layers file
@@ -163,9 +163,10 @@ def download_mkpx_by_sqid(
             )
 
     if post.mkpx_file_bytes is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Post has no layers file attached",
+        raise AppError(
+            ErrorCode.mkpx_not_attached,
+            "Post has no layers file attached",
+            status.HTTP_404_NOT_FOUND,
         )
 
     file_path = get_mkpx_file_path(post.storage_key, post.storage_shard)
@@ -173,8 +174,10 @@ def download_mkpx_by_sqid(
         logger.error(
             "mkpx file missing for post %s (columns set, file absent)", post.id
         )
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Layers file not found"
+        raise AppError(
+            ErrorCode.format_not_available,
+            "Layers file not found",
+            status.HTTP_404_NOT_FOUND,
         )
 
     filename = f"makapix-{public_sqid}.mkpx"
@@ -216,40 +219,39 @@ def download_by_sqid_format(
 
     post_id = decode_sqid(public_sqid)
     if post_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Query post
     post = db.query(models.Post).filter(models.Post.id == post_id).first()
 
     if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Verify public_sqid matches
     if post.public_sqid != public_sqid:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Check visibility
     if not can_access_post(post, current_user):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Check if requested format is available
     available_formats = {f.format for f in post.files}
     if extension not in available_formats:
         # Return 404 with info about available formats
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "message": f"Format '{extension}' not available for this artwork",
-                "formats_available": sorted(available_formats),
-            },
+        raise AppError(
+            ErrorCode.format_not_available,
+            f"Format '{extension}' not available for this artwork",
+            status.HTTP_404_NOT_FOUND,
+            details={"formats_available": sorted(available_formats)},
         )
 
     # Get file path for requested format
@@ -258,9 +260,10 @@ def download_by_sqid_format(
     )
 
     if not file_path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found (format conversion may still be processing)",
+        raise AppError(
+            ErrorCode.format_not_available,
+            "File not found (format conversion may still be processing)",
+            status.HTTP_404_NOT_FOUND,
         )
 
     # Determine filename for download
@@ -292,28 +295,28 @@ def download_by_sqid(
 
     post_id = decode_sqid(public_sqid)
     if post_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Query post
     post = db.query(models.Post).filter(models.Post.id == post_id).first()
 
     if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Verify public_sqid matches
     if post.public_sqid != public_sqid:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Check visibility
     if not can_access_post(post, current_user):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Get native format from post files
@@ -326,8 +329,10 @@ def download_by_sqid(
     )
 
     if not file_path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="File not found"
+        raise AppError(
+            ErrorCode.format_not_available,
+            "File not found",
+            status.HTTP_404_NOT_FOUND,
         )
 
     # Determine filename for download
@@ -365,28 +370,28 @@ def download_upscaled_by_sqid(
 
     post_id = decode_sqid(public_sqid)
     if post_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Query post
     post = db.query(models.Post).filter(models.Post.id == post_id).first()
 
     if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Verify public_sqid matches
     if post.public_sqid != public_sqid:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Check visibility
     if not can_access_post(post, current_user):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Get upscaled file path
@@ -395,9 +400,10 @@ def download_upscaled_by_sqid(
     )
 
     if not file_path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Upscaled version not available (may still be processing or artwork is too large to upscale)",
+        raise AppError(
+            ErrorCode.format_not_available,
+            "Upscaled version not available (may still be processing or artwork is too large to upscale)",
+            status.HTTP_404_NOT_FOUND,
         )
 
     # Determine filename for download
@@ -425,14 +431,14 @@ def download_by_storage_key(
     post = db.query(models.Post).filter(models.Post.storage_key == storage_key).first()
 
     if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Check visibility
     if not can_access_post(post, current_user):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Get native format from post files
@@ -445,8 +451,10 @@ def download_by_storage_key(
     )
 
     if not file_path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="File not found"
+        raise AppError(
+            ErrorCode.format_not_available,
+            "File not found",
+            status.HTTP_404_NOT_FOUND,
         )
 
     # Determine filename for download
@@ -482,8 +490,8 @@ def get_user_by_sqid_canonical(
 
     user_id = decode_user_sqid(public_sqid)
     if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Query user with badges
@@ -495,8 +503,8 @@ def get_user_by_sqid_canonical(
     )
 
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        raise AppError(
+            ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
         )
 
     # Check visibility - use same logic as users router
@@ -512,12 +520,12 @@ def get_user_by_sqid_canonical(
             or user.non_conformant
             or user.deactivated
         ):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+            raise AppError(
+                ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
             )
         if user.banned_until:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+            raise AppError(
+                ErrorCode.user_not_found, "User not found", status.HTTP_404_NOT_FOUND
             )
 
     # Return full profile if viewing own profile, public otherwise

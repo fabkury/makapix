@@ -86,11 +86,17 @@ def main() -> int:
     header_result = inspect_header(args.file_path)
 
     if not header_result.success:
+        dims = (
+            {"width": header_result.width, "height": header_result.height}
+            if header_result.width is not None and header_result.height is not None
+            else None
+        )
         return _output_error(
             header_result.error_code,
             header_result.error_message,
             args.backend,
             exit_code=1,
+            details=dims,
         )
 
     if not args.backend:
@@ -190,6 +196,7 @@ def _output_error(
     error_message: str,
     backend_mode: bool,
     exit_code: int = 1,
+    details: dict | None = None,
 ) -> int:
     """
     Output error in JSON format and return exit code.
@@ -199,6 +206,7 @@ def _output_error(
         error_message: Human-readable error message
         backend_mode: If True, suppress stderr output
         exit_code: Exit code to return
+        details: Optional machine-readable extras (e.g. width/height)
 
     Returns:
         The exit code
@@ -210,6 +218,8 @@ def _output_error(
             "message": error_message,
         },
     }
+    if details:
+        error_result["error"]["details"] = details
 
     if not backend_mode:
         print(f"\n✗ Error: {error_message}", file=sys.stderr)

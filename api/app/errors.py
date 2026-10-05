@@ -11,7 +11,9 @@ functioning while we migrate the enumerated client-handled sites to `AppError`.
 
 Scope: the envelope is applied only to `/v1/*` paths. Non-versioned surfaces
 (hardware players, relay, pmd/umd, legacy redirects) keep FastAPI's default
-`{"detail": ...}` shape so their existing contract is byte-stable. The player RPC
+`{"detail": ...}` shape, with the same stable `code` (and `details`, when
+present) added beside `detail` (docs/localized-text/ D2) so app clients can
+branch on it without the envelope. The player RPC
 router emits its own `{request_id, success, error, error_code}` envelope directly
 and is unaffected.
 """
@@ -21,7 +23,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -51,6 +53,22 @@ class ErrorCode(StrEnum):
     token_expired = "token_expired"
     token_invalid = "token_invalid"
     account_banned = "account_banned"
+    account_deactivated = "account_deactivated"
+    # Password grant: wrong email or password (docs/localized-text/)
+    invalid_credentials = "invalid_credentials"
+    email_taken = "email_taken"
+    # Registration retried for an email whose account awaits verification
+    pending_verification = "pending_verification"
+    apple_email_missing = "apple_email_missing"
+    password_login_unsupported = "password_login_unsupported"
+    current_password_incorrect = "current_password_incorrect"
+    # Cannot unlink the user's only remaining sign-in method
+    last_auth_method = "last_auth_method"
+    # GitHub OAuth (native redirect `error_code=`; see routers/auth.py)
+    oauth_state_invalid = "oauth_state_invalid"
+    github_failed = "github_failed"
+    # details.reason: empty|too_short|too_long|bad_edge|bad_char|no_alnum
+    handle_invalid = "handle_invalid"
     # Sign in with Apple: identity-token verification failed
     # (docs/apple-signin/API-CONTRACT.md)
     apple_token_invalid = "apple_token_invalid"
@@ -69,6 +87,32 @@ class ErrorCode(StrEnum):
     dimensions_invalid = "dimensions_invalid"
     file_too_large = "file_too_large"
     quota_exceeded = "quota_exceeded"
+    image_empty = "image_empty"
+    image_format_unsupported = "image_format_unsupported"
+    image_invalid = "image_invalid"
+    # Vault disk full (507) / temporarily unreachable (503)
+    storage_full = "storage_full"
+    storage_unavailable = "storage_unavailable"
+    artwork_unchanged = "artwork_unchanged"
+    post_has_no_artwork = "post_has_no_artwork"
+    mkpx_not_attached = "mkpx_not_attached"
+    format_not_available = "format_not_available"
+    post_deleted = "post_deleted"
+    post_not_visible = "post_not_visible"
+    mod_hashtags_limit = "mod_hashtags_limit"
+    hashtag_too_long = "hashtag_too_long"
+
+    # --- Not found (specific) ---
+    post_not_found = "post_not_found"
+    user_not_found = "user_not_found"
+    comment_not_found = "comment_not_found"
+    player_not_found = "player_not_found"
+
+    # --- Comments ---
+    comment_profanity = "comment_profanity"
+    comment_cap_reached = "comment_cap_reached"
+    parent_comment_not_found = "parent_comment_not_found"
+    comment_not_deleted = "comment_not_deleted"
     reaction_cap_reached = "reaction_cap_reached"
     comment_too_deep = "comment_too_deep"
     # .mkpx layers-file attachments (docs/mkpx-upload/API-CONTRACT.md §3)
@@ -96,6 +140,23 @@ class ErrorCode(StrEnum):
     # Per-user block cap exceeded (D19)
     block_cap_reached = "block_cap_reached"
 
+    # --- Players (unversioned /player surfaces; code rides beside `detail`) ---
+    player_limit_reached = "player_limit_reached"
+    registration_code_invalid = "registration_code_invalid"
+    player_already_registered = "player_already_registered"
+    # Player lacks the capability for an optional command (details.feature)
+    unsupported_command = "unsupported_command"
+    # Command value outside the player's advertised range/values
+    invalid_value = "invalid_value"
+
+    # --- Moderation (pmd/umd) ---
+    owner_protected = "owner_protected"
+    posts_not_owned = "posts_not_owned"
+    bdr_daily_limit = "bdr_daily_limit"
+    bdr_not_ready = "bdr_not_ready"
+    bdr_expired = "bdr_expired"
+    bdr_not_found = "bdr_not_found"
+
 
 # Fallback: HTTP status -> generic ErrorCode for plain HTTPExceptions raised
 # without a structured detail. Anything unmapped becomes internal_error.
@@ -113,7 +174,7 @@ _STATUS_TO_CODE: dict[int, ErrorCode] = {
 _DEFAULT_CODE = ErrorCode.internal_error
 
 
-class AppError(Exception):
+class AppError(HTTPException):
     """Raise to return a stable, machine-readable error envelope.
 
     Example::
@@ -134,7 +195,9 @@ class AppError(Exception):
         details: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
     ) -> None:
-        super().__init__(message)
+        # An HTTPException subclass, so code that catches HTTPException (optional
+        # auth, the OAuth callback) treats an AppError exactly like before.
+        super().__init__(status_code=http_status, detail=message, headers=headers)
         self.code = code
         self.message = message
         self.http_status = http_status
@@ -166,6 +229,16 @@ def error_response(
     )
 
 
+def _legacy(
+    detail: Any, code: ErrorCode | str, details: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Non-v1 shape: FastAPI's `detail`, plus the stable `code` beside it."""
+    body: dict[str, Any] = {"detail": detail, "code": str(code)}
+    if details:
+        body["details"] = details
+    return body
+
+
 def _is_v1(request: Request) -> bool:
     """True for app-facing v1 paths. Non-v1 surfaces keep the legacy shape."""
     path = request.url.path
@@ -186,7 +259,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             # shape so raising AppError in shared code is safe before web moves.
             return JSONResponse(
                 status_code=exc.http_status,
-                content={"detail": exc.message},
+                content=_legacy(exc.message, exc.code, exc.details),
                 headers=exc.headers,
             )
         return error_response(
@@ -198,14 +271,24 @@ def register_exception_handlers(app: FastAPI) -> None:
         request: Request, exc: StarletteHTTPException
     ) -> JSONResponse:
         headers = getattr(exc, "headers", None)
+        detail = exc.detail
         if not _is_v1(request):
             # Preserve FastAPI's default shape for non-versioned surfaces.
+            if isinstance(detail, dict) and "code" in detail:
+                return JSONResponse(
+                    status_code=exc.status_code,
+                    content=_legacy(
+                        detail.get("message") or "",
+                        detail["code"],
+                        detail.get("details"),
+                    ),
+                    headers=headers,
+                )
             return JSONResponse(
                 status_code=exc.status_code,
-                content={"detail": exc.detail},
+                content=_legacy(detail, _code_for_status(exc.status_code), None),
                 headers=headers,
             )
-        detail = exc.detail
         if isinstance(detail, dict) and "code" in detail:
             code = detail.get("code", _code_for_status(exc.status_code))
             message = detail.get("message") or ""
@@ -235,7 +318,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         if not _is_v1(request):
             return JSONResponse(
                 status_code=422,
-                content={"detail": errors},
+                content=_legacy(errors, ErrorCode.validation_error, None),
             )
         return error_response(
             ErrorCode.validation_error,

@@ -27,7 +27,7 @@ The `banned_until` field on the User model controls ban state:
 |-------|---------|
 | `NULL` (no ban record) | Not banned |
 | Future datetime | Temporarily banned until that time |
-| `NULL` (set by ban with no duration) | Permanently banned |
+| `9999-12-31T23:59:59Z` (`PERMANENT_BAN_UNTIL`, set by ban with no duration) | Permanently banned |
 
 Temporary bans auto-expire: the authentication check compares `banned_until` against the current time. Once expired, the user can log in again without moderator action.
 
@@ -39,23 +39,24 @@ See [Scheduled Tasks](../reference/scheduled-tasks.md) for what *is* automatical
 
 ### Ban User
 
-Two endpoint variants exist -- one accepting UUID, one accepting Sqids:
-
-**UUID variant:**
-
 ```
-POST /api/admin/user/{user_key}/ban
+POST /api/admin/user/{id}/ban
 ```
+
+`{id}` is either the user's UUID (`user_key`) or their public Sqid. (Until
+2026-10 these were two routes, and the Sqid one was shadowed by the UUID one,
+so Sqid callers got a 422; app 0002 §7.1, docs/localized-text/.)
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `user_key` (path) | UUID | Yes | User's UUID |
+| `id` (path) | string | Yes | User's UUID or public Sqid |
+| `duration_days` (query) | integer | No | Ban duration in days (1--365); used only when the body has none |
 | `reason` | string | No | Ban reason (max 500 chars) |
-| `duration_days` | integer | No | Ban duration in days (1--365). Omit for permanent. |
+| `duration_days` | integer | No | Ban duration in days (1--365). Omit (body and query) for permanent. |
 | `reason_code` | string | No | Machine-readable reason code (max 50 chars) |
 | `note` | string | No | Internal moderator note (max 1000 chars) |
 
-Request body (JSON):
+Request body (JSON, optional):
 
 ```json
 {
@@ -75,26 +76,12 @@ Response (`201 Created`):
 }
 ```
 
-For a permanent ban, omit `duration_days` (or set to `null`). The `until` field will be `null`.
-
-**Sqids variant:**
-
-```
-POST /api/admin/user/{sqid}/ban?duration_days=30
-```
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `sqid` (path) | string | Yes | User's public Sqid |
-| `duration_days` (query) | integer | No | Ban duration in days (1--365). Omit for permanent. |
-
-Response: `{"status": "banned", "until": "..."}` or `{"status": "banned", "until": null}`.
+For a permanent ban, give no duration. The `until` field is then the far-future sentinel `9999-12-31T23:59:59Z` (`models.PERMANENT_BAN_UNTIL`).
 
 ### Unban User
 
 ```
-DELETE /api/admin/user/{user_key}/ban    # UUID variant
-DELETE /api/admin/user/{sqid}/ban        # Sqids variant
+DELETE /api/admin/user/{id}/ban    # UUID or Sqid
 ```
 
 Response: `204 No Content`.
@@ -103,7 +90,7 @@ Sets `banned_until = NULL`, allowing the user to authenticate immediately.
 
 ### Protection Rules
 
-- Cannot ban the site owner (403 Forbidden), unless the actor is the owner themselves.
+- Cannot ban the site owner (403 Forbidden, code `owner_protected`), unless the actor is the owner themselves.
 - The same protection applies to hide, trust, and reputation actions.
 
 ---
@@ -113,17 +100,15 @@ Sets `banned_until = NULL`, allowing the user to authenticate immediately.
 ### Hide User Profile
 
 ```
-POST /api/admin/user/{id}/hide          # UUID variant
-POST /api/admin/user/{sqid}/hide        # Sqids variant
+POST /api/admin/user/{id}/hide          # UUID or Sqid
 ```
 
-Response: `201 Created`.
+Response: `201 Created`, body `{"status": "hidden"}`.
 
 ### Unhide User Profile
 
 ```
-DELETE /api/admin/user/{id}/hide         # UUID variant
-DELETE /api/admin/user/{sqid}/hide       # Sqids variant
+DELETE /api/admin/user/{id}/hide         # UUID or Sqid
 ```
 
 Response: `204 No Content`.

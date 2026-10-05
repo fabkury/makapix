@@ -10,8 +10,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..auth import get_current_user
+from ..auth import get_current_user, not_owner
 from ..deps import get_db
+from ..errors import AppError, ErrorCode
 from ..services.stats import get_post_stats, invalidate_post_stats_cache
 
 logger = logging.getLogger(__name__)
@@ -47,8 +48,8 @@ async def get_post_statistics(
     # Check if post exists
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+        raise AppError(
+            ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
         )
 
     # Authorization: owner of post OR moderator/owner role
@@ -56,10 +57,7 @@ async def get_post_statistics(
     is_moderator = "moderator" in current_user.roles or "owner" in current_user.roles
 
     if not is_owner and not is_moderator:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to view statistics for this post",
-        )
+        raise not_owner("You don't have permission to view statistics for this post")
 
     # Invalidate cache if requested
     if refresh:

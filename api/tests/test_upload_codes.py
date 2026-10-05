@@ -44,5 +44,7 @@ def test_upload_invalid_dimensions(client, db):
     )
     assert r.status_code == 400
     body = r.json()
-    assert body["error"]["code"] == "bad_request"
+    assert body["error"]["code"] == "dimensions_invalid"
     assert "100x100 is not allowed" in body["error"]["message"]
+    assert body["error"]["details"]["width"] == 100
+    assert body["error"]["details"]["height"] == 100

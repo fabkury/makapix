@@ -225,7 +225,7 @@ def test_private_relay_email_never_links(client, db):
 
     r = _post_grant(client, _identity_token(sub=_unique_sub(), email=email))
     assert r.status_code == 409
-    assert r.json()["error"]["code"] == "conflict"
+    assert r.json()["error"]["code"] == "email_taken"
 
 
 def test_relay_email_creates_fresh_account(client, db):
@@ -242,4 +242,4 @@ def test_relay_email_creates_fresh_account(client, db):
 def test_new_user_without_any_email_rejected(client, db):
     r = _post_grant(client, _identity_token(sub=_unique_sub()))
     assert r.status_code == 400
-    assert r.json()["error"]["code"] == "bad_request"
+    assert r.json()["error"]["code"] == "apple_email_missing"

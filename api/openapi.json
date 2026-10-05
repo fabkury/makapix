@@ -545,6 +545,17 @@
             ],
             "title": "Download Url"
           },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
           "error_message": {
             "anyOf": [
               {
@@ -1911,6 +1922,17 @@
           "message": {
             "title": "Message",
             "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
           }
         },
         "required": [
@@ -1993,6 +2015,12 @@
             "title": "Created At",
             "type": "string"
           },
+          "deleted": {
+            "description": "True when `body` is a tombstone, not the author's text: soft-deleted\nby owner/mod, or anonymized with the account (docs/localized-text/).",
+            "readOnly": true,
+            "title": "Deleted",
+            "type": "boolean"
+          },
           "deleted_by_mod": {
             "default": false,
             "title": "Deleted By Mod",
@@ -2073,6 +2101,7 @@
           "deleted_by_owner",
           "created_at",
           "author_handle",
+          "deleted",
           "author_display_name",
           "author_avatar_url",
           "author_public_sqid"
@@ -2518,6 +2547,19 @@
             "maxLength": 255,
             "title": "Email",
             "type": "string"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "maxLength": 35,
+                "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
           }
         },
         "required": [
@@ -3411,10 +3453,15 @@
           "window": {
             "title": "Window",
             "type": "string"
+          },
+          "window_seconds": {
+            "title": "Window Seconds",
+            "type": "integer"
           }
         },
         "required": [
           "window",
+          "window_seconds",
           "limit",
           "remaining"
         ],
@@ -4360,6 +4407,19 @@
             "maxLength": 255,
             "title": "Email",
             "type": "string"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "maxLength": 35,
+                "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
           }
         },
         "required": [
@@ -6962,6 +7022,19 @@
             "title": "Email",
             "type": "string"
           },
+          "locale": {
+            "anyOf": [
+              {
+                "maxLength": 35,
+                "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          },
           "password": {
             "anyOf": [
               {
@@ -8972,6 +9045,17 @@
             "title": "Id",
             "type": "integer"
           },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          },
           "mention_policy": {
             "default": "everyone",
             "enum": [
@@ -9491,6 +9575,19 @@
               }
             ],
             "title": "Hidden By User"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "maxLength": 35,
+                "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
           },
           "mention_policy": {
             "anyOf": [
@@ -10253,115 +10350,6 @@
         ]
       }
     },
-    "/admin/user/{sqid}/ban": {
-      "delete": {
-        "description": "Unban user (moderator only).\n\nRemoves the ban by setting banned_until to NULL, allowing the user to\nauthenticate again immediately. Does not delete the user's profile or data.",
-        "operationId": "unban_user_admin_user__sqid__ban_delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "sqid",
-            "required": true,
-            "schema": {
-              "title": "Sqid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Unban User",
-        "tags": [
-          "UMD"
-        ]
-      },
-      "post": {
-        "description": "Ban user (moderator only).\n\nBanning a user prevents them from authenticating but does NOT delete their account.\nThe user profile and all associated data remain in the database.\n\n- No duration (None) = permanent ban (banned_until = PERMANENT_BAN_UNTIL)\n- With duration = temporary ban (banned_until = current_time + duration_days)\n\nNote: There is no automatic cleanup of banned user profiles. They remain in the\ndatabase indefinitely unless manually deleted by an administrator.",
-        "operationId": "ban_user_admin_user__sqid__ban_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "sqid",
-            "required": true,
-            "schema": {
-              "title": "Sqid",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Ban duration in days (null = permanent)",
-            "in": "query",
-            "name": "duration_days",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maximum": 365,
-                  "minimum": 1,
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Ban duration in days (null = permanent)",
-              "title": "Duration Days"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Ban User Admin User  Sqid  Ban Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Ban User",
-        "tags": [
-          "UMD"
-        ]
-      }
-    },
     "/admin/user/{sqid}/comments": {
       "get": {
         "description": "Get user's comments for moderation (moderator only).",
@@ -10481,95 +10469,6 @@
           }
         ],
         "summary": "Reveal Email",
-        "tags": [
-          "UMD"
-        ]
-      }
-    },
-    "/admin/user/{sqid}/hide": {
-      "delete": {
-        "description": "Unhide user profile (moderator only).",
-        "operationId": "unhide_user_admin_user__sqid__hide_delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "sqid",
-            "required": true,
-            "schema": {
-              "title": "Sqid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Unhide User",
-        "tags": [
-          "UMD"
-        ]
-      },
-      "post": {
-        "description": "Hide user profile (moderator only).",
-        "operationId": "hide_user_admin_user__sqid__hide_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "sqid",
-            "required": true,
-            "schema": {
-              "title": "Sqid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Hide User Admin User  Sqid  Hide Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Hide User",
         "tags": [
           "UMD"
         ]
@@ -13724,7 +13623,6 @@
             "name": "id",
             "required": true,
             "schema": {
-              "format": "uuid",
               "title": "Id",
               "type": "string"
             }
@@ -13756,7 +13654,7 @@
         ]
       },
       "post": {
-        "description": "Ban user (moderator only).\n\nBanning a user prevents them from authenticating but does NOT delete their account.\nThe user profile and all associated data remain in the database indefinitely.\n\n- No duration (None/0) = permanent ban (banned_until = PERMANENT_BAN_UNTIL)\n- With duration = temporary ban (banned_until = current_time + duration_days)\n\nNote: There is no automatic cleanup of banned user profiles. To completely remove\na user's data, a separate deletion process would need to be implemented.\n\nTODO: Send notification to user (currently not implemented)\nTODO: Hide all user's content (currently content visibility depends on other flags)",
+        "description": "Ban user (moderator only). `id` is the user_key (UUID) or the public sqid.\n\nThe duration comes from the JSON body, or from the `duration_days` query\nparameter when there is no body (the sqid callers).\n\nBanning a user prevents them from authenticating but does NOT delete their account.\nThe user profile and all associated data remain in the database indefinitely.\n\n- No duration (None/0) = permanent ban (banned_until = PERMANENT_BAN_UNTIL)\n- With duration = temporary ban (banned_until = current_time + duration_days)\n\nNote: There is no automatic cleanup of banned user profiles. To completely remove\na user's data, a separate deletion process would need to be implemented.\n\nTODO: Send notification to user (currently not implemented)\nTODO: Hide all user's content (currently content visibility depends on other flags)",
         "operationId": "ban_user_v1_admin_user__id__ban_post",
         "parameters": [
           {
@@ -13764,9 +13662,28 @@
             "name": "id",
             "required": true,
             "schema": {
-              "format": "uuid",
               "title": "Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "Ban duration in days (null = permanent)",
+            "in": "query",
+            "name": "duration_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 365,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Ban duration in days (null = permanent)",
+              "title": "Duration Days"
             }
           }
         ],
@@ -13774,11 +13691,18 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/BanUserRequest"
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/BanUserRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "201": {
@@ -13823,7 +13747,6 @@
             "name": "id",
             "required": true,
             "schema": {
-              "format": "uuid",
               "title": "Id",
               "type": "string"
             }
@@ -13863,7 +13786,6 @@
             "name": "id",
             "required": true,
             "schema": {
-              "format": "uuid",
               "title": "Id",
               "type": "string"
             }
@@ -13873,7 +13795,11 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Hide User V1 Admin User  Id  Hide Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"

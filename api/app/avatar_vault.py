@@ -22,6 +22,9 @@ import os
 from pathlib import Path
 from uuid import UUID
 
+from fastapi import status
+
+from .errors import AppError, ErrorCode
 from .settings import vault_public_base_url
 from .vault import (
     compute_storage_shard,
@@ -43,6 +46,13 @@ ALLOWED_MIME_TYPES: dict[str, str] = {
     "image/jpeg": ".jpg",
     "image/jpg": ".jpg",
 }
+
+# details.allowed for image_format_unsupported
+ALLOWED_FORMATS = ["png", "jpeg", "gif", "webp"]
+
+
+class AvatarRejected(AppError, ValueError):
+    """An AppError that stays a ValueError for non-HTTP callers."""
 
 
 def get_vault_location() -> Path:
@@ -98,15 +108,21 @@ def save_avatar_image(avatar_id: UUID, file_content: bytes, mime_type: str) -> P
         mime_type_lower = "image/jpeg"
 
     if mime_type_lower not in ALLOWED_MIME_TYPES:
-        raise ValueError(
-            f"MIME type '{mime_type}' is not allowed. Allowed types: {list(ALLOWED_MIME_TYPES.keys())}"
+        raise AvatarRejected(
+            ErrorCode.image_format_unsupported,
+            "Invalid image format. Allowed formats: PNG, JPEG, GIF, WebP",
+            status.HTTP_400_BAD_REQUEST,
+            details={"allowed": ALLOWED_FORMATS},
         )
 
     if len(file_content) > MAX_AVATAR_SIZE_BYTES:
         max_mb = MAX_AVATAR_SIZE_BYTES / (1024 * 1024)
         actual_mb = len(file_content) / (1024 * 1024)
-        raise ValueError(
-            f"File size ({actual_mb:.2f} MB) exceeds maximum of {max_mb} MB"
+        raise AvatarRejected(
+            ErrorCode.file_too_large,
+            f"File size ({actual_mb:.2f} MB) exceeds maximum of {max_mb} MB",
+            413,
+            details={"max_bytes": MAX_AVATAR_SIZE_BYTES},
         )
 
     extension = ALLOWED_MIME_TYPES[mime_type_lower]

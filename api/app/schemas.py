@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Generic, Literal, TypeVar
+from typing import Annotated, Any, Generic, Literal, TypeVar
 from uuid import UUID
 
 from pydantic import (
@@ -208,6 +208,11 @@ class MentionCandidatesResponse(BaseModel):
 
 
 MentionPolicy = Literal["everyone", "following", "nobody"]
+# BCP 47 tag of the language the app shows the user (docs/localized-text/ D6);
+# any well-formed tag is accepted, unknown ones simply get English emails.
+Locale = Annotated[
+    str, Field(max_length=35, pattern=r"^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$")
+]
 
 
 # ============================================================================
@@ -302,6 +307,8 @@ class UserFull(UserPublic):
     # Who may @mention this user: everyone | following (only members this user
     # follows) | nobody (docs/mentions/, D11)
     mention_policy: MentionPolicy = "everyone"
+    # Language for the emails we send (BCP 47); null = English
+    locale: str | None = None
 
 
 class UserCreate(BaseModel):
@@ -327,6 +334,8 @@ class UserUpdate(BaseModel):
     hidden_by_user: bool | None = None
     approved_hashtags: list[str] | None = None
     mention_policy: MentionPolicy | None = None
+    # Send null to clear (English)
+    locale: Locale | None = None
 
 
 class AvatarFromPostRequest(BaseModel):
@@ -754,6 +763,17 @@ class Comment(BaseModel):
             return self._author_handle_cache
 
         return "unknown"  # Fallback if user not found or not loaded
+
+    @computed_field
+    @property
+    def deleted(self) -> bool:
+        """True when `body` is a tombstone, not the author's text: soft-deleted
+        by owner/mod, or anonymized with the account (docs/localized-text/)."""
+        return (
+            self.deleted_by_owner
+            or self.deleted_by_mod
+            or self.body == "[deleted comment]"
+        )
 
     @computed_field
     @property
@@ -1431,6 +1451,7 @@ class MeStorageQuota(BaseModel):
 
 class MeUploadsQuota(BaseModel):
     window: str  # human label, e.g. "1h"
+    window_seconds: int  # the same window in seconds, e.g. 3600
     limit: int
     remaining: int
     reset_at: datetime | None = None
@@ -1478,6 +1499,8 @@ class RegisterRequest(BaseModel):
 
     email: str = Field(..., max_length=255)
     password: str | None = Field(None, max_length=100)
+    # Stored on the new user; picks the language of its emails
+    locale: Locale | None = None
 
 
 class RegisterResponse(BaseModel):
@@ -1580,6 +1603,8 @@ class EmailOtpRequest(BaseModel):
     """Request a numeric email-verification OTP."""
 
     email: str = Field(..., max_length=255)
+    # Language of this one email (not stored); defaults to the user's locale
+    locale: Locale | None = None
 
 
 class EmailOtpVerify(BaseModel):
@@ -1593,6 +1618,8 @@ class PasswordOtpRequest(BaseModel):
     """Request a numeric password-reset OTP."""
 
     email: str = Field(..., max_length=255)
+    # Language of this one email (not stored); defaults to the user's locale
+    locale: Locale | None = None
 
 
 class PasswordOtpConfirm(BaseModel):
@@ -1706,6 +1733,9 @@ class CheckHandleAvailabilityResponse(BaseModel):
     handle: str
     available: bool
     message: str
+    # Set only when available is false: taken | a handle_invalid
+    # reason (empty|too_short|too_long|bad_edge|bad_char|no_alnum)
+    reason: str | None = None
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -2463,6 +2493,8 @@ class BDRItem(BaseModel):
     created_at: datetime
     completed_at: datetime | None = None
     expires_at: datetime | None = None
+    # Set when status='failed': user_not_found | no_posts | internal
+    error_code: str | None = None
     error_message: str | None = None
     download_url: str | None = None
 
