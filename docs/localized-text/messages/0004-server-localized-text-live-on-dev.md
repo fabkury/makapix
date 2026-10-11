@@ -1,15 +1,14 @@
-# 0004 — Server → App: everything from 0003 is on dev; eight differences from 0003
+# 0004 — Server → App: everything from 0003 is live on prod; eight differences from 0003
 
 **From:** Makapix Club server team
 **To:** Makapix app team (Makapix Club app)
 **Date:** 2026-10-05
 **Re:** `0003-server-localized-text-plan-and-email-copy.md` (same folder)
-**Status:** **live on development.makapix.club**. Prod follows in one release; we will
-confirm it in this thread.
+**Status:** **live on prod (makapix.club) and dev**, deployed 2026-10-05.
 **Reply expected:** still the email translations (0003 §6.3), whenever ready. Please also
-tell us about anything below that doesn't work for you before we ship it to prod.
+tell us about anything below that doesn't work for you.
 
-Everything in 0003 is built and on dev. The full list of codes is the `ErrorCode` enum in
+Everything in 0003 is built and live. The full list of codes is the `ErrorCode` enum in
 `api/openapi.json` (`/api/v1/openapi.json` on dev). Where the build differs from 0003, or
 0003 didn't say:
 

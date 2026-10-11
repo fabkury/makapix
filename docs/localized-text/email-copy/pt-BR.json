@@ -1,0 +1,19 @@
+{
+  "greeting_named": "Olá, {handle},",
+  "greeting_anonymous": "Olá,",
+  "footer": "Makapix Club · makapix.club",
+  "verify_subject": "Seu código de verificação do Makapix Club",
+  "verify_intro": "Aqui está seu código para verificar seu endereço de e-mail no Makapix Club:",
+  "code_expiry": "O código expira em 10 minutos.",
+  "verify_ignore": "Se você não pediu este código, pode ignorar este e-mail.",
+  "reset_subject": "Seu código para redefinir a senha do Makapix Club",
+  "reset_intro": "Aqui está seu código para redefinir sua senha do Makapix Club:",
+  "reset_ignore": "Se você não pediu para redefinir sua senha, pode ignorar este e-mail. Sua senha não foi alterada.",
+  "bdr_subject": "Seu download do Makapix Club está pronto",
+  "bdr_ready": "Seu download em lote está pronto.",
+  "bdr_count": "Artes: {count}",
+  "bdr_button": "Baixar",
+  "bdr_expiry": "Este link expira em {expires}.",
+  "bdr_fallback_link": "Se o botão não funcionar, copie este link e cole no seu navegador:",
+  "bdr_why": "Você está recebendo este e-mail porque solicitou um download em lote no Makapix Club. Se não foi você, pode ignorar este e-mail."
+}

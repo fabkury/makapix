@@ -1,0 +1,19 @@
+{
+  "greeting_named": "{handle}，你好：",
+  "greeting_anonymous": "你好：",
+  "footer": "Makapix Club · makapix.club",
+  "verify_subject": "你的 Makapix Club 验证码",
+  "verify_intro": "你正在 Makapix Club 验证邮箱地址，验证码如下：",
+  "code_expiry": "验证码 10 分钟内有效。",
+  "verify_ignore": "如果你没有申请此验证码，请忽略这封邮件。",
+  "reset_subject": "你的 Makapix Club 密码重置验证码",
+  "reset_intro": "以下是你重置 Makapix Club 密码的验证码：",
+  "reset_ignore": "如果你没有申请重置密码，请忽略这封邮件。你的密码不会被更改。",
+  "bdr_subject": "你的 Makapix Club 下载已准备就绪",
+  "bdr_ready": "你的批量下载已准备就绪。",
+  "bdr_count": "作品数：{count}",
+  "bdr_button": "下载",
+  "bdr_expiry": "此链接将于 {expires} 失效。",
+  "bdr_fallback_link": "如果按钮无法使用，请将此链接复制到浏览器中打开：",
+  "bdr_why": "你收到这封邮件，是因为你在 Makapix Club 申请了批量下载。如果不是你本人操作，请忽略这封邮件。"
+}
