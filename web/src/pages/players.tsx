@@ -4,6 +4,7 @@ const PLAYER_GUIDE_URL =
   'https://github.com/fabkury/makapix/blob/main/docs/player/README.md';
 const FULL_DOCS_URL = 'https://github.com/fabkury/makapix/blob/main/docs/README.md';
 const P3A_REPO_URL = 'https://github.com/fabkury/p3a';
+const P64_REPO_URL = 'https://github.com/fabkury/p64';
 const PIXELIX_REPO_URL = 'https://github.com/BlueAndi/Pixelix';
 const WAVESHARE_BOARD_URL =
   'https://www.waveshare.com/product/arduino/boards-kits/esp32-p4/esp32-p4-wifi6-touch-lcd-4b.htm?sku=31416';
@@ -47,6 +48,16 @@ export default function PlayersPage() {
           </figure>
           <figure className="hero-photo">
             <img
+              src="/players/p64-with-makapix-club-artwork.jpg"
+              alt="A p64 LED-matrix player in its 3D-printed shell on a desk next to a laptop, displaying pixel art from Makapix Club with a clock overlay."
+              loading="lazy"
+            />
+            <figcaption>
+              A p64 desktop LED matrix playing a Makapix Club artwork with the clock overlay.
+            </figcaption>
+          </figure>
+          <figure className="hero-photo">
+            <img
               src="/players/pixelix-with-makapix-club-artwork.jpg"
               alt="A Pixelix LED-matrix player displaying pixel art from the Makapix Club feed."
               loading="lazy"
@@ -70,7 +81,7 @@ export default function PlayersPage() {
         <section className="projects">
           <h2>Player projects</h2>
           <p className="section-lead">
-            These player projects already integrate with MPX. The first two are
+            These player projects already integrate with MPX. The first three are
             open-source — free to study, fork, and build on.
           </p>
 
@@ -89,6 +100,27 @@ export default function PlayersPage() {
               </p>
               <a
                 href={P3A_REPO_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="project-link"
+              >
+                Source on GitHub ↗
+              </a>
+            </article>
+
+            <article className="project-card">
+              <div className="project-logo project-logo-square">
+                <img src="/players/p64-logo.png" alt="p64 logo" />
+              </div>
+              <h3>p64</h3>
+              <p>
+                A first-party desktop LED matrix: 64&nbsp;&times;&nbsp;64 RGB LEDs in a
+                3D-printed shell, built from two off-the-shelf Waveshare ESP32-S3 boards
+                with no soldering. Plays animated pixel art from Makapix Club, doubles as a
+                clock, and is controlled from a browser.
+              </p>
+              <a
+                href={P64_REPO_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="project-link"
@@ -257,7 +289,7 @@ export default function PlayersPage() {
 
           .hero-gallery {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-columns: 1fr 1fr;
             gap: 20px;
             align-items: start;
             margin: 0 0 48px 0;
@@ -303,7 +335,7 @@ export default function PlayersPage() {
 
           .project-cards {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr;
             gap: 20px;
           }
 
