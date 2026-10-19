@@ -1569,9 +1569,17 @@
       "Body_replace_artwork_v1_post__id__replace_artwork_post": {
         "properties": {
           "bump": {
-            "default": true,
-            "title": "Bump",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "maxLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "true (default when omitted) or false",
+            "title": "Bump"
           },
           "client": {
             "anyOf": [

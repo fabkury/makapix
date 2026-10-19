@@ -91,6 +91,31 @@ router = APIRouter(prefix="/post", tags=["Posts"])
 # post's first week.
 FEED_BUMP_COOLDOWN = timedelta(days=7)
 
+# Accepted spellings of the `bump` form field (docs/feed-bump/ D4). Declared as
+# a string rather than `bool = Form(True)` because FastAPI >= 0.147 reads an
+# omitted bool form field as False regardless of its default (HTML-checkbox
+# semantics, fastapi/fastapi#16523) — the bump is opt-OUT, so an absent field
+# must mean True on every FastAPI version.
+_BUMP_TRUE = {"true", "1", "yes", "on", "t", "y"}
+_BUMP_FALSE = {"false", "0", "no", "off", "f", "n"}
+
+
+def parse_bump(value: str | None) -> bool:
+    """Interpret the `bump` form field; absent or blank means True."""
+    if value is None or value.strip() == "":
+        return True
+    token = value.strip().lower()
+    if token in _BUMP_TRUE:
+        return True
+    if token in _BUMP_FALSE:
+        return False
+    raise AppError(
+        ErrorCode.invalid_value,
+        "bump must be true or false",
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        details={"field": "bump", "value": value},
+    )
+
 
 def get_upload_rate_limit(user: models.User) -> tuple[int, int]:
     """
@@ -2059,7 +2084,10 @@ async def replace_artwork(
     remixed_from: str | None = Form(None),
     # Feed bump (docs/feed-bump/ D4): opt-out — move the post back to the top
     # of the date-sorted feeds unless the artist says it's a small fix.
-    bump: bool = Form(True),
+    # String on purpose; see parse_bump().
+    bump: str | None = Form(
+        None, description="true (default when omitted) or false", max_length=8
+    ),
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -2070,6 +2098,7 @@ async def replace_artwork(
     for other owners the replacement goes back to moderation and the bump
     happens when a moderator approves it.
     """
+    bump = parse_bump(bump)
     post = db.query(models.Post).filter(models.Post.id == id).first()
     if not post or post.kind != "artwork":
         raise AppError(

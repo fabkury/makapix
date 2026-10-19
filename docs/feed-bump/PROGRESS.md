@@ -67,3 +67,14 @@
   feed caches invalidated, `/post/recent` order identical. Reply `0004-server-…`
   (listed_at rule + `promoted_at` FYI, closing D23) pushed to the app repo.
   Awaiting only their 1.12.1 note and p3a's 1.2.5 note.
+- **FastAPI pin (2026-10-19, PR #284):** `fastapi<0.147` in `api/pyproject.toml`.
+  FastAPI 0.147.0 (fastapi/fastapi#16523) treats an omitted `bool` Form field as
+  False regardless of its default, so `bump: bool = Form(True)` on replace-artwork
+  would silently become opt-out (D4) for any client that omits the field — app
+  builds before 1.12.1, scripts. A fresh dev image pulled 0.148.0 and all seven
+  bump-default tests failed; prod ran 0.146.0 after that deploy.
+- **Pin lifted (2026-10-19):** `bump` is now `str | None = Form(None)` parsed by
+  `parse_bump()` in `routers/posts.py` — absent/blank → True, true/1/yes/on → True,
+  false/0/no/off → False, anything else → 422 `invalid_value`. Same behaviour on every
+  FastAPI version; 12 wire-format tests added; OpenAPI shows `bump` as a nullable
+  string. App 1.12.1 sends `bump=true|false` explicitly, so it is unaffected.

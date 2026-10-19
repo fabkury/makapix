@@ -798,3 +798,56 @@ def test_feed_fields_accepts_listed_at(client, db):
         "listed_at": resp.json()["items"][0]["listed_at"],
     }
     assert _iso(resp.json()["items"][0]["listed_at"]) == BASE
+
+
+# --- `bump` wire format ----------------------------------------------------
+# The field is a string on the wire (see parse_bump in routers/posts.py);
+# FastAPI >= 0.147 would read an omitted bool field as False, which must not
+# silently turn the opt-out bump into opt-in.
+
+
+@pytest.mark.parametrize("raw", ["true", "True", "1", "yes", "on", ""])
+def test_bump_true_spellings(client, db, vault_tmp, raw):
+    owner = _make_user(db, trusted=True)
+    post_id = _upload(client, owner, (17, 27, 37, 255))
+    _set_listed(db, post_id, NOW() - timedelta(days=8))
+    r = client.post(
+        f"/v1/post/{post_id}/replace-artwork",
+        files={"image": ("new.png", _png((1, 2, 3, 255)), "image/png")},
+        data={"bump": raw},
+        headers=_auth(owner),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["post"]["bumped"] is True
+
+
+@pytest.mark.parametrize("raw", ["false", "False", "0", "no", "off"])
+def test_bump_false_spellings(client, db, vault_tmp, raw):
+    owner = _make_user(db, trusted=True)
+    post_id = _upload(client, owner, (17, 27, 37, 255))
+    _set_listed(db, post_id, NOW() - timedelta(days=8))
+    r = client.post(
+        f"/v1/post/{post_id}/replace-artwork",
+        files={"image": ("new.png", _png((1, 2, 3, 255)), "image/png")},
+        data={"bump": raw},
+        headers=_auth(owner),
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()["post"]
+    assert body["bumped"] is False
+    assert body["bump_skipped_reason"] == "opted_out"
+
+
+def test_bump_garbage_is_rejected(client, db, vault_tmp):
+    owner = _make_user(db, trusted=True)
+    post_id = _upload(client, owner, (17, 27, 37, 255))
+    before = _listed(db, post_id)
+    r = client.post(
+        f"/v1/post/{post_id}/replace-artwork",
+        files={"image": ("new.png", _png((1, 2, 3, 255)), "image/png")},
+        data={"bump": "maybe"},
+        headers=_auth(owner),
+    )
+    assert r.status_code == 422, r.text
+    assert r.json()["error"]["code"] == "invalid_value"
+    assert _listed(db, post_id) == before
