@@ -30,7 +30,6 @@ import { MONITORED_HASHTAGS } from "../../lib/constants";
 import { ensureCompatibleArtUrl } from "../../utils/imageCompat";
 import {
   getNavigationContext,
-  setNavigationContext,
   updateContextIndex,
   extendContext,
   findPostIndex,
@@ -385,7 +384,7 @@ export default function PostPage() {
 
     const loadContext = async () => {
       // Try to get existing context
-      let context = getNavigationContext();
+      const context = getNavigationContext();
 
       // Validate context matches current post
       if (context) {
@@ -396,50 +395,15 @@ export default function PostPage() {
           setNavContext({ ...context, currentIndex: index });
           return;
         }
-        // Context exists but doesn't contain current post - clear it
-        context = null;
       }
 
-      // No valid context - fetch default (author's profile posts)
-      if (!context && post.owner_id) {
-        await fetchDefaultContext(post.owner_id, sqid);
-      }
+      // No valid context (cold entry: shared link, search engine, crawler).
+      // Swipe navigation stays disabled; the user can reach the author's
+      // grid via the profile link instead.
     };
 
     loadContext();
-  }, [sqid, post, API_BASE_URL]);
-
-  // Fetch default context from author's profile
-  const fetchDefaultContext = async (ownerId: string, currentSqid: string) => {
-    try {
-      const url = `${API_BASE_URL}/api/post?owner_id=${ownerId}&limit=100&sort=created_at&order=desc`;
-      const response = await authenticatedFetch(url);
-
-      if (!response.ok) return;
-
-      const data = await response.json();
-      const posts: NavigationContextPost[] = data.items.map((p: any) => ({
-        public_sqid: p.public_sqid,
-        id: p.id,
-        owner_id: p.owner_id,
-      }));
-
-      const index = posts.findIndex((p) => p.public_sqid === currentSqid);
-      if (index >= 0) {
-        const context: NavigationContext = {
-          posts,
-          currentIndex: index,
-          source: { type: "profile", id: ownerId },
-          cursor: data.next_cursor,
-          timestamp: Date.now(),
-        };
-        setNavigationContext(posts, index, context.source, context.cursor);
-        setNavContext(context);
-      }
-    } catch (err) {
-      console.error("Failed to fetch default context:", err);
-    }
-  };
+  }, [sqid, post]);
 
   // Navigate with View Transition API
   const navigateWithTransition = (url: string, direction: "left" | "right") => {
