@@ -2131,7 +2131,7 @@ class SitewideStatsResponse(BaseModel):
     total_player_artwork_views_14d: int = 0
     active_players_14d: int = 0
     daily_player_views: list[DailyCount] = []
-    views_by_player: dict[str, int] = {}  # player_name -> view count
+    views_by_player: dict[str, int] = {}  # "owner_handle / player_name" -> view count
 
     computed_at: datetime
 
