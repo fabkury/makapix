@@ -175,7 +175,7 @@ def test_rollup_writes_site_player_slice(db, post, owner):
     )
     assert site_row.total_player_views == 2  # views + impressions = "plays"
     assert site_row.active_players == 1
-    assert site_row.views_by_player == {"Kitchen": 2}
+    assert site_row.views_by_player == {f"{owner.handle} / Kitchen": 2}
 
 
 def test_rollup_merges_into_legacy_partial_row(db, post):

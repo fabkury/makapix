@@ -993,14 +993,17 @@ def rollup_view_events(self) -> dict[str, Any]:
             if player_total:
                 from uuid import UUID as _UUID
 
+                from sqlalchemy.orm import joinedload
+
+                from .services.site_stats import player_display_label
+
                 players = (
                     db.query(models.Player)
+                    .options(joinedload(models.Player.owner))
                     .filter(models.Player.id.in_([_UUID(p) for p in player_ids]))
                     .all()
                 )
-                player_names = {
-                    str(p.id): p.name or str(p.player_key)[:8] for p in players
-                }
+                player_names = {str(p.id): player_display_label(p) for p in players}
                 views_by_player: dict[str, int] = {}
                 for pid, count in views_by_player_id.items():
                     name = player_names.get(pid, pid[:8])

@@ -1669,7 +1669,7 @@ class SiteStatsDaily(Base):
     active_players = Column(Integer, nullable=False, default=0)
     views_by_player = Column(
         JSON, nullable=False, default=dict
-    )  # {"player_name": 500, ...}
+    )  # {"owner_handle / player_name": 500, ...}
 
     # Authenticated user breakdown
     authenticated_page_views = Column(Integer, nullable=False, default=0)

@@ -14,7 +14,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from ..utils.view_tracking import visitor_key
 
@@ -25,6 +25,20 @@ logger = logging.getLogger(__name__)
 
 # Cache TTL in seconds (5 minutes)
 STATS_CACHE_TTL = 300
+
+
+def player_display_label(player) -> str:
+    """Label used to key ``views_by_player`` (the "Top players" ranking).
+
+    Prefixes the owner's handle so identically-named players (many owners
+    name theirs "p3a") stay distinguishable: ``"alice / p3a"``. Unowned
+    players fall back to the bare name, or the first 8 chars of the key.
+    """
+    name = player.name or str(player.player_key)[:8]
+    owner = getattr(player, "owner", None)
+    if owner is not None and owner.handle:
+        return f"{owner.handle} / {name}"
+    return name
 
 
 def normalize_page_path(path: str) -> str:
@@ -887,10 +901,11 @@ class SiteStatsService:
             player_ids = [UUID(pid) for pid in views_by_player_id.keys()]
             players = (
                 self.db.query(models.Player)
+                .options(joinedload(models.Player.owner))
                 .filter(models.Player.id.in_(player_ids))
                 .all()
             )
-            player_names = {str(p.id): p.name or str(p.player_key)[:8] for p in players}
+            player_names = {str(p.id): player_display_label(p) for p in players}
 
             for player_id_str, count in views_by_player_id.items():
                 player_name = player_names.get(player_id_str, player_id_str[:8])
