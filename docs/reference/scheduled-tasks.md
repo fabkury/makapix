@@ -2,33 +2,37 @@
 
 Celery Beat runs periodic tasks for data hygiene, statistics aggregation, integrity checks, and certificate maintenance.
 
-All tasks are defined in `api/app/tasks.py` via the `beat_schedule` configuration.
+The active schedule is defined in [`api/app/tasks.py`](../../api/app/tasks.py). Daily times below use **America/New_York** (US Eastern, with daylight-saving changes). Interval tasks are timed from the scheduler, independent of wall-clock time.
 
 ## Task Schedule
 
 | Task | Schedule | Description |
 |------|----------|-------------|
-| `check-post-hashes` | Every 6 hours | Verify artwork file hashes against stored values; mark non-conformant on mismatch |
-| `rollup-view-events` | Daily | Aggregate raw `view_events` (7 days) into `post_stats_daily` |
-| `rollup-blog-post-view-events` | Daily | Aggregate raw `blog_post_view_events` (7 days) into `blog_post_stats_daily` |
-| `rollup-site-events` | Daily | Aggregate raw `site_events` (7 days) into `site_stats_daily` with auth breakdowns |
-| `cleanup-old-site-events` | Daily | Delete `site_events` older than 7 days (after rollup) |
-| `cleanup-old-view-events` | Daily | Delete `view_events` older than 7 days (after rollup) |
-| `cleanup-expired-stats-cache` | Hourly | Remove expired entries from `post_stats_cache` |
-| `cleanup-expired-player-registrations` | Hourly | Remove player registrations past their expiry time |
-| `mark-stale-players-offline` | Every minute | Set `connection_status = 'offline'` for players not seen in 3 minutes |
-| `cleanup-expired-auth-tokens` | Every 12 hours | Delete expired refresh tokens (24h grace), verification tokens, and password reset tokens (7 days) |
-| `cleanup-unverified-accounts` | Every 12 hours | Delete unverified accounts older than 3 days (with all associated data) |
-| `cleanup-deleted-posts` | Daily | Hard-delete soft-deleted posts older than 7 days (cascades to comments, reactions, stats, notifications) |
-| `cleanup-expired-bdrs` | Daily | Remove expired batch download request ZIP files and records |
-| `cleanup-social-notifications` | Daily | Delete read social notifications older than 90 days and all older than 365 days |
-| `renew-crl-if-needed` | Daily | Regenerate the MQTT Certificate Revocation List if it expires within 7 days |
+| `mark-stale-players-offline` | Every minute | Mark players offline after three minutes without a heartbeat |
+| `cleanup-expired-stats-cache` | Hourly | Remove expired computed statistics |
+| `cleanup-expired-player-registrations` | Hourly | Remove expired pending registrations |
+| `check-post-hashes` | Every 6 hours | Verify artwork file hashes |
+| `cleanup-unverified-accounts` | Every 12 hours | Remove unverified accounts older than three days |
+| `check-vault-free-space` | Every 6 hours | Check vault capacity and alert on low space |
+| `rollup-view-events` | Daily 01:00 ET | Aggregate completed UTC days into post and site statistics; delete only rolled events beyond retention |
+| `rollup-blog-post-view-events` | Daily 01:30 ET | Aggregate blog view statistics |
+| `rollup-site-events` | Daily 02:00 ET | Aggregate site events and clean up retained raw events |
+| `check-view-ingestion-health` | Daily 02:30 ET | Check rejected view events and stale rollup progress |
+| `rollup-download-stats` | Daily 03:00 ET | Aggregate vault download logs for the previous UTC day |
+| `cleanup-deleted-posts` | Daily 03:30 ET | Permanently remove user-deleted posts older than seven days |
+| `cleanup-retired-artwork` | Daily 03:45 ET | Remove replaced artwork files after their retention deadline |
+| `cleanup-expired-auth-tokens` | Daily 04:00 ET | Delete expired authentication tokens with applicable grace periods |
+| `cleanup-report-ips` | Daily 04:15 ET | Clear anonymous reporter IPs after 30 days |
+| `cleanup-expired-bdrs` | Daily 04:30 ET | Expire batch-download archives and purge old request records |
+| `cleanup-social-notifications` | Daily 04:45 ET | Remove read notifications after 90 days, all after 365 days |
+| `renew-crl-if-needed` | Daily 05:00 ET | Renew the MQTT revocation list when within seven days of expiry |
+| `refresh-geoip-database` | Daily 05:15 ET | Check GeoIP freshness; download when missing or older than six days |
 
 ## Data Retention Summary
 
 | Data | Retention | Aggregation Target | Notes |
 |------|-----------|-------------------|-------|
-| `view_events` | 7 days | `post_stats_daily` | Raw artwork view events |
+| `view_events` | At least 7 days; cleanup only after rollup | `post_stats_daily` and the player slice of `site_stats_daily` | Raw artwork view events |
 | `site_events` | 7 days | `site_stats_daily` | Page views, signups, uploads, errors |
 | `blog_post_view_events` | 7 days | `blog_post_stats_daily` | Blog post view events |
 | `post_stats_daily` | Permanent | -- | Daily rollups per post |
@@ -48,9 +52,9 @@ All tasks are defined in `api/app/tasks.py` via the `beat_schedule` configuratio
 
 The statistics pipeline runs in three stages:
 
-1. **Rollup** -- Raw events are aggregated into daily summary tables. For site events, this includes breakdowns by authenticated/unauthenticated, device type, country, page, and referrer.
-2. **Cleanup** -- After rollup, raw events older than 7 days are deleted in batches to avoid long-running transactions.
-3. **Cache expiry** -- Computed post-level stats caches are cleaned hourly.
+1. **Rollup:** Raw events are aggregated into daily summary tables. For site events, this includes breakdowns by authenticated/unauthenticated, device type, country, page, and referrer.
+2. **Cleanup:** The view/site rollup tasks own deletion after aggregation. There are no independently scheduled `cleanup-old-view-events` or `cleanup-old-site-events` jobs; independent cutoffs could delete events before they are counted.
+3. **Cache expiry:** Computed post-level stats caches are cleaned hourly.
 
 All rollup and cleanup tasks use batched processing to handle large datasets without memory issues.
 

@@ -2,9 +2,11 @@
 
 Login, registration, OAuth, and token management.
 
+Paths on this page are relative to `https://makapix.club/api/v1` unless a full path is shown.
+
 ## Registration
 
-Create a new account with email.
+Create a new account with email. The example below uses the website flow (no chosen password). Native clients can supply a password and receive `verification_method: "otp"`; use the verification method returned by the server. See the [OpenAPI contract](../../api/openapi.json) for the OTP request schemas.
 
 ### POST /auth/register
 
@@ -19,17 +21,18 @@ Create a new account with email.
 ```json
 {
   "message": "Please check your email to verify your account",
-  "user_id": "123e4567-e89b-12d3-a456-426614174000",
+  "user_id": 42,
   "email": "user@example.com",
-  "handle": "makapix-user-42"
+  "handle": "makapix-user-42",
+  "verification_method": "link"
 }
 ```
 
 **Notes:**
 
 - Generates a default handle (`makapix-user-X`)
-- Generates a random password (sent via email)
-- Sends verification email
+- When no password is supplied, generates a random password and sends it by email
+- Sends the corresponding verification link or OTP email
 - Account cannot login until email is verified
 - Rate limited: 30 registrations/hour/IP
 
@@ -101,7 +104,7 @@ Always returns success to prevent email enumeration.
 {
   "token": "eyJhbGciOiJIUzI1NiIs...",
   "refresh_token": null,
-  "user_id": "123e4567-e89b-12d3-a456-426614174000",
+  "user_id": 42,
   "user_key": "550e8400-e29b-41d4-a716-446655440000",
   "public_sqid": "k5fNx",
   "user_handle": "artist",
@@ -136,7 +139,7 @@ No request body. Refresh token is read from HttpOnly cookie.
 {
   "token": "eyJhbGciOiJIUzI1NiIs...",
   "refresh_token": null,
-  "user_id": "123e4567-e89b-12d3-a456-426614174000",
+  "user_id": 42,
   "user_key": "550e8400-e29b-41d4-a716-446655440000",
   "public_sqid": "k5fNx",
   "user_handle": "artist",
@@ -306,7 +309,7 @@ Requires authentication.
   and underscore (`_`)
 - Must contain at least one letter or digit; cannot start or end with `-`/`_`
 - Not allowed: whitespace, emoji, symbols, or other punctuation
-- Uniqueness is **case-insensitive and confusable-folded** — visually identical
+- Uniqueness is **case-insensitive and confusable-folded**. Visually identical
   handles, including cross-script look-alikes (e.g. Latin `paypal` vs Cyrillic
   `pаypаl`), are treated as the same handle. Original casing/script is preserved
   for display; URLs use the `public_sqid`, not the handle.

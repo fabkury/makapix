@@ -1,419 +1,155 @@
 # Deployment and Operations
 
-Production deployment, dual-environment setup, backups, monitoring, and troubleshooting.
+Run Makapix Club on a configured Linux host using Docker Compose. The repository's standard deployment has separate production and development stacks with a shared Caddy reverse proxy.
 
-## Prerequisites
-
-| Requirement | Minimum |
-|-------------|---------|
-| VPS | 2 vCPU, 2--4 GB RAM, 50+ GB SSD |
-| OS | Ubuntu 22.04+ or Debian 12+ |
-| Docker | Docker Engine 24+ with Compose V2 |
-| DNS | A records for all subdomains (see below) |
-
-### Required DNS Records
-
-| Record | Points To | Used By |
-|--------|-----------|---------|
-| `makapix.club` | VPS IP | Web app (prod) |
-| `www.makapix.club` | VPS IP | Redirect to apex |
-| `development.makapix.club` | VPS IP | Web app (dev) |
-| `vault.makapix.club` | VPS IP | Artwork serving for players (prod, HTTP) |
-| `vault-dev.makapix.club` | VPS IP | Artwork serving for players (dev, HTTP) |
-
----
-
-## Initial Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/fabkury/makapix.git /opt/makapix
-cd /opt/makapix
-
-# Create external Docker resources (shared between environments)
-docker network create caddy_net
-docker volume create makapix-stack_caddy_data
-docker volume create makapix-stack_caddy_config
-
-# Create production database volume
-docker volume create makapix_pg_data
-
-# Configure environment
-cd deploy/stack
-cp .env.example .env.prod
-# Edit .env.prod with production secrets (see Environment Configuration below)
-
-# Start all services
-cd /opt/makapix
-make up
-```
-
-For development, clone a second copy:
-
-```bash
-git clone -b develop https://github.com/fabkury/makapix.git /opt/makapix-dev
-cd /opt/makapix-dev/deploy/stack
-cp .env.example .env.dev
-# Edit .env.dev with development secrets
-
-# Create dev database volume
-docker volume create makapix-dev_pg_data
-
-cd /opt/makapix-dev
-make up
-```
-
----
-
-## Environment Configuration
-
-Key environment variables in `deploy/stack/.env.prod` (or `.env.dev`):
-
-| Category | Variable | Description |
-|----------|----------|-------------|
-| Database | `DB_ADMIN_USER` | PostgreSQL admin username |
-| Database | `DB_ADMIN_PASSWORD` | PostgreSQL admin password |
-| Database | `DB_API_WORKER_USER` | Application-level DB username |
-| Database | `DB_API_WORKER_PASSWORD` | Application-level DB password |
-| Database | `DB_DATABASE` | Database name (`makapix`) |
-| Auth | `JWT_SECRET_KEY` | JWT signing secret (32+ chars) |
-| Auth | `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | Access token TTL (default: 60) |
-| Auth | `JWT_REFRESH_TOKEN_EXPIRE_DAYS` | Refresh token TTL (default: 30) |
-| MQTT | `MQTT_PASSWORD` | Backend service MQTT password |
-| OAuth | `GITHUB_OAUTH_CLIENT_ID` | GitHub OAuth app client ID |
-| OAuth | `GITHUB_OAUTH_CLIENT_SECRET` | GitHub OAuth app client secret |
-| Email | `RESEND_API_KEY` | Resend transactional email key |
-| Email | `RESEND_FROM_EMAIL` | Sender address |
-| Admin | `MAKAPIX_ADMIN_USER` | Site owner account handle |
-| Admin | `MAKAPIX_ADMIN_PASSWORD` | Site owner account password |
-| Vault | `VAULT_LOCATION` | Container-internal vault path |
-| Vault | `VAULT_HOST_PATH` | Host vault path (e.g. `/mnt/vault-1`) |
-| Caddy | `ACME_EMAIL` | Let's Encrypt ACME email |
-| IDs | `SQIDS_ALPHABET` | Sqids alphabet (**never change after go-live**) |
-
-See [security/operations.md](security/operations.md) for the full secret inventory and rotation procedures.
-
----
-
-## Service Architecture
-
-All services are defined in `deploy/stack/docker-compose.yml` with environment-specific overrides.
-
-| Service | Image / Build | Purpose | Networks |
-|---------|---------------|---------|----------|
-| db | `postgres:17-alpine` | Primary database | internal |
-| cache | `redis:7-alpine` | API cache, Celery broker | internal |
-| mqtt | `mqtt/Dockerfile` | Mosquitto broker (device plane, mTLS) | internal, caddy_net |
-| api | `api/Dockerfile` | FastAPI backend | internal, caddy_net |
-| worker | `worker/Dockerfile` | Celery background tasks | internal |
-| web | `web/Dockerfile` | Next.js frontend | caddy_net |
-| caddy | `lucaslorentz/caddy-docker-proxy` | Reverse proxy, auto-TLS | caddy_net |
-| vault | `alpine:latest` | Dummy container for Caddy file_server labels | caddy_net |
-| www-redirect | `alpine:latest` | www -> apex redirect (prod only) | caddy_net |
-| redis | `redis:7-alpine` | Edge rate limiting | caddy_net |
-
-### Networks
-
-- **internal** -- Backend services only (db, cache, api, worker, mqtt). Not externally reachable.
-- **caddy_net** -- External network shared between all environments. Caddy discovers containers via Docker labels.
-
-### Ports
-
-| Port | Service | Environment |
-|------|---------|-------------|
-| 80, 443 | Caddy | Shared (both envs) |
-| 1883, 8883 | MQTT (players only) | Production |
-| 1884, 8884 | MQTT (players only) | Development |
-| 5433 | PostgreSQL | Development (localhost only) |
-
----
-
-## Dual-Environment Setup
-
-Both environments run on the same VPS, sharing the Caddy reverse proxy and `caddy_net` network. Everything else is isolated.
+## Environments
 
 | Resource | Production | Development |
-|----------|-----------|-------------|
-| Directory | `/opt/makapix` | `/opt/makapix-dev` |
+|----------|------------|-------------|
+| Checkout | `/opt/makapix` | `/opt/makapix-dev` |
 | Branch | `main` | `develop` |
-| Domain | `makapix.club` | `development.makapix.club` |
-| DB Volume | `makapix_pg_data` | `makapix-dev_pg_data` |
-| Vault | `/mnt/vault-1` | `/mnt/vault-dev` |
-| Env file | `.env.prod` | `.env.dev` |
-| MQTT mTLS | Port 8883 | Port 8884 |
+| Web hostname | `makapix.club` | `development.makapix.club` |
+| Vault hostname | `vault.makapix.club` | `vault-dev.makapix.club` |
 | Compose project | `makapix-prod` | `makapix-dev` |
+| Environment file | `deploy/stack/.env.prod` | `deploy/stack/.env.dev` |
+| Database volume | `makapix_pg_data` (external) | `makapix-dev_pg_data` |
+| Vault directory | `/mnt/vault-1` | `/mnt/vault-dev` |
+| External MQTT mTLS port | 8883 | 8884 |
 
-### Makefile Auto-Detection
+The Makefile selects production only from `/opt/makapix`; other working directories select development. It supplies the base Compose file, overlay, environment file, and project name together.
 
-The `Makefile` auto-detects the environment based on the working directory:
+## Initial setup checklist
 
-- `/opt/makapix` -> production compose command with `-f docker-compose.prod.yml --env-file .env.prod -p makapix-prod`
-- Anything else -> development compose command with `-f docker-compose.dev.yml --env-file .env.dev -p makapix-dev`
+A fresh installation needs more than `git clone` and `make up`:
 
-### Caddy Sharing
+1. Install Git, GNU Make, Docker Engine, and Compose V2 on the host.
+2. Clone the production checkout and, if needed, a separate `develop` checkout.
+3. Configure DNS and the hostnames in Compose/Caddy for your installation. The project's public domains will not route to an unrelated host.
+4. Prepare the vault directories and required external Docker resources. Inspect the `volumes` and `networks` sections of the [base Compose file](../deploy/stack/docker-compose.yml) and the environment overlay before creating them.
+5. Configure all required secrets and environment variables. The templates are incomplete examples; reconcile them with Compose, API startup settings, and [security operations](security/operations.md).
+6. Prepare MQTT CA, broker certificates, and configuration under `mqtt/`. See [MQTT certificates](#mqtt-certificates).
+7. Validate the resolved Compose configuration, then start the production stack before development because Caddy is production-owned.
+8. Verify health, HTTPS, artwork delivery, and backup monitoring before opening the service to users.
 
-Caddy runs only in the production compose stack. The dev override disables it via a `disabled` profile. Both stacks connect to the shared `caddy_net` external network, so Caddy discovers containers from both environments via Docker labels.
+The base Compose file references `deploy/stack/.env` through service `env_file` entries; the development overlay also references `.env.dev`. `--env-file` supplies Compose variable substitution and does not remove service-level `env_file` requirements. Ensure every referenced file exists and contains the intended environment's values.
 
-The dev web frontend adds HTTP Basic Auth for most pages (except auth-related routes) and sets `X-Robots-Tag: noindex, nofollow` to prevent indexing.
+## Environment configuration
 
----
+| Category | Important variables |
+|----------|---------------------|
+| Database | `DB_ADMIN_USER`, `DB_ADMIN_PASSWORD`, `DB_API_WORKER_USER`, `DB_API_WORKER_PASSWORD`, `DB_DATABASE` |
+| Authentication | `JWT_SECRET_KEY`, token lifetimes, `WEBAUTHN_RP_ID` |
+| MQTT | `MQTT_PASSWORD`, certificate paths and broker settings |
+| OAuth and email | GitHub/Apple provider settings as enabled, `RESEND_API_KEY`, `RESEND_FROM_EMAIL` |
+| Vault | `VAULT_LOCATION`, `VAULT_HOST_PATH`, `VAULT_PUBLIC_BASE_URL` |
+| Proxy | `CADDY_DOCKER_PROXY_TAG`, `ACME_EMAIL`, configured hostnames |
+| Identifiers and analytics | `SQIDS_ALPHABET`, `MAKAPIX_IP_HASH_SALT` |
 
-## TLS / Certificates
+Do not change `SQIDS_ALPHABET` on an existing installation: it determines public identifiers. Keep secrets out of Git. Consult [security operations](security/operations.md) for rotation procedures.
 
-### HTTPS (Caddy)
+## Service-specific commands
 
-Caddy obtains and auto-renews TLS certificates via Let's Encrypt. Routing is configured entirely through Docker labels on service containers -- there is no separate Caddyfile to manage. The global config lives at `deploy/stack/caddy/Caddyfile.global`.
+Run Make commands from the intended repository root. For operations not covered by Make, define a helper for that environment. This example targets production:
 
-### MQTT mTLS
+```bash
+cd /opt/makapix
+mpxprod() {
+  docker compose --project-directory deploy/stack \
+    -f deploy/stack/docker-compose.yml \
+    -f deploy/stack/docker-compose.prod.yml \
+    --env-file deploy/stack/.env.prod -p makapix-prod "$@"
+}
+mpxprod config --quiet
+make up
+make ps
+```
 
-Player devices authenticate via mTLS client certificates. The CA and server certificates are generated by `mqtt/config/scripts/gen-certs.sh`. Certificates are stored in `mqtt/certs/`:
+For development, use the helper in [Development](development.md). Avoid bare `docker compose` commands that omit the overlay or project name.
 
-- `ca.key` / `ca.crt` -- Certificate Authority
-- `server.key` / `server.crt` -- MQTT broker
-- `crl.pem` -- Certificate Revocation List (auto-renewed by Celery task)
+## Services and networking
 
-Individual player certificates are issued via the API when a device registers, and stored in the database.
+| Service | Purpose |
+|---------|---------|
+| `db` | PostgreSQL database |
+| `cache` | Redis application cache and rate-limit state |
+| `broker` | Separate Redis instance for Celery queues/results; uses `noeviction` |
+| `mqtt` | Mosquitto for player messaging |
+| `api` | FastAPI backend |
+| `worker` | Celery worker and Beat scheduler |
+| `web` | Next.js frontend |
+| `caddy` | Shared reverse proxy, HTTPS, and vault file serving |
+| `vault`, `www-redirect` | Placeholder containers used by the stack; the vault is served by Caddy |
+| `redis` | Edge Redis service |
 
----
+`internal` separates each environment's backend services. `caddy_net` is shared so the production-owned proxy can reach both environments. Caddy serves the vault directories through explicit site blocks in `deploy/stack/caddy/Caddyfile.global`; application routing also uses Docker labels.
+
+| Host ports | Exposure |
+|------------|----------|
+| 80, 443 | Public HTTP/HTTPS through Caddy |
+| 8883 / 8884 | Public MQTT with mTLS, production / development |
+| 1883 / 1884 | Loopback-only plain MQTT, production / development |
+| 5432 / 5433 | Loopback-only PostgreSQL, production / development |
+
+Caddy is disabled in the development overlay. Proxy configuration changes take effect through the production checkout, not by restarting a development Caddy service.
+
+## MQTT certificates
+
+The tooling in `mqtt/config/scripts/gen-certs.sh` generates CA and broker material under `mqtt/certs/`. On an established installation, preserve the existing CA and follow the renewal procedure rather than regenerating trust material as a routine fix.
+
+The API issues player client certificates during registration. Default validity is 1095 days, with renewal available within 90 days of expiry or after expiry. See [player certificate renewal](player/registration.md#certificate-renewal). Celery maintains the certificate revocation list (CRL).
 
 ## Backups
 
-There are no automated backup scripts in the repository. Set up manual or cron-based backups.
+Automated backup tooling lives in [`deploy/backup/`](../deploy/backup/README.md). It dumps the production database and backs up the vault and irreplaceable configuration/secrets with encrypted restic snapshots to Backblaze B2. The installer schedules the job for **10:30 UTC daily**, with monitoring and periodic retention/integrity checks.
 
-### Database Backup
-
-```bash
-# Dump the database
-cd /opt/makapix/deploy/stack
-docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-  --env-file .env.prod -p makapix-prod \
-  exec db pg_dump -U postgres_admin -d makapix --format=custom \
-  > /backups/makapix-$(date +%Y%m%d_%H%M%S).dump
-
-# Or using the Makefile shorthand (from /opt/makapix)
-cd deploy/stack && docker compose exec db pg_dump -U owner -d makapix -Fc > /backups/db.dump
-```
-
-### Database Restore
+Repository tooling does not prove a particular host has a healthy backup. Check installed scheduling, job logs, recent snapshots, and monitoring:
 
 ```bash
-cd /opt/makapix/deploy/stack
-docker compose exec db pg_restore -U postgres_admin -d makapix --clean --if-exists \
-  < /backups/makapix-YYYYMMDD.dump
+sudo makapix-restic snapshots
+journalctl -t makapix-backup
 ```
 
-### Vault Backup
+Use the [restore runbook](backups/RESTORE.md) for recovery and drills. Do not restore directly over a live database as an exploratory check. Provider VM backups do not substitute for backups of separately attached vault volumes.
 
-```bash
-# rsync the vault directory
-rsync -av /mnt/vault-1/ /backups/vault-1/
+## Updates and rollback
 
-# Or tar it
-tar -czf /backups/vault-$(date +%Y%m%d).tar.gz -C /mnt vault-1
-```
-
-### Crontab Example
-
-```cron
-# Daily DB backup at 4 AM UTC
-0 4 * * * cd /opt/makapix/deploy/stack && docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod -p makapix-prod exec -T db pg_dump -U postgres_admin -d makapix -Fc > /backups/makapix-$(date +\%Y\%m\%d).dump 2>&1 | logger -t makapix-backup
-
-# Weekly vault backup on Sundays at 5 AM UTC
-0 5 * * 0 tar -czf /backups/vault-$(date +\%Y\%m\%d).tar.gz -C /mnt vault-1 2>&1 | logger -t makapix-vault-backup
-
-# Delete backups older than 30 days
-0 6 * * * find /backups -name "makapix-*.dump" -mtime +30 -delete
-```
-
----
-
-## Updates and Rollback
-
-### Standard Update
-
-From the appropriate directory:
-
-```bash
-# Production
-cd /opt/makapix
-make deploy   # git pull origin main && rebuild
-
-# Development
-cd /opt/makapix-dev
-make deploy   # git pull origin develop && rebuild
-```
-
-`make deploy` pulls the latest code, stops containers, rebuilds images, starts containers, and prunes the Docker build cache.
-
-### Manual Rollback
+Run the application checks in development before merging or deploying; see [Development](development.md#development-to-production).
 
 ```bash
 cd /opt/makapix
-git log --oneline -10          # Find the commit to roll back to
-git checkout <commit-hash>     # Check out that commit
-make rebuild                   # Rebuild from that commit
+make deploy
 ```
 
----
+`make deploy` pulls `main`, builds images **before** touching running services, then recreates changed containers and prunes build cache with reserved space. A failed build leaves the existing stack running. API startup applies migrations.
 
-## Monitoring
+For rollback, inspect the deployed commit and migrations first. Rebuilding an earlier commit restores code only; it does not undo database changes. Use a compatible migration/recovery plan and the backup runbook when data restoration is needed. Avoid `make deploy` while testing an older checkout because it pulls the branch again.
 
-### Service Health
+## Monitoring and troubleshooting
 
-```bash
-make ps                          # Container status
-docker compose logs -f           # Live logs (all services)
-docker compose logs -f api       # API logs only
-curl https://makapix.club/api/health   # API health endpoint
-```
-
-### Disk Space
+With the production helper defined:
 
 ```bash
-df -h                            # Filesystem usage
-du -sh /mnt/vault-1              # Vault size
-docker system df                 # Docker disk usage
-```
-
-### Database
-
-```bash
-# Database size
-docker compose exec db psql -U owner -d makapix -c \
-  "SELECT pg_size_pretty(pg_database_size('makapix'));"
-
-# Table sizes
-docker compose exec db psql -U owner -d makapix -c \
-  "SELECT relname, pg_size_pretty(pg_total_relation_size(relid)) FROM pg_catalog.pg_statio_user_tables ORDER BY pg_total_relation_size(relid) DESC LIMIT 10;"
-
-# Active connections
-docker compose exec db psql -U owner -d makapix -c \
-  "SELECT count(*) FROM pg_stat_activity;"
-```
-
-### Redis
-
-```bash
-docker compose exec cache redis-cli INFO memory | grep used_memory_human
-docker compose exec cache redis-cli DBSIZE
-```
-
-### MQTT
-
-```bash
-docker compose logs mqtt --tail=50
-# Check connected clients (from within mqtt container)
-docker compose exec mqtt mosquitto_sub -h localhost -t '$SYS/broker/clients/connected' -C 1 \
-  -u svc_backend -P "$MQTT_PASSWORD"
-```
-
----
-
-## Troubleshooting
-
-### Services Won't Start
-
-```bash
-# Check container status and exit codes
 make ps
-docker compose logs <service> --tail=100
-
-# Common causes:
-# - Missing .env file or missing variables
-# - Port conflicts (another process using the port)
-# - Volume mount failures (directory doesn't exist)
-# - Image build failures (check Dockerfile changes)
-```
-
-### Database Connection Errors
-
-```bash
-# Verify DB is running and healthy
-docker compose exec db pg_isready
-
-# Check credentials match .env
-docker compose exec db psql -U $DB_API_WORKER_USER -d $DB_DATABASE -c "SELECT 1;"
-
-# Check for connection exhaustion
-docker compose exec db psql -U owner -d makapix -c \
-  "SELECT count(*) FROM pg_stat_activity WHERE state = 'active';"
-```
-
-### Disk Space Full
-
-```bash
-# Check what's using space
-du -sh /mnt/vault-1 /var/lib/docker
-
-# Prune Docker resources
-docker system prune -af --volumes
-docker builder prune -af
-
-# Check for large log files
-du -sh /var/log/caddy/*
-```
-
-### SSL Certificate Issues
-
-Caddy auto-renews certificates. If certificates fail:
-
-```bash
-# Check Caddy logs for ACME errors
-docker compose logs caddy | grep -i "acme\|tls\|certificate"
-
-# Verify DNS resolves correctly
-dig makapix.club +short
-
-# Force certificate reload
-docker compose restart caddy
-```
-
-### High Memory Usage
-
-```bash
-# Check per-container memory
+mpxprod logs --tail=100 api worker mqtt
+curl https://makapix.club/api/health
+df -h
+docker system df
 docker stats --no-stream
-
-# The dev compose override sets resource limits; prod does not.
-# If memory is an issue in prod, add resource limits to docker-compose.prod.yml.
+mpxprod exec cache redis-cli INFO memory
+mpxprod exec broker redis-cli INFO memory
 ```
 
-### MQTT Connection Issues
+For database inspection, open `make shell-db` and run read-only queries such as:
 
-```bash
-# Check MQTT broker logs
-docker compose logs mqtt --tail=50
-
-# Test internal connectivity
-docker compose exec api python3 -c "
-import paho.mqtt.client as mqtt
-c = mqtt.Client()
-c.username_pw_set('svc_backend', '$MQTT_PASSWORD')
-c.connect('mqtt', 1883, 60)
-print('Connected')
-c.disconnect()
-"
+```sql
+SELECT pg_size_pretty(pg_database_size(current_database()));
+SELECT count(*) FROM pg_stat_activity;
 ```
 
----
+- **Startup failure:** inspect missing variables, required files, mounts, and port conflicts before rebuilding.
+- **TLS failure:** inspect the production Caddy logs and DNS. Restarting Caddy is not a forced certificate renewal.
+- **Disk pressure:** inspect vault growth, Docker images/build cache, and logs. Do not use volume-pruning commands as a generic repair; volumes can contain data.
+- **Player connection failure:** check the correct environment's MQTT port, certificate validity, CA trust, and broker logs.
+- **Memory pressure:** inspect actual container usage and overlay limits before changing resource allocation.
 
-## Useful Commands Reference
-
-| Command | Description |
-|---------|-------------|
-| `make up` | Start all services |
-| `make down` | Stop all services |
-| `make rebuild` | Rebuild and restart |
-| `make deploy` | Pull latest + rebuild |
-| `make logs` | Tail all logs |
-| `make logs-api` | Tail API logs |
-| `make logs-web` | Tail web logs |
-| `make logs-db` | Tail database logs |
-| `make ps` | Show container status |
-| `make test` | Run API tests |
-| `make shell-api` | Shell into API container |
-| `make shell-db` / `make db.shell` | PostgreSQL interactive shell |
-| `make fmt` | Format Python code (Black) |
-| `make clean` | Remove all containers and volumes (destructive) |
-
-See also: [development.md](development.md) for day-to-day development workflow.
+See [scheduled tasks](reference/scheduled-tasks.md) for maintenance timing and [Architecture](architecture.md) for data flow.

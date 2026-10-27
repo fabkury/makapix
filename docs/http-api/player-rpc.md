@@ -52,8 +52,7 @@ owner account, exactly as over MQTT.
 | Scope | exactly one player |
 | Expiry | none by default (long-lived device credential); revocable any time |
 
-A 256-bit random secret is hashed with SHA-256 for fast per-request lookup —
-the same approach `RefreshToken`, `PasswordResetToken`, and
+A 256-bit random secret is hashed with SHA-256 for fast per-request lookup, using the same approach `RefreshToken`, `PasswordResetToken`, and
 `EmailVerificationToken` already use (`auth.py:171`). It is **not** a password,
 so no bcrypt/argon2.
 
@@ -88,7 +87,7 @@ endpoints below.
 
 | Endpoint | Auth | Use |
 |----------|------|-----|
-| `POST /player/{player_key}/token/rotate` | `player_key` (rate-limited 30/hour/IP) | device self-recovery (e.g. wiped storage) — revokes the old token, returns a new one |
+| `POST /player/{player_key}/token/rotate` | `player_key` (rate-limited 30/hour/IP) | device self-recovery (e.g. wiped storage); revokes the old token, returns a new one |
 | `POST /u/{sqid}/player/{player_id}/rotate-token` | owner JWT | owner-initiated rotation / compromise response |
 | `DELETE /u/{sqid}/player/{player_id}` | owner JWT | deleting a player cascades and revokes its tokens |
 
@@ -167,7 +166,7 @@ Content-Type: application/json
 
 Each `request_type` and its fields/response are documented below. Field
 semantics for **channels, sorts, AMP `criteria`, and `include_fields` are
-identical to MQTT** — see [Player Requests](../mqtt-api/player-requests.md) for
+identical to MQTT**; see [Player Requests](../mqtt-api/player-requests.md) for
 the exhaustive reference; the essentials are reproduced here.
 
 > Per-type REST aliases (`POST /player/rpc/query-posts`, …) are **out of scope
@@ -244,13 +243,13 @@ Fetch posts with filtering and pagination.
 
 `posts[]` is a discriminated union on `kind`:
 
-**Artwork payload** — mandatory: `post_id`, `kind="artwork"`, `created_at`,
+**Artwork payload:** mandatory: `post_id`, `kind="artwork"`, `created_at`,
 `storage_key`, `art_url`, `storage_shard`, `native_format`. Optional (only when
 named in `include_fields`): `owner_handle`, `metadata_modified_at`,
 `artwork_modified_at`, `width`, `height`, `frame_count`, `dwell_time_ms`,
 `transparency_actual`, `alpha_actual`.
 
-**Playlist payload** — `post_id`, `kind="playlist"`, `owner_handle`,
+**Playlist payload:** `post_id`, `kind="playlist"`, `owner_handle`,
 `created_at`, `metadata_modified_at`, `total_artworks`, `dwell_time_ms`.
 
 **Errors**
@@ -333,7 +332,7 @@ Add an emoji reaction (attributed to the player's owner).
 { "request_id": null, "success": true }
 ```
 
-**Notes** — max 5 reactions per user per post; resubmitting the same reaction
+**Notes:** max 5 reactions per user per post; resubmitting the same reaction
 is idempotent (200). Safe to retry.
 
 **Errors**
@@ -363,7 +362,7 @@ Remove a previously added reaction.
 { "request_id": null, "success": true }
 ```
 
-**Notes** — idempotent: revoking a non-existent reaction returns 200.
+**Notes:** idempotent: revoking a non-existent reaction returns 200.
 
 ---
 
@@ -491,7 +490,7 @@ Rate limited to 10 / 60s per player (matches MQTT).
 
 ## POST /player/events/view
 
-Fire-and-forget view reporting — the HTTPS equivalent of publishing to
+Fire-and-forget view reporting is the HTTPS equivalent of publishing to
 `makapix/player/{player_key}/view`. Same `P3AViewEvent` shape, same
 deduplication and rate limiting, dispatched to the same Celery task
 (`write_view_event`).
@@ -522,7 +521,7 @@ deduplication and rate limiting, dispatched to the same Celery task
 | `channel_user_sqid` | string \| null | for `by_user` / `reactions` |
 | `channel_hashtag` | string \| null | for `hashtag` |
 
-`player_key` is **not** part of the HTTP body — identity comes from the bearer
+`player_key` is **not** part of the HTTP body; identity comes from the bearer
 token (it is required in the MQTT payload because the topic carries it).
 `request_ack` is also dropped: the HTTP status is the acknowledgement.
 
@@ -531,7 +530,7 @@ token (it is required in the MQTT payload because the topic carries it).
 | Status | Body | Meaning |
 |--------|------|---------|
 | 202 | `{ "success": true }` | accepted and queued (or a silently-ignored self-view) |
-| 200 | `{ "success": true, "deduplicated": true }` | duplicate within the dedup window — no-op |
+| 200 | `{ "success": true, "deduplicated": true }` | duplicate within the dedup window; no-op |
 | 404 | `{ "success": false, "error_code": "not_found" }` | post doesn't exist |
 | 429 | `{ "success": false, "error_code": "rate_limited" }` | > 1 view / 5s for this player |
 
@@ -587,16 +586,15 @@ Responses include `X-RateLimit-Limit` / `-Remaining` / `-Reset` headers.
 ## Transport selection
 
 Provisioning advertises both backends (`mqtt_broker` and `https_api`), so a
-device chooses at runtime based on its hardware and network — neither is a
-fallback for the other:
+device can choose either at runtime based on its hardware and network:
 
 - **MQTT** (port 8883, mTLS) when the device wants real-time commands and live
   presence and can hold a persistent connection.
 - **HTTPS** (port 443, bearer token) for request/response queries and view
   reporting without a long-lived socket.
 
-The request objects are identical on both, so supporting either one — or both
-at once (e.g. MQTT for commands, HTTPS for queries) — needs no protocol
+The request objects are identical on both, so supporting either one, or both
+at once (e.g. MQTT for commands, HTTPS for queries), needs no protocol
 changes. Querying and reporting reach full parity over HTTPS; only real-time
 push and precise presence are MQTT-only (see below).
 
@@ -618,6 +616,8 @@ than a persistent broker connection. They are candidates for a later version
 ---
 
 # Implementation
+
+The sections below preserve the original implementation design. The shared service and both adapters are now implemented; these migration sketches are historical context, not setup steps or authoritative current source. For current behavior, consult [`player_rpc.py`](../../api/app/services/player_rpc.py), the [HTTP adapter](../../api/app/routers/player_rpc.py), and the [MQTT adapter](../../api/app/mqtt/player_requests.py).
 
 ## Shared service refactor (prerequisite)
 

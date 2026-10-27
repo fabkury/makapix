@@ -19,6 +19,7 @@ All requests follow the same pattern:
 | `revoke_reaction` | Remove emoji reaction |
 | `get_comments` | Fetch comments for a post |
 | `get_playset` | Fetch playset configuration |
+| `echo` | Check request/response connectivity |
 
 ## query_posts
 
@@ -67,13 +68,14 @@ Fetch posts with optional filtering and pagination.
 | `by_user` | `user_handle` or `user_sqid` | Specific user's artwork |
 | `hashtag` | `hashtag` | Posts with hashtag |
 | `artwork` | none | Alias for `all` |
+| `reactions` | `user_handle` or `user_sqid` | Artwork reacted to by the specified user |
 
 ### Sort Options
 
 | Sort | Description |
 |------|-------------|
-| `server_order` | Insertion order (newest first) |
-| `created_at` | Chronological (newest first) |
+| `server_order` | Newest listing first; newest promotion first for `promoted`; latest reaction first for `reactions` |
+| `created_at` | Newest listing first, or newest promotion first for `promoted`; original `created_at` values are unchanged |
 | `random` | Random (use `random_seed` for reproducibility) |
 
 ### Response
@@ -88,7 +90,7 @@ Fetch posts with optional filtering and pagination.
       "kind": "artwork",
       "created_at": "2024-01-15T09:00:00Z",
       "storage_key": "abc123-def456",
-      "art_url": "https://makapix.club/api/vault/21/32/abc123-def456.png",
+      "art_url": "https://vault.makapix.club/21/32/abc123-def456.png",
       "storage_shard": "21/32",
       "native_format": "png"
     }
@@ -140,7 +142,7 @@ Fetch a single post by ID.
     "kind": "artwork",
     "created_at": "2024-01-15T09:00:00Z",
     "storage_key": "abc123-def456",
-    "art_url": "https://makapix.club/api/vault/21/32/abc123-def456.png",
+    "art_url": "https://vault.makapix.club/21/32/abc123-def456.png",
     "storage_shard": "21/32",
     "native_format": "png",
     "owner_handle": "artist",

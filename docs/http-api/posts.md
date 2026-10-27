@@ -2,6 +2,8 @@
 
 Artwork upload, listing, and management.
 
+Paths on this page are relative to `https://makapix.club/api/v1` unless a full path is shown.
+
 ## Upload Artwork
 
 ### POST /post/upload
@@ -200,7 +202,7 @@ Recommended / `GET /feed/promoted` sorts on), `null` unless `promoted` is true.
 Like any `Post` field it can be selected with `fields=` on `/feed/promoted`.
 
 `listed_at` is when the post was last placed at the top of the date-sorted
-feeds — the key `sort=created_at` and the other date feeds order by
+feeds. The key `sort=created_at` and the other date feeds order by
 (`docs/feed-bump/`). It equals `created_at` until the post is bumped (an
 artwork replacement with `bump=true`, or its first moderator approval). An
 owner with Trust can bump again from `listed_at` + 7 days.
@@ -232,7 +234,7 @@ Notes:
 
 - `hashtags` is the **artist-controlled** tag list. It is normalized
   server-side (trim, strip one leading `#`, lowercase, dedupe, max 64) and
-  moderator-owned tags (`mod_hashtags`) are re-merged automatically — artists
+  moderator-owned tags (`mod_hashtags`) are re-merged automatically; artists
   cannot remove them. The response body is the source of truth.
 - `hidden_by_mod` is ignored unless the caller is a moderator.
 - `description` (here and on `POST /post/upload`) may carry `<@SQID>` mention
@@ -327,7 +329,7 @@ Replace the image of an existing post. Requires ownership.
 | Field | Type | Required |
 |-------|------|----------|
 | `image` | file | Yes |
-| `bump` | boolean | No (default `true`) — move the post back to the top of the date-sorted feeds |
+| `bump` | boolean | No (default `true`); move the post back to the top of the date-sorted feeds |
 
 Provenance/lineage fields (`client`, `creation_method`, `source_details`,
 `remixed_from`) are covered in `docs/artwork-provenance/`.
@@ -493,17 +495,7 @@ Returns 404 if the upscaled version doesn't exist yet.
 
 ## Moderator Actions
 
-### POST /post/{id}/undelete
-
-Restore moderator-deleted post. Moderator only.
-
-**Response (201):** No content
-
-### POST /post/{id}/delete
-
-Soft delete post. Moderator only.
-
-**Response (201):** No content
+Use the [hide/unhide endpoints](#hideunhide-post) for reversible moderation. `/post/{id}/delete` and `/post/{id}/undelete` are not implemented.
 
 ### DELETE /post/{id}/permanent
 

@@ -2,7 +2,7 @@
 
 Moderation and administration endpoints. All endpoints require the `moderator` role unless noted otherwise.
 
-Base path: `/api/admin`
+Base path: `/api/v1/admin`. The headings below include `/admin`; prefix them with `/api/v1`, not another `/admin`.
 
 ## Authorization
 

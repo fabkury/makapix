@@ -6,8 +6,8 @@ Makapix Club uses MQTT for real-time communication between the server and connec
 
 Capabilities:
 
-- **Bidirectional player communication**: Players query content and submit interactions; the server sends commands and notifications.
-- **Real-time notifications**: New post alerts, category promotions, social notifications (reactions, comments, follows).
+- **Bidirectional player communication**: Players query content and submit interactions; the server sends responses and commands.
+- **Remote control**: Owners send playback commands from the web interface. Social notifications use HTTP and SSE, not MQTT.
 - **Request/response pattern**: Asynchronous request-response with correlation IDs for player queries.
 - **Fire-and-forget view events**: Lightweight view tracking with optional acknowledgment.
 - **Status tracking**: Online/offline status, current artwork display, heartbeats.
@@ -63,7 +63,7 @@ Certificates required on the device:
 - `client.crt` -- Client certificate (CN = player_key)
 - `client.key` -- Client private key
 
-Certificate validity is 365 days. Renewal is available within 30 days of expiry via REST API.
+Player client certificates are valid for 1095 days. Renewal is available within the default 90-day expiry window, or after expiry. See [certificate renewal](../player/registration.md#certificate-renewal) for the device-token and owner flows.
 
 ### 2. Internal Password Auth (Port 1883) -- API Server
 
@@ -116,7 +116,7 @@ makapix/
 ```
 
 (The former `makapix/post/new/*` and `makapix/social-notifications/*` topics
-were removed 2026-08 — social notifications are HTTP-only.)
+were removed 2026-08; social notifications are HTTP-only.)
 
 ### Topic Details
 

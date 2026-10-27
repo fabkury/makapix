@@ -5,7 +5,7 @@ Analytics dashboard for artists showing views, reactions, comments, and device/c
 ## Endpoint
 
 ```
-GET /api/user/{user_key}/artist-dashboard
+GET /api/v1/user/{user_key}/artist-dashboard
 ```
 
 | Parameter | Type | Required | Description |

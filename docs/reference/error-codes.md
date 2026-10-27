@@ -20,11 +20,20 @@ HTTP status codes and error messages returned by the API.
 
 ## Error Response Format
 
+App-facing routes under `/api/v1` return a stable code and a display message:
+
 ```json
 {
-  "detail": "Error message describing the issue"
+  "error": {
+    "code": "post_not_found",
+    "message": "Post not found"
+  }
 }
 ```
+
+An optional `details` object supplies structured context. Unversioned management routes use `detail` with a sibling `code`; player RPC uses its own protocol envelope (see below). Validation errors can return 422.
+
+Branch on the stable code and HTTP status, not exact message text. The tables below describe common messages rather than an exhaustive code list. The app-facing codes are defined in [`api/app/errors.py`](../../api/app/errors.py).
 
 ## Authentication Errors
 
@@ -73,7 +82,7 @@ HTTP status codes and error messages returned by the API.
 | Detail | Cause |
 |--------|-------|
 | Invalid image dimensions/format | Image doesn't meet requirements |
-| File size exceeds limit | Over 5 MB |
+| File size exceeds limit | Over the configured artwork limit (default 5 MiB) |
 | Invalid license_id | Unknown license |
 | Artwork is identical to current artwork | Redundant replacement |
 | User-deleted posts cannot be restored | Restoration blocked |
@@ -114,7 +123,7 @@ HTTP status codes and error messages returned by the API.
 | post_id is required for show_artwork command | Missing parameter |
 | play_channel requires one of: channel_name, hashtag, or user_sqid | Missing parameter |
 | playset_name is required for play_playset command | Missing parameter |
-| Certificate is still valid for X days. Renewal only available within 30 days of expiry. | Early renewal |
+| Certificate is still valid for X days. Renewal only available within 90 days of expiry. | Early renewal |
 
 ### 403 Forbidden
 
@@ -129,7 +138,6 @@ HTTP status codes and error messages returned by the API.
 | User not found | Invalid user ID |
 | Player not found | Invalid player ID |
 | Player not found or not registered | Unregistered device |
-| Certificates not available for this player | No certs generated |
 | Invalid or expired registration code | Bad or expired code |
 | Post not found | Invalid post ID |
 | Playset 'name' not found | Invalid playset |
@@ -155,27 +163,26 @@ HTTP status codes and error messages returned by the API.
 
 ## MQTT Error Codes
 
-MQTT responses use structured error codes.
-
-### Error Response Format
+MQTT request responses and HTTPS player RPC share lowercase protocol codes:
 
 ```json
 {
-  "status": "error",
-  "error_code": "ERROR_CODE",
-  "message": "Human-readable description"
+  "request_id": "req-001",
+  "success": false,
+  "error": "Post not found",
+  "error_code": "not_found"
 }
 ```
 
-### Error Codes
-
 | Code | Description |
 |------|-------------|
-| `INVALID_REQUEST` | Malformed request payload |
-| `VALIDATION_ERROR` | Invalid field values or criteria |
-| `NOT_FOUND` | Requested resource doesn't exist |
-| `RATE_LIMITED` | Too many requests |
-| `INTERNAL_ERROR` | Server-side failure |
+| `invalid_request` | Malformed request payload |
+| `invalid_criteria` | Invalid artwork filter criteria |
+| `not_found` | Requested resource does not exist |
+| `rate_limited` / `rate_limit_exceeded` | Request quota exceeded |
+| `internal_error` | Server-side failure |
+
+See [Player RPC error handling](../http-api/player-rpc.md#error-handling) and each [request type](../mqtt-api/player-requests.md) for operation-specific codes. HTTPS also supplies an HTTP status; MQTT supplies the reply on the request's response topic.
 
 ### Validation Errors
 
@@ -227,13 +234,14 @@ MQTT responses use structured error codes.
 
 ### Retry Strategy
 
-For 429 errors, implement exponential backoff:
+For 429 errors, honor `Retry-After` when provided. Otherwise use exponential backoff with random jitter:
 
 ```
 Wait time = min(2^attempt * base_delay, max_delay)
 ```
 
 Suggested values:
+
 - `base_delay`: 1 second
 - `max_delay`: 60 seconds
 - Max attempts: 5
@@ -246,6 +254,6 @@ Suggested values:
 | 401 | Re-authenticate |
 | 403 | Check permissions |
 | 404 | Verify resource exists |
-| 409 | Use existing resource |
+| 409 | Resolve the reported conflict or limit; inspect the error code |
 | 429 | Wait and retry |
 | 500 | Report and retry later |

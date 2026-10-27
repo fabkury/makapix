@@ -7,7 +7,8 @@ Status: adopted with the native-app contract work (2026-06).
 | Surface | Path | Versioned? |
 |---|---|---|
 | App-facing JSON API (web + native app) | `/api/v1/...` | **Yes** |
-| Hardware player / device | `/api/player/...`, `/api/pmd`, `/api/umd`, `/mqtt` | No (separate contract) |
+| Player devices and owner management | `/api/player/...`, `/api/u/{sqid}/player/...` | No (separate contract) |
+| Management dashboards | `/api/pmd/...`, `/api/umd/...` | No |
 | Web-infra (sitemap, legacy redirects) | unversioned | No |
 
 Caddy strips the public `/api` prefix (`handle_path /api/*`), so the FastAPI app
@@ -17,15 +18,11 @@ source of truth (the human docs derive from it; `make check` fails on drift).
 
 ## Initial `/api` → `/api/v1` migration
 
-This was a **hard cutover**, safe because the web client is the only existing
-`/api` consumer and migrates in lockstep (same repo). As a one-release safety
-net the app routers are *also* mounted at the bare root with
-`include_in_schema=False`; those legacy root mounts are removed once the web
-client is fully on `/api/v1`. No physical-player route moved.
+App-facing routers are mounted at `/v1` in FastAPI. The current server also retains legacy root aliases with `include_in_schema=False` for compatibility. New clients should use `/api/v1`; do not infer that an alias has been removed from this migration plan. Physical-player routes did not move.
 
 ## Future version bumps (`v1` → `v2`)
 
-Once native apps are installed in the wild we cannot force-update them, so:
+Installed native apps cannot be updated in lockstep with the server. The policy for a future major version is:
 
 1. **Overlap:** `/api/v1` and `/api/v2` are served **concurrently for at least 3
    months** after `v2` ships.

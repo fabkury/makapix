@@ -6,4 +6,4 @@ This documentation is split into three focused files:
 |----------|----------|
 | [Architecture and Configuration](mqtt-protocol/01-architecture.md) | Overview, connection methods, authentication, topic hierarchy, broker config, ACLs, security, rate limiting |
 | [Player Protocol](mqtt-protocol/02-player-protocol.md) | Request/response operations, server-to-player commands, status updates, fire-and-forget view events, error handling |
-| [REST API and Player Lifecycle](mqtt-protocol/03-notifications.md) | Player management endpoints, player lifecycle, commands, cert renewal. (Social notifications are HTTP-only — see `docs/http-api/notifications.md`.) |
+| [REST API and Player Lifecycle](mqtt-protocol/03-notifications.md) | Player management endpoints, player lifecycle, commands, cert renewal. (Social notifications are HTTP-only; see [Notifications](http-api/notifications.md).) |

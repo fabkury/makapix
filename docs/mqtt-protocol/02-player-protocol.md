@@ -121,7 +121,7 @@ Query posts from various channels with optional filtering, sorting, and paginati
 
 **Sort order:** on every channel except `"promoted"` and `"reactions"`,
 `"server_order"` and `"created_at"` both mean **newest listing first**: the
-time a post was last placed at the top of the feeds — its upload (or
+time a post was last placed at the top of the feeds: its upload (or
 moderator approval), or a later artwork replacement the artist chose to
 "bump" (`docs/feed-bump/`). This is the same order as the website and app
 feeds. The `created_at` field in payloads stays the original posting date.
@@ -187,10 +187,10 @@ feeds. The `created_at` field in payloads stays the original posting date.
 | `created_at` | string | ISO 8601 timestamp |
 | `storage_key` | string | UUID for vault path resolution |
 | `art_url` | string | Full URL to artwork file |
-| `storage_shard` | string | Opaque relative vault path (e.g. `"23/16"`). Use verbatim — do not parse, validate, or assume a fixed depth; the number of components may change |
+| `storage_shard` | string | Opaque relative vault path (e.g. `"23/16"`). Use verbatim; do not parse, validate, or assume a fixed depth; the number of components may change |
 | `native_format` | string? | File format: `"png"`, `"gif"`, `"webp"`, `"bmp"`, or null |
-| `listed_at` | string | ISO 8601 listing time — the key `server_order`/`created_at` sort on (see Sort order). Equals `created_at` until the post is bumped (artwork replacement, or its first moderator approval) |
-| `promoted_at` | string | **Only on promoted posts** (absent otherwise). ISO 8601 promotion time — the key the `promoted` channel sorts on; falls back to `created_at` for legacy promotions |
+| `listed_at` | string | ISO 8601 listing time; the key `server_order`/`created_at` sort on (see Sort order). Equals `created_at` until the post is bumped (artwork replacement, or its first moderator approval) |
+| `promoted_at` | string | **Only on promoted posts** (absent otherwise). ISO 8601 promotion time; the key the `promoted` channel sorts on; falls back to `created_at` for legacy promotions |
 
 **Artwork post optional fields (only included if requested via `include_fields`):**
 
@@ -201,7 +201,7 @@ feeds. The `created_at` field in payloads stays the original posting date.
 | `artwork_modified_at` | string | ISO 8601 timestamp of last artwork edit |
 | `width` | int | Image width in pixels |
 | `height` | int | Image height in pixels |
-| `frame_count` | int | Number of frames in the native-format file (1 for static images). Converted renditions may contain fewer — consecutive duplicate frames merge on encode; see `docs/player/displaying-artwork.md` |
+| `frame_count` | int | Number of frames in the native-format file (1 for static images). Converted renditions may contain fewer because consecutive duplicate frames merge on encode; see `docs/player/displaying-artwork.md` |
 | `dwell_time_ms` | int | Display time in milliseconds (default: 30000) |
 | `transparency_actual` | bool | Whether image has actual transparent pixels |
 | `alpha_actual` | bool | Whether image has actual alpha channel |
@@ -571,7 +571,7 @@ Display a specific artwork.
 |-------|------|-------------|
 | `post_id` | int | Post ID |
 | `storage_key` | string (UUID) | Storage identifier for vault path |
-| `storage_shard` | string | Opaque relative vault path (e.g. `"23/16"`). Use verbatim — do not parse, validate, or assume a fixed depth; the number of components may change |
+| `storage_shard` | string | Opaque relative vault path (e.g. `"23/16"`). Use verbatim; do not parse, validate, or assume a fixed depth; the number of components may change |
 | `native_format` | string | Original file format (`png`, `gif`, `webp`, `bmp`) |
 | `width` | int | Canvas width in pixels |
 | `height` | int | Canvas height in pixels |

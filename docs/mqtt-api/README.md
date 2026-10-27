@@ -47,88 +47,9 @@ makapix/{domain}/{identifier}/{action}[/{suffix}]
 
 ### Player Topics
 
-| Topic Pattern | Direction | Description |
-|---------------|-----------|-------------|
-| `makapix/player/{player_key}/request/{request_id}` | Device -> Server | Player requests |
-| `makapix/player/{player_key}/response/{request_id}` | Server -> Device | Request responses |
-| `makapix/player/{player_key}/status` | Device -> Server | Status updates |
-| `makapix/player/{player_key}/view` | Device -> Server | View events |
-| `makapix/player/{player_key}/view/ack` | Server -> Device | View acknowledgments |
-| `makapix/player/{player_key}/command` | Server -> Device | Commands from web |
+| Topic Pattern The server caps player response payloads at **128 KiB** (131,072 bytes) and trims artwork query results to fit. Process the returned page length rather than assuming it equals your requested `limit`; follow the returned cursor for more results.
 
-## QoS Levels
-
-| Topic Type | QoS | Rationale |
-|------------|-----|-----------|
-| Requests | 1 | Ensure delivery |
-| Responses | 1 | Ensure delivery |
-| Commands | 1 | Ensure delivery |
-| Status | 1 | Track connection state |
-| View events | 1 | Server deduplicates |
-
-QoS 1 provides at-least-once delivery. The server handles duplicate detection for view events.
-
-## Message Format
-
-All messages use JSON payloads:
-
-```json
-{
-  "field": "value",
-  "nested": {
-    "object": true
-  },
-  "array": [1, 2, 3]
-}
-```
-
-### Common Fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `request_id` | string | Client-generated UUID for correlation |
-| `request_type` | string | Request type identifier |
-| `player_key` | string | Player's UUID |
-| `success` | boolean | Whether operation succeeded |
-| `error` | string | Error message (on failure) |
-| `error_code` | string | Machine-readable error code |
-
-## Request-Response Pattern
-
-Player requests follow a consistent pattern:
-
-1. Generate unique `request_id`
-2. Publish to `makapix/player/{player_key}/request/{request_id}`
-3. Subscribe to `makapix/player/{player_key}/response/{request_id}` (or wildcard `+`)
-4. Wait for response with matching `request_id`
-
-```
-Device                              Server
-  |                                   |
-  |-- Publish request/{req-123} ----->|
-  |                                   |
-  |<-- Publish response/{req-123} ----|
-  |                                   |
-```
-
-### Timeout Handling
-
-Recommended timeout: 30 seconds
-
-```python
-response = wait_for_response(request_id, timeout=30)
-if response is None:
-    # Request timed out, retry or fail
-```
-
-## Payload Size Limits
-
-| Direction | Limit |
-|-----------|-------|
-| Device -> Server | 256 KB |
-| Server -> Device | 128 KB |
-
-The server automatically trims query results to fit within the 128 KB limit.
+Keep request payloads small and use the documented operation limits. Broker packet limits may depend on deployment configuration.
 
 ## Rate Limits
 
@@ -256,6 +177,6 @@ client.username_pw_set(player_key, "")
 client.on_connect = on_connect
 client.on_message = on_message
 
-client.connect("makapix.club", 8884)
+client.connect("makapix.club", 8883)
 client.loop_forever()
 ```

@@ -6,8 +6,10 @@ REST API for web clients, mobile apps, and integrations.
 
 | Environment | Base URL |
 |-------------|----------|
-| Production | `https://makapix.club/api` |
-| Development | `https://development.makapix.club/api` |
+| Production | `https://makapix.club/api/v1` |
+| Development | `https://development.makapix.club/api/v1` |
+
+Paths in the app-facing references are relative to these bases. **Player device and owner-management endpoints remain under `/api`**, not `/api/v1`; see [Player](player.md). The [committed OpenAPI contract](../../api/openapi.json) and [versioning policy](../api-versioning-policy.md) describe the available routes.
 
 ## Authentication
 
@@ -34,7 +36,7 @@ Access tokens expire after 60 minutes by default (configurable on the server). U
 POST /auth/refresh
 ```
 
-The refresh token is stored in an HttpOnly cookie and automatically included.
+For the browser login flow, the refresh token is an HttpOnly cookie; cross-origin fetch clients must include credentials. Native apps use `/auth/token` and body-based refresh tokens; see [Authentication](authentication.md).
 
 ### Public Endpoints
 
@@ -44,8 +46,7 @@ These endpoints work without authentication:
 - `GET /p/{public_sqid}` - Single artwork by sqid
 - `GET /user/browse` - Browse users
 - `GET /user/u/{public_sqid}` - User profile
-- `POST /player/provision` - Device provisioning
-- `GET /player/{player_key}/credentials` - Device credentials; possession of the secret `player_key` is required
+Player provisioning and credential retrieval use the separate `/api/player/...` paths. Credential retrieval requires possession of the secret `player_key`.
 
 ## Response Format
 
@@ -123,13 +124,7 @@ The `next_cursor` field in the response provides the cursor for the next page. W
 | Credential requests | 30/min/IP |
 | Player commands | 300/min/player |
 
-Rate limit headers:
-
-```
-X-RateLimit-Limit: 30
-X-RateLimit-Remaining: 29
-X-RateLimit-Reset: 1705320000
-```
+A rate-limited request returns 429. Honor `Retry-After` when present; otherwise retry with backoff. The API does not consistently return `X-RateLimit-*` headers, so clients must not depend on them.
 
 ## Common Headers
 
@@ -208,12 +203,12 @@ Preflight requests are handled automatically.
 
 ## Versioning
 
-The API is currently unversioned. Breaking changes will be communicated in advance via Discord and documentation updates.
+App-facing routes use `/api/v1`. Legacy unversioned aliases remain in the current server for compatibility, but new app integrations should use v1. Player routes have a separate unversioned contract. See the [versioning and deprecation policy](../api-versioning-policy.md).
 
 ## Example: Fetch Recent Artwork
 
 ```bash
-curl -X GET "https://makapix.club/api/post/recent?limit=10" \
+curl -X GET "https://makapix.club/api/v1/post/recent?limit=10" \
   -H "Accept: application/json"
 ```
 
@@ -241,23 +236,11 @@ Response:
 }
 ```
 
-## Example: Authenticated Request
+## Example: Add a Reaction
 
 ```bash
-curl -X POST "https://makapix.club/api/post/12345/reactions" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..." \
-  -H "Content-Type: application/json" \
-  -d '{"emoji": "❤️"}'
+curl -X PUT "https://makapix.club/api/v1/post/12345/reactions/%E2%9D%A4%EF%B8%8F" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 ```
 
-Response:
-
-```json
-{
-  "id": "reaction-uuid",
-  "post_id": 12345,
-  "user_id": 1,
-  "emoji": "❤️",
-  "created_at": "2024-01-15T10:30:00Z"
-}
-```
+Returns **204 with no body**. Repeating the request leaves the reaction in place; use `DELETE` on the same URL to remove it. See [Reactions and Comments](reactions.md).
