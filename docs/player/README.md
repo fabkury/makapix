@@ -60,14 +60,15 @@ Common platforms include:
 ## Architecture Overview
 
 ```mermaid
-flowchart LR
-    Owner["Owner in the web app"] -->|"Link registration code"| API["Makapix API"]
-    Player["Player device"] -->|"HTTPS: provision and retrieve credentials"| API
-    Player <-->|"HTTPS: queries and view reports"| API
-    Player <-->|"MQTT over mutual TLS"| Broker["MQTT broker"]
-    Broker <-->|"Requests, responses, commands, status"| API
-    Player -->|"Download image files"| Vault["Artwork vault"]
+flowchart TD
+    Player["Player device"] <-->|HTTPS or MQTT| API["Makapix API"]
+    API -->|Artwork URLs| Download["Player downloads images"]
+    Vault["Artwork vault"] -->|HTTPS| Download
+    Download --> Display["Display the artwork"]
 ```
+
+MQTT traffic passes through the MQTT broker. Image downloads always use HTTPS,
+regardless of the transport used to query artwork.
 
 1. The device provisions over HTTPS and receives a registration code.
 2. The owner enters the code in the web app to link the device to their account.

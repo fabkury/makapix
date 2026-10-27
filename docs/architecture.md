@@ -6,22 +6,35 @@ System architecture and component overview.
 
 Makapix Club is a monolithic application designed to run on a single VPS. All services are containerized with Docker Compose and communicate over internal networks.
 
+### Web traffic
+
 ```mermaid
 flowchart TD
-    Browser["Browser or app"] -->|HTTPS| Caddy["Caddy reverse proxy"]
-    Player["Player device"] -->|HTTPS| Caddy
-    Player <-->|"MQTT with mTLS, port 8883"| MQTT["Mosquitto"]
-    Caddy --> Web["Next.js frontend"]
-    Caddy --> API["FastAPI backend"]
+    Client["Browser, app or player"] -->|HTTPS| Caddy["Caddy"]
+    Caddy --> Web["Next.js"]
+    Caddy --> API["FastAPI"]
     Caddy --> Vault["Artwork vault"]
     Web --> API
-    API <--> MQTT
-    API --> DB["PostgreSQL"]
+```
+
+### Data and background jobs
+
+```mermaid
+flowchart TD
+    API["FastAPI"] --> DB["PostgreSQL"]
     API --> Cache["Redis cache"]
     API --> Queue["Redis task broker"]
     Queue --> Worker["Celery worker"]
     Worker --> DB
-    Worker --> Vault
+    Worker --> Vault["Artwork vault"]
+```
+
+### Player messaging
+
+```mermaid
+flowchart TD
+    Player["Player device"] <-->|"MQTT with mTLS"| MQTT["Mosquitto: port 8883"]
+    MQTT <--> API["FastAPI"]
 ```
 
 Caddy serves web traffic and artwork downloads. Native MQTT players connect directly to Mosquitto; HTTPS players use the API through Caddy. The cache and Celery task broker are separate Redis services.

@@ -14,19 +14,16 @@ The same flow sets up both transports: the certificates are used for MQTT, and
 the bearer token for HTTPS. A device only needs whichever it intends to use.
 
 ```mermaid
-sequenceDiagram
-    participant Device as Player device
-    participant API as Makapix API
-    participant Owner as Owner in web app
-    Device->>API: POST /api/player/provision
-    API-->>Device: Player key, code, and connection details
-    Device-->>Owner: Display six-character code
-    Owner->>API: POST /api/player/register (signed in, with code)
-    API-->>Owner: Device linked to account
-    Device->>API: GET /api/player/{player_key}/credentials
-    API-->>Device: TLS certificates and HTTPS token (token returned once)
-    Note over Device: Save credentials before connecting
+flowchart TD
+    Provision["Device requests a code"] --> Show["Device displays the code"]
+    Show --> Link["Owner signs in and enters code"]
+    Link --> Fetch["Device retrieves credentials"]
+    Fetch --> Save["Device saves credentials"]
+    Save --> Connect["Device connects via HTTPS or MQTT"]
 ```
+
+The API returns the HTTPS bearer token only once. Save it securely before
+connecting. The endpoint paths and request bodies are shown below.
 
 ## Step 1: Provision
 
