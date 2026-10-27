@@ -8,34 +8,24 @@ Makapix Club is a monolithic application designed to run on a single VPS. All se
 
 ### Web traffic
 
-```mermaid
-flowchart TD
-    Client["Browser, app or player"] -->|HTTPS| Caddy["Caddy"]
-    Caddy --> Web["Next.js"]
-    Caddy --> API["FastAPI"]
-    Caddy --> Vault["Artwork vault"]
-    Web --> API
-```
+![Caddy routes HTTPS requests to Next.js, FastAPI, or the artwork vault.](assets/diagrams/web-routing.svg)
+
+[Diagram source](assets/diagrams/web-routing.mmd)
 
 ### Data and background jobs
 
-```mermaid
-flowchart TD
-    API["FastAPI"] --> DB["PostgreSQL"]
-    API --> Cache["Redis cache"]
-    API --> Queue["Redis task broker"]
-    Queue --> Worker["Celery worker"]
-    Worker --> DB
-    Worker --> Vault["Artwork vault"]
-```
+![FastAPI queues jobs in Redis. Celery workers process jobs and access PostgreSQL and the artwork vault.](assets/diagrams/background-jobs.svg)
+
+[Diagram source](assets/diagrams/background-jobs.mmd)
+
+The API also reads and writes PostgreSQL directly and uses a separate Redis cache.
+The frontend calls the API for application data.
 
 ### Player messaging
 
-```mermaid
-flowchart TD
-    Player["Player device"] <-->|"MQTT with mTLS"| MQTT["Mosquitto: port 8883"]
-    MQTT <--> API["FastAPI"]
-```
+![Players exchange MQTT messages with FastAPI through Mosquitto using mutual TLS on port 8883.](assets/diagrams/player-messaging.svg)
+
+[Diagram source](assets/diagrams/player-messaging.mmd)
 
 Caddy serves web traffic and artwork downloads. Native MQTT players connect directly to Mosquitto; HTTPS players use the API through Caddy. The cache and Celery task broker are separate Redis services.
 

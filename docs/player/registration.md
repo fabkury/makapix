@@ -13,14 +13,9 @@ Registration is a three-step handshake:
 The same flow sets up both transports: the certificates are used for MQTT, and
 the bearer token for HTTPS. A device only needs whichever it intends to use.
 
-```mermaid
-flowchart TD
-    Provision["Device requests a code"] --> Show["Device displays the code"]
-    Show --> Link["Owner signs in and enters code"]
-    Link --> Fetch["Device retrieves credentials"]
-    Fetch --> Save["Device saves credentials"]
-    Save --> Connect["Device connects via HTTPS or MQTT"]
-```
+![The device requests and displays a code; the owner signs in and enters it; the device retrieves and saves credentials, then connects.](../assets/diagrams/player-registration.svg)
+
+[Diagram source](../assets/diagrams/player-registration.mmd)
 
 The API returns the HTTPS bearer token only once. Save it securely before
 connecting. The endpoint paths and request bodies are shown below.

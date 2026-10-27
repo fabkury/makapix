@@ -59,13 +59,9 @@ Common platforms include:
 
 ## Architecture Overview
 
-```mermaid
-flowchart TD
-    Player["Player device"] <-->|HTTPS or MQTT| API["Makapix API"]
-    API -->|Artwork URLs| Download["Player downloads images"]
-    Vault["Artwork vault"] -->|HTTPS| Download
-    Download --> Display["Display the artwork"]
-```
+![A player queries the API over HTTPS or MQTT, downloads artwork from the vault using the returned URLs, and displays it.](../assets/diagrams/player-overview.svg)
+
+[Diagram source](../assets/diagrams/player-overview.mmd)
 
 MQTT traffic passes through the MQTT broker. Image downloads always use HTTPS,
 regardless of the transport used to query artwork.

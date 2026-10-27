@@ -16,12 +16,12 @@ A selection from the [Promoted feed](https://makapix.club/recommended), called *
 
 <table>
 <tr>
-<td align="center" width="50%"><a href="https://makapix.club/p/aKB7"><img src="https://vault.makapix.club/0f/24/2b942960-5e9b-445c-b148-eac8da7f0591.webp" width="128" alt="Jellyfish glow by Badguy"></a><br><a href="https://makapix.club/p/aKB7">Jellyfish glow</a><br>by <a href="https://makapix.club/u/XWK">Badguy</a></td>
-<td align="center" width="50%"><a href="https://makapix.club/p/pCn3"><img src="https://vault.makapix.club/1c/03/d7c8539a-4db0-49c2-a8f9-06afca98feaf.webp" width="128" alt="ｄｅｕｃｅｓ by m o n s t e r"></a><br><a href="https://makapix.club/p/pCn3">ｄｅｕｃｅｓ</a><br>by <a href="https://makapix.club/u/CH">m o n s t e r</a></td>
+<td align="center" width="50%"><a href="https://makapix.club/p/aKB7"><img src="https://vault.makapix.club/0f/24/2b942960-5e9b-445c-b148-eac8da7f0591.webp" width="128" alt="Jellyfish glow by Badguy"></a><br><a href="https://makapix.club/p/aKB7">Jellyfish glow</a><br><a href="https://makapix.club/u/XWK">Badguy</a></td>
+<td align="center" width="50%"><a href="https://makapix.club/p/pCn3"><img src="https://vault.makapix.club/1c/03/d7c8539a-4db0-49c2-a8f9-06afca98feaf.webp" width="128" alt="ｄｅｕｃｅｓ by m o n s t e r"></a><br><a href="https://makapix.club/p/pCn3">ｄｅｕｃｅｓ</a><br><a href="https://makapix.club/u/CH">m o n s t e r</a></td>
 </tr>
 <tr>
-<td align="center" width="50%"><a href="https://makapix.club/p/d9e"><img src="https://vault.makapix.club/3e/3c/3b413081-82d2-4dbc-ac8a-9aa3842a1281.webp" width="128" alt="Metal Sonic by Odio"></a><br><a href="https://makapix.club/p/d9e">Metal Sonic</a><br>by <a href="https://makapix.club/u/zE">Odio</a></td>
-<td align="center" width="50%"><a href="https://makapix.club/p/HqL9"><img src="https://vault.makapix.club/2e/39/7b72e6ff-3678-4bfb-a3fe-39c2d510e82d.webp" width="128" alt="senna fixed by birds"></a><br><a href="https://makapix.club/p/HqL9">senna fixed</a><br>by <a href="https://makapix.club/u/QVJ">birds</a></td>
+<td align="center" width="50%"><a href="https://makapix.club/p/d9e"><img src="https://vault.makapix.club/3e/3c/3b413081-82d2-4dbc-ac8a-9aa3842a1281.webp" width="128" alt="Metal Sonic by Odio"></a><br><a href="https://makapix.club/p/d9e">Metal Sonic</a><br><a href="https://makapix.club/u/zE">Odio</a></td>
+<td align="center" width="50%"><a href="https://makapix.club/p/HqL9"><img src="https://vault.makapix.club/2e/39/7b72e6ff-3678-4bfb-a3fe-39c2d510e82d.webp" width="128" alt="senna fixed by birds"></a><br><a href="https://makapix.club/p/HqL9">senna fixed</a><br><a href="https://makapix.club/u/QVJ">birds</a></td>
 </tr>
 </table>
 

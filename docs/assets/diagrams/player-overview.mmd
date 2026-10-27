@@ -1,0 +1,4 @@
+flowchart TD
+    Player["Player device"] <-->|HTTPS or MQTT| API["Makapix API"]
+    API -->|Artwork URLs| Download["Download from vault"]
+    Download --> Display["Display the artwork"]
