@@ -1,62 +1,79 @@
+<p align="center">
+  <a href="https://makapix.club"><img src="web/public/brand/logo-512p.webp" width="192" alt="Makapix Club logo"></a>
+</p>
+
 # Makapix Club
 
-A pixel art social network with physical display support.
+A home for pixel art, on your screen and on displays you build yourself.
 
-## What is Makapix Club?
+Makapix Club connects pixel artists, art lovers, and **DIY makers**: people who build or customize their own devices. Share still images and animations, discover artists, and bring their work to a connected pixel art display. You can enjoy the community with just a browser; building hardware is optional.
 
-Makapix Club is a platform built for pixel artists and makers. Share your pixel art creations, discover artwork from other artists, and display your favorites on physical pixel art players you build yourself.
+**[Explore the art](https://makapix.club/recommended)** · **[Get started](docs/getting-started.md)** · **[Build a player](docs/player/README.md)** · **[Join Discord](https://discord.gg/xk9umcujXV)**
 
-Unlike traditional art platforms, Makapix is designed from the ground up to support physical display devices. Every artwork uploaded follows strict specifications: dimensions from 8x8 to 256x256 pixels, GIF/PNG/WEBP/BMP file formats, and metadata is collected to enable devices to filter and display art automatically.
+## Art from the community
 
-The community centers around creativity and making. Artists share static and animated pixel art. Makers build display devices using ESP32, Raspberry Pi, or any platform that speaks MQTT. The two worlds connect through an open protocol that lets your handmade art spread through the community, receive pieces from artists you follow, or display your own creations.
+A selection from the [Promoted feed](https://makapix.club/recommended), called **Recommended** on the website. Select an artwork to visit its original post.
 
-## Links
+<table>
+<tr>
+<td align="center" width="25%"><a href="https://makapix.club/p/aKB7"><img src="https://vault.makapix.club/0f/24/2b942960-5e9b-445c-b148-eac8da7f0591.webp" width="128" alt="Jellyfish glow by Badguy"></a><br><a href="https://makapix.club/p/aKB7">Jellyfish glow</a><br>by <a href="https://makapix.club/u/XWK">Badguy</a></td>
+<td align="center" width="25%"><a href="https://makapix.club/p/pCn3"><img src="https://vault.makapix.club/1c/03/d7c8539a-4db0-49c2-a8f9-06afca98feaf.webp" width="128" alt="ｄｅｕｃｅｓ by m o n s t e r"></a><br><a href="https://makapix.club/p/pCn3">ｄｅｕｃｅｓ</a><br>by <a href="https://makapix.club/u/CH">m o n s t e r</a></td>
+<td align="center" width="25%"><a href="https://makapix.club/p/d9e"><img src="https://vault.makapix.club/3e/3c/3b413081-82d2-4dbc-ac8a-9aa3842a1281.webp" width="128" alt="Metal Sonic by Odio"></a><br><a href="https://makapix.club/p/d9e">Metal Sonic</a><br>by <a href="https://makapix.club/u/zE">Odio</a></td>
+<td align="center" width="25%"><a href="https://makapix.club/p/HqL9"><img src="https://vault.makapix.club/2e/39/7b72e6ff-3678-4bfb-a3fe-39c2d510e82d.webp" width="128" alt="senna fixed by birds"></a><br><a href="https://makapix.club/p/HqL9">senna fixed</a><br>by <a href="https://makapix.club/u/QVJ">birds</a></td>
+</tr>
+</table>
 
-- **Live Site**: [makapix.club](https://makapix.club)
-- **Discord**: [discord.gg/xk9umcujXV](https://discord.gg/xk9umcujXV)
-- **Documentation**: [docs/README.md](docs/README.md)
+<!-- Selected from /api/feed/promoted on 2026-10-27. Keep titles, artist credits,
+     and post links together when refreshing this selection. Images stay hosted
+     by Makapix Club; they are not copied into this repository. -->
 
-## Key Features
+Artwork belongs to its respective creators. See each post for its details and any license information.
 
-- **Pixel Art Sharing** - Upload PNG, GIF, WebP, or BMP artwork (8x8 to 256x256 pixels, max 5 MiB)
-- **Physical Player Support** - Connect DIY display devices via MQTT with mTLS authentication
-- **Community Discovery** - Browse recent artwork, follow artists, react with emoji
-- **Flexible Playback** - Filter artwork by dimensions, file format, file size, animation, colors, and more
-- **Open Protocol** - Document APIs let anyone build compatible devices and clients
+## Find your starting point
 
-## For Makers
+| I want to… | Start here |
+|------------|------------|
+| Browse art or share my first piece | [Artist and visitor guide](docs/getting-started.md) |
+| Build a connected display | [Player Device Guide](docs/player/README.md) |
+| Try the player API on my computer | [Runnable HTTPS example](docs/player/https-connection.md#reference-example-start-here) |
+| Contribute to the code | [Development Guide](docs/development.md) |
+| Integrate an app or device | [HTTP API](docs/http-api/README.md) and [MQTT API](docs/mqtt-api/README.md) |
 
-Building a pixel art display? Makapix provides everything you need:
+## What you can do
 
-1. **Simple Registration** - Your device gets a 6-character code; enter it on the web to link it to your account
-2. **Secure Connection** - mTLS certificates authenticate your device to the MQTT broker
-3. **Flexible Queries** - Request artwork filtered by size, format, color count, and other metadata
-4. **Real-time Commands** - Receive commands from the web interface to show specific artwork
+- **Share pixel art:** upload PNG, GIF, WebP, or BMP, including animations in supported formats. Canvases can be up to 256 × 256 pixels, with [specific rules for smaller sizes](docs/getting-started.md#prepare-your-artwork).
+- **Discover artists:** explore recent and promoted artwork, follow artists, and leave emoji reactions and comments.
+- **Build a player:** connect a DIY display using HTTPS or MQTT. Filter artwork to match your display's dimensions, supported formats, animation capabilities, and memory.
+- **Control a connected display:** MQTT adds commands from the web interface and live online/offline status.
 
-Supported platforms include ESP32, Raspberry Pi, and anything that can handle MQTT over TLS. See the [Player Device Guide](docs/player/README.md) to get started.
+## For DIY makers
 
-## Tech Stack
+A **player** is a device that fetches and displays art from Makapix Club. An ESP32, Raspberry Pi, or another networked platform can become a player if it can make secure connections and decode the images you select.
+
+1. Provision the device to receive a six-character registration code.
+2. Enter that code on your Makapix Club profile's **Manage Players** page.
+3. Save the device credentials and connect using HTTPS, MQTT, or both.
+4. Query artwork, download the image files, and display them.
+
+Start with the [player quick start](docs/player/quickstart.md), or explore [existing player projects](https://makapix.club/players).
+
+## Inside the project
 
 | Component | Technology |
 |-----------|------------|
-| Backend | FastAPI (Python 3.12+) |
-| Frontend | Next.js 14 (TypeScript, React 18) |
-| Database | PostgreSQL 17 |
-| Cache | Redis 7 |
-| Messaging | Mosquitto MQTT (TLS + WebSocket) |
-| Background Tasks | Celery |
-| Reverse Proxy | Caddy |
-| Storage | Local vault with hash-based sharding |
+| Backend | FastAPI, Python |
+| Frontend | Next.js, TypeScript, React |
+| Database | PostgreSQL |
+| Cache and task broker | Separate Redis instances |
+| Player messaging | Mosquitto MQTT |
+| Background tasks | Celery |
+| Reverse proxy | Caddy |
+| Artwork storage | Local vault with hash-based sharding |
 
-## Documentation
+See the [architecture](docs/architecture.md) for service relationships, the [development guide](docs/development.md) for local setup, and the [documentation index](docs/README.md) for all guides and references.
 
-- [Documentation Index](docs/README.md) - Full documentation table of contents
-- [Architecture Overview](docs/architecture.md) - System design and service layout
-- [Development Guide](docs/development.md) - Local setup and commands
-- [Player Device Guide](docs/player/README.md) - Build your own pixel art display
-- [HTTP API Reference](docs/http-api/README.md) - REST endpoints
-- [MQTT API Reference](docs/mqtt-api/README.md) - Real-time messaging protocol
+## Community and support
 
----
-
-Built with love for pixel artists and makers everywhere.
+- [Discord](https://discord.gg/xk9umcujXV): questions, feedback, and community projects.
+- [GitHub issues](https://github.com/fabkury/makapix/issues): reproducible bugs and feature requests.
+- [License](LICENSE): source-code license; artwork has its own ownership and licensing.
