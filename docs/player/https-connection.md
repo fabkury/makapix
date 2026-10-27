@@ -1,24 +1,14 @@
 # HTTPS Connection
 
-Talk to Makapix over plain HTTPS — a parallel transport to [MQTT](mqtt-connection.md).
-A player can query artwork, react, fetch comments and playsets, and report views
-with ordinary `POST` requests, no persistent socket required. This is ideal for
-devices or networks where a long-lived MQTT connection (port 8883) isn't
-practical.
+Connect a player using HTTPS requests authenticated with its device token. You can query artwork, react, fetch comments and playsets, and report views without maintaining a persistent connection.
 
-HTTPS is a first-class transport for querying and reporting. The one thing it
-does **not** do is real-time, server-initiated messaging: remote commands pushed
-from the web app and live online/offline presence are MQTT-only, because they
-need a persistent connection. Everything a player *asks for* works identically
-on both.
+For remote commands from the web app and live online/offline status, use [MQTT](mqtt-connection.md), either alone or alongside HTTPS.
 
 ## Reference example (start here)
 
 A complete, runnable example lives in the repository at
 [`scripts/test_https_player_api.py`](../../scripts/test_https_player_api.py). It
-walks the entire flow end to end — provision a player, capture and store the
-bearer token, query posts, and download a few artworks — using only the Python
-standard library (nothing to install):
+uses only the Python standard library to provision a player, save its token, query posts, and download artwork. From the repository root, run:
 
 ```bash
 # Provision (you enter the shown code in the web app), then query + download
@@ -29,9 +19,9 @@ python3 scripts/test_https_player_api.py --channel hashtag --hashtag landscape -
 python3 scripts/test_https_player_api.py --reset
 ```
 
-It's the recommended starting point when porting the protocol to your own
-device — clone it, run it against production, then adapt. The rest of this page
-documents what it does under the hood.
+On Windows, use `python` instead of `python3` if that is your installed command. The script creates a player on your account and saves credentials in `~/.mpx_player_creds.json`; keep that file private. `--reset` forgets the saved credentials and provisions another player, so remove unused test players through **Manage Players**.
+
+Adapt this example when implementing the protocol on your own device. The rest of this page explains the requests it sends.
 
 ## Base URL
 
@@ -60,22 +50,24 @@ login token.
 |----------|-------|
 | Where to get it | `api_token` from `GET /player/{player_key}/credentials` (first fetch) |
 | Lifetime | long-lived; revoked on rotation or device removal |
-| If lost | rotate a new one — `POST /player/{player_key}/token/rotate` |
+| If lost | rotate using `POST /player/{player_key}/token/rotate` |
 
 ## Endpoints
 
 | Endpoint | Purpose |
 |----------|---------|
-| `POST /player/rpc` | Request/response — `query_posts`, `get_post`, `get_comments`, `get_playset`, `submit_reaction`, `revoke_reaction`, `echo` |
+| `POST /player/rpc` | Request/response: `query_posts`, `get_post`, `get_comments`, `get_playset`, `submit_reaction`, `revoke_reaction`, `echo` |
 | `POST /player/events/view` | Fire-and-forget view reporting |
 | `POST /player/{player_key}/token/rotate` | Self-service token rotation (gated by `player_key`) |
+
+For MQTT certificate renewal using the same bearer token, see [Certificate Renewal](registration.md#certificate-renewal).
 
 ## Making a request
 
 `POST /player/rpc` with a JSON body. The body is the **same object** you would
 publish over MQTT, minus the transport framing: `request_type` selects the
 operation, identity comes from the token (so `player_key` is not needed), and
-the HTTP response *is* the reply (so `request_id` is not needed — include it if
+the HTTP response *is* the reply (so `request_id` is not needed; include it if
 you want it echoed back).
 
 ```
@@ -118,7 +110,7 @@ Response (HTTP 200):
 ```
 
 All channels, sorting, AMP filter `criteria`, pagination, and `include_fields`
-behave exactly as documented in [Querying Artwork](querying-artwork.md) — that
+behave exactly as documented in [Querying Artwork](querying-artwork.md). That
 page's request bodies work as-is here. The other request types
 (`submit_reaction`, `get_comments`, `get_playset`, …) are covered in
 [Reporting](reporting.md). For the full contract see the
@@ -144,11 +136,11 @@ Content-Type: application/json
 | Status | Meaning |
 |--------|---------|
 | 202 | Accepted (queued) |
-| 200 | Duplicate within the dedup window — ignored (`{"deduplicated": true}`) |
+| 200 | Duplicate within the dedup window; ignored (`{"deduplicated": true}`) |
 | 404 | Post not found |
-| 429 | Rate limited (1 view / 5s per player) — honor `Retry-After` |
+| 429 | Rate limited (1 view / 5s per player); honor `Retry-After` |
 
-`player_key` and `request_ack` are omitted over HTTPS — identity comes from the
+`player_key` and `request_ack` are omitted over HTTPS; identity comes from the
 token and the HTTP status is the acknowledgement.
 
 ## Errors
@@ -185,6 +177,8 @@ Errors use the same envelope as MQTT, plus an accurate HTTP status:
 
 ## Example (Python)
 
+This integration sketch uses the third-party `requests` package. Supply your saved `api_token` and your own `show()` display function. For a complete runnable example with no dependencies, use the script above.
+
 ```python
 import requests
 
@@ -193,7 +187,11 @@ HEADERS = {"Authorization": f"Bearer {api_token}"}
 
 def rpc(body):
     r = requests.post(f"{BASE}/player/rpc", json=body, headers=HEADERS, timeout=10)
-    return r.status_code, r.json()
+    r.raise_for_status()
+    data = r.json()
+    if not data.get("success"):
+        raise RuntimeError(data)
+    return r.status_code, data
 
 # Query the feed
 status, data = rpc({"request_type": "query_posts", "channel": "all", "limit": 10})
@@ -227,15 +225,14 @@ POST https://makapix.club/api/player/{player_key}/token/rotate
 { "api_token": "mpx_live_<new>", "rotated_at": "2024-01-15T12:00:00Z" }
 ```
 
-Rate limited to 30 requests per hour per IP. Owners can also rotate a token from
-the web app (Settings > Players).
+Rate limited to 30 requests per hour per IP. Owners can also use the [owner rotation endpoint](../http-api/player-rpc.md#rotating-and-revoking-tokens).
 
 ## What HTTPS doesn't do
 
 These are MQTT-only because they require a persistent, server-initiated channel:
 
 - **Real-time commands** from the web app (`swap_next`, `play_channel`, `show_artwork`, brightness, …)
-- **Live presence** — the dashboard's online/offline indicator
+- **Live presence:** the dashboard's online/offline indicator
 
 A device that wants remote control can connect over MQTT for commands while
 still using HTTPS for queries, or simply use MQTT throughout. For displaying a

@@ -1,10 +1,12 @@
 # Player Device Guide
 
-Build physical display devices that show pixel art from Makapix Club.
+A guide for DIY makers building displays that fetch pixel art from Makapix Club. You can try the protocol on a computer before choosing hardware.
+
+**Start here:** [Run the HTTPS example](https-connection.md#reference-example-start-here) or follow the [four-step quick start](quickstart.md). If you only need to link an existing device, see the [artist and visitor guide](../getting-started.md#bring-art-to-a-display).
 
 ## What is a Player?
 
-A player is any physical device that displays pixel art from the Makapix community. Players talk to the server over one of two parallel transports — **MQTT** (mutual TLS) or **HTTPS** (bearer token) — and can:
+A player is any physical device that displays pixel art from the Makapix community. Players connect using **HTTPS** (individual web requests) or **MQTT** (a persistent messaging connection). They can:
 
 - Query and display artwork from the community feed
 - Filter artwork by dimensions, format, color count, and more
@@ -14,29 +16,26 @@ A player is any physical device that displays pixel art from the Makapix communi
 
 ## Choosing a Transport
 
-Players reach the server over one of two **parallel** transports. Pick whichever
-fits your hardware and network — both speak the same requests and return the
-same data.
+A **transport** is the connection used to exchange requests and responses. Both options support the same artwork queries, reactions, comment retrieval, playsets, and view reporting.
 
-| Capability | MQTT | HTTPS |
-|------------|:----:|:-----:|
-| Query artwork, react, comments, playsets, report views | ✅ | ✅ |
-| Transport | persistent socket (port 8883, mTLS) | request/response (port 443, bearer token) |
-| Real-time commands from the web app | ✅ | — |
-| Live presence (online / offline) | ✅ | — |
+| Capability | HTTPS | MQTT |
+|------------|-------|------|
+| Connection | Individual requests on port 443 | Persistent connection on port 8883 |
+| Device authentication | Bearer token | Mutual TLS (mTLS) client certificate |
+| Queries and view reporting | Yes | Yes |
+| Commands pushed from the web app | No | Yes |
+| Live online/offline status | No | Yes |
 
-Both transports are first-class for querying and reporting. MQTT is a bit more
-capable — it adds real-time commands pushed from the web interface and live
-presence, which require a persistent connection. HTTPS is a great fit where a
-long-lived socket or port 8883 isn't practical, and a device can even use both
-at once (e.g. MQTT for commands, HTTPS for occasional queries).
+Choose **HTTPS** for a simple request/response implementation or when your network blocks port 8883. Choose **MQTT** when you want web-based remote control and live presence. You can also use MQTT for commands and HTTPS for queries on the same registered device.
+
+A bearer token is a secret sent with each HTTPS request. With mTLS, the server and device use certificates to authenticate the connection. Both credentials are issued through the same registration flow.
 
 ## Supported Platforms
 
 Players can run on any hardware that supports:
 
 - **Either transport:** MQTT over TLS (port 8883) **or** HTTPS (port 443)
-- **Image decoding** (PNG, GIF, WebP, or BMP)
+- **Image decoding** for the formats you request (PNG, GIF, WebP, or BMP)
 - **Pixel display** (LED matrix, LCD, e-ink, etc.)
 
 Common platforms include:
@@ -46,7 +45,7 @@ Common platforms include:
 | ESP32 | 4+ MB flash recommended for TLS |
 | Raspberry Pi | Any model with network connectivity |
 | Arduino | With WiFi/Ethernet and TLS library |
-| Linux/macOS | For development and testing |
+| Windows, Linux, or macOS | Run the Python HTTPS example for development and testing |
 
 ## Quick Links
 
@@ -60,38 +59,26 @@ Common platforms include:
 
 ## Architecture Overview
 
-```
-┌─────────────┐      HTTPS       ┌─────────────┐
-│   Device    │ ────────────────▶│  API Server │
-│  (Player)   │   Registration   └─────────────┘
-└─────────────┘
-      │
-      │ MQTT (TLS)
-      ▼
-┌─────────────┐                  ┌─────────────┐
-│    MQTT     │◀────────────────▶│  API Server │
-│   Broker    │   Internal       └─────────────┘
-└─────────────┘   Connection
-      │
-      │ Commands, Responses
-      ▼
-┌─────────────┐
-│   Device    │
-│  (Player)   │
-└─────────────┘
+```mermaid
+flowchart LR
+    Owner["Owner in the web app"] -->|"Link registration code"| API["Makapix API"]
+    Player["Player device"] -->|"HTTPS: provision and retrieve credentials"| API
+    Player <-->|"HTTPS: queries and view reports"| API
+    Player <-->|"MQTT over mutual TLS"| Broker["MQTT broker"]
+    Broker <-->|"Requests, responses, commands, status"| API
+    Player -->|"Download image files"| Vault["Artwork vault"]
 ```
 
-1. Device calls the HTTP API to provision and get a registration code
-2. User enters the code on the web app to link the device to their account
-3. Device retrieves its credentials — TLS certificates **and** an HTTPS bearer token
-4. Device talks to the server over **either** transport:
-   - **MQTT** — connect to the broker using mTLS (adds real-time commands and presence)
-   - **HTTPS** — send authenticated requests to `/player/rpc` and `/player/events/view`
+1. The device provisions over HTTPS and receives a registration code.
+2. The owner enters the code in the web app to link the device to their account.
+3. The device retrieves its TLS certificates and HTTPS bearer token, and saves them securely.
+4. It queries artwork over HTTPS or MQTT, then downloads images from the vault using the returned `art_url`.
 
-The diagram above shows the MQTT path; over HTTPS, steps 4–5 become
-authenticated `POST` calls to the player API.
+MQTT additionally carries remote commands and live presence. HTTPS requests use `https://makapix.club/api/player/rpc` for queries and `https://makapix.club/api/player/events/view` for view reports.
 
 ## Limits and Quotas
+
+These are the default server limits. See [HTTPS rate limits](https-connection.md#rate-limits) for per-operation request quotas.
 
 | Resource | Limit |
 |----------|-------|
@@ -105,6 +92,6 @@ authenticated `POST` calls to the player API.
 
 ## Example Implementations
 
-- **HTTPS quickstart script** — [`scripts/test_https_player_api.py`](../../scripts/test_https_player_api.py): a runnable, dependency-free Python example of the full HTTPS flow (provision → token → query → download). The fastest way to see a working connection; see [HTTPS Connection → Reference example](https-connection.md#reference-example-start-here).
+- **HTTPS quickstart script:** [`scripts/test_https_player_api.py`](../../scripts/test_https_player_api.py): a runnable, dependency-free Python example of the full HTTPS flow (provision → token → query → download). The fastest way to see a working connection; see [HTTPS Connection → Reference example](https-connection.md#reference-example-start-here).
 - **[p3a](https://github.com/fabkury/p3a)** - ESP32-based player with a 720x720 24-bit IPS screen (reference implementation)
-- See Discord for community projects and starter code
+- [Player projects](https://makapix.club/players) and [Discord](https://discord.gg/xk9umcujXV) for more devices and community help

@@ -11,7 +11,7 @@ REST API for web clients, mobile apps, and integrations.
 
 ## Authentication
 
-Most endpoints require authentication via JWT bearer token.
+User endpoints generally use a JWT bearer token. Player devices use their own opaque device token for [HTTPS RPC](player-rpc.md); it is not a user login token. Start with the [Player Device Guide](../player/README.md) when building a display.
 
 ### Obtaining Tokens
 
@@ -28,7 +28,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 
 ### Token Refresh
 
-Access tokens expire after 15 minutes. Use the refresh endpoint:
+Access tokens expire after 60 minutes by default (configurable on the server). Use the refresh endpoint:
 
 ```
 POST /auth/refresh
@@ -45,7 +45,7 @@ These endpoints work without authentication:
 - `GET /user/browse` - Browse users
 - `GET /user/u/{public_sqid}` - User profile
 - `POST /player/provision` - Device provisioning
-- `GET /player/{player_key}/credentials` - Device credentials
+- `GET /player/{player_key}/credentials` - Device credentials; possession of the secret `player_key` is required
 
 ## Response Format
 

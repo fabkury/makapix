@@ -7,10 +7,10 @@ Connect your player device to the Makapix MQTT broker.
 | Setting | Value |
 |---------|-------|
 | Host | `makapix.club` (production) or `development.makapix.club` (dev) |
-| Port | `8883` (production) or `8884` (dev) — mTLS |
+| Port | `8883` (production) or `8884` (dev), with mTLS |
 | Protocol | MQTT 5.0 |
 | Transport | TCP with mutual TLS |
-| WebSocket | `wss://makapix.club/mqtt` (production) or `wss://development.makapix.club/mqtt` (dev) — via reverse proxy |
+| WebSocket | `wss://makapix.club/mqtt` (production) or `wss://development.makapix.club/mqtt` (dev), via reverse proxy |
 
 ## Authentication
 

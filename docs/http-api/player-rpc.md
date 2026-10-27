@@ -1,22 +1,14 @@
 # Player RPC over HTTPS
 
-Request-response and view-reporting protocol for player devices over HTTPS — a
-parallel transport to MQTT, not a fallback. This is the HTTPS sibling of the
-MQTT [Player Requests](../mqtt-api/player-requests.md) and
-[Player View reporting](../mqtt-api/player-status.md) protocols, and shares
-their exact request and response shapes.
+Reference for player artwork queries, reactions, comment and playset retrieval, and view reporting over HTTPS. For a runnable example and connection instructions, start with [HTTPS Connection](../player/https-connection.md).
 
-> **Status:** implemented (v1). The transport-agnostic refactor, device
-> bearer-token auth, `POST /player/rpc`, and `POST /player/events/view` are
-> live. Presence and server→player command push remain future work (see
-> [Parity with MQTT](#parity-with-mqtt)).
+HTTPS and MQTT share the same operations and artwork data. Remote commands and live presence require MQTT. HTTP framing, authentication, and response correlation differ as described below.
 
 ## Design principle: one protocol, two transports
 
 Every request type below is handled by the **same server-side service** that
-MQTT uses. A `query_posts` issued over HTTPS returns a byte-identical result to
-the same `query_posts` issued over MQTT — same channels, sorts, AMP criteria,
-visibility rules, pagination, and payloads. The transports differ only in:
+MQTT uses. Both transports share channels, sorting, AMP criteria,
+visibility rules, pagination, and artwork payloads. The transports differ only in:
 
 | Concern | MQTT | HTTPS |
 |---------|------|-------|
@@ -25,7 +17,7 @@ visibility rules, pagination, and payloads. The transports differ only in:
 | Framing | publish to topic, await response topic | one `POST`, one JSON response |
 | Push (server→player) | native (`…/command`) | **not available in v1** (see [Parity](#parity-with-mqtt)) |
 
-A device chooses either transport — or uses both at once — without re-pairing
+A device can choose either transport or use both without re-pairing
 (see [Transport selection](#transport-selection)).
 
 ## Base URL
@@ -35,8 +27,8 @@ A device chooses either transport — or uses both at once — without re-pairin
 | Production | `https://makapix.club/api` |
 | Development | `https://development.makapix.club/api` |
 
-The player RPC surface lives under the standard `/api` route — no dedicated
-host, no client certificate required. All requests must be HTTPS.
+The player RPC surface lives under the standard `/api` route. No dedicated
+host or client certificate is required. All requests must be HTTPS.
 
 ## Authentication
 
@@ -68,7 +60,7 @@ so no bcrypt/argon2.
 ### How a device obtains its token
 
 The token is delivered through the credential bootstrap the device already
-performs after the owner registers it — no extra pairing step.
+performs after the owner registers it. No extra pairing step is needed.
 
 1. `POST /player/provision` → `player_key` + `registration_code` (unchanged).
 2. Owner calls `POST /player/register` with the code (unchanged).
@@ -88,7 +80,7 @@ performs after the owner registers it — no extra pairing step.
 }
 ```
 
-On subsequent calls `api_token` is omitted (the plaintext no longer exists
+On subsequent calls `api_token` is not returned as plaintext (the plaintext no longer exists
 server-side). A device that needs a fresh token uses one of the rotate
 endpoints below.
 
@@ -96,7 +88,7 @@ endpoints below.
 
 | Endpoint | Auth | Use |
 |----------|------|-----|
-| `POST /player/{player_key}/token/rotate` | `player_key` (rate-limited 30/min/IP) | device self-recovery (e.g. wiped storage) — revokes the old token, returns a new one |
+| `POST /player/{player_key}/token/rotate` | `player_key` (rate-limited 30/hour/IP) | device self-recovery (e.g. wiped storage) — revokes the old token, returns a new one |
 | `POST /u/{sqid}/player/{player_id}/rotate-token` | owner JWT | owner-initiated rotation / compromise response |
 | `DELETE /u/{sqid}/player/{player_id}` | owner JWT | deleting a player cascades and revokes its tokens |
 
@@ -212,8 +204,8 @@ Fetch posts with filtering and pagination.
 | `random_seed` | integer | null | reproducible order when `sort="random"` |
 | `cursor` | string | null | pagination cursor from previous response |
 | `limit` | integer | 50 | 1–50 |
-| `criteria` | array | `[]` | AMP filter criteria, AND-ed (0–64), see [below](#amp-criteria) |
-| `include_fields` | array | null | optional artwork fields, see [below](#include-fields) |
+| `criteria` | array | `[]` | AMP filter criteria, AND-ed (0–64), see [AMP criteria](../player/querying-artwork.md#filtering-amp-criteria) |
+| `include_fields` | array | null | optional artwork fields, see [include fields](../player/querying-artwork.md#include-fields) |
 
 **Channels**
 
@@ -226,9 +218,7 @@ Fetch posts with filtering and pagination.
 | `hashtag` | `hashtag` | posts carrying the hashtag |
 | `reactions` | `user_handle` or `user_sqid` | posts the target user has reacted to (keyset paginated on reaction time) |
 
-**Sort** — `server_order` (id desc) · `created_at` (desc) · `random`
-(optional `random_seed`) · `reacted_at` (only meaningful for `reactions`;
-falls back to `server_order` elsewhere).
+**Sort:** `server_order` and `created_at` use newest listing first, or newest promotion first for the promoted channel. The reactions channel uses latest reaction first with `server_order`. Use `random` for shuffled results and an optional `random_seed` for reproducibility. `reacted_at` sorts reactions by reaction time; on other channels it falls back to descending post ID.
 
 **Response (200)**
 

@@ -6,40 +6,26 @@ The registration flow links a physical device to a Makapix user account.
 
 Registration is a three-step handshake:
 
-1. **Provision** - Device requests credentials from server (no auth required)
+1. **Provision** - Device requests an identifier and registration code (no login required)
 2. **Register** - User authenticates on web and enters the code
 3. **Credentials** - Device retrieves its TLS certificates **and** HTTPS bearer token
 
 The same flow sets up both transports: the certificates are used for MQTT, and
 the bearer token for HTTPS. A device only needs whichever it intends to use.
 
-```
-┌──────────┐                    ┌──────────┐                    ┌──────────┐
-│  Device  │                    │  Server  │                    │   User   │
-└────┬─────┘                    └────┬─────┘                    └────┬─────┘
-     │                               │                               │
-     │  POST /player/provision       │                               │
-     │──────────────────────────────▶│                               │
-     │                               │                               │
-     │  {player_key, code, broker}   │                               │
-     │◀──────────────────────────────│                               │
-     │                               │                               │
-     │  Display code "A7B3K9"        │                               │
-     │───────────────────────────────────────────────────────────────▶│
-     │                               │                               │
-     │                               │  POST /player/register        │
-     │                               │  (with JWT + code)            │
-     │                               │◀──────────────────────────────│
-     │                               │                               │
-     │                               │  {success}                    │
-     │                               │──────────────────────────────▶│
-     │                               │                               │
-     │  GET /player/{key}/credentials│                               │
-     │──────────────────────────────▶│                               │
-     │                               │                               │
-     │  {ca_pem, cert_pem, key_pem}  │                               │
-     │◀──────────────────────────────│                               │
-     │                               │                               │
+```mermaid
+sequenceDiagram
+    participant Device as Player device
+    participant API as Makapix API
+    participant Owner as Owner in web app
+    Device->>API: POST /api/player/provision
+    API-->>Device: Player key, code, and connection details
+    Device-->>Owner: Display six-character code
+    Owner->>API: POST /api/player/register (signed in, with code)
+    API-->>Owner: Device linked to account
+    Device->>API: GET /api/player/{player_key}/credentials
+    API-->>Device: TLS certificates and HTTPS token (token returned once)
+    Note over Device: Save credentials before connecting
 ```
 
 ## Step 1: Provision
@@ -102,7 +88,7 @@ This step requires authentication - the user must be logged in to link a device.
 
 ### Web Interface Flow
 
-1. User navigates to Settings > Players > Add Device
+1. User opens their profile menu, chooses **Manage Players**, then **Register Player**
 2. User enters the 6-character code
 3. User provides a friendly name (e.g., "Living Room Display")
 4. Server validates code and links device to user
@@ -146,7 +132,7 @@ Content-Type: application/json
 
 ## Step 3: Retrieve Credentials
 
-Once registered, the device retrieves its TLS certificates.
+Once registered, the device retrieves its TLS certificates and HTTPS bearer token.
 
 ### Request
 
@@ -154,7 +140,7 @@ Once registered, the device retrieves its TLS certificates.
 GET /api/player/{player_key}/credentials
 ```
 
-No authentication required - the player_key serves as authentication for this endpoint.
+No separate login token is required. Possession of `player_key` grants access to this endpoint and token recovery, so treat it as a secret. Do not publish it in logs or bug reports.
 
 ### Response
 
@@ -172,13 +158,13 @@ No authentication required - the player_key serves as authentication for this en
 | Field | Type | Description |
 |-------|------|-------------|
 | `ca_pem` | string | CA certificate (PEM format) |
-| `cert_pem` | string | Client certificate (PEM format) — for MQTT |
-| `key_pem` | string | Client private key (PEM format) — for MQTT |
+| `cert_pem` | string | Client certificate (PEM format) for MQTT |
+| `key_pem` | string | Client private key (PEM format) for MQTT |
 | `broker.host` | string | MQTT broker hostname |
 | `broker.port` | integer | MQTT broker TLS port |
 | `https_api.base_url` | string | Base URL of the HTTPS player API |
 | `https_api.auth` | string | HTTPS auth scheme (`bearer`) |
-| `api_token` | string \| null | HTTPS bearer token — present **only on the first fetch** |
+| `api_token` | string \| null | HTTPS bearer token; present **only on the first fetch** |
 
 ### Rate Limiting
 
@@ -187,12 +173,12 @@ This endpoint is rate limited to **30 requests per minute per IP** to prevent br
 ### Device Actions
 
 1. Store the certificates and `api_token` securely in flash/EEPROM
-2. Connect over MQTT *or* HTTPS — see [MQTT Connection](mqtt-connection.md) or [HTTPS Connection](https-connection.md)
+2. Connect over MQTT or HTTPS; see [MQTT Connection](mqtt-connection.md) or [HTTPS Connection](https-connection.md)
 
 ### The HTTPS device token
 
 `api_token` is the bearer credential for the HTTPS transport. It is returned
-**once**, on the first successful credentials fetch (later fetches omit it), so
+**once**, on the first successful credentials fetch (later fetches do not return the token), so
 store it persistently like the private key.
 
 If a device loses its token, rotate a fresh one (this revokes the old token):
@@ -205,8 +191,7 @@ POST /api/player/{player_key}/token/rotate
 { "api_token": "mpx_live_<new>", "rotated_at": "2024-01-15T12:00:00Z" }
 ```
 
-Owners can also rotate a device's token from the web app (Settings > Players),
-for example if it may have leaked.
+Owners can also use the authenticated [owner token-rotation endpoint](../http-api/player-rpc.md#rotating-and-revoking-tokens), for example if a token may have leaked.
 
 ## Polling for Credentials
 
@@ -214,7 +199,7 @@ Before registration completes, credentials return 404. The device should poll:
 
 ```
 # Pseudocode
-while not registered:
+while not registered and now() < registration_code_expires_at:
     response = GET /api/player/{player_key}/credentials
     if response.status == 200:
         store_credentials(response.body)
@@ -222,10 +207,12 @@ while not registered:
     else if response.status == 404:
         wait(5 seconds)
     else if response.status == 429:
-        wait(60 seconds)  # Rate limited
+        wait(response.retry_after or 60 seconds)
+    else:
+        report_error_and_back_off()
 ```
 
-Recommended polling interval: 5 seconds.
+Recommended polling interval: 5 seconds. Stop when the code expires and ask the owner to restart provisioning; do not poll indefinitely. A 404 can mean either that registration is pending or that the player does not exist.
 
 ## Error Handling
 
@@ -257,9 +244,18 @@ Recommended polling interval: 5 seconds.
 
 ## Certificate Renewal
 
-Certificates are valid for 1095 days (3 years). The web interface shows certificate status and allows renewal when within 90 days of expiry.
+Client certificates are valid for 1095 days (3 years). Devices can renew over HTTPS when within the default 90-day renewal window, or after the client certificate has expired:
 
-Users can also download certificates manually from Settings > Players > [Device] > Download Certificates.
+```http
+POST https://makapix.club/api/player/renew-cert
+Authorization: Bearer {api_token}
+```
+
+No request body is needed. The response contains `cert_pem`, `key_pem`, `ca_pem`, and `cert_expires_at`. Save the new bundle securely and reconnect MQTT using it. Keep the HTTPS bearer token even if you normally use MQTT; it enables renewal without the owner pairing the device again.
+
+The endpoint returns 400 if renewal is too early, 401 for an invalid token, and 429 when rate limited (10 requests per day per player and 30 per hour per IP). Use backoff and avoid having every device retry at the same time.
+
+Owners can also open **Manage Players** and select **Renew Certificate** when the expiry warning appears. The **Certs** button downloads the certificate bundle. See the [HTTP player reference](../http-api/player.md) for the corresponding owner endpoints.
 
 ## Deregistration
 
@@ -270,4 +266,4 @@ When a user removes a device:
 3. Player record is deleted
 4. Device can no longer connect
 
-The device should detect disconnection and return to the provisioning state.
+Removal also invalidates the device token. If credentials have been revoked, ask the owner to pair the device again. A temporary network disconnection alone should trigger reconnection with backoff, not new provisioning.

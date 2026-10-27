@@ -148,7 +148,7 @@ def provision(base_url: str) -> dict:
     site = f"{web.scheme}://{web.netloc}"
     print(f"\n  In the Makapix web app ({site}):")
     print("    1. Log in")
-    print("    2. Go to Settings → Players → Add Device")
+    print("    2. Open your profile menu → Manage Players → Register Player")
     print(f"    3. Enter the code above ({code}) and name the device")
     print(f"\n  The code expires at {expires} (~15 minutes).")
     print("\n  Waiting for you to link the device", end="", flush=True)

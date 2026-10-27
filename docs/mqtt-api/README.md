@@ -1,8 +1,8 @@
 # MQTT API Reference
 
-Real-time messaging protocol for player devices. (Social notifications are
-HTTP-only — REST + SSE, see [Notifications](../http-api/notifications.md);
-browsers do not connect to the broker.)
+Real-time messaging for player devices, including remote commands and live presence. For a first implementation, start with the [Player Device Guide](../player/README.md) and its [transport comparison](../player/README.md#choosing-a-transport).
+
+Website and app notifications use HTTP and Server-Sent Events (SSE), not the MQTT broker. See [Notifications](../http-api/notifications.md).
 
 ## Broker Connection
 

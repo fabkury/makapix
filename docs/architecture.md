@@ -6,40 +6,25 @@ System architecture and component overview.
 
 Makapix Club is a monolithic application designed to run on a single VPS. All services are containerized with Docker Compose and communicate over internal networks.
 
+```mermaid
+flowchart TD
+    Browser["Browser or app"] -->|HTTPS| Caddy["Caddy reverse proxy"]
+    Player["Player device"] -->|HTTPS| Caddy
+    Player <-->|"MQTT with mTLS, port 8883"| MQTT["Mosquitto"]
+    Caddy --> Web["Next.js frontend"]
+    Caddy --> API["FastAPI backend"]
+    Caddy --> Vault["Artwork vault"]
+    Web --> API
+    API <--> MQTT
+    API --> DB["PostgreSQL"]
+    API --> Cache["Redis cache"]
+    API --> Queue["Redis task broker"]
+    Queue --> Worker["Celery worker"]
+    Worker --> DB
+    Worker --> Vault
 ```
-                                    Internet
-                                        │
-                                        ▼
-                                ┌───────────────┐
-                                │     Caddy     │
-                                │ (reverse proxy│
-                                │  + auto-TLS)  │
-                                └───────────────┘
-                                        │
-              ┌─────────────────────────┼─────────────────────────┐
-              │                         │                         │
-              ▼                         ▼                         ▼
-       ┌───────────┐             ┌───────────┐             ┌───────────┐
-       │    Web    │             │    API    │             │   MQTT    │
-       │ (Next.js) │             │ (FastAPI) │             │(Mosquitto)│
-       └───────────┘             └───────────┘             └───────────┘
-                                        │                         │
-                                        │                         │
-                    ┌───────────────────┼───────────────────┐     │
-                    │                   │                   │     │
-                    ▼                   ▼                   ▼     │
-             ┌───────────┐       ┌───────────┐       ┌───────────┐│
-             │    DB     │       │   Cache   │       │  Worker   ││
-             │(PostgreSQL│       │  (Redis)  │       │ (Celery)  ││
-             └───────────┘       └───────────┘       └───────────┘│
-                                                                   │
-                                                                   ▼
-                                                          ┌───────────────┐
-                                                          │ Physical      │
-                                                          │ Players       │
-                                                          │ (ESP32, Pi)   │
-                                                          └───────────────┘
-```
+
+Caddy serves web traffic and artwork downloads. Native MQTT players connect directly to Mosquitto; HTTPS players use the API through Caddy. The cache and Celery task broker are separate Redis services.
 
 ## Services
 
@@ -81,7 +66,7 @@ Key modules:
 
 | Module | Purpose |
 |--------|---------|
-| `routers/` | 26 API endpoint modules |
+| `routers/` | HTTP endpoint modules |
 | `services/` | Business logic services |
 | `mqtt/` | Player communication |
 | `models.py` | Database models |
@@ -116,7 +101,7 @@ Primary data store for all application data.
 
 ### Cache (Redis)
 
-In-memory cache and Celery broker.
+In-memory application cache. Celery uses a separate Redis service named `broker`, with a `noeviction` policy so cache eviction cannot discard queued tasks.
 
 | Aspect | Detail |
 |--------|--------|
@@ -128,7 +113,6 @@ Uses:
 
 - Database query caching
 - Rate limiting state
-- Celery task queue
 
 ### MQTT (Mosquitto)
 
@@ -143,7 +127,7 @@ Message broker for real-time player communication.
 | Port | Protocol | Use |
 |------|----------|-----|
 | 1883 | MQTT | Internal services |
-| 8884 | MQTTS | External players (TLS) |
+| 8883 (prod), 8884 (dev) | MQTTS | External players (mTLS) |
 
 ### Vault
 
@@ -156,64 +140,32 @@ Hash-based file storage for artwork images.
 
 Hash sharding: `a` and `b` are the low 6 bits of the first two bytes of
 SHA-256(artwork_id), hex-rendered (`00`–`3f`). The stored
-`posts.storage_shard` is the source of truth for every path — treat it as
+`posts.storage_shard` is the source of truth for every path; treat it as
 opaque. Legacy 3-level paths (`/{h1}/{h2}/{h3}/…`, first 6 hex chars of the
 hash) remain served from twin copies during the resharding dual window
 (`docs/vault-resharding/`).
 
 ## Networks
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        caddy_net                            │
-│  ┌─────┐  ┌─────┐  ┌─────┐  ┌─────┐  ┌─────┐  ┌─────┐     │
-│  │Caddy│  │ Web │  │ API │  │MQTT │  │Vault│  │Redis│     │
-│  └─────┘  └─────┘  └─────┘  └─────┘  └─────┘  └─────┘     │
-└─────────────────────────────────────────────────────────────┘
+The Compose stack separates backend traffic from services reachable by Caddy:
 
-┌─────────────────────────────────────────────────────────────┐
-│                        internal                             │
-│        ┌─────┐  ┌─────┐  ┌─────┐  ┌──────┐                 │
-│        │ DB  │  │Cache│  │ API │  │Worker│                 │
-│        └─────┘  └─────┘  └─────┘  └──────┘                 │
-└─────────────────────────────────────────────────────────────┘
-```
+| Network | Members and purpose |
+|---------|---------------------|
+| `caddy_net` | Caddy, web, API, MQTT, and edge Redis; shared between environments |
+| `internal` | Database, application cache, task broker, API, MQTT, and worker; separate per environment |
 
-| Network | Purpose |
-|---------|---------|
-| `caddy_net` | External services reachable by Caddy |
-| `internal` | Backend services (DB, cache) |
+The vault is storage mounted into services, not a separate application container. See the [Compose configuration](../deploy/stack/docker-compose.yml) and environment overlays for exact network and volume assignments.
 
 ## Data Flow
 
-### Web Request
-
-```
-User → Caddy → Web (SSR) → API → DB
-                              → Cache
-```
-
-### API Request
-
-```
-Client → Caddy → API → DB
-                    → Cache
-                    → MQTT (for player commands)
-```
-
-### Player Connection
-
-```
-Player → Caddy (TLS) → MQTT → API (via internal MQTT)
-                           → DB
-```
-
-### Background Task
-
-```
-API → Redis (queue) → Worker → DB
-                            → SMTP (email)
-```
+| Operation | Flow |
+|-----------|------|
+| Web page | Browser → Caddy → Next.js; data requests reach the API |
+| API request | Client → Caddy → API → database/cache |
+| HTTPS player query | Player → Caddy → API → database/cache |
+| MQTT player query or command | Player ↔ Mosquitto ↔ API |
+| Artwork download | Player or browser → Caddy → vault file |
+| Background task | API → Redis task broker → Celery worker → database or external service |
 
 ## Authentication
 
@@ -230,14 +182,14 @@ Login → API validates credentials
 
 ### Players
 
-mTLS certificate-based authentication.
+Players use mTLS certificates for MQTT or a device bearer token for HTTPS. The same registration flow issues both credentials:
 
-```
-Provision → Device gets player_key + registration code
-Register  → User enters code, links device to account
-Certs     → Device fetches CA, cert, key
-Connect   → Device connects to MQTT with client certificate
-```
+1. Device provisions and receives a player key and registration code.
+2. Owner signs in and enters the code to link the player.
+3. Device retrieves and saves its certificates and HTTPS token.
+4. Device connects using either transport or both.
+
+See [Device Registration](player/registration.md) for polling, credential storage, and renewal.
 
 ## Storage
 
@@ -258,16 +210,13 @@ Key tables:
 
 ### Vault Structure
 
-```
-/mnt/vault/
-├── a1/
-│   └── b2/
-│       └── c3/
-│           ├── {artwork_id}.png
-│           └── {artwork_id}.gif
+An example current path is:
+
+```text
+/mnt/vault-1/21/32/{artwork_id}.png
 ```
 
-Path derived from `SHA256(artwork_id)[0:6]` split into 2-char directories.
+Use the stored `storage_shard` rather than deriving paths in clients. Its depth may change, and legacy paths may differ. Players should prefer the returned `art_url`; see [Fetching Images](player/displaying-artwork.md#fetching-images).
 
 ## Environments
 
