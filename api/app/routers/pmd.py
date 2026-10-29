@@ -23,7 +23,7 @@ from ..auth import forbidden_role, get_current_user
 from ..cache import cache_invalidate
 from ..deps import get_db
 from ..errors import AppError, ErrorCode
-from ..services.post_stats import get_view_counts
+from ..services.post_stats import get_impression_counts, get_view_counts
 from ..sqids_config import decode_user_sqid
 from ..utils.audit import log_moderation_action
 
@@ -175,6 +175,7 @@ def list_pmd_posts(
 
     # View counts - combine recent events + daily aggregates
     view_counts = get_view_counts(db, post_ids)
+    impression_counts = get_impression_counts(db, post_ids)
 
     # Build response
     items = []
@@ -195,6 +196,7 @@ def list_pmd_posts(
                 reaction_count=reaction_counts.get(post.id, 0),
                 comment_count=comment_counts.get(post.id, 0),
                 view_count=view_counts.get(post.id, 0),
+                impression_count=impression_counts.get(post.id, 0),
                 license_identifier=post.license.identifier if post.license else None,
             )
         )

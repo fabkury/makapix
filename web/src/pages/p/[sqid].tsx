@@ -110,6 +110,8 @@ interface WidgetData {
   reactions: ReactionTotals;
   comments: Array<unknown>;
   views_count: number;
+  /** Lifetime Impressions (playback exposure, 📺). Optional: older cached payloads lack it. */
+  impressions_count?: number;
 }
 
 function formatFileSizeCompact(bytes: number): string {
@@ -1572,10 +1574,16 @@ export default function PostPage() {
                     {widgetData?.comments.length ?? 0}
                   </span>
                 </div>
-                <div className="stat-item">
+                <div className="stat-item" title="Views">
                   <span className="stat-icon">👁</span>
                   <span className="stat-count">
                     {widgetData?.views_count ?? 0}
+                  </span>
+                </div>
+                <div className="stat-item" title="Impressions">
+                  <span className="stat-icon">📺</span>
+                  <span className="stat-count">
+                    {widgetData?.impressions_count ?? 0}
                   </span>
                 </div>
                 <button

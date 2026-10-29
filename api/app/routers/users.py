@@ -1399,6 +1399,7 @@ def get_user_profile_enhanced(
             total_posts=stats.total_posts,
             total_reactions_received=stats.total_reactions_received,
             total_views=stats.total_views,
+            total_impressions=stats.total_impressions,
             follower_count=stats.follower_count,
         )
 

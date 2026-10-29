@@ -505,6 +505,14 @@ class Post(Base):
     # by the nightly rollup. The single source every display surface reads.
     view_count = Column(Integer, nullable=False, default=0, server_default=text("0"))
 
+    # Denormalized lifetime Impressions (playback exposure, undeduped;
+    # docs/artwork-views/ D17): incremented by write_view_event on accepted
+    # Impressions, recomputed exactly by the nightly rollup. Never summed
+    # with view_count.
+    impression_count = Column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+
     # Optional attached .mkpx layers file (docs/mkpx-upload/). Stored at
     # {vault}/mkpx/{storage_shard}/{storage_key}.mkpx; both NULL when absent.
     mkpx_file_bytes = Column(Integer, nullable=True)

@@ -455,6 +455,7 @@ class Post(BaseModel):
     reaction_count: int = 0
     comment_count: int = 0
     view_count: int = 0  # Public lifetime view count (excludes the owner's own views)
+    impression_count: int = 0  # Public lifetime Impressions (playback exposure, D17)
     user_has_liked: bool = False  # Whether the current user has liked (👍) this post
     files: list[PostFile] = []  # File variants (native + converted formats)
     license_id: int | None = None  # FK to licenses table
@@ -1076,6 +1077,7 @@ class WidgetData(BaseModel):
     reactions: ReactionTotals
     comments: list["Comment"]
     views_count: int = 0
+    impressions_count: int = 0  # lifetime Impressions (docs/artwork-views/ D17)
 
 
 # ============================================================================
@@ -2414,6 +2416,7 @@ class PMDPostItem(BaseModel):
     reaction_count: int
     comment_count: int
     view_count: int
+    impression_count: int = 0
     license_identifier: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -2516,6 +2519,7 @@ class UserProfileStats(BaseModel):
     total_posts: int  # Total artwork posts
     total_reactions_received: int  # Total reactions on all posts
     total_views: int  # Total views across all posts
+    total_impressions: int = 0  # Total Impressions across all posts (D17)
     follower_count: int  # Number of followers
 
 
