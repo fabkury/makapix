@@ -165,6 +165,20 @@ def get_view_counts(db: Session, post_ids: list[int]) -> dict[int, int]:
     return {post_id: int(counts.get(post_id, 0) or 0) for post_id in post_ids}
 
 
+def get_impression_counts(db: Session, post_ids: list[int]) -> dict[int, int]:
+    """Lifetime Impression counts — the denormalized posts.impression_count
+    column (docs/artwork-views/ D17), same contract as get_view_counts."""
+    if not post_ids:
+        return {}
+
+    counts = dict(
+        db.query(models.Post.id, models.Post.impression_count)
+        .filter(models.Post.id.in_(post_ids))
+        .all()
+    )
+    return {post_id: int(counts.get(post_id, 0) or 0) for post_id in post_ids}
+
+
 def get_user_liked_post_ids(
     db: Session, post_ids: list[int], user_id: UUID
 ) -> set[int]:

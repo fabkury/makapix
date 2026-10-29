@@ -51,6 +51,21 @@
   3→4, one event) → dedup 204; bot UA 204. Site 200, worker+beat ready.
   (422 probe deliberately NOT run on prod — it would trip the watchdog.)
 
+## 2026-10-29 — D17: public Impression counter (📺), develop
+- Decision D17 (amends D3): lifetime Impressions become a public per-artwork
+  counter rendered with 📺 beside 👁 (Views).
+- Backend: `posts.impression_count` (migration `ff72e75e41df`, backfill =
+  canonical `impression` slice only), `write_view_event` increments it on
+  Impressions, rollup + `backfill_view_counts` reconcile it via
+  `recompute_post_impression_counts`; `Post.impression_count`,
+  `PMDPostItem.impression_count`, `WidgetData.impressions_count`,
+  `UserProfileStats.total_impressions` (cache-safe default).
+- Frontend: SPO + permalink stat rows, PMD sortable 📺 column, profile stats
+  row 📺 total. Legacy cached payloads tolerated via optional fields.
+- Tests: ingestion increment, rollup reconciliation across the watermark,
+  recompute callable (legacy exclusion, id filter), widget/profile readers.
+- messages/0002 — FYI to the app team about the additive `impression_count`.
+
 ## Pending
 - [ ] Next-morning check: 01:00 ET rollup processed the Aug 6–12 backlog clean;
       02:30 ET watchdog OK; healthchecks auto-created `check-view-ingestion-health`

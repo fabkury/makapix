@@ -4,6 +4,7 @@
  * - 👤 Followers
  * - 🖼️ Posts
  * - 👁️ Views
+ * - 📺 Impressions
  * - 🧮 Reputation
  */
 
@@ -17,7 +18,7 @@ interface ProfileStatsProps {
   onFollowerClick?: () => void;
   /** Opens Post Management; clicking the 🖼️ icon or the artwork count. */
   onPostsClick?: () => void;
-  /** Opens the Artist Dashboard; clicking the 👁️ icon or the view count. */
+  /** Opens the Artist Dashboard; clicking the 👁️/📺 icons or their counts. */
   onViewsClick?: () => void;
   /** Optional actions rendered at the right of the row (e.g. the overflow menu). */
   actions?: ReactNode;
@@ -57,6 +58,15 @@ export default function ProfileStats({
       >
         <span className="stat-icon">👁️</span>
         <span className="stat-value">{formatCount(stats.total_views)}</span>
+      </div>
+      <div className="stat-separator" />
+      <div
+        className={`stat${onViewsClick ? ' stat-clickable' : ''}`}
+        onClick={onViewsClick}
+        title={onViewsClick ? 'Artist Dashboard' : 'Impressions'}
+      >
+        <span className="stat-icon">📺</span>
+        <span className="stat-value">{formatCount(stats.total_impressions ?? 0)}</span>
       </div>
       <div className="stat-separator" />
       <div className="stat">

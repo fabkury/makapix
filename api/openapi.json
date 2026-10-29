@@ -3894,6 +3894,11 @@
             "title": "Id",
             "type": "integer"
           },
+          "impression_count": {
+            "default": 0,
+            "title": "Impression Count",
+            "type": "integer"
+          },
           "license_identifier": {
             "anyOf": [
               {
@@ -5294,6 +5299,11 @@
             "title": "Id",
             "type": "integer"
           },
+          "impression_count": {
+            "default": 0,
+            "title": "Impression Count",
+            "type": "integer"
+          },
           "kind": {
             "const": "artwork",
             "title": "Kind",
@@ -5682,6 +5692,11 @@
           },
           "id": {
             "title": "Id",
+            "type": "integer"
+          },
+          "impression_count": {
+            "default": 0,
+            "title": "Impression Count",
             "type": "integer"
           },
           "kind": {
@@ -9390,6 +9405,11 @@
             "title": "Follower Count",
             "type": "integer"
           },
+          "total_impressions": {
+            "default": 0,
+            "title": "Total Impressions",
+            "type": "integer"
+          },
           "total_posts": {
             "title": "Total Posts",
             "type": "integer"
@@ -10059,6 +10079,11 @@
             },
             "title": "Comments",
             "type": "array"
+          },
+          "impressions_count": {
+            "default": 0,
+            "title": "Impressions Count",
+            "type": "integer"
           },
           "reactions": {
             "$ref": "#/components/schemas/ReactionTotals"

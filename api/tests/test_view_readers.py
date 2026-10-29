@@ -99,11 +99,29 @@ def test_widget_views_count_is_denormalized(client, db):
     owner = _make_user(db)
     post = _make_post(db, owner)
     post.view_count = 11
+    post.impression_count = 23
     db.commit()
 
     resp = client.get(f"/post/{post.id}/widget-data")
     assert resp.status_code == 200
     assert resp.json()["views_count"] == 11
+    assert resp.json()["impressions_count"] == 23
+
+
+def test_get_impression_counts_reads_denormalized_column(db):
+    from app.services.post_stats import get_impression_counts
+
+    owner = _make_user(db)
+    p1, p2 = _make_post(db, owner), _make_post(db, owner)
+    p1.impression_count = 9
+    db.commit()
+
+    assert get_impression_counts(db, [p1.id, p2.id, 999999]) == {
+        p1.id: 9,
+        p2.id: 0,
+        999999: 0,
+    }
+    assert get_impression_counts(db, []) == {}
 
 
 def test_profile_total_views_sums_visible_posts_only(db):
@@ -114,10 +132,13 @@ def test_profile_total_views_sums_visible_posts_only(db):
     hidden = _make_post(db, owner, hidden_by_user=True)
     visible.view_count = 5
     hidden.view_count = 100
+    visible.impression_count = 40
+    hidden.impression_count = 1000
     db.commit()
 
     stats = get_user_profile_stats(db, owner.id)
     assert stats.total_views == 5  # no 7-day lag, hidden posts excluded
+    assert stats.total_impressions == 40
 
 
 def test_post_stats_no_double_count_across_watermark(db):

@@ -28,6 +28,7 @@ class UserProfileStats:
     total_reactions_received: int
     total_views: int
     follower_count: int
+    total_impressions: int = 0  # D17; defaulted so pre-upgrade cache entries load
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -150,6 +151,20 @@ class UserProfileStatsService:
             or 0
         )
 
+        # Total Impressions across the same visible posts (D17).
+        total_impressions = (
+            self.db.query(func.coalesce(func.sum(models.Post.impression_count), 0))
+            .filter(
+                models.Post.owner_id == user_id,
+                models.Post.deleted_by_user == False,
+                models.Post.hidden_by_user == False,
+                models.Post.hidden_by_mod == False,
+                models.Post.non_conformant == False,
+            )
+            .scalar()
+            or 0
+        )
+
         # Follower count
         follower_count = (
             self.db.query(func.count(models.Follow.id))
@@ -162,6 +177,7 @@ class UserProfileStatsService:
             total_posts=total_posts,
             total_reactions_received=total_reactions_received,
             total_views=total_views,
+            total_impressions=total_impressions,
             follower_count=follower_count,
         )
 
@@ -171,6 +187,7 @@ class UserProfileStatsService:
             total_posts=data["total_posts"],
             total_reactions_received=data["total_reactions_received"],
             total_views=data["total_views"],
+            total_impressions=data.get("total_impressions", 0),
             follower_count=data["follower_count"],
         )
 

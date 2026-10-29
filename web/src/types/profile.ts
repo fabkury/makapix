@@ -17,6 +17,8 @@ export interface UserProfileStats {
   total_posts: number;
   total_reactions_received: number;
   total_views: number;
+  /** Lifetime Impressions across visible posts (📺). Optional for older payloads. */
+  total_impressions?: number;
   follower_count: number;
 }
 

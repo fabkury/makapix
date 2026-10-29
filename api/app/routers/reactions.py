@@ -470,4 +470,5 @@ def get_widget_data(
         reactions=reactions,
         comments=comments,
         views_count=views_count,
+        impressions_count=post.impression_count,
     )

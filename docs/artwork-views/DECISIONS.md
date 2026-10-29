@@ -66,6 +66,12 @@ Redis counters for rejected/dropped registrations (422, 429, bot drops, dedup hi
 
 The entire Blog part of the site is deprecated and will eventually be deleted. The blog view pipeline (`BlogPostViewEvent`, its 01:30 rollup, blog stitchers) is untouched by this redesign except for code comments recording the deprecation, so nobody "fixes" it toward the new model in the meantime.
 
+## D17 — Public lifetime Impression counter (📺), amending D3 (2026-10-29)
+
+Impressions become a public per-artwork counter alongside Views, shown with 📺 next to 👁 on the single-post overlay, the permalink page, the Post Management table (sortable column), the profile stats row (sum over visible posts) and the Post API payload (`impression_count`; widget payload `impressions_count`; profile stats `total_impressions`). D3's "Impressions appear only in owner-facing stats" is superseded; D2's "never summed" stands, and the two are always rendered as separate figures with distinct symbols.
+
+Storage mirrors D11: denormalized `posts.impression_count`, incremented in `write_view_event` on accepted Impressions, recomputed exactly by the nightly rollup (`recompute_post_impression_counts`, the undeduped twin of the Views recompute: canonical `impression` slice of the daily breakdowns plus raw impression rows after the watermark). Backfill counts **canonical `impression` only** — pre-redesign `listing`/`search`/`widget` rows are excluded, so lifetime Impressions start at 2026-08-13. Rejected: compute-on-read (a second stitching path this redesign deleted); folding legacy listing exposure in (mixed semantics for a bigger number).
+
 ---
 
 ## Appendix — implementation decisions (2026-08-13, resolved during build)

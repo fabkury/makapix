@@ -175,6 +175,57 @@ UPDATE posts SET view_count =
 """
 
 
+# Impressions are undeduplicated volume (D2): the canonical 'impression'
+# slice of the daily breakdowns plus a plain COUNT of raw impression rows
+# after the watermark. Legacy listing/search/widget rows are deliberately
+# excluded — lifetime Impressions start at the redesign (D17).
+_RECOMPUTE_IMPRESSIONS_SQL = """
+UPDATE posts SET impression_count =
+  COALESCE((
+    SELECT SUM(COALESCE((views_by_type->>'impression')::int, 0))
+    FROM post_stats_daily WHERE post_stats_daily.post_id = posts.id
+  ), 0)
+  + COALESCE((
+    SELECT COUNT(*)
+    FROM view_events
+    WHERE view_events.post_id = posts.id
+      AND view_events.view_type = 'impression'
+      {raw_filter}
+  ), 0)
+"""
+
+
+def _run_recompute(conn, sql_template: str, post_ids: list[int] | None) -> int:
+    watermark = conn.execute(
+        text("SELECT value_date FROM rollup_watermarks WHERE name = :name"),
+        {"name": VIEW_EVENTS_WATERMARK},
+    ).scalar()
+    raw_filter = (
+        "AND (view_events.created_at AT TIME ZONE 'UTC')::date > :watermark"
+        if watermark is not None
+        else ""
+    )
+    sql = sql_template.format(raw_filter=raw_filter)
+    params: dict = {}
+    if watermark is not None:
+        params["watermark"] = watermark
+    if post_ids is not None:
+        if not post_ids:
+            return 0
+        sql += " WHERE posts.id = ANY(:post_ids)"
+        params["post_ids"] = post_ids
+    result = conn.execute(text(sql), params)
+    return result.rowcount or 0
+
+
+def recompute_post_impression_counts(conn, post_ids: list[int] | None = None) -> int:
+    """Rebuild posts.impression_count (D17) — the undeduped twin of
+    recompute_post_view_counts: canonical 'impression' slice of the daily
+    rows plus raw impression rows after the watermark. Same session/commit
+    contract; returns the number of posts updated."""
+    return _run_recompute(conn, _RECOMPUTE_IMPRESSIONS_SQL, post_ids)
+
+
 def recompute_post_view_counts(conn, post_ids: list[int] | None = None) -> int:
     """Rebuild posts.view_count from daily aggregates + raw view events.
 
@@ -189,26 +240,7 @@ def recompute_post_view_counts(conn, post_ids: list[int] | None = None) -> int:
     Accepts a Session or Connection; caller owns the commit. Returns the
     number of posts updated.
     """
-    watermark = conn.execute(
-        text("SELECT value_date FROM rollup_watermarks WHERE name = :name"),
-        {"name": VIEW_EVENTS_WATERMARK},
-    ).scalar()
-    raw_filter = (
-        "AND (view_events.created_at AT TIME ZONE 'UTC')::date > :watermark"
-        if watermark is not None
-        else ""
-    )
-    sql = _RECOMPUTE_SQL.format(raw_filter=raw_filter)
-    params: dict = {}
-    if watermark is not None:
-        params["watermark"] = watermark
-    if post_ids is not None:
-        if not post_ids:
-            return 0
-        sql += " WHERE posts.id = ANY(:post_ids)"
-        params["post_ids"] = post_ids
-    result = conn.execute(text(sql), params)
-    return result.rowcount or 0
+    return _run_recompute(conn, _RECOMPUTE_SQL, post_ids)
 
 
 # ---------------------------------------------------------------------------

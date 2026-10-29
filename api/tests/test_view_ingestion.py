@@ -396,3 +396,24 @@ def test_write_view_event_does_not_count_impressions(db, post):
     db.refresh(post)
     assert post.view_count == 0
     assert db.query(models.ViewEvent).filter_by(post_id=post.id).count() == 1
+
+
+def test_write_view_event_increments_impression_counter(db, post):
+    """D17: Impressions bump posts.impression_count, never view_count."""
+    from app.tasks import write_view_event
+
+    write_view_event.apply(args=[_event_data(post.id, "impression")]).get()
+    write_view_event.apply(args=[_event_data(post.id, "impression")]).get()
+    write_view_event.apply(args=[_event_data(post.id, "view")]).get()
+    db.expire_all()
+    db.refresh(post)
+    assert post.impression_count == 2  # undeduped
+    assert post.view_count == 1
+
+
+def test_get_post_exposes_denormalized_impression_count(client, db, post):
+    post.impression_count = 17
+    db.commit()
+    resp = client.get(f"/p/{post.public_sqid}", headers=BROWSER_UA)
+    assert resp.status_code == 200
+    assert resp.json()["impression_count"] == 17

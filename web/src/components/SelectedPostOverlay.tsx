@@ -91,6 +91,8 @@ interface WidgetData {
   reactions: ReactionTotals;
   comments: Comment[];
   views_count: number;
+  /** Lifetime Impressions (playback exposure, 📺). Optional: older cached payloads lack it. */
+  impressions_count?: number;
 }
 
 function getVisualViewportBox(): {
@@ -1767,11 +1769,17 @@ export default function SelectedPostOverlay({
                   </span>
                   <span>{totalComments}</span>
                 </div>
-                <div style={postViewCountStyles}>
+                <div style={postViewCountStyles} title="Views">
                   <span style={{ fontSize: "16px", marginRight: "-2px" }}>
                     👁
                   </span>
                   <span>{widgetData?.views_count ?? 0}</span>
+                </div>
+                <div style={postViewCountStyles} title="Impressions">
+                  <span style={{ fontSize: "16px", marginRight: "-2px" }}>
+                    📺
+                  </span>
+                  <span>{widgetData?.impressions_count ?? 0}</span>
                 </div>
                 <button
                   ref={moreButtonRef}

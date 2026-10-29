@@ -566,6 +566,12 @@ def write_view_event(self, event_data: dict) -> None:
                 {models.Post.view_count: models.Post.view_count + 1},
                 synchronize_session=False,
             )
+        elif event_data["view_type"] == "impression":
+            # Same contract for the undeduped Impressions counter (D17).
+            db.query(models.Post).filter(models.Post.id == post_id).update(
+                {models.Post.impression_count: models.Post.impression_count + 1},
+                synchronize_session=False,
+            )
 
         db.commit()
 
@@ -757,7 +763,8 @@ def rollup_view_events(self) -> dict[str, Any]:
        replaces the consumption rollup_site_events used to do with its own
        later cutoff, which permanently lost a 1-hour band of player views
        from post stats daily and double-counted on failure.
-    3. Reconcile posts.view_count for affected posts (view_metrics).
+    3. Reconcile posts.view_count and posts.impression_count for affected
+       posts (view_metrics).
     4. Advance the watermark to yesterday.
     5. Delete raw events that are BOTH rolled (day <= watermark) AND past
        the 7-day retention — readers stitch daily rows <= watermark with raw
@@ -779,6 +786,7 @@ def rollup_view_events(self) -> dict[str, Any]:
         VIEW,
         canonical_view_type,
         get_view_watermark,
+        recompute_post_impression_counts,
         recompute_post_view_counts,
         set_view_watermark,
         utc_today,
@@ -1042,6 +1050,7 @@ def rollup_view_events(self) -> dict[str, Any]:
 
         if affected_post_ids:
             recompute_post_view_counts(db, post_ids=sorted(affected_post_ids))
+            recompute_post_impression_counts(db, post_ids=sorted(affected_post_ids))
 
         deleted_count = db.execute(
             sa_text(
@@ -3946,13 +3955,15 @@ def _purge_user_account(db: Session, user_id: int) -> dict[str, Any]:
 
 @celery_app.task(name="app.tasks.backfill_view_counts")
 def backfill_view_counts() -> dict[str, Any]:
-    """Manual operator task: rebuild posts.view_count and reseed the watermark.
+    """Manual operator task: rebuild posts.view_count + impression_count and
+    reseed the watermark.
 
     Wraps the same callables the artwork-views migration runs
     (services/view_metrics.py). Not scheduled — for dev DBs and repair runs.
     """
     from .db import SessionLocal
     from .services.view_metrics import (
+        recompute_post_impression_counts,
         recompute_post_view_counts,
         seed_view_watermark,
     )
@@ -3961,9 +3972,11 @@ def backfill_view_counts() -> dict[str, Any]:
     try:
         watermark = seed_view_watermark(db)  # no-op if already seeded
         updated = recompute_post_view_counts(db)
+        recompute_post_impression_counts(db)
         db.commit()
         logger.info(
-            f"Backfilled view_count for {updated} posts; watermark seeded to {watermark}"
+            f"Backfilled view_count/impression_count for {updated} posts; "
+            f"watermark seeded to {watermark}"
         )
         return {"status": "success", "updated": updated, "watermark": str(watermark)}
     except Exception:

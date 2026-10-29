@@ -120,6 +120,40 @@ def test_rollup_dedupes_views_and_counts_impressions(db, post):
     # view_count reconciled: 2 rolled + 1 raw post-watermark.
     db.refresh(post)
     assert post.view_count == 3
+    # impression_count reconciled: 2 rolled, none raw (D17).
+    assert post.impression_count == 2
+
+
+def test_rollup_reconciles_impression_count_across_watermark(db, post):
+    """Rolled impressions + raw post-watermark impressions; a stale
+    denormalized value is overwritten, legacy types are not folded in."""
+    from app.services.view_metrics import set_view_watermark
+
+    set_view_watermark(db, datetime.now(timezone.utc).date() - timedelta(days=3))
+    db.add(
+        models.PostStatsDaily(
+            post_id=post.id,
+            date=datetime.now(timezone.utc).date() - timedelta(days=20),
+            total_views=10,
+            unique_viewers=5,
+            views_by_type={"intentional": 7, "listing": 3},  # legacy: ignored
+        )
+    )
+    _event(db, post.id, _utc_day(2, 9), view_type="impression")
+    _event(db, post.id, _utc_day(2, 10), view_type="impression")
+    _event(db, post.id, _utc_day(2, 11), view_type="listing")  # legacy raw
+    _event(db, post.id, _utc_day(0, 9), view_type="impression")  # raw, today
+    post.impression_count = 999  # stale drift
+    db.commit()
+
+    _run(db)
+
+    db.refresh(post)
+    # Day -2 rolls: 2 impression + 1 listing (mapped to impression at rollup
+    # time, so it lands in the canonical slice) = 3; plus today's raw 1.
+    assert post.impression_count == 4
+    # Views untouched by impressions: just the 7 legacy intentional (D12).
+    assert post.view_count == 7
 
 
 def test_rollup_maps_legacy_view_types(db, post):
@@ -349,6 +383,54 @@ def test_recompute_and_seed_callables(db, post):
     # visitor, same day); listings never count.
     db.refresh(post)
     assert post.view_count == 8
+
+
+def test_recompute_post_impression_counts(db, post):
+    """D17 backfill: canonical 'impression' slice of daily rows + raw
+    impression rows after the watermark; legacy types are excluded."""
+    from app.services.view_metrics import (
+        recompute_post_impression_counts,
+        set_view_watermark,
+    )
+
+    set_view_watermark(db, datetime.now(timezone.utc).date() - timedelta(days=3))
+    db.add(
+        models.PostStatsDaily(
+            post_id=post.id,
+            date=datetime.now(timezone.utc).date() - timedelta(days=20),
+            total_views=10,
+            unique_viewers=5,
+            views_by_type={"intentional": 7, "listing": 3},
+        )
+    )
+    db.add(
+        models.PostStatsDaily(
+            post_id=post.id,
+            date=datetime.now(timezone.utc).date() - timedelta(days=10),
+            total_views=4,
+            unique_viewers=4,
+            total_impressions=6,
+            views_by_type={"view": 4, "impression": 6},
+        )
+    )
+    # Rolled day (<= watermark): must NOT be counted again.
+    _event(db, post.id, _utc_day(5), view_type="impression")
+    # Post-watermark raw: counted, undeduped (same ip twice = 2).
+    _event(db, post.id, _utc_day(2, 9), view_type="impression", ip="a" * 64)
+    _event(db, post.id, _utc_day(2, 10), view_type="impression", ip="a" * 64)
+    _event(db, post.id, _utc_day(1), view_type="view")
+    db.commit()
+
+    updated = recompute_post_impression_counts(db)
+    db.commit()
+    db.expire_all()
+
+    assert updated >= 1
+    db.refresh(post)
+    assert post.impression_count == 6 + 2
+    # Targeted recompute honours the id filter and the empty-list no-op.
+    assert recompute_post_impression_counts(db, post_ids=[]) == 0
+    assert recompute_post_impression_counts(db, post_ids=[post.id]) == 1
 
 
 def test_seed_never_rewinds_existing_watermark(db, post):

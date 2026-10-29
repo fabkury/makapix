@@ -17,6 +17,7 @@ export interface PMDPost {
   reaction_count: number;
   comment_count: number;
   view_count: number;
+  impression_count: number;
   license_identifier: string | null;
 }
 
@@ -45,6 +46,7 @@ type SortKey =
   | 'reaction_count'
   | 'comment_count'
   | 'view_count'
+  | 'impression_count'
   | 'hidden_by_user';
 type SortOrder = 'asc' | 'desc';
 
@@ -121,6 +123,7 @@ export function PostTable({
     reactions: 50,
     comments: 50,
     views: 50,
+    impressions: 50,
     delete: 50,
   });
 
@@ -532,6 +535,21 @@ export function PostTable({
                   onClick={(e) => e.stopPropagation()}
                 />
               </th>
+              {/* Impressions */}
+              <th
+                style={{ width: `${columnWidths.impressions}px` }}
+                onClick={() => handleSort('impression_count')}
+                className="sortable"
+                title="Impressions"
+              >
+                📺
+                <SortIndicator column="impression_count" />
+                <div
+                  className="resize-handle"
+                  onMouseDown={(e) => handleResizeMouseDown(e, 'impressions')}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </th>
               {/* Delete */}
               <th style={{ width: `${columnWidths.delete}px` }} title="Delete">
                 🗑️
@@ -614,6 +632,10 @@ export function PostTable({
                 <td style={{ width: `${columnWidths.views}px` }}>
                   {formatMetricNumber(post.view_count)}
                 </td>
+                {/* Impressions */}
+                <td style={{ width: `${columnWidths.impressions}px` }}>
+                  {formatMetricNumber(post.impression_count ?? 0)}
+                </td>
                 {/* Delete */}
                 <td style={{ width: `${columnWidths.delete}px` }}>
                   <button
@@ -628,7 +650,7 @@ export function PostTable({
             ))}
             {loading && (
               <tr className="loading-row">
-                <td colSpan={16}>
+                <td colSpan={17}>
                   <div className="loading-content">
                     <div className="loading-spinner"></div>
                     Loading more posts...
@@ -638,7 +660,7 @@ export function PostTable({
             )}
             {!loading && paginatedPosts.length === 0 && (
               <tr className="empty-row">
-                <td colSpan={16}>No posts found</td>
+                <td colSpan={17}>No posts found</td>
               </tr>
             )}
           </tbody>
