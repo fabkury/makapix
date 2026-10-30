@@ -328,9 +328,12 @@ export default function DivoomImportPage() {
     setUploadError(null);
     setUploadNotice(null);
 
+    // Divoom's "Email" login field is a generic identifier: the China app sends a
+    // phone number or an email through the same field to the same /UserLogin.
+    // Pass the raw string through; do not validate it as an email.
     const email = divoomEmail.trim();
     if (!email || !divoomPassword) {
-      setDivoomLoginError('Please enter your Divoom email and password.');
+      setDivoomLoginError('Please enter your Divoom email or phone number, and your password.');
       return;
     }
 
@@ -356,7 +359,15 @@ export default function DivoomImportPage() {
       setJumpPageInput('');
     } catch (err) {
       if (err instanceof DivoomApiError) {
-        setDivoomLoginError(`Login failed (ReturnCode ${err.code}). Please check your credentials.`);
+        if (err.code === 4) {
+          setDivoomLoginError(
+            'Divoom does not know this email or phone number (ReturnCode 4). Type it exactly as you do in the Divoom app.',
+          );
+        } else if (err.code === 5) {
+          setDivoomLoginError('Wrong password (ReturnCode 5).');
+        } else {
+          setDivoomLoginError(`Login failed (ReturnCode ${err.code}). Please check your credentials.`);
+        }
       } else {
         setDivoomLoginError((err as Error).message);
       }
@@ -1085,12 +1096,15 @@ export default function DivoomImportPage() {
           ) : (
             <div className="grid-form">
               <label>
-                Email
+                Email or phone
                 <input
-                  type="email"
+                  type="text"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   value={divoomEmail}
                   onChange={(e) => setDivoomEmail(e.target.value)}
-                  placeholder="you@example.com"
+                  placeholder="you@example.com or phone number"
                   required
                 />
               </label>
@@ -1108,6 +1122,10 @@ export default function DivoomImportPage() {
                 Sign in
               </button>
               {divoomLoginError && <div className="status error">{divoomLoginError}</div>}
+              <div className="hint">
+                Phone accounts: type the phone number exactly as you type it in the Divoom app (bare number, no separate
+                country code).
+              </div>
               <div className="hint">
                 Security note: your Divoom session is kept <strong>in-memory only</strong> and is cleared on refresh.
               </div>

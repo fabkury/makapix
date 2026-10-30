@@ -66,7 +66,16 @@
   recompute callable (legacy exclusion, id filter), widget/profile readers.
 - messages/0002 — FYI to the app team about the additive `impression_count`.
 
+## 2026-10-29 — D17 SHIPPED TO PRODUCTION
+- PR #287 develop→main merged 20:06 UTC; `make deploy` clean, all containers
+  healthy; migration `ff72e75e41df` ran at startup (head verified).
+- Prod backfill: 155,996 lifetime Impressions across 2,867 posts
+  (= 153,414 daily `impression` slice + 2,582 raw post-watermark rows, exact).
+  Views untouched (6,145). Site 200; Post + widget payloads carry the new
+  fields; permalink bundle renders 📺.
+
 ## Pending
+- [ ] App team ack of messages/0002 (no action required on their side).
 - [ ] Next-morning check: 01:00 ET rollup processed the Aug 6–12 backlog clean;
       02:30 ET watchdog OK; healthchecks auto-created `check-view-ingestion-health`
       (set period/grace in the UI). NOTE: dev's watchdog will alert once at its

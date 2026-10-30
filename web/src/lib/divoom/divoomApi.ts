@@ -60,6 +60,15 @@ async function postJson<T>(
   return (await resp.json()) as T;
 }
 
+/**
+ * Sign in to Divoom Cloud.
+ *
+ * `email` is Divoom's generic login identifier: the China app sends either a
+ * phone number or an email address in the same `Email` field to this same
+ * endpoint, and the account database is global across app hosts. Pass the
+ * string the user typed straight through. ReturnCode 4 = identifier not
+ * registered, 5 = wrong password.
+ */
 export async function divoomLogin(email: string, md5Password: string): Promise<DivoomSession> {
   const response = await postJson<{
     ReturnCode: number;
