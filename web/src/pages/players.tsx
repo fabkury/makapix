@@ -6,6 +6,7 @@ const FULL_DOCS_URL = 'https://github.com/fabkury/makapix/blob/main/docs/README.
 const P3A_REPO_URL = 'https://github.com/fabkury/p3a';
 const P64_REPO_URL = 'https://github.com/fabkury/p64';
 const PIXELIX_REPO_URL = 'https://github.com/BlueAndi/Pixelix';
+const PIXEL_JUKEBOX_REPO_URL = 'https://github.com/billydavis/pixel-jukebox';
 const WAVESHARE_BOARD_URL =
   'https://www.waveshare.com/product/arduino/boards-kits/esp32-p4/esp32-p4-wifi6-touch-lcd-4b.htm?sku=31416';
 
@@ -76,13 +77,22 @@ export default function PlayersPage() {
               The Makapix Club web player as a widget on a Corsair Xeneon Edge.
             </figcaption>
           </figure>
+          <figure className="hero-photo">
+            <img
+              src="/players/pixel-jukebox-with-makapix-club-artwork.webp"
+              alt="A Pixel Jukebox LED-matrix player in its 3D-printed case, displaying a pixel-art portrait from Makapix Club."
+              loading="lazy"
+            />
+            <figcaption>
+              A Pixel Jukebox shuffling through the Makapix Club feed.
+            </figcaption>
+          </figure>
         </div>
 
         <section className="projects">
           <h2>Player projects</h2>
           <p className="section-lead">
-            These player projects already integrate with MPX. The first three are
-            open-source — free to study, fork, and build on.
+            These player projects already integrate with MPX.
           </p>
 
           <div className="project-cards">
@@ -147,6 +157,34 @@ export default function PlayersPage() {
               </p>
               <a
                 href={PIXELIX_REPO_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="project-link"
+              >
+                Source on GitHub ↗
+              </a>
+            </article>
+
+            <article className="project-card">
+              <div className="project-logo project-logo-square project-logo-squircle">
+                <img src="/players/pixel-jukebox-logo.png" alt="Pixel Jukebox logo" />
+              </div>
+              <h3>Pixel Jukebox</h3>
+              <p>
+                A 64&nbsp;&times;&nbsp;64 LED matrix player by{' '}
+                <a
+                  href="https://github.com/billydavis"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  @billydavis
+                </a>
+                : plug it in, enter a code, and it shuffles the Makapix Club feed. Offers a
+                jukebox-like user interface for controlling the shuffle. Also offers clock,
+                widgets and a sound visualizer.
+              </p>
+              <a
+                href={PIXEL_JUKEBOX_REPO_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="project-link"
@@ -300,6 +338,12 @@ export default function PlayersPage() {
             padding: 0;
           }
 
+          .hero-photo:last-child:nth-child(odd) {
+            grid-column: 1 / -1;
+            width: calc(50% - 10px);
+            justify-self: center;
+          }
+
           .hero-photo img {
             width: 100%;
             height: auto;
@@ -335,7 +379,7 @@ export default function PlayersPage() {
 
           .project-cards {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-columns: 1fr 1fr;
             gap: 20px;
           }
 
@@ -508,6 +552,10 @@ export default function PlayersPage() {
 
             .hero-gallery {
               grid-template-columns: 1fr;
+            }
+
+            .hero-photo:last-child:nth-child(odd) {
+              width: 100%;
             }
 
             .project-cards {
