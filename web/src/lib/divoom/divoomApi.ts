@@ -243,10 +243,25 @@ export async function divoomLogin(
   };
 }
 
+export interface DivoomUploadsPage {
+  /** Visible artworks on this page (HideFlag'd ones removed). */
+  items: DivoomGalleryInfo[];
+  /** How many entries Divoom actually returned, hidden ones included. Use this
+   *  to advance the cursor; 0 means the end of the list. */
+  received: number;
+}
+
+/**
+ * One page of the user's uploads. Paging is cursor-like: ask for
+ * [start, start+pageSize-1], then continue from `start + received`; the list
+ * is finished when `received` is 0. Divoom may return fewer than `pageSize`
+ * mid-list, and hidden artworks are dropped from `items`, so never infer the
+ * end from `items.length`.
+ */
 export async function fetchMyUploads(
   session: DivoomSession,
   opts: { start: number; end: number } & DivoomRequestOptions,
-): Promise<DivoomGalleryInfo[]> {
+): Promise<DivoomUploadsPage> {
   const payload = {
     StartNum: opts.start,
     EndNum: opts.end,
@@ -270,11 +285,12 @@ export async function fetchMyUploads(
 
   // Filter out artworks with HideFlag=true (treat as if never received)
   const list = response.FileList ?? [];
-  return list.filter((item) => {
+  const items = list.filter((item) => {
     const hide = item.HideFlag;
     // HideFlag can be a number (1=hidden) or boolean
     return hide !== true && hide !== 1;
   });
+  return { items, received: list.length };
 }
 
 export async function downloadDivoomDat(fileId: string): Promise<Uint8Array> {

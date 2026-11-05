@@ -71,10 +71,9 @@ const PAGE_SIZE = 20;
 const MAX_TITLE_LEN = 128;
 const MAX_DESC_LEN = 5000;
 // Divoom allows 30 requests/min per IP (see divoomApi.ts), so every request
-// counts: no RefreshIndex replay, one retry of a short page, stop on short/empty.
+// counts: cursor paging (advance by what Divoom returned), stop on an empty page.
 const MAX_PAGES = 500; // safety guard against infinite loops (10,000 artworks)
-const SHORT_PAGE_RETRIES = 1;
-const STALL_ABORT_MS = 7000;
+const STALL_ABORT_MS = 15000; // no new artworks for this long => stop and report
 
 function yieldToBrowser(): Promise<void> {
   // Allow React to paint during long fetch loops
@@ -216,6 +215,14 @@ export default function DivoomImportPage() {
   const [itemsProgress, setItemsProgress] = useState<string | null>(null);
   const itemsAbortRef = useRef<AbortController | null>(null);
   const itemsStallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Listing cursor, kept across attempts so "Retry loading" resumes instead of
+  // spending the rate-limit budget on pages we already have.
+  const itemsCursorRef = useRef<{ start: number; seen: Map<number, DivoomGalleryInfo>; done: boolean }>({
+    start: 1,
+    seen: new Map(),
+    done: false,
+  });
+  const itemsStallAbortedRef = useRef(false);
 
   // Panel 2 filters / sorting
   const [searchName, setSearchName] = useState('');
@@ -394,7 +401,7 @@ export default function DivoomImportPage() {
     setItemsProgress(null);
   }, []);
 
-  const loadAllArtworks = useCallback(async () => {
+  const loadAllArtworks = useCallback(async (mode: 'fresh' | 'resume' = 'fresh') => {
     if (!divoomSession) return;
 
     // Cancel any in-flight load first
@@ -403,25 +410,32 @@ export default function DivoomImportPage() {
       ? new AbortController()
       : { signal: { aborted: false } as any, abort() { (this.signal as any).aborted = true; } } as AbortController;
     itemsAbortRef.current = controller;
-    // Safeguard: abort if we go too long without the unique artwork count increasing.
+    itemsStallAbortedRef.current = false;
+    // Safeguard: stop if we go too long without the unique artwork count increasing.
+    // Reported as an error (not a silent stop) so the user knows the list is partial.
     const armStallTimer = () => {
       if (itemsStallTimerRef.current) clearTimeout(itemsStallTimerRef.current);
       itemsStallTimerRef.current = setTimeout(() => {
-        // Equivalent to the user pressing "Cancel"
+        itemsStallAbortedRef.current = true;
         controller.abort();
       }, STALL_ABORT_MS);
     };
     armStallTimer();
 
+    if (mode === 'fresh') {
+      itemsCursorRef.current = { start: 1, seen: new Map(), done: false };
+      setAllItems([]);
+      setPage(1);
+    }
+    const cursor = itemsCursorRef.current;
+    const { seen } = cursor;
+
     setItemsLoading(true);
     setItemsLoaded(false);
     setItemsError(null);
-    setItemsProgress('Loading artworks… 0 retrieved so far');
-    setAllItems([]);
-    setPage(1);
+    setItemsProgress(`Loading artworks… ${seen.size} retrieved so far`);
 
-    const seen = new Map<number, DivoomGalleryInfo>(); // dedupe by GalleryId
-    let lastPublishedCount = 0;
+    let lastPublishedCount = seen.size;
     // While Divoom makes us wait out its rate limit, keep the user informed and
     // keep the stall timer from treating the wait as a hang.
     const onRateLimitWait = (secondsRemaining: number) => {
@@ -431,20 +445,22 @@ export default function DivoomImportPage() {
       armStallTimer();
     };
     try {
-      for (let pageIndex = 0; pageIndex < MAX_PAGES; pageIndex += 1) {
-        const start = pageIndex * PAGE_SIZE + 1;
+      for (let pageIndex = 0; pageIndex < MAX_PAGES && !cursor.done; pageIndex += 1) {
+        const start = cursor.start;
         const end = start + PAGE_SIZE - 1;
 
-        let list: DivoomGalleryInfo[] = [];
-        let attempt = 0;
-        while (attempt <= SHORT_PAGE_RETRIES) {
-          attempt += 1;
-          list = await fetchMyUploads(divoomSession, { start, end, signal: controller.signal, onRateLimitWait });
-          // Divoom occasionally returns fewer items than requested mid-list; retry once.
-          if (list.length === PAGE_SIZE || list.length === 0 || attempt > SHORT_PAGE_RETRIES) break;
-        }
+        const pageResult = await fetchMyUploads(divoomSession, { start, end, signal: controller.signal, onRateLimitWait });
 
-        for (const item of list) {
+        // An empty page is the end of the list. Anything else advances the cursor
+        // by what Divoom actually sent (hidden items included), so a short page or
+        // a page of hidden artworks never ends the listing early.
+        if (pageResult.received === 0) {
+          cursor.done = true;
+          break;
+        }
+        cursor.start = start + pageResult.received;
+
+        for (const item of pageResult.items) {
           if (typeof item.GalleryId === 'number' && !seen.has(item.GalleryId)) {
             seen.set(item.GalleryId, item);
           }
@@ -460,29 +476,36 @@ export default function DivoomImportPage() {
           armStallTimer();
           await yieldToBrowser();
         }
-
-        // A short or empty page is the end of the list.
-        if (list.length < PAGE_SIZE) break;
       }
 
       setAllItems(Array.from(seen.values()));
       setItemsLoaded(true);
       setItemsProgress(null);
+      if (!cursor.done) {
+        setItemsError(
+          `Stopped after ${MAX_PAGES} pages with Divoom still returning artworks; the list may be incomplete.`,
+        );
+      }
     } catch (err) {
       // Whatever happened, let the user work with what we already have.
       setAllItems(Array.from(seen.values()));
       setItemsLoaded(true);
       setItemsProgress(null);
+      let detail: string;
       if ((err as Error)?.name === 'AbortError') {
-        // User cancelled — keep whatever we have and allow interaction with the partial list.
-        return;
+        if (!itemsStallAbortedRef.current) {
+          // User pressed Cancel — partial list is what they asked for.
+          return;
+        }
+        detail = `Divoom sent no new artworks for ${Math.round(STALL_ABORT_MS / 1000)} seconds, so loading was stopped.`;
+      } else if (err instanceof DivoomApiError) {
+        detail = `Failed to load artworks (ReturnCode ${err.code}).`;
+      } else {
+        detail = describeDivoomError(err);
       }
-      const detail = err instanceof DivoomApiError
-        ? `Failed to load artworks (ReturnCode ${err.code}).`
-        : describeDivoomError(err);
       setItemsError(
         seen.size > 0
-          ? `${detail} Showing the ${seen.size} artworks loaded so far; the list may be incomplete.`
+          ? `${detail} Showing the ${seen.size} artworks loaded so far; the list is probably incomplete.`
           : detail,
       );
     } finally {
@@ -495,9 +518,13 @@ export default function DivoomImportPage() {
     }
   }, [cancelLoadingArtworks, divoomSession]);
 
+  const retryLoadingArtworks = useCallback(() => {
+    loadAllArtworks('resume');
+  }, [loadAllArtworks]);
+
   useEffect(() => {
     if (!divoomSession) return;
-    loadAllArtworks();
+    loadAllArtworks('fresh');
   }, [divoomSession, loadAllArtworks]);
 
   const filteredSorted = useMemo(() => {
@@ -1144,7 +1171,16 @@ export default function DivoomImportPage() {
                     </button>
                   </div>
                 )}
-                {itemsError && <div className="status error">{itemsError}</div>}
+                {itemsError && (
+                  <div className="status error">
+                    <div>{itemsError}</div>
+                    {!itemsLoading && (
+                      <button type="button" className="btn-secondary" onClick={retryLoadingArtworks}>
+                        Retry loading
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {!itemsLoading && itemsLoaded && allItems.length === 0 && (
                   <div className="muted">No artworks found.</div>
