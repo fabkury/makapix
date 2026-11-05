@@ -50,10 +50,17 @@ Reference: [servoom](https://github.com/fabkury/servoom/) `CLOUD_API.md` ("Loggi
   that it throws `DivoomRateLimitError`;
 - `describeDivoomError()` turns any of those into a sentence for the UI.
 
-The listing loop in `divoom-import.tsx` fetches pages of 20 in order and stops at the
-first short or empty page (one retry of a short page). For 68 artworks that is 4–5
-requests. On any error the page shows what was already loaded, with a banner saying the
-list may be incomplete.
+The listing loop in `divoom-import.tsx` is **cursor paging**: ask for
+`[start, start+19]`, then continue from `start + received`, where `received` is the raw
+count Divoom returned *before* the `HideFlag` filter; the list is finished only when a
+page comes back empty. Never infer the end from the visible count — Divoom returns short
+pages mid-list, and hidden artworks are dropped client-side (a page of 20 with one hidden
+item is 19 visible). 68 artworks ≈ 5 requests. The cursor lives in a ref so **Retry
+loading** resumes where it stopped instead of re-spending the budget.
+
+Any stop other than the user's Cancel — rate-limit retries exhausted, network error, or
+the 15 s stall timer (no new artworks) — shows the partial list under a red banner that
+names the reason, says the list is probably incomplete, and offers *Retry loading*.
 
 ### Incident 2026-11-05 — "Failed to fetch" right after "(68 artworks)"
 
@@ -63,6 +70,11 @@ small accounts, so a 68-artwork login made ~1,400 requests. Once Divoom's 30/min
 reached `app`, request 31 was a CORS-less 429 → `TypeError: Failed to fetch`, and the
 page hid the 68 items it already held because `itemsLoaded` was only set on clean
 completion. Fixed as described above.
+
+**Follow-up the same day:** after the first fix, an account showed only 39 of 68 with no
+error. Cause: the loop treated any page shorter than 20 *visible* items as the end, and a
+hidden (`HideFlag`) artwork on page 2 made it 19. Replaced with cursor paging on the raw
+count (above); stall timer raised 7 s → 15 s and now reported as an error.
 
 ## Phone-number sign-in (2026-10-30, PR #288)
 
