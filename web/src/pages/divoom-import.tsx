@@ -5,7 +5,13 @@ import Layout from '../components/Layout';
 import { authenticatedFetch, clearTokens, getMe } from '../lib/api';
 import PostReviewNotice from '../components/PostReviewNotice';
 import type { DivoomGalleryInfo, DivoomSession } from '../lib/divoom/divoomApi';
-import { divoomLogin, downloadDivoomDat, fetchMyUploads, DivoomApiError } from '../lib/divoom/divoomApi';
+import {
+  divoomLogin,
+  downloadDivoomDat,
+  fetchMyUploads,
+  describeDivoomError,
+  DivoomApiError,
+} from '../lib/divoom/divoomApi';
 import { PyodideDecoder } from '../lib/divoom/pyodideDecoder';
 import { Checkbox } from '../components/kit/Checkbox';
 
@@ -64,9 +70,10 @@ interface License {
 const PAGE_SIZE = 20;
 const MAX_TITLE_LEN = 128;
 const MAX_DESC_LEN = 5000;
-const MAX_REFRESH_BLOCKS = 200; // safety guard against infinite loops
-const SHORT_PAGE_RETRIES = 2;
-const MAX_CONSECUTIVE_NO_NEW_PAGES = 5; // stop if API keeps returning duplicates
+// Divoom allows 30 requests/min per IP (see divoomApi.ts), so every request
+// counts: no RefreshIndex replay, one retry of a short page, stop on short/empty.
+const MAX_PAGES = 500; // safety guard against infinite loops (10,000 artworks)
+const SHORT_PAGE_RETRIES = 1;
 const STALL_ABORT_MS = 7000;
 
 function yieldToBrowser(): Promise<void> {
@@ -369,7 +376,7 @@ export default function DivoomImportPage() {
           setDivoomLoginError(`Login failed (ReturnCode ${err.code}). Please check your credentials.`);
         }
       } else {
-        setDivoomLoginError((err as Error).message);
+        setDivoomLoginError(describeDivoomError(err));
       }
     }
   }, [divoomEmail, divoomPassword]);
@@ -415,83 +422,69 @@ export default function DivoomImportPage() {
 
     const seen = new Map<number, DivoomGalleryInfo>(); // dedupe by GalleryId
     let lastPublishedCount = 0;
+    // While Divoom makes us wait out its rate limit, keep the user informed and
+    // keep the stall timer from treating the wait as a hang.
+    const onRateLimitWait = (secondsRemaining: number) => {
+      setItemsProgress(
+        `Divoom is rate-limiting requests; resuming in ${secondsRemaining}s (${seen.size} retrieved so far)`,
+      );
+      armStallTimer();
+    };
     try {
-      for (let refreshIndex = 0; refreshIndex < MAX_REFRESH_BLOCKS; refreshIndex += 1) {
-        let gotAnyInBlock = false;
-        let consecutiveNoNewPages = 0;
+      for (let pageIndex = 0; pageIndex < MAX_PAGES; pageIndex += 1) {
+        const start = pageIndex * PAGE_SIZE + 1;
+        const end = start + PAGE_SIZE - 1;
 
-        for (let withinBlockPage = 1; withinBlockPage < 100000; withinBlockPage += 1) {
-          const start = (withinBlockPage - 1) * PAGE_SIZE + 1;
-          const end = start + PAGE_SIZE - 1;
+        let list: DivoomGalleryInfo[] = [];
+        let attempt = 0;
+        while (attempt <= SHORT_PAGE_RETRIES) {
+          attempt += 1;
+          list = await fetchMyUploads(divoomSession, { start, end, signal: controller.signal, onRateLimitWait });
+          // Divoom occasionally returns fewer items than requested mid-list; retry once.
+          if (list.length === PAGE_SIZE || list.length === 0 || attempt > SHORT_PAGE_RETRIES) break;
+        }
 
-          let list: DivoomGalleryInfo[] = [];
-          let attempt = 0;
-          while (attempt <= SHORT_PAGE_RETRIES) {
-            attempt += 1;
-            list = await fetchMyUploads(divoomSession, { start, end, refreshIndex, signal: controller.signal });
-
-            // Retry short pages (server sometimes returns fewer than requested)
-            if (list.length === PAGE_SIZE || list.length === 0 || attempt > SHORT_PAGE_RETRIES) break;
-          }
-
-          if (list.length === 0) {
-            if (!gotAnyInBlock) {
-              // No data for this refresh block => we're done
-              refreshIndex = MAX_REFRESH_BLOCKS; // break outer loop
-            }
-            break;
-          }
-
-          gotAnyInBlock = true;
-          const before = seen.size;
-          for (const item of list) {
-            if (typeof item.GalleryId === 'number' && !seen.has(item.GalleryId)) {
-              seen.set(item.GalleryId, item);
-            }
-          }
-          const after = seen.size;
-          const added = after - before;
-
-          if (added === 0) {
-            consecutiveNoNewPages += 1;
-          } else {
-            consecutiveNoNewPages = 0;
-          }
-
-          // Publish progress only when count actually changes (unique received),
-          // and yield to avoid locking the UI during large imports.
-          if (after !== lastPublishedCount) {
-            lastPublishedCount = after;
-            const merged = Array.from(seen.values());
-            setAllItems(merged);
-            setItemsProgress(`Loading artworks… ${merged.length} retrieved so far`);
-            armStallTimer();
-            await yieldToBrowser();
-          }
-
-          // If the API keeps returning non-empty pages but none are new, treat as end-of-data.
-          if (consecutiveNoNewPages >= MAX_CONSECUTIVE_NO_NEW_PAGES) {
-            refreshIndex = MAX_REFRESH_BLOCKS; // break outer loop
-            break;
+        for (const item of list) {
+          if (typeof item.GalleryId === 'number' && !seen.has(item.GalleryId)) {
+            seen.set(item.GalleryId, item);
           }
         }
+
+        // Publish progress only when count actually changes (unique received),
+        // and yield to avoid locking the UI during large imports.
+        if (seen.size !== lastPublishedCount) {
+          lastPublishedCount = seen.size;
+          const merged = Array.from(seen.values());
+          setAllItems(merged);
+          setItemsProgress(`Loading artworks… ${merged.length} retrieved so far`);
+          armStallTimer();
+          await yieldToBrowser();
+        }
+
+        // A short or empty page is the end of the list.
+        if (list.length < PAGE_SIZE) break;
       }
 
       setAllItems(Array.from(seen.values()));
       setItemsLoaded(true);
       setItemsProgress(null);
     } catch (err) {
+      // Whatever happened, let the user work with what we already have.
+      setAllItems(Array.from(seen.values()));
+      setItemsLoaded(true);
+      setItemsProgress(null);
       if ((err as Error)?.name === 'AbortError') {
         // User cancelled — keep whatever we have and allow interaction with the partial list.
-        setItemsLoaded(true);
-        setItemsProgress(null);
         return;
       }
-      if (err instanceof DivoomApiError) {
-        setItemsError(`Failed to load artworks (ReturnCode ${err.code}).`);
-      } else {
-        setItemsError((err as Error).message);
-      }
+      const detail = err instanceof DivoomApiError
+        ? `Failed to load artworks (ReturnCode ${err.code}).`
+        : describeDivoomError(err);
+      setItemsError(
+        seen.size > 0
+          ? `${detail} Showing the ${seen.size} artworks loaded so far; the list may be incomplete.`
+          : detail,
+      );
     } finally {
       setItemsLoading(false);
       itemsAbortRef.current = null;
