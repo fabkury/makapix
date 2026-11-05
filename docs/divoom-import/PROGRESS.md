@@ -15,5 +15,5 @@
 - **2026-11-05 (later)** — Follow-up: 39 of 68 loaded silently (short visible page due to a
   hidden artwork ended the listing). Cursor paging on Divoom's raw count, stop only on an
   empty page; "Retry loading" resumes from the cursor; stall timer 15 s and reported as an
-  error; every non-Cancel stop shows a banner over the partial list. Still unverified with
-  a real account by the team; owner verifies on prod.
+  error; every non-Cancel stop shows a banner over the partial list. PR #292 deployed to
+  prod; **owner verified on prod with a real account: all 68 artworks loaded.**
