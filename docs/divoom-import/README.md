@@ -28,9 +28,41 @@ Reference: [servoom](https://github.com/fabkury/servoom/) `CLOUD_API.md` ("Loggi
 - **Return codes:** `0` ok · `4` identifier not registered ("Email is not registered",
   also for a phone-shaped string) · `5` wrong password · `11` bad/foreign token ·
   `12` "Request data is null" = rate limit, not "no data".
-- **Rate limit** (servoom, since 2026-10-23): ~30 requests per minute per source on
-  `appin`, then HTTP 429 with `ReturnCode 12`; refused requests count. Not yet
-  observed on `app`, but treat `12` as "wait", never as an empty list.
+- **Rate limit** (servoom, since 2026-10-23; **confirmed live on `app` 2026-11-05**): 30
+  requests per 60-second window per source IP, then HTTP 429 with
+  `{"ReturnCode":12,"ReturnMessage":"Request data is null"}`, no `Retry-After`. Refused
+  requests count toward the window. **The 429 carries no CORS headers**, so in a browser
+  the `fetch` promise rejects with a bare `TypeError: Failed to fetch` (Chrome; Firefox
+  says "NetworkError when attempting to fetch resource", Safari "Load failed") — the
+  response body is never visible to the page. Treat `12` as "wait", never as an empty
+  list. The file host `f.divoom-gz.com` showed no limit at 3 downloads/s.
+- **Paging:** `StartNum`/`EndNum` are 1-based inclusive; a short or empty page is the end
+  of the list. `RefreshIndex` is ignored on listings. `FileListNum` is not a real total.
+
+## Rate-limit handling (2026-11-05)
+
+`divoomApi.ts` owns it so the page never has to think about it:
+
+- a client-side sliding-window budget of 25 requests/min shared by login and listing
+  (`acquireRequestSlot`), kept under Divoom's 30;
+- a refusal (HTTP 429, `ReturnCode 12`, or a bare `TypeError` from `fetch`) waits a full
+  60 s and retries, up to 3 waits, reporting progress through `onRateLimitWait`; after
+  that it throws `DivoomRateLimitError`;
+- `describeDivoomError()` turns any of those into a sentence for the UI.
+
+The listing loop in `divoom-import.tsx` fetches pages of 20 in order and stops at the
+first short or empty page (one retry of a short page). For 68 artworks that is 4–5
+requests. On any error the page shows what was already loaded, with a banner saying the
+list may be incomplete.
+
+### Incident 2026-11-05 — "Failed to fetch" right after "(68 artworks)"
+
+The old loop replayed the whole listing for `RefreshIndex` 1…200 (Divoom ignores the
+field, so every block returned duplicates) and its duplicate guard could not trigger for
+small accounts, so a 68-artwork login made ~1,400 requests. Once Divoom's 30/min limit
+reached `app`, request 31 was a CORS-less 429 → `TypeError: Failed to fetch`, and the
+page hid the 68 items it already held because `itemsLoaded` was only set on clean
+completion. Fixed as described above.
 
 ## Phone-number sign-in (2026-10-30, PR #288)
 

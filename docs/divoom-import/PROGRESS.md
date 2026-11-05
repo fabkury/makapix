@@ -5,3 +5,10 @@
   green, Divoom probe with a phone-shaped identifier answers `ReturnCode 4` with open
   CORS, prod bundle carries `type:"text",autoComplete:"username"`. Open: confirm with a
   real phone-registered Divoom account.
+- **2026-11-05** — Rate-limit incident: prod `/divoom-import` showed "(68 artworks)" then
+  "Failed to fetch" and no grid. Probe from the VPS: `app.divoom-gz.com` now returns 429
+  (`ReturnCode 12`, no CORS headers) after 30 requests/min; the old listing loop made
+  ~1,400 requests per login via a `RefreshIndex` replay. Fix: client-side request budget
+  + 60 s backoff in `divoomApi.ts`, listing loop stops at the first short/empty page,
+  partial results are shown on error, human-readable rate-limit messages. README updated
+  with the confirmed limit and the CORS-less-429 symptom.
