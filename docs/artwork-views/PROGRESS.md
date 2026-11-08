@@ -76,8 +76,10 @@
 
 ## 2026-11-08 — SPO view dwell lowered 2s → 500ms
 - Owner request: the SPO felt slow to register a View. `SelectedPostOverlay.tsx`
-  debounce timer changed from 2000 to 500 ms. Permalink (`p/[sqid]`, I2) and
-  Web Player impression timers (both 2s) left unchanged. D2 wording amended.
+  debounce timer changed from 2000 to 500 ms. Web Player impression timer
+  (2s) left unchanged. D2 wording amended.
+- Follow-up same day: permalink page (`p/[sqid]`, I2) timer removed entirely;
+  the view POST now fires as soon as the post loads.
 
 ## Pending
 - [ ] App team ack of messages/0002 (no action required on their side).
