@@ -8,7 +8,7 @@ One effort replaces the views system; the five audit bugs (anonymous rate-limit 
 
 ## D2 — View vs Impression are separate first-class metrics
 
-**Artwork View** = deliberate look: ≥2s on screen, non-author Visitor, deduplicated to once per (Visitor, artwork) per UTC day. **Impression** = passive exposure during playback (Player or Web Player rotation), undeduplicated volume ("plays"), guarded by rate limits only. They are never summed. Rejected: single qualified metric (loses playback-reach feedback); weighted blend (unexplainable mixed number).
+**Artwork View** = deliberate look: a dwell threshold on screen (SPO: 2s at launch, lowered to 500ms on 2026-11-08 by owner request; permalink page still 2s), non-author Visitor, deduplicated to once per (Visitor, artwork) per UTC day. **Impression** = passive exposure during playback (Player or Web Player rotation), undeduplicated volume ("plays"), guarded by rate limits only. They are never summed. Rejected: single qualified metric (loses playback-reach feedback); weighted blend (unexplainable mixed number).
 
 ## D3 — Public counters show Views only
 
