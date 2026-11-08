@@ -339,9 +339,10 @@ export default function PostPage() {
   }, [sqid, API_BASE_URL]);
 
   // Register an Artwork View (docs/artwork-views/ D4): the GET no longer
-  // records views server-side, so a permalink visit must POST like the SPO
-  // does — 2s dwell debounce, once per post per page load. Self-views are
-  // skipped client-side (the server excludes them regardless).
+  // records views server-side, so a permalink visit must POST. No dwell
+  // timer (removed 2026-11-08; visiting a permalink is already deliberate),
+  // once per post per page load. Self-views are skipped client-side (the
+  // server excludes them regardless).
   const viewRegisteredRef = useRef<Set<number>>(new Set());
   useEffect(() => {
     const postId = post?.id;
@@ -349,9 +350,9 @@ export default function PostPage() {
     if (viewRegisteredRef.current.has(postId)) return;
     if (currentUser && post && currentUser.id === post.owner_id) return;
 
-    const timer = setTimeout(async () => {
-      viewRegisteredRef.current.add(postId);
-      const url = `${API_BASE_URL}/api/post/${postId}/view`;
+    viewRegisteredRef.current.add(postId);
+    const url = `${API_BASE_URL}/api/post/${postId}/view`;
+    void (async () => {
       try {
         if (getAccessToken()) {
           await authenticatedFetch(url, { method: "POST" });
@@ -361,8 +362,7 @@ export default function PostPage() {
       } catch {
         // Best-effort — view registration never blocks the page
       }
-    }, 2000);
-    return () => clearTimeout(timer);
+    })();
   }, [post?.id, currentUser?.id, API_BASE_URL]);
 
   // Check if device is mobile
