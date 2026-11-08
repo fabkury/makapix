@@ -798,7 +798,7 @@ export default function SelectedPostOverlay({
     const ownerSqid = post?.owner?.public_sqid;
     if (currentUserId && ownerSqid && currentUserId === ownerSqid) return;
 
-    // Debounce: only register if displayed for 2 seconds
+    // Debounce: only register if displayed for 500 ms (was 2 s until 2026-11-08; see docs/artwork-views/DECISIONS.md D2)
     const timer = setTimeout(async () => {
       viewedPostsRef.current.add(postId);
       const url = `/api/post/${postId}/view`;
@@ -825,7 +825,7 @@ export default function SelectedPostOverlay({
       } catch {
         // Ignore fetch errors - view registration is best-effort
       }
-    }, 2000);
+    }, 500);
 
     return () => clearTimeout(timer);
   }, [post?.id, post?.owner?.public_sqid, currentUserId]);

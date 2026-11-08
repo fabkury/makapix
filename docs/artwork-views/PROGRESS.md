@@ -74,6 +74,11 @@
   Views untouched (6,145). Site 200; Post + widget payloads carry the new
   fields; permalink bundle renders 📺.
 
+## 2026-11-08 — SPO view dwell lowered 2s → 500ms
+- Owner request: the SPO felt slow to register a View. `SelectedPostOverlay.tsx`
+  debounce timer changed from 2000 to 500 ms. Permalink (`p/[sqid]`, I2) and
+  Web Player impression timers (both 2s) left unchanged. D2 wording amended.
+
 ## Pending
 - [ ] App team ack of messages/0002 (no action required on their side).
 - [ ] Next-morning check: 01:00 ET rollup processed the Aug 6–12 backlog clean;
