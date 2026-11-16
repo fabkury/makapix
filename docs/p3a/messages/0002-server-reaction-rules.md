@@ -56,9 +56,15 @@ behaviours are new:
 - `blocked` and `not_found` are **permanent** for that post and account:
   please do not retry them. If the firmware keeps a local "reacted" state,
   it should roll it back on these, as it does for any other failure.
-- Both cases should be rare in practice: the channels a player plays from
-  already leave out hidden posts, so they mostly arise for a post that was
-  hidden, or an account that was blocked, after the device cached it.
+- `not_found` should be rare: every source a player gets posts from
+  (`query_posts`, the Promoted feed, the `/player/...` lookups) already
+  leaves out hidden posts, so it only arises for a post that was hidden
+  after the device cached it.
+- `blocked` is different: player channels are **not** filtered by blocks,
+  so a device keeps receiving posts from an account its owner has blocked
+  (or that has blocked its owner). `blocked` can therefore come back for any
+  such post, freshly served or cached — uncommon, since it needs a block
+  between the two accounts, but not a caching artefact.
 
 Reference: `docs/mqtt-protocol/02-player-protocol.md` (`submit_reaction`
 and the error-code table) and `docs/mqtt-api/player-requests.md`.
