@@ -7,7 +7,16 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import Player, User, Post, PostFile, Reaction, Comment
+from app.models import (
+    Comment,
+    Player,
+    Post,
+    PostFile,
+    Reaction,
+    SocialNotification,
+    User,
+    UserBlock,
+)
 from app.mqtt.player_requests import (
     _authenticate_player,
     _handle_submit_reaction,
@@ -233,6 +242,145 @@ class TestReactions:
         assert mock_publish.called
         payload = mock_publish.call_args[1]["payload"]
         assert payload["success"] is True
+
+    @patch("app.mqtt.player_requests.publish")
+    def test_submit_reaction_notifies_post_owner(
+        self,
+        mock_publish: MagicMock,
+        test_player: Player,
+        other_user_post: Post,
+        db: Session,
+    ):
+        """A reaction from a player notifies the post owner like any other."""
+        request = SubmitReactionRequest(
+            request_id="test-react-notif",
+            player_key=test_player.player_key,
+            post_id=other_user_post.id,
+            emoji="🔥",
+        )
+
+        _handle_submit_reaction(test_player, request, db)
+        # Submitting again is idempotent and must not notify twice.
+        _handle_submit_reaction(test_player, request, db)
+
+        notifications = (
+            db.query(SocialNotification)
+            .filter(SocialNotification.post_id == other_user_post.id)
+            .all()
+        )
+        assert len(notifications) == 1
+        notification = notifications[0]
+        assert notification.user_id == other_user_post.owner_id
+        assert notification.notification_type == "reaction"
+        assert notification.actor_id == test_player.owner_id
+        assert notification.emoji == "🔥"
+
+    @patch("app.mqtt.player_requests.publish")
+    def test_submit_reaction_own_post_no_notification(
+        self,
+        mock_publish: MagicMock,
+        test_player: Player,
+        test_posts: list[Post],
+        db: Session,
+    ):
+        """Reacting to your own post from your player notifies nobody."""
+        request = SubmitReactionRequest(
+            request_id="test-react-self",
+            player_key=test_player.player_key,
+            post_id=test_posts[0].id,
+            emoji="❤️",
+        )
+
+        _handle_submit_reaction(test_player, request, db)
+
+        assert mock_publish.call_args[1]["payload"]["success"] is True
+        assert (
+            db.query(Reaction).filter(Reaction.post_id == test_posts[0].id).count() == 1
+        )
+        assert (
+            db.query(SocialNotification)
+            .filter(SocialNotification.post_id == test_posts[0].id)
+            .count()
+            == 0
+        )
+
+    @pytest.mark.parametrize("player_owner_is_blocker", [True, False])
+    @patch("app.mqtt.player_requests.publish")
+    def test_submit_reaction_blocked(
+        self,
+        mock_publish: MagicMock,
+        player_owner_is_blocker: bool,
+        test_player: Player,
+        other_user_post: Post,
+        db: Session,
+    ):
+        """A block in either direction refuses the reaction with `blocked`."""
+        pair = (test_player.owner_id, other_user_post.owner_id)
+        blocker_id, blocked_id = pair if player_owner_is_blocker else pair[::-1]
+        db.add(UserBlock(blocker_id=blocker_id, blocked_id=blocked_id))
+        db.commit()
+
+        request = SubmitReactionRequest(
+            request_id="test-react-blocked",
+            player_key=test_player.player_key,
+            post_id=other_user_post.id,
+            emoji="❤️",
+        )
+
+        _handle_submit_reaction(test_player, request, db)
+
+        payload = mock_publish.call_args[1]["payload"]
+        assert payload["success"] is False
+        assert payload["error_code"] == "blocked"
+        assert (
+            db.query(Reaction).filter(Reaction.post_id == other_user_post.id).count()
+            == 0
+        )
+        assert (
+            db.query(SocialNotification)
+            .filter(SocialNotification.post_id == other_user_post.id)
+            .count()
+            == 0
+        )
+
+    @pytest.mark.parametrize(
+        "field, error_code",
+        [
+            ("hidden_by_user", "not_found"),
+            ("hidden_by_mod", "not_found"),
+            ("deleted_by_user", "deleted"),
+        ],
+    )
+    @patch("app.mqtt.player_requests.publish")
+    def test_submit_reaction_inaccessible_post(
+        self,
+        mock_publish: MagicMock,
+        field: str,
+        error_code: str,
+        test_player: Player,
+        other_user_post: Post,
+        db: Session,
+    ):
+        """A player cannot react to a post its owner cannot see."""
+        setattr(other_user_post, field, True)
+        db.commit()
+
+        request = SubmitReactionRequest(
+            request_id="test-react-hidden",
+            player_key=test_player.player_key,
+            post_id=other_user_post.id,
+            emoji="❤️",
+        )
+
+        _handle_submit_reaction(test_player, request, db)
+
+        payload = mock_publish.call_args[1]["payload"]
+        assert payload["success"] is False
+        assert payload["error_code"] == error_code
+        assert (
+            db.query(Reaction).filter(Reaction.post_id == other_user_post.id).count()
+            == 0
+        )
 
     @patch("app.mqtt.player_requests.publish")
     def test_submit_reaction_idempotent(

@@ -195,14 +195,18 @@ Add an emoji reaction to a post.
 - Maximum 5 reactions per user per post
 - Submitting same reaction twice is idempotent (returns success)
 - Reactions are attributed to the player's owner account
+- A reaction from a player follows the same rules as one from the web or the
+  app: the post owner gets a social notification, the owner must be able to
+  see the post, and a block between the two accounts refuses it
 
 ### Errors
 
 | Error Code | Cause |
 |------------|-------|
 | `invalid_emoji` | Empty or >20 characters |
-| `not_found` | Post doesn't exist |
+| `not_found` | Post doesn't exist, or is not visible to the player's owner (hidden) |
 | `deleted` | Post was deleted |
+| `blocked` | A block exists (either direction) between the player's owner and the post owner |
 | `reaction_limit_exceeded` | Already 5 reactions on post |
 
 ## revoke_reaction
