@@ -48,6 +48,7 @@ from ..utils.monitored_hashtags import (
     apply_monitored_hashtag_filter,
     post_has_unapproved_monitored_hashtags,
 )
+from . import reactions as reaction_service
 from .playset import PlaysetService
 from .rate_limit import check_rate_limit
 
@@ -593,67 +594,44 @@ def get_post(
     )
 
 
+# reaction-service refusal -> player protocol error_code
+_REACTION_ERROR_CODES = {
+    reaction_service.INVALID_EMOJI: "invalid_emoji",
+    reaction_service.POST_NOT_FOUND: "not_found",
+    reaction_service.POST_DELETED: "deleted",
+    reaction_service.BLOCKED: "blocked",
+    reaction_service.CAP_REACHED: "reaction_limit_exceeded",
+}
+
+
 def submit_reaction(
     player: models.Player,
     request: SubmitReactionRequest,
     db: Session,
 ) -> SubmitReactionResponse:
-    """Handle a submit_reaction request."""
-    # Validate emoji (basic validation)
-    emoji = request.emoji.strip()
-    if not emoji or len(emoji) > 20:
-        raise PlayerRpcError("invalid_emoji", "Invalid emoji format")
+    """Handle a submit_reaction request.
 
-    # Check if post exists
-    post = db.query(models.Post).filter(models.Post.id == request.post_id).first()
-    if not post:
-        raise PlayerRpcError("not_found", f"Post {request.post_id} not found")
-
-    # Check if post was deleted by user
-    if post.deleted_by_user:
-        raise PlayerRpcError("deleted", "Post has been deleted")
-
-    # Check if reaction already exists (idempotent)
-    existing = (
-        db.query(models.Reaction)
-        .filter(
-            models.Reaction.post_id == request.post_id,
-            models.Reaction.user_id == player.owner_id,
-            models.Reaction.emoji == emoji,
+    Reactions are attributed to the player's owner and go through the shared
+    reaction service, so they follow the same rules as a reaction from the
+    web or the app — including the notification to the post owner.
+    """
+    try:
+        created = reaction_service.add_reaction(
+            db,
+            post_id=request.post_id,
+            emoji=request.emoji.strip(),
+            user=player.owner,
         )
-        .first()
-    )
-    if existing:
-        # Already exists, return success
-        logger.debug(f"Reaction already exists for post {request.post_id}")
-        return SubmitReactionResponse(request_id=request.request_id)
-
-    # Check reaction limit (max 5 per user per post)
-    reaction_count = (
-        db.query(func.count(models.Reaction.id))
-        .filter(
-            models.Reaction.post_id == request.post_id,
-            models.Reaction.user_id == player.owner_id,
-        )
-        .scalar()
-    )
-    if reaction_count >= 5:
+    except reaction_service.ReactionError as e:
         raise PlayerRpcError(
-            "reaction_limit_exceeded", "Maximum 5 reactions per post exceeded"
+            _REACTION_ERROR_CODES.get(e.code, "invalid_request"), e.message
+        ) from None
+
+    if created:
+        logger.info(
+            f"Added reaction '{request.emoji.strip()}' to post {request.post_id} "
+            f"from player {player.player_key}"
         )
-
-    # Create reaction
-    reaction = models.Reaction(
-        post_id=request.post_id,
-        user_id=player.owner_id,
-        emoji=emoji,
-    )
-    db.add(reaction)
-    db.commit()
-
-    logger.info(
-        f"Added reaction '{emoji}' to post {request.post_id} from player {player.player_key}"
-    )
 
     return SubmitReactionResponse(request_id=request.request_id)
 
@@ -663,28 +641,18 @@ def revoke_reaction(
     request: RevokeReactionRequest,
     db: Session,
 ) -> RevokeReactionResponse:
-    """Handle a revoke_reaction request."""
-    # Find and delete reaction
-    reaction = (
-        db.query(models.Reaction)
-        .filter(
-            models.Reaction.post_id == request.post_id,
-            models.Reaction.user_id == player.owner_id,
-            models.Reaction.emoji == request.emoji.strip(),
-        )
-        .first()
+    """Handle a revoke_reaction request (idempotent)."""
+    removed = reaction_service.remove_reaction(
+        db,
+        post_id=request.post_id,
+        emoji=request.emoji.strip(),
+        user=player.owner,
     )
-
-    if reaction:
-        db.delete(reaction)
-        db.commit()
+    if removed:
         logger.info(
             f"Revoked reaction '{request.emoji}' from post {request.post_id} "
             f"for player {player.player_key}"
         )
-    else:
-        # Idempotent - return success even if reaction didn't exist
-        logger.debug(f"No reaction to revoke for post {request.post_id}")
 
     return RevokeReactionResponse(request_id=request.request_id)
 

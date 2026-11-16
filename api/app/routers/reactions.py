@@ -17,14 +17,31 @@ from ..auth import (
     get_current_user_optional,
     get_current_user_or_anonymous,
 )
-from ..constants import NotificationType
 from ..deps import get_db
 from ..errors import AppError, ErrorCode
-from ..services.social_notifications import SocialNotificationService
+from ..services import reactions as reaction_service
 from ..utils.visibility import get_accessible_post_or_404
 from .comment_likes import annotate_comments_with_likes
 
 router = APIRouter(prefix="/post", tags=["Reactions"])
+
+
+def _reaction_http_error(e: reaction_service.ReactionError) -> HTTPException:
+    """Map a reaction-service refusal onto this API's error envelope."""
+    if e.code == reaction_service.INVALID_EMOJI:
+        return HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid emoji format"
+        )
+    if e.code == reaction_service.BLOCKED:
+        return AppError(ErrorCode.blocked, e.message, status.HTTP_403_FORBIDDEN)
+    if e.code == reaction_service.CAP_REACHED:
+        return AppError(
+            ErrorCode.reaction_cap_reached, e.message, status.HTTP_409_CONFLICT
+        )
+    # Missing, deleted and not-visible posts share one 404.
+    return AppError(
+        ErrorCode.post_not_found, "Post not found", status.HTTP_404_NOT_FOUND
+    )
 
 
 @router.get("/{id}/reactions", response_model=schemas.ReactionTotals)
@@ -176,101 +193,17 @@ def add_reaction(
     Enforces max 5 reactions per user/IP per post.
     Idempotent - returns success if reaction already exists.
     """
-    # Basic emoji validation (ensure it's not empty and reasonable length)
-    if not emoji or len(emoji) > 20:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid emoji format"
-        )
-
-    # Enforce post visibility (and 404 a nonexistent id instead of a later FK
-    # 500): you cannot react to a post you cannot see.
-    viewer = current_user if isinstance(current_user, models.User) else None
-    target_post = get_accessible_post_or_404(db, id, viewer)
-
-    # Interaction guard (docs/ugc-safety/ D11): a block in either direction
-    # between the reactor and the post owner refuses the reaction. Anonymous
-    # reactors have no identity to check (D16).
-    if isinstance(current_user, models.User):
-        from ..utils.blocks import ensure_not_blocked
-
-        ensure_not_blocked(db, current_user.id, target_post.owner_id)
-
-    # Check if reaction already exists (idempotent)
-    if isinstance(current_user, models.User):
-        existing = (
-            db.query(models.Reaction)
-            .filter(
-                models.Reaction.post_id == id,
-                models.Reaction.user_id == current_user.id,
-                models.Reaction.emoji == emoji,
-            )
-            .first()
-        )
-
-        if existing:
-            return  # Already exists, idempotent success
-
-        # Count existing reactions by this user on this post
-        reaction_count = (
-            db.query(func.count(models.Reaction.id))
-            .filter(
-                models.Reaction.post_id == id,
-                models.Reaction.user_id == current_user.id,
-            )
-            .scalar()
-        )
-    else:  # AnonymousUser
-        existing = (
-            db.query(models.Reaction)
-            .filter(
-                models.Reaction.post_id == id,
-                models.Reaction.user_ip == current_user.ip,
-                models.Reaction.emoji == emoji,
-            )
-            .first()
-        )
-
-        if existing:
-            return  # Already exists, idempotent success
-
-        # Count existing reactions by this IP on this post
-        reaction_count = (
-            db.query(func.count(models.Reaction.id))
-            .filter(
-                models.Reaction.post_id == id,
-                models.Reaction.user_ip == current_user.ip,
-            )
-            .scalar()
-        )
-
-    # Enforce max 5 reactions per user/IP per post
-    if reaction_count >= 5:
-        raise AppError(
-            ErrorCode.reaction_cap_reached,
-            "Maximum reactions per user per post (5) reached.",
-            status.HTTP_409_CONFLICT,
-        )
-
-    # Create new reaction
-    reaction = models.Reaction(
-        post_id=id,
-        user_id=current_user.id if isinstance(current_user, models.User) else None,
-        user_ip=current_user.ip if isinstance(current_user, AnonymousUser) else None,
-        emoji=emoji,
-    )
-    db.add(reaction)
-    db.commit()
-
-    # Create notification for post owner (only for authenticated users)
-    if isinstance(current_user, models.User):
-        SocialNotificationService.create_notification(
-            db=db,
-            user_id=target_post.owner_id,
-            notification_type=NotificationType.REACTION,
-            post=target_post,
-            actor=current_user,
+    is_user = isinstance(current_user, models.User)
+    try:
+        reaction_service.add_reaction(
+            db,
+            post_id=id,
             emoji=emoji,
+            user=current_user if is_user else None,
+            ip=None if is_user else current_user.ip,
         )
+    except reaction_service.ReactionError as e:
+        raise _reaction_http_error(e) from None
 
 
 @router.delete(
@@ -289,20 +222,14 @@ def remove_reaction(
 
     Supports both authenticated and anonymous users.
     """
-    if isinstance(current_user, models.User):
-        db.query(models.Reaction).filter(
-            models.Reaction.post_id == id,
-            models.Reaction.user_id == current_user.id,
-            models.Reaction.emoji == emoji,
-        ).delete()
-    else:  # AnonymousUser
-        db.query(models.Reaction).filter(
-            models.Reaction.post_id == id,
-            models.Reaction.user_ip == current_user.ip,
-            models.Reaction.emoji == emoji,
-        ).delete()
-
-    db.commit()
+    is_user = isinstance(current_user, models.User)
+    reaction_service.remove_reaction(
+        db,
+        post_id=id,
+        emoji=emoji,
+        user=current_user if is_user else None,
+        ip=None if is_user else current_user.ip,
+    )
 
 
 @router.get("/{id}/widget-data", response_model=schemas.WidgetData)

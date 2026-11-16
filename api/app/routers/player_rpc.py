@@ -77,6 +77,7 @@ _ERROR_STATUS = {
     "invalid_hashtag": 400,
     "invalid_criteria": 400,
     "player_key_mismatch": 403,
+    "blocked": 403,
     "not_visible": 403,
     "not_available": 403,
     "content_not_approved": 403,

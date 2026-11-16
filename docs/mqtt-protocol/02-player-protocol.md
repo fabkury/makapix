@@ -340,6 +340,12 @@ Add an emoji reaction to a post. Idempotent -- submitting an existing reaction r
 
 Maximum 5 reactions per user per post. Exceeding this returns `error_code: "reaction_limit_exceeded"`.
 
+The reaction is attributed to the player's owner and follows the same rules as a reaction from the web or the app:
+
+- The post owner receives a social notification (never for a reaction to your own post).
+- The player's owner must be able to see the post: a hidden post returns `not_found` (same as a nonexistent one), a deleted post returns `deleted`.
+- A block in either direction between the player's owner and the post owner returns `error_code: "blocked"` and stores nothing.
+
 ---
 
 ### revoke_reaction
@@ -794,6 +800,7 @@ All request types return errors in this format:
 | `invalid_emoji` | Emoji too long or invalid format |
 | `invalid_criteria` | AMP criteria validation failed |
 | `reaction_limit_exceeded` | Max 5 reactions per user per post |
+| `blocked` | `submit_reaction`: a block exists between the player's owner and the post owner |
 | `missing_user_identifier` | `by_user` channel requires `user_handle` or `user_sqid` |
 | `user_not_found` | User not found for `by_user` channel |
 | `missing_hashtag` | `hashtag` channel requires `hashtag` field |
