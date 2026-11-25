@@ -147,12 +147,18 @@ List all players for a user. Requires authentication and ownership.
       "registered_at": "2024-01-15T10:20:00Z",
       "connection_status": "online",
       "last_seen_at": "2024-01-15T12:00:00Z",
+      "https_active": false,
       "current_post_id": 12345,
       "cert_expires_at": "2025-01-15T10:20:00Z"
     }
   ]
 }
 ```
+
+`connection_status` is `online` only while the player holds an MQTT session, and
+is what decides whether it can receive commands. `https_active` is `true` when
+the player has no MQTT session but made an HTTPS player API request in the last
+5 minutes; it is for display only.
 
 ## Get Player
 

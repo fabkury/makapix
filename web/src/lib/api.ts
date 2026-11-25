@@ -470,6 +470,8 @@ export interface Player {
   registration_status: string;
   connection_status: string;
   last_seen_at: string | null;
+  // No MQTT session, but made an HTTPS request recently (display-only).
+  https_active?: boolean;
   current_post_id: number | null;
   cert_expires_at: string | null;
   registered_at: string | null;

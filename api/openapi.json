@@ -4760,6 +4760,11 @@
             ],
             "title": "Firmware Version"
           },
+          "https_active": {
+            "default": false,
+            "title": "Https Active",
+            "type": "boolean"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",

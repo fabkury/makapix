@@ -1185,6 +1185,25 @@ class Player(Base):
         "PlayerToken", back_populates="player", cascade="all, delete-orphan"
     )
 
+    @property
+    def https_active(self) -> bool:
+        """True when the player has no MQTT session but used its HTTPS API
+        token recently (see ``HTTPS_ACTIVE_WINDOW``).
+
+        Display-only liveness for HTTPS players, which have no connection to
+        observe. Never implies the player can receive commands — that is
+        ``connection_status == "online"``.
+        """
+        from .services.player_tokens import HTTPS_ACTIVE_WINDOW
+
+        if self.connection_status == "online":
+            return False
+        cutoff = datetime.now(timezone.utc) - HTTPS_ACTIVE_WINDOW
+        return any(
+            not t.revoked and t.last_used_at is not None and t.last_used_at >= cutoff
+            for t in self.tokens
+        )
+
 
 class PlayerCommandLog(Base):
     """Log of commands sent to players.

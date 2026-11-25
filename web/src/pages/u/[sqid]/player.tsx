@@ -176,6 +176,9 @@ export default function PlayersPage() {
   }
 
   const onlineCount = players.filter((p) => p.connection_status === 'online').length;
+  const activeCount = players.filter(
+    (p) => p.connection_status !== 'online' && p.https_active,
+  ).length;
   const hasPlayers = players.length > 0;
 
   return (
@@ -199,8 +202,14 @@ export default function PlayersPage() {
             <span className="stat-value">{onlineCount}</span>
             <span className="stat-label">Online</span>
           </div>
+          {activeCount > 0 && (
+            <div className="stat">
+              <span className="stat-value">{activeCount}</span>
+              <span className="stat-label">Active (HTTPS)</span>
+            </div>
+          )}
           <div className="stat">
-            <span className="stat-value">{players.length - onlineCount}</span>
+            <span className="stat-value">{players.length - onlineCount - activeCount}</span>
             <span className="stat-label">Offline</span>
           </div>
         </div>
