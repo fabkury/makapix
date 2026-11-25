@@ -24,6 +24,14 @@
     `/pulse`, 12 cards rendered, `/recent` showed the feed, and a signed-out
     visitor was sent to `/welcome` from both `/` and `/pulse`.
 
+- `make check-full` green → PR #298 merged → `make deploy` on prod.
+  - No migration to run.
+  - Prod check: 401 without a token; with one, 200 in about 0.24 s and a
+    first page of 50 cards (likes, posts, comments, promoted, reputation)
+    with more behind it; `/`, `/pulse` and `/recent` serve; no API errors in
+    the logs.
+- Reply `0003-server-pulse-live.md` pushed.
+
 ## Demo data left on dev (for the app team's testing)
 
 The dev database had no activity newer than August, so Pulse was empty. Four
@@ -37,5 +45,6 @@ rows from `reactions`, `comments`, `badge_grants`, `reputation_history` and
 dev; three posts were re-timed for the check and put back afterwards.
 
 ## Open
-- App team builds the page; a `0003-server-…` goes out when prod is live.
+- App team builds the page against 0002 and tells us the release version.
+- Owner click-test of `/pulse` on prod (the browser check was done on dev).
 - `joined` cards, if the owner wants them later (see README, P2).
