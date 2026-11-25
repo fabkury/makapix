@@ -28,13 +28,6 @@ const BOTTOM_ROW_PAGES = ['/recent', '/recommended', '/hashtags', '/hashtags/[ta
 
 const navItems: NavItem[] = [
   {
-    // Signed-in landing page: `/` redirects here (docs/pulse/)
-    href: '/pulse',
-    icon: '🔥',
-    label: 'Pulse',
-    matchPaths: ['/', '/pulse']
-  },
-  {
     href: '/contribute',
     iconSrc: '/button/contribute/btn004-contribute-32px-1x.png',
     iconSrcSet: '/button/contribute/btn004-contribute-32px-1x.png 1x, /button/contribute/btn004-contribute-40px-1_25x.png 1.25x, /button/contribute/btn004-contribute-48px-1_5x.png 1.5x, /button/contribute/btn004-contribute-56px-1_75x.png 1.75x, /button/contribute/btn004-contribute-64px-2x.png 2x, /button/contribute/btn004-contribute-72px-2_25x.png 2.25x, /button/contribute/btn004-contribute-80px-2_5x.png 2.5x, /button/contribute/btn004-contribute-88px-2_75x.png 2.75x, /button/contribute/btn004-contribute-96px-3x.png 3x, /button/contribute/btn004-contribute-104px-3_25x.png 3.25x, /button/contribute/btn004-contribute-112px-3_5x.png 3.5x, /button/contribute/btn004-contribute-128px-4x.png 4x',
@@ -54,6 +47,13 @@ const navItems: NavItem[] = [
     iconSrcSet: '/button/new-artworks/btn006-new-artworks-v2-32px-1x.png 1x, /button/new-artworks/btn006-new-artworks-v2-40px-1_25x.png 1.25x, /button/new-artworks/btn006-new-artworks-v2-48px-1_5x.png 1.5x, /button/new-artworks/btn006-new-artworks-v2-56px-1_75x.png 1.75x, /button/new-artworks/btn006-new-artworks-v2-64px-2x.png 2x, /button/new-artworks/btn006-new-artworks-v2-72px-2_25x.png 2.25x, /button/new-artworks/btn006-new-artworks-v2-80px-2_5x.png 2.5x, /button/new-artworks/btn006-new-artworks-v2-88px-2_75x.png 2.75x, /button/new-artworks/btn006-new-artworks-v2-96px-3x.png 3x, /button/new-artworks/btn006-new-artworks-v2-104px-3_25x.png 3.25x, /button/new-artworks/btn006-new-artworks-v2-112px-3_5x.png 3.5x, /button/new-artworks/btn006-new-artworks-v2-128px-4x.png 4x',
     label: 'Recent',
     matchPaths: ['/recent', '/posts']
+  },
+  {
+    // Signed-in landing page: `/` redirects here (docs/pulse/)
+    href: '/pulse',
+    icon: '🔥',
+    label: 'Pulse',
+    matchPaths: ['/', '/pulse']
   },
   {
     href: '/search',
