@@ -37,6 +37,7 @@ import {
   NavigationContextPost,
 } from "../../lib/navigation-context";
 import { useSwipeNavigation } from "../../hooks/useSwipeNavigation";
+import { useAnchoredMenu } from "../../hooks/useAnchoredMenu";
 import { usePlayerBarOptional } from "../../contexts/PlayerBarContext";
 
 interface License {
@@ -200,10 +201,6 @@ export default function PostPage() {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [activeSubMenu, setActiveSubMenu] = useState<string | null>(null);
   const [showFormatSubPanel, setShowFormatSubPanel] = useState(false);
-  const [menuPosition, setMenuPosition] = useState<{
-    top: number;
-    right: number;
-  } | null>(null);
 
   // UGC-safety: report affordance, gated on the moderation config key.
   const [moderationEnabled, setModerationEnabled] = useState(false);
@@ -232,6 +229,11 @@ export default function PostPage() {
   }, []);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const moreMenuStyle = useAnchoredMenu(
+    showMoreMenu,
+    moreButtonRef,
+    moreMenuRef,
+  );
   const subPanelCloseTimeoutRef = useRef<number | null>(null);
 
   // Image error state
@@ -722,25 +724,10 @@ export default function PostPage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [showMoreMenu]);
 
-  // Open the kebab menu, positioning it just below the button
+  // Toggle the kebab menu (placement is handled by useAnchoredMenu)
   const handleMoreMenuToggle = () => {
-    if (!showMoreMenu && moreButtonRef.current) {
-      const rect = moreButtonRef.current.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const menuWidth = 200;
-      const margin = 8;
-      let rightPos = viewportWidth - rect.right;
-      if (rect.right - menuWidth < margin) {
-        rightPos = viewportWidth - menuWidth - margin;
-      }
-      setMenuPosition({
-        top: rect.bottom + 4,
-        right: Math.max(margin, rightPos),
-      });
-      setShowMoreMenu(true);
-    } else {
-      closeMoreMenu();
-    }
+    if (!showMoreMenu) setShowMoreMenu(true);
+    else closeMoreMenu();
   };
 
   // Kebab action handlers (Share, Download — visible to all)
@@ -1947,10 +1934,7 @@ export default function PostPage() {
           <div
             ref={moreMenuRef}
             className="more-menu"
-            style={{
-              right: menuPosition?.right ?? 16,
-              top: menuPosition?.top ?? 64,
-            }}
+            style={moreMenuStyle}
             onClick={(e) => e.stopPropagation()}
           >
             <button className="menu-item disabled" disabled>

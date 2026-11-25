@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAnchoredMenu } from "../hooks/useAnchoredMenu";
 import { createPortal } from "react-dom";
 import {
   motion,
@@ -473,7 +474,6 @@ const moreMenuStyles: React.CSSProperties = {
   borderRadius: "8px",
   boxShadow: "0 8px 32px rgba(0, 0, 0, 0.5)",
   minWidth: "200px",
-  overflow: "visible",
 };
 
 const menuItemStyles: React.CSSProperties = {
@@ -557,12 +557,13 @@ export default function SelectedPostOverlay({
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [activeSubMenu, setActiveSubMenu] = useState<string | null>(null);
   const [showFormatSubPanel, setShowFormatSubPanel] = useState(false);
-  const [menuPosition, setMenuPosition] = useState<{
-    top: number;
-    right: number;
-  } | null>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const moreMenuPlacement = useAnchoredMenu(
+    showMoreMenu,
+    moreButtonRef,
+    moreMenuRef,
+  );
   const subPanelCloseTimeoutRef = useRef<number | null>(null);
 
   const openSubMenu = useCallback((menu: string) => {
@@ -1786,26 +1787,6 @@ export default function SelectedPostOverlay({
                   style={moreButtonStyles}
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (!showMoreMenu && moreButtonRef.current) {
-                      const rect =
-                        moreButtonRef.current.getBoundingClientRect();
-                      const viewportWidth = window.innerWidth;
-                      const menuWidth = 200; // minWidth from moreMenuStyles
-                      const margin = 8;
-
-                      // Position menu below the button, aligned to the right edge of the button
-                      // but ensure it stays within viewport
-                      let rightPos = viewportWidth - rect.right;
-                      if (rect.right - menuWidth < margin) {
-                        // Menu would overflow left, align to left edge instead
-                        rightPos = viewportWidth - menuWidth - margin;
-                      }
-
-                      setMenuPosition({
-                        top: rect.bottom + 4,
-                        right: Math.max(margin, rightPos),
-                      });
-                    }
                     setShowMoreMenu(!showMoreMenu);
                   }}
                   aria-label="More options"
@@ -1832,8 +1813,7 @@ export default function SelectedPostOverlay({
             ref={moreMenuRef}
             style={{
               ...moreMenuStyles,
-              right: menuPosition?.right ?? 16,
-              top: menuPosition?.top ?? POST_HEADER_HEIGHT + 4,
+              ...moreMenuPlacement,
             }}
             onClick={(e) => e.stopPropagation()}
           >
