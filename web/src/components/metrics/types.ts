@@ -51,6 +51,8 @@ export interface OnlinePlayer {
   firmware_version: string | null;
   last_seen_at: string | null;
   owner_handle: string | null;
+  // 'mqtt' = live MQTT session; 'https' = no session, API token used recently.
+  transport: 'mqtt' | 'https';
 }
 
 export interface TrendPoint {

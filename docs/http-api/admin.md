@@ -330,7 +330,17 @@ Returns comprehensive site metrics for the past 14 days: page views, signups, po
 GET /api/admin/online-players
 ```
 
-Returns list of currently connected players with device info and owner handles.
+Returns players that are online or recently active, with device info and owner
+handles. Each entry carries a `transport`:
+
+| `transport` | Meaning | `last_seen_at` |
+|-------------|---------|----------------|
+| `mqtt` | Live MQTT session (`connection_status == "online"`) | Last MQTT status message |
+| `https` | No MQTT session, but its API token was used in the last 5 minutes | Latest HTTPS request |
+
+HTTPS has no connection to observe, so "recently made a request" is the only
+liveness signal for those players. `connection_status` itself stays MQTT-only:
+clients use it to decide whether a player can receive commands.
 
 ---
 

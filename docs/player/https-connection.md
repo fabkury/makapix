@@ -232,7 +232,9 @@ Rate limited to 30 requests per hour per IP. Owners can also use the [owner rota
 These are MQTT-only because they require a persistent, server-initiated channel:
 
 - **Real-time commands** from the web app (`swap_next`, `play_channel`, `show_artwork`, brightness, …)
-- **Live presence:** the dashboard's online/offline indicator
+- **Live presence:** the online/offline indicator. An HTTPS-only device always
+  reads as offline, but each authenticated request refreshes its "last seen"
+  time (at most once a minute).
 
 A device that wants remote control can connect over MQTT for commands while
 still using HTTPS for queries, or simply use MQTT throughout. For displaying a

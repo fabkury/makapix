@@ -370,7 +370,7 @@ export default function SiteMetricsPanel() {
       </ChartCard>
 
       {/* Online players */}
-      <ChartCard title="Online players">
+      <ChartCard title="Online &amp; active players">
         <OnlinePlayersGrid players={onlinePlayers} />
       </ChartCard>
 
