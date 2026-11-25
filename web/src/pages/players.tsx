@@ -7,6 +7,7 @@ const P3A_REPO_URL = 'https://github.com/fabkury/p3a';
 const P64_REPO_URL = 'https://github.com/fabkury/p64';
 const PIXELIX_REPO_URL = 'https://github.com/BlueAndi/Pixelix';
 const PIXEL_JUKEBOX_REPO_URL = 'https://github.com/billydavis/pixel-jukebox';
+const ORBIT_STATION_REPO_URL = 'https://github.com/billydavis/orbit-station';
 const WAVESHARE_BOARD_URL =
   'https://www.waveshare.com/product/arduino/boards-kits/esp32-p4/esp32-p4-wifi6-touch-lcd-4b.htm?sku=31416';
 
@@ -77,7 +78,7 @@ export default function PlayersPage() {
               The Makapix Club web player as a widget on a Corsair Xeneon Edge.
             </figcaption>
           </figure>
-          <figure className="hero-photo">
+          <figure className="hero-photo hero-photo-centered">
             <img
               src="/players/pixel-jukebox-with-makapix-club-artwork.webp"
               alt="A Pixel Jukebox LED-matrix player in its 3D-printed case, displaying a pixel-art portrait from Makapix Club."
@@ -85,6 +86,17 @@ export default function PlayersPage() {
             />
             <figcaption>
               A Pixel Jukebox shuffling through the Makapix Club feed.
+            </figcaption>
+          </figure>
+          <figure className="hero-photo hero-photo-wide">
+            <img
+              src="/players/orbit-station-with-makapix-club-artwork.webp"
+              alt="An Orbit Station breadboard prototype: five round screens in a row, each showing a different pixel artwork from Makapix Club."
+              loading="lazy"
+            />
+            <figcaption>
+              An Orbit Station showing a different Makapix Club artwork on each of its five
+              round screens.
             </figcaption>
           </figure>
         </div>
@@ -185,6 +197,33 @@ export default function PlayersPage() {
               </p>
               <a
                 href={PIXEL_JUKEBOX_REPO_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="project-link"
+              >
+                Source on GitHub ↗
+              </a>
+            </article>
+
+            <article className="project-card project-card-wide">
+              <div className="project-logo project-logo-square">
+                <img src="/players/orbit-station-logo.svg" alt="Orbit Station logo" />
+              </div>
+              <h3>Orbit Station</h3>
+              <p>
+                Five round screens on an ESP32-S3 by{' '}
+                <a
+                  href="https://github.com/billydavis"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  @billydavis
+                </a>
+                , each one a slot you fill over the network: clocks, gauges, weather, live
+                PC stats, or animated pixel art from Makapix Club.
+              </p>
+              <a
+                href={ORBIT_STATION_REPO_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="project-link"
@@ -338,10 +377,14 @@ export default function PlayersPage() {
             padding: 0;
           }
 
-          .hero-photo:last-child:nth-child(odd) {
+          .hero-photo-centered {
             grid-column: 1 / -1;
             width: calc(50% - 10px);
             justify-self: center;
+          }
+
+          .hero-photo-wide {
+            grid-column: 1 / -1;
           }
 
           .hero-photo img {
@@ -554,7 +597,7 @@ export default function PlayersPage() {
               grid-template-columns: 1fr;
             }
 
-            .hero-photo:last-child:nth-child(odd) {
+            .hero-photo-centered {
               width: 100%;
             }
 
