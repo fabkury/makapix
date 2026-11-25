@@ -1,5 +1,9 @@
 # Pulse — the public community-activity timeline
 
+> **Status: LIVE ON PROD (2026-11-25, PR #298).** API and website shipped
+> together; replies `0002` (contract) and `0003` (live) sent. Awaiting the
+> app release that ships the page.
+
 A page (app and website) that shows what members have been doing, so a small
 Club feels alive: likes, new artworks, remixes, comments, promotions, badges,
 reputation and newly registered players. It is the public cousin of the
