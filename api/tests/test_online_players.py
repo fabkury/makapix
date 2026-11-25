@@ -117,3 +117,40 @@ class TestOnlinePlayersListing:
 
         listed = _listing(client, db)
         assert listed[str(player.id)]["transport"] == "mqtt"
+
+
+class TestOwnerPlayerListHttpsActive:
+    def _list(self, client: TestClient, owner: User) -> dict[str, dict]:
+        from app.sqids_config import encode_user_id
+
+        headers = {"Authorization": f"Bearer {create_access_token(owner)}"}
+        r = client.get(f"/u/{encode_user_id(owner.id)}/player", headers=headers)
+        assert r.status_code == 200, r.text
+        return {p["id"]: p for p in r.json()["items"]}
+
+    def test_https_active_flag(self, client: TestClient, db: Session):
+        from app.sqids_config import encode_user_id
+
+        owner = _user(db, ["user"])
+        owner.public_sqid = encode_user_id(owner.id)
+        db.commit()
+        now = datetime.now(timezone.utc)
+
+        https = _player(db, owner)
+        player_tokens.resolve_player(db, player_tokens.issue_token(db, https))
+        idle = _player(db, owner)
+        player_tokens.issue_token(db, idle)
+        # MQTT-online wins even with a freshly used token: never both.
+        hybrid = _player(db, owner, connection_status="online", last_seen_at=now)
+        player_tokens.resolve_player(db, player_tokens.issue_token(db, hybrid))
+        revoked = _player(db, owner)
+        player_tokens.resolve_player(db, player_tokens.issue_token(db, revoked))
+        player_tokens.revoke_all(db, revoked.id)
+        db.commit()
+
+        items = self._list(client, owner)
+        assert items[str(https.id)]["https_active"] is True
+        assert items[str(https.id)]["connection_status"] == "offline"
+        assert items[str(idle.id)]["https_active"] is False
+        assert items[str(hybrid.id)]["https_active"] is False
+        assert items[str(revoked.id)]["https_active"] is False

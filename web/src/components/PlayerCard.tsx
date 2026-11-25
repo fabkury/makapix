@@ -114,6 +114,9 @@ export default function PlayerCard({ player, sqid, onDelete, onRefresh }: Player
   };
 
   const isOnline = player.connection_status === 'online';
+  // HTTPS players have no live connection; "active" = a recent request. They
+  // cannot receive commands, so the controls below stay keyed on isOnline.
+  const isHttpsActive = !isOnline && !!player.https_active;
   const certExpiresAt = player.cert_expires_at ? new Date(player.cert_expires_at) : null;
   const certNeedsRenewal = certExpiresAt && certExpiresAt.getTime() - Date.now() < 30 * 24 * 60 * 60 * 1000;
 
@@ -162,9 +165,18 @@ export default function PlayerCard({ player, sqid, onDelete, onRefresh }: Player
             </div>
           )}
           <div className="player-meta">
-            <span className={`status-indicator ${isOnline ? 'online' : 'offline'}`}>
-              {isOnline ? '●' : '○'} {player.connection_status}
-            </span>
+            {isHttpsActive ? (
+              <span
+                className="status-indicator https-active"
+                title="Active over HTTPS: this player made a request in the last 5 minutes. Remote control needs an MQTT connection."
+              >
+                ● active (HTTPS)
+              </span>
+            ) : (
+              <span className={`status-indicator ${isOnline ? 'online' : 'offline'}`}>
+                {isOnline ? '●' : '○'} {player.connection_status}
+              </span>
+            )}
             {player.device_model && (
               <span className="device-model">{player.device_model}</span>
             )}
@@ -367,6 +379,10 @@ export default function PlayerCard({ player, sqid, onDelete, onRefresh }: Player
 
         .status-indicator.online {
           color: #10b981;
+        }
+
+        .status-indicator.https-active {
+          color: #00d4ff;
         }
 
         .status-indicator.offline {

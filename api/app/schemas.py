@@ -1314,6 +1314,9 @@ class PlayerPublic(BaseModel):
     registration_status: str
     connection_status: str
     last_seen_at: datetime | None
+    # No MQTT session, but the player made an HTTPS API request in the last few
+    # minutes. Display-only: commands still require connection_status "online".
+    https_active: bool = False
     current_post_id: int | None
     cert_expires_at: datetime | None
     registered_at: datetime | None
