@@ -99,7 +99,7 @@ test('web player fires one impression per appearance, no 30s re-fire', async ({
   });
   await stubApis(page, views);
 
-  await page.goto('/');
+  await page.goto('/recent');
   await page.getByRole('button', { name: 'Open Web Player' }).click();
   // Wait for the artwork to display, ticking the fake clock as we poll —
   // image loading runs in real time but any UI transition timers are frozen

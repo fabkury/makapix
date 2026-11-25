@@ -31,6 +31,7 @@ from .routers import (
     playlists,
     pmd,
     posts,
+    pulse,
     rate_limit,
     reactions,
     realtime,
@@ -302,6 +303,7 @@ _V1_ROUTERS = [
     tracking.router,
     realtime.router,
     me.router,
+    pulse.router,
 ]
 for _router in _V1_ROUTERS:
     app.include_router(_router, prefix="/v1")

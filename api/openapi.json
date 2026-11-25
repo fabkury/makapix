@@ -4222,6 +4222,33 @@
         "title": "Page[Post]",
         "type": "object"
       },
+      "Page_PulseCard_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PulseCard"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "Page[PulseCard]",
+        "type": "object"
+      },
       "Page_PulseItem_": {
         "properties": {
           "items": {
@@ -6487,6 +6514,213 @@
         "title": "PublicVisibilityResponse",
         "type": "object"
       },
+      "PulseActor": {
+        "description": "The member a public Pulse card is about.",
+        "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "handle": {
+            "title": "Handle",
+            "type": "string"
+          },
+          "public_sqid": {
+            "title": "Public Sqid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_sqid",
+          "handle"
+        ],
+        "title": "PulseActor",
+        "type": "object"
+      },
+      "PulseBadge": {
+        "description": "One badge inside a public Pulse `badge` card.",
+        "properties": {
+          "badge": {
+            "title": "Badge",
+            "type": "string"
+          },
+          "icon_url_64": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon Url 64"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "badge",
+          "label"
+        ],
+        "title": "PulseBadge",
+        "type": "object"
+      },
+      "PulseCard": {
+        "description": "One card of the public Pulse timeline: one member + one kind of\nactivity + one burst (docs/pulse/messages/0002-…).",
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/PulseActor"
+          },
+          "badges": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PulseBadge"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Badges"
+          },
+          "comments": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PulseComment"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comments"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "likes",
+              "posts",
+              "remixes",
+              "comments",
+              "player",
+              "badge",
+              "reputation",
+              "promoted"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "player": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PulsePlayer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "posts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Post"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posts"
+          },
+          "reputation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PulseReputation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "actor",
+          "started_at",
+          "updated_at",
+          "count"
+        ],
+        "title": "PulseCard",
+        "type": "object"
+      },
+      "PulseComment": {
+        "description": "One comment inside a public Pulse `comments` card.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_reply": {
+            "default": false,
+            "title": "Is Reply",
+            "type": "boolean"
+          },
+          "post": {
+            "$ref": "#/components/schemas/Post"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "preview",
+          "created_at",
+          "post"
+        ],
+        "title": "PulseComment",
+        "type": "object"
+      },
       "PulseItem": {
         "description": "One event in the moderator dashboard's Pulse activity firehose.",
         "properties": {
@@ -6689,6 +6923,43 @@
           "created_at"
         ],
         "title": "PulseItem",
+        "type": "object"
+      },
+      "PulsePlayer": {
+        "description": "Payload of a public Pulse `player` card. Deliberately no name, ids,\nkeys or connection state (docs/pulse/).",
+        "properties": {
+          "device_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Model"
+          }
+        },
+        "title": "PulsePlayer",
+        "type": "object"
+      },
+      "PulseReputation": {
+        "description": "Payload of a public Pulse `reputation` card.",
+        "properties": {
+          "delta": {
+            "title": "Delta",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "delta",
+          "total"
+        ],
+        "title": "PulseReputation",
         "type": "object"
       },
       "RateLimitBucket": {
@@ -20537,6 +20808,91 @@
         "summary": "Get Post By Storage Key",
         "tags": [
           "Posts"
+        ]
+      }
+    },
+    "/v1/pulse": {
+      "get": {
+        "description": "Timeline of public member activity from the last 30 days, newest first\n(signed-in members only).\n\nActivity is grouped into cards: one member + one kind + one burst, where\neach event comes within 6 hours of the previous one. Only what the Recent\nfeed would show the caller is included (approval, hiding, deletion,\nblocks, monitored hashtags); anonymous activity never is.",
+        "operationId": "get_pulse_v1_pulse_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Comma-separated subset of likes, posts, remixes, comments, player, badge, reputation, promoted (default: all). Unknown values are ignored.",
+            "in": "query",
+            "name": "kinds",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated subset of likes, posts, remixes, comments, player, badge, reputation, promoted (default: all). Unknown values are ignored.",
+              "title": "Kinds"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_PulseCard_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Pulse",
+        "tags": [
+          "Pulse"
         ]
       }
     },
