@@ -1443,10 +1443,13 @@ class OnlinePlayerInfo(BaseModel):
     firmware_version: str | None = None
     last_seen_at: datetime | None = None
     owner_handle: str | None = None
+    # "mqtt" = live MQTT session (connection_status == "online");
+    # "https" = no MQTT session, but its API token was used recently.
+    transport: Literal["mqtt", "https"] = "mqtt"
 
 
 class OnlinePlayersResponse(BaseModel):
-    """Response with list of currently online players."""
+    """Players online over MQTT plus players recently active over HTTPS."""
 
     online_players: list[OnlinePlayerInfo]
     total_online: int

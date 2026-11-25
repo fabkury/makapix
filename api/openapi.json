@@ -3799,6 +3799,15 @@
               }
             ],
             "title": "Owner Handle"
+          },
+          "transport": {
+            "default": "mqtt",
+            "enum": [
+              "mqtt",
+              "https"
+            ],
+            "title": "Transport",
+            "type": "string"
           }
         },
         "required": [
@@ -3808,7 +3817,7 @@
         "type": "object"
       },
       "OnlinePlayersResponse": {
-        "description": "Response with list of currently online players.",
+        "description": "Players online over MQTT plus players recently active over HTTPS.",
         "properties": {
           "online_players": {
             "items": {
@@ -13315,7 +13324,7 @@
     },
     "/v1/admin/online-players": {
       "get": {
-        "description": "Get list of currently online players (moderator only).\n\nReturns players with connection_status='online'.",
+        "description": "Get the players that are online or recently active (moderator only).\n\nTwo kinds of player are returned, told apart by ``transport``:\n\n- ``mqtt``: ``connection_status == 'online'`` (a live MQTT session).\n- ``https``: no MQTT session, but the player's API token was used within\n  ``HTTPS_ACTIVE_WINDOW``. HTTPS has no connection to observe, so recent\n  requests are the only liveness signal; ``last_seen_at`` is the time of\n  the latest one.",
         "operationId": "get_online_players_v1_admin_online_players_get",
         "responses": {
           "200": {

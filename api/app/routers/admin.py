@@ -1376,38 +1376,64 @@ def get_online_players(
     _moderator: models.User = Depends(require_moderator),
 ) -> schemas.OnlinePlayersResponse:
     """
-    Get list of currently online players (moderator only).
+    Get the players that are online or recently active (moderator only).
 
-    Returns players with connection_status='online'.
+    Two kinds of player are returned, told apart by ``transport``:
+
+    - ``mqtt``: ``connection_status == 'online'`` (a live MQTT session).
+    - ``https``: no MQTT session, but the player's API token was used within
+      ``HTTPS_ACTIVE_WINDOW``. HTTPS has no connection to observe, so recent
+      requests are the only liveness signal; ``last_seen_at`` is the time of
+      the latest one.
     """
-    # Query online players
-    online_players = (
+    from ..services.player_tokens import HTTPS_ACTIVE_WINDOW
+
+    mqtt_players = (
         db.query(models.Player)
         .filter(models.Player.connection_status == "online")
-        .order_by(models.Player.last_seen_at.desc())
         .all()
     )
 
+    cutoff = datetime.now(timezone.utc) - HTTPS_ACTIVE_WINDOW
+    last_used = sa.func.max(models.PlayerToken.last_used_at)
+    https_rows = (
+        db.query(models.Player, last_used)
+        .join(models.PlayerToken, models.PlayerToken.player_id == models.Player.id)
+        .filter(
+            models.Player.connection_status != "online",
+            models.Player.registration_status == "registered",
+            models.PlayerToken.revoked.is_(False),
+        )
+        .group_by(models.Player.id)
+        .having(last_used >= cutoff)
+        .all()
+    )
+
+    rows: list[tuple[models.Player, datetime | None, str]] = [
+        (p, p.last_seen_at, "mqtt") for p in mqtt_players
+    ] + [(p, used_at, "https") for p, used_at in https_rows]
+    epoch = datetime.min.replace(tzinfo=timezone.utc)
+    rows.sort(key=lambda r: r[1] or epoch, reverse=True)
+
     # Get owner handles
-    owner_ids = [p.owner_id for p in online_players if p.owner_id]
+    owner_ids = [p.owner_id for p, _, _ in rows if p.owner_id]
     owners = {}
     if owner_ids:
         users = db.query(models.User).filter(models.User.id.in_(owner_ids)).all()
         owners = {u.id: u.handle for u in users}
 
-    # Build response
-    player_infos = []
-    for player in online_players:
-        player_infos.append(
-            schemas.OnlinePlayerInfo(
-                id=player.id,
-                name=player.name,
-                device_model=player.device_model,
-                firmware_version=player.firmware_version,
-                last_seen_at=player.last_seen_at,
-                owner_handle=owners.get(player.owner_id) if player.owner_id else None,
-            )
+    player_infos = [
+        schemas.OnlinePlayerInfo(
+            id=player.id,
+            name=player.name,
+            device_model=player.device_model,
+            firmware_version=player.firmware_version,
+            last_seen_at=seen_at,
+            owner_handle=owners.get(player.owner_id) if player.owner_id else None,
+            transport=transport,
         )
+        for player, seen_at, transport in rows
+    ]
 
     return schemas.OnlinePlayersResponse(
         online_players=player_infos,

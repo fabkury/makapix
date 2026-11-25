@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -25,6 +25,15 @@ logger = logging.getLogger(__name__)
 TOKEN_PREFIX = "mpx_live_"
 # Bytes of entropy in the random component.
 TOKEN_ENTROPY_BYTES = 32
+
+
+# Minimum spacing between HTTPS-driven ``players.last_seen_at`` updates, so a
+# chatty device does not rewrite its player row on every request.
+LAST_SEEN_BUMP_INTERVAL = timedelta(seconds=60)
+
+# A player whose token was used within this window counts as "active over
+# HTTPS" on the moderator dashboard (HTTPS has no live connection to observe).
+HTTPS_ACTIVE_WINDOW = timedelta(minutes=5)
 
 
 def _hash_token(token: str) -> str:
@@ -78,7 +87,8 @@ def resolve_player(db: Session, token: str) -> models.Player | None:
     """Resolve a bearer token to its ``Player``, or None if invalid.
 
     A token is invalid if it is unknown, revoked, or expired. The matched
-    token's ``last_used_at`` is refreshed on success. Note: this does not check
+    token's ``last_used_at`` is refreshed on success, and the player's
+    ``last_seen_at`` is bumped (see below). Note: this does not check
     ``registration_status`` or owner state — the auth dependency does.
     """
     if not token:
@@ -100,8 +110,21 @@ def resolve_player(db: Session, token: str) -> models.Player | None:
         return None
 
     record.last_used_at = now
+
+    # An HTTPS request is proof of life, so it advances the player's
+    # ``last_seen_at`` — but never ``connection_status``, which means "has a
+    # live MQTT session and can receive commands" to the web and app clients.
+    # Skipped while the player is MQTT-online: there ``last_seen_at`` is the
+    # MQTT heartbeat that ``mark_stale_players_offline`` relies on, and an
+    # HTTPS bump would keep a dead MQTT session looking alive.
+    player = record.player
+    if player is not None and player.connection_status != "online":
+        last_seen = player.last_seen_at
+        if last_seen is None or now - last_seen >= LAST_SEEN_BUMP_INTERVAL:
+            player.last_seen_at = now
+
     db.commit()
-    return record.player
+    return player
 
 
 def revoke_all(db: Session, player_id: UUID) -> int:
