@@ -1,0 +1,5 @@
+flowchart TD
+    API["FastAPI"] --> Queue["Redis task broker"]
+    Queue --> Worker["Celery worker"]
+    Worker --> DB["PostgreSQL"]
+    Worker --> Vault["Artwork vault"]

@@ -1,14 +1,13 @@
 # REST API and Player Lifecycle
 
-> **Social notifications are HTTP-only** (REST + SSE) — see
-> `docs/http-api/notifications.md`. Browsers do not connect to the MQTT
-> broker: MQTT is the device plane, HTTPS is the human plane
-> (`docs/notification-architecture/`). The former MQTT notification topics
+> **Social notifications are HTTP-only** (REST + SSE); see
+> [Notifications](../http-api/notifications.md). Browsers do not connect to the MQTT
+> broker. Player devices can use MQTT or HTTPS for queries and reporting. The former MQTT notification topics
 > (`makapix/post/new/*`, `makapix/social-notifications/*`) and the browser
 > WebSocket listener were removed in 2026-08.
 
 This document covers the REST API endpoints related to player management and
-the player lifecycle.
+the player lifecycle. Paths are relative to `https://makapix.club/api`.
 
 ## REST API Endpoints
 
@@ -18,7 +17,7 @@ the player lifecycle.
 |--------|----------|------|-------------|
 | POST | `/player/provision` | None | Provision a new player device |
 | POST | `/player/register` | Bearer token | Register a player to user's account |
-| GET | `/player/{player_key}/credentials` | None (rate limited) | Download TLS certificates |
+| GET | `/player/{player_key}/credentials` | Secret `player_key` (rate limited) | Download TLS certificates and the initial HTTPS token |
 | GET | `/u/{sqid}/player` | Bearer token | List user's players |
 | GET | `/u/{sqid}/player/{player_id}` | Bearer token | Get player details |
 | PATCH | `/u/{sqid}/player/{player_id}` | Bearer token | Update player (name) |
@@ -30,16 +29,12 @@ the player lifecycle.
 
 ### Player Lifecycle
 
-```
-Provision ──► Register ──► Download Certs ──► MQTT Connect ──► Active
-  (device)     (owner)       (device)          (device)
-```
+1. **Provision:** The device calls `POST /player/provision` and receives a player key and a six-character code valid for 15 minutes.
+2. **Register:** The signed-in owner enters that code to link the player.
+3. **Save credentials:** The device retrieves its certificate bundle and initial HTTPS token from `/player/{player_key}/credentials`.
+4. **Connect:** Use MQTT with mTLS for commands and presence, HTTPS for queries/reporting, or both.
 
-1. **Provision**: Device calls `POST /player/provision` with `device_model` and `firmware_version`. Returns `player_key` (UUID) and `registration_code` (6-char, expires in 15 minutes).
-2. **Register**: Owner calls `POST /player/register` with the registration code and a display name. Binds the player to the owner's account.
-3. **Download certificates**: Device calls `GET /player/{player_key}/credentials`. Returns CA cert, client cert, and private key as PEM strings, plus broker host/port.
-4. **MQTT connect**: Device connects via mTLS on port 8883.
-5. **Active**: Player participates in request/response, receives commands, sends status and view events.
+See the [registration sequence](../player/registration.md#overview) and [transport comparison](../player/README.md#choosing-a-transport).
 
 ### Command Endpoint
 
@@ -79,4 +74,6 @@ Rate limits: 300 commands/minute per player, 1000 commands/minute per user.
 
 `POST /u/{sqid}/player/{player_id}/renew-cert`
 
-Available only when the certificate is within 30 days of expiry or already expired.
+Available only when the certificate is within the default 90-day expiry window or already expired.
+
+Devices can also renew using `POST /player/renew-cert` with their HTTPS bearer token. See [Certificate Renewal](../player/registration.md#certificate-renewal).

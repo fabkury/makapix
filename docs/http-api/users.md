@@ -1,6 +1,6 @@
 # Users
 
-User profiles, follows, and highlights.
+User profiles, follows, and highlights. Paths are relative to `https://makapix.club/api/v1`. Unless a route explicitly uses a sqid, `{id}` in `/user/{id}` is the user's **user_key UUID**, not their integer database ID.
 
 ## Browse Users (Public)
 
@@ -14,9 +14,8 @@ Browse user profiles. No authentication required.
 |-----------|------|---------|-------------|
 | `cursor` | string | null | Pagination cursor |
 | `limit` | integer | 50 | Results per page (1-200) |
-| `sort` | string | `reputation` | Sort field |
-| `order` | string | `desc` | `asc` or `desc` |
-| `has_artwork` | boolean | null | Filter users with artwork |
+| `sort` | string | `alphabetical` | Sort mode; see the route contract |
+| `q` | string | null | Search query |
 
 **Response (200):**
 
@@ -54,15 +53,13 @@ Get user profile by public sqid.
   "handle": "artist",
   "bio": "Pixel artist creating retro games",
   "avatar_url": "https://...",
-  "banner_url": "https://...",
   "reputation": 500,
   "created_at": "2024-01-01T00:00:00Z",
-  "is_artist": true,
-  "is_following": false
+  "tagline": "Pixel artist"
 }
 ```
 
-Authenticated users see additional fields:
+This public lookup returns private fields only for authorized moderators/owners. Regular users retrieve their own full account through `/auth/me`. Simply signing in does not reveal another user's email:
 
 ```json
 {
@@ -79,39 +76,7 @@ Authenticated users see additional fields:
 
 Get enhanced user profile with stats.
 
-**Response (200):**
-
-```json
-{
-  "user": {
-    "id": 1,
-    "public_sqid": "m8gPq",
-    "handle": "artist",
-    "bio": "Pixel artist",
-    "avatar_url": "https://...",
-    "banner_url": "https://...",
-    "reputation": 500
-  },
-  "stats": {
-    "post_count": 42,
-    "follower_count": 100,
-    "following_count": 25,
-    "total_reactions": 500,
-    "total_views": 10000
-  },
-  "is_following": false,
-  "highlights": [
-    {
-      "id": 12345,
-      "public_sqid": "k5fNx",
-      "art_url": "https://...",
-      "width": 64,
-      "height": 64
-    }
-  ],
-  "recent_posts": [...]
-}
-```
+**Response (200):** A flat profile object containing `id`, `user_key`, `public_sqid`, `handle`, `bio`, `avatar_url`, `stats`, `highlights`, `is_following`, `is_own_profile`, and `is_blocked_by_viewer`, plus other public profile fields. It is not wrapped in a `user` property. See `UserProfileEnhanced` in the [OpenAPI contract](../../api/openapi.json) for the full schema.
 
 ## Update User
 
@@ -122,11 +87,11 @@ Update user profile. Requires ownership.
 ```json
 {
   "bio": "Updated bio",
-  "banner_url": "https://..."
+  "tagline": "Pixel artist"
 }
 ```
 
-`mention_policy` — who may @mention this user: `everyone` (default),
+`mention_policy` controls who may @mention this user: `everyone` (default),
 `following` (only members **this user follows**), or `nobody`. Any other value
 is a 422. Returned on the full user object (`/auth/me`, this response), never
 on public profiles.
@@ -155,7 +120,7 @@ Rate limit: 120 requests/minute per user (429).
 
 `reason` ∈ `owner` · `thread` · `following` · `follower` · `search`, ranked in
 that order, then by handle. Applies exactly the write path's mentionability
-rule (browse visibility — the site owner included — no block either way, the
+rule (browse visibility, including for the site owner; no block either way; the
 target's `mention_policy`) and never lists the caller.
 
 ## Upload Avatar
@@ -176,7 +141,7 @@ Upload user avatar. Requires ownership.
 - Max size: 5 MB
 - Recommended: Square images
 
-**Response (200):** Updated user object
+**Response (201):** Updated user object
 
 ### DELETE /user/{id}/avatar
 
@@ -190,7 +155,7 @@ Remove user avatar.
 
 Follow a user. Requires authentication.
 
-**Response (201):**
+**Response (200):**
 
 ```json
 {
@@ -253,9 +218,9 @@ Same response format as followers.
 
 Profile highlights are pinned artworks shown on the user's profile.
 
-### GET /user/me/highlights
+### GET /user/u/{public_sqid}/highlights
 
-List current user's highlights.
+List a user's highlights by public sqid.
 
 **Response (200):**
 
@@ -290,14 +255,13 @@ Add post to highlights.
 ```json
 {
   "id": "highlight-uuid",
-  "post_id": 12345,
   "position": 3
 }
 ```
 
 **Limits:**
 
-- Maximum 6 highlights
+- Maximum 128 highlights
 - Must own the post
 
 ### DELETE /user/me/highlights/{post_id}
@@ -320,28 +284,7 @@ Reorder highlights.
 
 ## User Posts
 
-### GET /user/{id}/artworks
-
-List user's artwork posts.
-
-**Query Parameters:**
-
-| Parameter | Type | Default |
-|-----------|------|---------|
-| `cursor` | string | null |
-| `limit` | integer | 50 |
-| `sort` | string | `created_at` |
-| `order` | string | `desc` |
-
-**Response (200):**
-
-```json
-{
-  "items": [...],
-  "next_cursor": "...",
-  "total_count": 42
-}
-```
+Use `GET /post?owner_id={user_key}` with the user's UUID to list their artwork. See [Posts](posts.md) for filters and pagination. There is no `/user/{id}/artworks` endpoint.
 
 ### GET /user/{id}/blog-posts
 
@@ -361,16 +304,12 @@ Request account deletion. Requires authentication.
 
 ```json
 {
-  "message": "Account deletion scheduled",
-  "deletion_date": "2024-01-22T00:00:00Z"
+  "status": "accepted",
+  "message": "Account deletion has been queued"
 }
 ```
 
-**Notes:**
-
-- 7-day waiting period
-- All posts are soft-deleted immediately
-- Account is permanently deleted after waiting period
+The account is deactivated immediately and permanent deletion is queued for background processing. There is **no seven-day grace period** and no cancellation endpoint. The site owner cannot use this endpoint (403).
 
 ## Admin Endpoints
 
@@ -392,7 +331,7 @@ Create user. Admin only.
 
 ### DELETE /user/{id}
 
-Delete user. Admin only.
+Deactivate and hide an account using the ownership/role checks. This is distinct from the queued permanent deletion through `/user/delete-account`.
 
 ## User Artwork Route
 
@@ -400,6 +339,4 @@ Delete user. Admin only.
 
 Shorthand to get user by sqid (same as `/user/u/{public_sqid}`).
 
-### GET /artwork/u/{public_sqid}
-
-Alternative route for user lookup.
+Use `/user/u/{public_sqid}` for profile lookup; `/artwork/u/{public_sqid}` is not an API route.

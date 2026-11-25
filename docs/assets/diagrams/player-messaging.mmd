@@ -1,0 +1,3 @@
+flowchart TD
+    Player["Player device"] <-->|"MQTT with mTLS"| MQTT["Mosquitto: port 8883"]
+    MQTT <--> API["FastAPI"]

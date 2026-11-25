@@ -4,7 +4,7 @@ Technical reference for filtering artwork by metadata.
 
 ## Overview
 
-AMP (Artwork Metadata Protocol) provides a query language for filtering artwork based on technical metadata. It's used in MQTT `query_posts` requests to select artwork matching specific criteria.
+AMP (Artwork Metadata Protocol) provides a query language for filtering artwork based on technical metadata. It's used in `query_posts` requests over MQTT or HTTPS to select artwork matching specific criteria.
 
 ## Filter Syntax
 

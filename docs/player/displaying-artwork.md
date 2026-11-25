@@ -4,23 +4,21 @@ Handle image formats, dimensions, and animations on your display device.
 
 ## Artwork Specifications
 
-All artwork on Makapix follows strict specifications:
+Artwork supports both square and rectangular canvases.
 
 | Property | Requirement |
 |----------|-------------|
-| Dimensions | 8x8 to 256x256 pixels |
-| Aspect Ratio | Perfect square (width = height) |
+| Dimensions | Up to 256 × 256 pixels; smaller sizes have restrictions |
 | Formats | PNG, GIF, WebP, BMP |
-| Max File Size | 5 MB |
+| Default maximum file size | 5 MiB (5,242,880 bytes) |
 
 ### Dimension Rules
 
-Dimensions follow specific allowable sizes:
+When both width and height are at least 128 pixels, any size through 256 × 256 is accepted. If either side is below 128, only these sizes and their rotated orientations are accepted:
 
-- **Under 128x128**: Only specific sizes (8, 16, 32, 64, and combinations)
-- **128x128 to 256x256**: Any size allowed
+**8 × 8, 8 × 16, 8 × 32, 16 × 16, 16 × 32, 32 × 32, 32 × 64, 64 × 64, 64 × 128.**
 
-Common sizes: 8x8, 16x16, 32x32, 64x64, 128x128, 256x256
+For example, 128 × 64 is valid, while 128 × 32 is not. Filter queries to the dimensions and formats your device can decode; it need not support every accepted format.
 
 ## Fetching Images
 
@@ -38,7 +36,7 @@ http://vault.makapix.club/{storage_shard}/{storage_key}.{format}
 
 > **`storage_shard` is opaque.** Treat it as a relative path fragment and
 > substitute it verbatim. Do not parse it, validate its length, or assume a
-> fixed number of `/`-separated components — the depth has changed before
+> fixed number of `/`-separated components. The depth has changed before
 > (current artworks use 2-level shards like `"21/32"`; older URLs used
 > 3-level shards like `"a1/b2/c3"`) and URLs you have already received
 > remain valid either way.
@@ -114,7 +112,7 @@ Query response includes timing hints:
 
 > **Frame metadata describes the native file.** `frame_count`,
 > `min_frame_duration_ms`, and `max_frame_duration_ms` are measured from the
-> artwork as uploaded — the `native_format` file, which `art_url` points to.
+> artwork as uploaded: the `native_format` file, which `art_url` points to.
 > The server-side conversions to other formats merge consecutive duplicate
 > frames (their durations are summed), so a non-native rendition can contain
 > fewer frames than `frame_count`, and a merged frame's delay can exceed
@@ -161,13 +159,15 @@ Your display resolution may differ from artwork dimensions. Common approaches:
 
 ### Nearest Neighbor (Recommended)
 
-Preserves pixel art crispness:
+Preserves pixel art crispness. Keep the aspect ratio when fitting rectangular art to your display; pad the unused area rather than stretching it:
 
 ```python
 from PIL import Image
 
 img = Image.open("artwork.png")
-scaled = img.resize((display_width, display_height), Image.NEAREST)
+scale = min(display_width / img.width, display_height / img.height)
+size = (max(1, int(img.width * scale)), max(1, int(img.height * scale)))
+scaled = img.resize(size, Image.Resampling.NEAREST)
 ```
 
 ### Integer Scaling

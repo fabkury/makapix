@@ -4,7 +4,7 @@ Report player status, view events, and submit reactions.
 
 > **Transports:** view events, reactions, comments, and playsets work over
 > **either** MQTT or HTTPS. Over HTTPS, `POST` view events to
-> `/player/events/view` and everything else to `/player/rpc` — same bodies,
+> `/player/events/view` and everything else to `/player/rpc` using the same operation fields,
 > minus `player_key` / `request_id` / `request_ack`. **Status updates are
 > MQTT-only** (live presence needs a persistent connection). See
 > [HTTPS Connection](https-connection.md).
@@ -50,7 +50,7 @@ Send status updates:
 
 1. On initial connection
 2. When `current_post_id` changes
-3. Periodically (every 5-10 minutes) as a heartbeat
+3. Periodically (every 60 seconds) as a heartbeat
 4. After firmware update
 
 ## View Events
@@ -396,7 +396,7 @@ import threading
 def heartbeat_loop():
     while running:
         publish_status()
-        time.sleep(300)  # 5 minutes
+        time.sleep(60)  # Stay below the three-minute stale-player threshold
 
 heartbeat_thread = threading.Thread(target=heartbeat_loop)
 heartbeat_thread.start()

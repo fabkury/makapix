@@ -1,10 +1,10 @@
 # Quick Start
 
-Get a player device connected to Makapix in four steps.
+Get a player connected to Makapix Club in four steps. To try the full flow on your computer first, run the [Python HTTPS example](https-connection.md#reference-example-start-here).
 
 ## Prerequisites
 
-- A device with network connectivity (MQTT *or* HTTPS — your choice)
+- A device with network connectivity (MQTT or HTTPS)
 - A Makapix Club account ([makapix.club](https://makapix.club))
 
 ## Step 1: Provision the Device
@@ -33,10 +33,9 @@ Response:
 }
 ```
 
-The response advertises **both** transports — `mqtt_broker` and `https_api` —
-so you can pick either one later.
+The response advertises both connection options through `mqtt_broker` and `https_api`. Choose one when you connect.
 
-Save the `player_key` - this is your device's permanent identifier.
+Save the `player_key` securely. It is your device's permanent identifier and grants access to credential recovery.
 
 Display the `registration_code` to the user (they have 15 minutes).
 
@@ -45,13 +44,13 @@ Display the `registration_code` to the user (they have 15 minutes).
 The user:
 
 1. Logs in to [makapix.club](https://makapix.club)
-2. Goes to Settings > Players > Add Device
+2. Opens their profile menu, chooses **Manage Players**, then **Register Player**
 3. Enters the 6-character code (e.g., `A7B3K9`)
 4. Names the device
 
 ## Step 3: Retrieve Credentials
 
-Once registered, your device fetches TLS certificates:
+Once registered, your device fetches TLS certificates and an HTTPS token:
 
 ```
 GET https://makapix.club/api/player/{player_key}/credentials
@@ -73,17 +72,17 @@ Response:
 This single response sets you up for either transport: the **TLS certificates**
 (`ca_pem` / `cert_pem` / `key_pem`) for MQTT, and the **bearer token**
 (`api_token`) for HTTPS. The `api_token` is returned **once**, on the first
-fetch — store it alongside the certificates. (If you lose it, rotate a new one;
+fetch. Store it alongside the certificates. (If you lose it, rotate a new one;
 see [HTTPS Connection](https-connection.md).)
 
-Store these credentials securely on your device.
+Store these credentials securely on your device. A 404 before the owner enters the code means registration is still pending; retry about every five seconds until the code expires. Honor `Retry-After` if rate limited.
 
 ## Step 4: Connect and make your first request
 
 You now have credentials for **both** transports. Use whichever suits your
-device — they accept the same request and return the same data.
+device. They support the same operations and artwork data.
 
-### Option A — MQTT (adds real-time commands + presence)
+### Option A: MQTT (adds real-time commands + presence)
 
 Connect to the broker using the certificates:
 
@@ -113,7 +112,7 @@ Subscribe for commands and responses, then query the feed:
 
 The response arrives on `makapix/player/{player_key}/response/{request_id}`.
 
-### Option B — HTTPS (request/response, no persistent socket)
+### Option B: HTTPS (request/response, no persistent socket)
 
 Send the same request as one authenticated `POST`. Identity comes from the
 bearer token, so `player_key` and `request_id` aren't required:
@@ -133,10 +132,10 @@ Content-Type: application/json
 The response is the HTTP body (status 200).
 
 > Prefer a working example? [`scripts/test_https_player_api.py`](../../scripts/test_https_player_api.py)
-> runs this entire flow (provision → token → query → download) — see
+> runs this entire flow (provision → token → query → download); see
 > [HTTPS Connection](https-connection.md#reference-example-start-here).
 
-### Response (identical either way)
+### Example response
 
 ```json
 {
@@ -157,7 +156,7 @@ The response is the HTTP body (status 200).
 }
 ```
 
-(Over MQTT, the response also echoes your `request_id`.)
+This abbreviated response illustrates the shape; use the actual `art_url` and opaque `next_cursor` returned by the server. MQTT also echoes your `request_id`. Download `art_url` separately, decode the image, and display it; see [Displaying Artwork](displaying-artwork.md).
 
 ## Next Steps
 

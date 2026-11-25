@@ -1,0 +1,6 @@
+flowchart TD
+    Provision["Device requests a code"] --> Show["Device displays the code"]
+    Show --> Link["Owner signs in and enters code"]
+    Link --> Fetch["Device retrieves credentials"]
+    Fetch --> Save["Device saves credentials"]
+    Save --> Connect["Device connects via HTTPS or MQTT"]

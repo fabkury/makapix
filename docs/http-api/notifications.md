@@ -2,8 +2,7 @@
 
 Social notifications are an **HTTP-only** feature: the inbox is served over
 REST and live delivery over an authenticated Server-Sent Events stream.
-Browsers and apps never connect to the MQTT broker for notifications — MQTT is
-the device plane (see `docs/notification-architecture/`).
+Browsers and apps never connect to the MQTT broker for notifications. MQTT carries player-device messages; see the [notification architecture](../notification-architecture/README.md).
 
 All endpoints require a Bearer token. Base path: `/api/v1`.
 
@@ -22,7 +21,7 @@ All endpoints require a Bearer token. Base path: `/api/v1`.
 `GET /social-notifications/?limit=50[&cursor=...][&unread_only=true]`
 
 - `limit`: 1–200, default 50.
-- `cursor`: **opaque** string from the previous page's `next_cursor` — echo it
+- `cursor`: **opaque** string from the previous page's `next_cursor`; send it
   verbatim, do not parse it. (Keyset on `(created_at, id)`; bare ISO-timestamp
   cursors issued before 2026-08 are still accepted.)
 - Notifications from actors the viewer has blocked are hidden (ugc-safety D10).
@@ -54,7 +53,7 @@ All endpoints require a Bearer token. Base path: `/api/v1`.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | string (UUID) | Notification ID — dedupe key across REST and SSE |
+| `id` | string (UUID) | Notification ID; deduplication key across REST and SSE |
 | `user_id` | int | Recipient's user id |
 | `notification_type` | string | See table below |
 | `post_id` | int? | Related post ID (null for system notifications) |
@@ -95,12 +94,12 @@ Source of truth: `api/app/constants.py:NotificationType`.
 | `reputation_change` | A moderator changes your reputation |
 | `moderator_granted` | You are granted the moderator role |
 | `moderator_revoked` | Your moderator role is revoked |
-| `new_report` | (moderators) A new content report was filed — carries the reported post / comment / user |
-| `report_resolved` | Your report was reviewed and resolved — carries the same target, no action details |
+| `new_report` | (moderators) A new content report was filed; carries the reported post / comment / user |
+| `report_resolved` | Your report was reviewed and resolved; carries the same target, no action details |
 | `remix` | Someone published a Remix of your artwork |
 | `post_approved` | A moderator approved your pending post for public release |
 | `trust_granted` | A moderator granted you Trust (future uploads auto-approved) |
-| `mention` | Someone @mentioned you — in a comment (`comment_id` set) or in a post description (`comment_id` null). Same fields as `comment_reply`; `comment_preview` is the plain rendering. Held while the post awaits approval; see [`docs/mentions/`](../mentions/README.md) |
+| `mention` | Someone @mentioned you in a comment (`comment_id` set) or in a post description (`comment_id` null). Same fields as `comment_reply`; `comment_preview` is the plain rendering. Held while the post awaits approval; see [`docs/mentions/`](../mentions/README.md) |
 
 ### Rate limiting
 
@@ -111,7 +110,7 @@ self-actions never notify. `mention` notifications additionally stop after
 ### Retention
 
 Read notifications are deleted after 90 days; all notifications after 365 days
-(nightly task, see `reference/scheduled-tasks.md`).
+(nightly task; see [scheduled tasks](../reference/scheduled-tasks.md)).
 
 ## SSE Stream
 
@@ -122,21 +121,20 @@ Accept: text/event-stream
 ```
 
 Live push of the authenticated user's notifications. Delivery is in-process
-push (no polling); the stream carries only events created while it is open —
-clients backfill history via the REST list.
+push (no polling); the stream carries only events created while it is open. Clients backfill history via the REST list.
 
 ### Events
 
 | Event | Data | Meaning |
 |-------|------|---------|
-| `connected` | `{"unread_count": N}` | Greeting on every (re)connect. **Authoritative** — reconcile your badge to it. |
+| `connected` | `{"unread_count": N}` | Greeting on every (re)connect. **Authoritative:** reconcile your badge to it. |
 | `notification` | full item payload (above) | A new notification. Dedupe by `id` against your list/badge. |
 | `: keepalive` | — | Comment frame roughly every 15 s of silence; ignore. |
 | `timeout` | `{"message": ...}` | Bounded-lifetime close (~300 s). Reconnect immediately. |
 
 ### Client integration notes
 
-- **Browsers must use fetch-streaming, not `EventSource`** — the endpoint
+- **Browsers must use fetch-streaming, not `EventSource`** because the endpoint
   authenticates via the `Authorization` header, which `EventSource` cannot
   send. Reference client: `web/src/hooks/useNotificationsSSE.ts` (frame
   parser, immediate reconnect on `timeout`, exponential backoff on errors).

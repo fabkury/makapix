@@ -37,7 +37,7 @@ makapix/player/{player_key}/status
 | Connection established | Send `online` status |
 | Artwork changes | Update `current_post_id` |
 | Graceful disconnect | Send `offline` status (if possible) |
-| Heartbeat | Send periodically (every 5-10 minutes) |
+| Heartbeat | Send periodically (every 60 seconds) |
 | Firmware update | Update `firmware_version` |
 
 ### Server Actions
@@ -266,10 +266,12 @@ def on_user_request(post_id):
 
 ### Status Updates
 
+The server checks for stale players every minute and marks them offline after three minutes without a heartbeat.
+
 1. Send `online` immediately after connection
 2. Include `firmware_version` to track deployments
 3. Update `current_post_id` when display changes
-4. Send heartbeat every 5-10 minutes
+4. Send heartbeat every 60 seconds
 5. Attempt `offline` status on graceful shutdown
 
 ### View Events
@@ -300,4 +302,4 @@ def on_reconnect():
     event_queue.clear()
 ```
 
-Note: Queued events with old timestamps may be deduplicated or rate-limited. Consider refreshing timestamps on reconnect.
+Note: Queued events with old timestamps may be deduplicated or rate-limited. Preserve the original display timestamps, bound the offline queue, and pace replay to respect the view-event limit. Do not replace timestamps with reconnect time.

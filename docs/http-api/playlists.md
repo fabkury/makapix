@@ -1,319 +1,107 @@
 # Playlists
 
-Curated artwork collections.
+Create and maintain ordered collections of artwork. Paths on this page are relative to `https://makapix.club/api/v1`.
 
-> **⚠️ Accuracy note (being reconciled with code; OpenAPI at `/api/v1/openapi.json` is authoritative).**
-> The item-level endpoints documented below (`POST/DELETE …/items`, `PUT …/items/reorder`,
-> `PATCH …/items/{item_id}`, `POST …/publish`) are **not implemented**. The only way to add/remove/reorder
-> items today is to **`PATCH /playlist/{id}`** with the full `post_ids[]` array (whole-list replace). A playlist is
-> already a feed-visible post, so there is no separate publish step.
+## Identifiers and response shape
 
-## Overview
+The `/playlist` API uses a **playlist UUID**, not the integer ID of its underlying feed post. Artwork IDs inside `post_ids` are integers. A playlist is already represented as a feed post; there is no separate publish endpoint.
 
-Playlists are collections of artwork that can be played on physical devices or browsed on the web. Each playlist has metadata and an ordered list of artwork items.
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "owner_id": 42,
+  "title": "Favorite landscapes",
+  "description": "A collection for my display",
+  "post_ids": [12345, 12346],
+  "visible": true,
+  "hidden_by_user": false,
+  "hidden_by_mod": false,
+  "created_at": "2026-10-27T12:00:00Z",
+  "updated_at": null
+}
+```
 
 ## List Playlists
 
 ### GET /playlist
 
-List playlists with optional filters.
+Returns `items` containing playlist objects and `next_cursor`.
 
-**Query Parameters:**
+| Parameter | Behavior |
+|-----------|----------|
+| `owner_id` | Optional **user_key UUID** identifying the owner; this differs from the integer `owner_id` in responses |
+| `limit` | 1–200, default 50 |
+| `q`, `cursor`, `sort`, `order` | Accepted by the route, but not currently applied |
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `owner_id` | UUID | null | Filter by owner |
-| `cursor` | string | null | Pagination cursor |
-| `limit` | integer | 50 | Results per page (1-200) |
-
-**Response (200):**
-
-```json
-{
-  "items": [
-    {
-      "id": 1,
-      "public_sqid": "p5kNx",
-      "title": "Favorite Landscapes",
-      "description": "My favorite pixel art landscapes",
-      "item_count": 12,
-      "owner": {
-        "id": 1,
-        "handle": "artist",
-        "public_sqid": "m8gPq"
-      },
-      "created_at": "2024-01-15T09:00:00Z",
-      "updated_at": "2024-01-20T10:00:00Z"
-    }
-  ],
-  "next_cursor": "eyJpZCI6MTJ9"
-}
-```
+The implementation returns newest-created playlists first and `next_cursor: null`. Do not rely on search, custom sorting, or pagination beyond the first page on this endpoint.
 
 ## Get Playlist
 
 ### GET /playlist/{id}
 
-Get a single playlist with its items.
-
-**Response (200):**
-
-```json
-{
-  "id": 1,
-  "public_sqid": "p5kNx",
-  "title": "Favorite Landscapes",
-  "description": "My favorite pixel art landscapes",
-  "owner": {
-    "id": 1,
-    "handle": "artist",
-    "public_sqid": "m8gPq"
-  },
-  "items": [
-    {
-      "id": 101,
-      "position": 0,
-      "post": {
-        "id": 12345,
-        "public_sqid": "k5fNx",
-        "title": "Mountain View",
-        "art_url": "https://...",
-        "width": 64,
-        "height": 64
-      }
-    },
-    {
-      "id": 102,
-      "position": 1,
-      "post": {
-        "id": 12346,
-        "public_sqid": "k6gMy",
-        "title": "Ocean Sunset",
-        "art_url": "https://...",
-        "width": 64,
-        "height": 64
-      }
-    }
-  ],
-  "item_count": 12,
-  "created_at": "2024-01-15T09:00:00Z",
-  "updated_at": "2024-01-20T10:00:00Z"
-}
-```
+Returns one playlist object (200), or 404 if unavailable.
 
 ## Create Playlist
 
 ### POST /playlist
 
-Create a new playlist. Requires authentication.
+Requires a signed-in account. Returns the created playlist (201).
 
 ```json
 {
-  "title": "My New Playlist",
-  "description": "A collection of pixel art"
+  "title": "Favorite landscapes",
+  "description": "A collection for my display",
+  "post_ids": [12345, 12346]
 }
 ```
 
-**Response (201):**
+| Field | Requirement |
+|-------|-------------|
+| `title` | Required; 1–128 characters |
+| `description` | Optional; up to 1,000 characters |
+| `post_ids` | Optional; up to 100 integer artwork IDs |
 
-```json
-{
-  "id": 2,
-  "public_sqid": "p6lPy",
-  "title": "My New Playlist",
-  "description": "A collection of pixel art",
-  "owner": {
-    "id": 1,
-    "handle": "artist",
-    "public_sqid": "m8gPq"
-  },
-  "items": [],
-  "item_count": 0,
-  "created_at": "2024-01-21T09:00:00Z",
-  "updated_at": "2024-01-21T09:00:00Z"
-}
-```
-
-**Limits:**
-
-- Title: 1-200 characters
-- Description: 0-5000 characters
+A nonexistent post ID causes a 400 response. The server filters out entries that do not meet its artwork visibility checks, so inspect the returned `post_ids`.
 
 ## Update Playlist
 
 ### PATCH /playlist/{id}
 
-Update playlist metadata. Requires ownership.
+Requires ownership or the applicable moderator permission. Returns the updated playlist (200).
+
+Send only the metadata fields you want to change. To add, remove, or reorder artwork, send the **entire desired `post_ids` array**:
 
 ```json
 {
-  "title": "Updated Title",
-  "description": "Updated description"
+  "title": "Evening landscapes",
+  "post_ids": [12346, 12345, 12347]
 }
 ```
 
-**Response (200):** Updated playlist object
+Omit `post_ids` to leave the list unchanged; send `[]` to empty it. There are no individual item-add, item-delete, item-update, or reorder endpoints. Fetch the current playlist before editing to avoid accidentally replacing someone else's recent changes.
+
+The update schema also accepts `hidden_by_user` and `hidden_by_mod` visibility flags. The same title, description, and item-count limits apply as on creation.
 
 ## Delete Playlist
 
 ### DELETE /playlist/{id}
 
-Delete a playlist. Requires ownership.
+Requires ownership or the applicable moderator permission. Returns 204 with no body.
 
-**Response (204):** No content
-
-## Playlist Items
-
-### Add Item
-
-#### POST /playlist/{id}/items
-
-Add artwork to playlist. Requires ownership.
-
-```json
-{
-  "post_id": 12345,
-  "position": null
-}
-```
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `post_id` | integer | Yes | Artwork to add |
-| `position` | integer | No | Position (null = append) |
-
-**Response (201):**
-
-```json
-{
-  "id": 103,
-  "playlist_id": 1,
-  "post_id": 12345,
-  "position": 12
-}
-```
-
-**Errors:**
-
-| Status | Detail |
-|--------|--------|
-| 400 | Artwork already in playlist |
-| 404 | Artwork not found |
-
-### Remove Item
-
-#### DELETE /playlist/{id}/items/{item_id}
-
-Remove artwork from playlist. Requires ownership.
-
-**Response (204):** No content
-
-### Reorder Items
-
-#### PUT /playlist/{id}/items/reorder
-
-Reorder playlist items. Requires ownership.
-
-```json
-{
-  "item_ids": [103, 101, 102]
-}
-```
-
-**Response (204):** No content
-
-Items not in the list are appended in their current order.
-
-### Move Item
-
-#### PATCH /playlist/{id}/items/{item_id}
-
-Move item to specific position. Requires ownership.
-
-```json
-{
-  "position": 0
-}
-```
-
-**Response (200):**
-
-```json
-{
-  "id": 103,
-  "playlist_id": 1,
-  "post_id": 12345,
-  "position": 0
-}
-```
-
-## Hide/Unhide Playlist
+## Visibility
 
 ### POST /playlist/{id}/hide
 
-Hide playlist from public view. Requires ownership.
-
-**Response (201):** No content
+Hide the playlist through the owner-access route. Returns 201.
 
 ### DELETE /playlist/{id}/hide
 
-Unhide playlist. Requires ownership.
+Remove owner hiding. Returns 204.
 
-**Response (204):** No content
+### POST /playlist/{id}/undelete
 
-## Publish Playlist
+Moderator operation that sets the playlist visible and clears both hiding flags. Returns 201.
 
-### POST /playlist/{id}/publish
+## Player Integration
 
-Publish playlist as a post (creates playlist post type). Requires ownership.
-
-```json
-{
-  "title": "My Published Playlist",
-  "description": "Check out this collection"
-}
-```
-
-**Response (201):**
-
-```json
-{
-  "post_id": 12400,
-  "public_sqid": "pk7Rz",
-  "playlist_id": 1
-}
-```
-
-Published playlists:
-
-- Appear in feeds like artwork
-- Can be played on devices
-- Have their own reactions/comments
-
-## Playlist Posts
-
-When querying posts, playlists have `kind: "playlist"`:
-
-```json
-{
-  "id": 12400,
-  "public_sqid": "pk7Rz",
-  "kind": "playlist",
-  "title": "My Published Playlist",
-  "total_artworks": 12,
-  "dwell_time_ms": 30000
-}
-```
-
-## MQTT Integration
-
-Players can query playlist posts and their items via MQTT. See [Player Requests](../mqtt-api/player-requests.md).
-
-## Limits
-
-| Resource | Limit |
-|----------|-------|
-| Playlists per user | No limit |
-| Items per playlist | 1000 |
-| Title length | 200 characters |
-| Description length | 5000 characters |
+Players can retrieve playlist posts through [MQTT requests](../mqtt-api/player-requests.md) or [HTTPS RPC](player-rpc.md). Those protocols use the integer feed post ID, not the UUID used by `/playlist/{id}`.

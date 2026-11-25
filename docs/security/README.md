@@ -8,17 +8,12 @@ Security documentation for the Makapix Club platform.
 |----------|-------------|
 | [Operations](operations.md) | Secret inventory, rotation procedures, emergency response, MQTT hardening, maintenance checklists |
 
-## Quick Status
+## Scope
 
-| Category | Rating | Notes |
-|----------|--------|-------|
-| Authentication | Excellent | JWT + bcrypt + OAuth, HttpOnly cookies |
-| API Security | Excellent | ORM, Pydantic validation, rate limiting, security headers |
-| Infrastructure | Good | Docker network isolation, auto-TLS, mTLS for players |
-| MQTT/IoT | Excellent | Device plane only (mTLS + CRL); the shared-webclient finding (H1) was resolved 2026-08 by deleting the browser MQTT path |
-| Data Protection | Excellent | Hashed IPs, parameterized queries, file validation |
-| Secrets Management | Good | Env-based, startup validation, rotation procedures documented |
+These guides describe the repository's security mechanisms and operational procedures; they are not a certification of a deployed host. Validate the running configuration, certificate dates, access controls, and backup health during an operational review.
 
-## Confidentiality
+User-facing notifications use authenticated HTTP/SSE. MQTT is reserved for player communication. See [Notifications](../http-api/notifications.md) and [player authentication](../player/registration.md).
 
-This documentation contains sensitive operational information. Access should be limited to authorized personnel.
+## Handling sensitive information
+
+This repository is public. Keep actual secrets, credentials, private keys, personal data, and incident-specific evidence out of documentation and issue reports. The operations guide names configuration fields and procedures, not production secret values.

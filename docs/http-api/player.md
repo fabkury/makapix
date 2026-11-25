@@ -4,7 +4,7 @@ Device management and control via HTTP.
 
 ## Overview
 
-The Player HTTP API handles device registration, credential management, and command sending. Real-time communication happens over MQTT (see [MQTT API](../mqtt-api/README.md)).
+The Player HTTP API handles device registration, credential management, and command sending. Players can query and report over [HTTPS RPC](player-rpc.md) or [MQTT](../mqtt-api/README.md). Commands pushed to players and live presence require MQTT. All paths below are relative to `https://makapix.club/api`.
 
 ## Device Provisioning
 
@@ -33,8 +33,9 @@ Provision a new player device. No authentication required.
   "registration_code_expires_at": "2024-01-15T10:30:00Z",
   "mqtt_broker": {
     "host": "makapix.club",
-    "port": 8884
-  }
+    "port": 8883
+  },
+  "https_api": { "base_url": "https://makapix.club/api", "auth": "bearer" }
 }
 ```
 
@@ -89,7 +90,7 @@ Link a provisioned device to user account. Requires authentication.
 
 ### GET /player/{player_key}/credentials
 
-Get TLS certificates for MQTT connection. No authentication required.
+Get MQTT certificates and, on the first successful fetch, an HTTPS bearer token. No separate login token is required; treat `player_key` as a secret because it grants access to credentials.
 
 **Response (200):**
 
@@ -100,8 +101,10 @@ Get TLS certificates for MQTT connection. No authentication required.
   "key_pem": "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----\n",
   "broker": {
     "host": "makapix.club",
-    "port": 8884
-  }
+    "port": 8883
+  },
+  "https_api": { "base_url": "https://makapix.club/api", "auth": "bearer" },
+  "api_token": "mpx_live_<save-this-token>"
 }
 ```
 
@@ -112,8 +115,16 @@ Get TLS certificates for MQTT connection. No authentication required.
 | Status | Detail |
 |--------|--------|
 | 404 | Player not found or not registered |
-| 404 | Certificates not available |
+| 500 | Certificates not available |
 | 429 | Rate limited |
+
+Save `api_token` immediately; later credential fetches do not return its plaintext. See [token rotation](player-rpc.md#rotating-and-revoking-tokens) for recovery.
+
+## Device Certificate Renewal
+
+### POST /player/renew-cert
+
+Authenticate with the device bearer token. No body is required. Returns `cert_pem`, `key_pem`, `ca_pem`, and `cert_expires_at`. Renewal is available within the default 90-day expiry window or after expiry. See [Certificate Renewal](../player/registration.md#certificate-renewal) for the device workflow and limits.
 
 ## List Players
 

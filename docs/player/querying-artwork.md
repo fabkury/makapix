@@ -10,7 +10,7 @@ All queries follow the same pattern:
 2. Publish request to `makapix/player/{player_key}/request/{request_id}`
 3. Receive response on `makapix/player/{player_key}/response/{request_id}`
 
-> **Over HTTPS:** every request body on this page works unchanged — `POST` the
+> **Over HTTPS:** every request body on this page works with the same operation fields. `POST` the
 > same object (you can drop `player_key` and `request_id`) to `/player/rpc` and
 > read the reply from the HTTP response. See [HTTPS Connection](https-connection.md).
 
@@ -139,6 +139,8 @@ Note: Hashtag should not include the `#` prefix.
 | `server_order` | Newest listing first: upload/approval time, or a later artwork replacement that bumped the post (same order as the website and app) |
 | `created_at` | Same as `server_order` (the payload's `created_at` stays the original posting date) |
 | `random` | Random order (use `random_seed` for reproducibility) |
+
+The promoted channel uses newest promotion first for `server_order` and `created_at`. The reactions channel uses latest reaction first with `server_order`.
 
 ### Random with Seed
 
@@ -276,9 +278,9 @@ By default, responses include only mandatory fields to minimize payload size. Re
 | `created_at` | datetime | Post creation time |
 | `storage_key` | string | Vault storage identifier |
 | `art_url` | string | Full URL to artwork |
-| `storage_shard` | string | Opaque relative vault path (e.g. `"23/16"`). Use verbatim — do not parse, validate, or assume a fixed depth; the number of components may change |
+| `storage_shard` | string | Opaque relative vault path (e.g. `"23/16"`). Use verbatim; do not parse, validate, or assume a fixed depth; the number of components may change |
 | `native_format` | string | Original file format |
-| `listed_at` | datetime | Listing time — sort by this to match the server order (equals `created_at` until the post is bumped) |
+| `listed_at` | datetime | Listing time; sort by this to match the server order (equals `created_at` until the post is bumped) |
 | `promoted_at` | datetime | Only on promoted posts: promotion time, the `promoted` channel's sort key |
 
 ### Optional Fields

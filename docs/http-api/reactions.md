@@ -2,11 +2,7 @@
 
 Emoji reactions and comments on posts.
 
-> **⚠️ Accuracy note (being reconciled with code; OpenAPI at `/api/v1/openapi.json` is authoritative).**
-> The real reaction semantics are: **`PUT /post/{id}/reactions/{emoji}` adds** a reaction (idempotent, `204`),
-> **`DELETE /post/{id}/reactions/{emoji}` removes** it (`204`). There is **no `POST` endpoint** and `PUT` is **not a toggle**.
-> A user may have at most **5 reactions per post** (`409` `reaction_cap_reached` beyond that). Blog-post reactions
-> live under the `/blog-post/...` prefix and the **blog feature is currently disabled** (`503`).
+Paths below are relative to `https://makapix.club/api/v1`. Reactions and comment creation support signed-in and anonymous visitors; anonymous ownership is associated with the request IP.
 
 ## Reactions
 
@@ -14,98 +10,32 @@ Emoji reactions and comments on posts.
 
 #### GET /post/{post_id}/reactions
 
-Get reaction counts for a post.
-
-**Response (200):**
+Returns counts and the current visitor's selected emojis:
 
 ```json
 {
-  "reactions": {
-    "❤️": 15,
-    "🔥": 8,
-    "😍": 5,
-    "👍": 3
-  },
-  "total": 31,
-  "user_reactions": ["❤️"]
+  "totals": {"❤️": 15, "🔥": 8},
+  "authenticated_totals": {"❤️": 12, "🔥": 8},
+  "anonymous_totals": {"❤️": 3},
+  "mine": ["❤️"]
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `reactions` | object | Emoji to count mapping |
-| `total` | integer | Total reaction count |
-| `user_reactions` | array | Current user's reactions (if authenticated) |
+`totals` combines signed-in and anonymous reactions. `mine` contains the current account's reactions, or the anonymous visitor's reactions associated with their IP.
 
 ### Add Reaction
 
-#### POST /post/{post_id}/reactions
+#### PUT /post/{post_id}/reactions/{emoji}
 
-Add an emoji reaction. Requires authentication.
+Adds the emoji idempotently. No body is required. Returns **204 with no body**, including when the reaction already exists. This is not a toggle, and there is no `POST` reaction endpoint.
 
-```json
-{
-  "emoji": "❤️"
-}
-```
-
-**Response (201):**
-
-```json
-{
-  "id": "reaction-uuid",
-  "post_id": 12345,
-  "user_id": 1,
-  "emoji": "❤️",
-  "created_at": "2024-01-15T10:30:00Z"
-}
-```
-
-**Notes:**
-
-- Maximum 5 reactions per user per post
-- Adding same emoji twice is idempotent (returns existing)
-
-**Errors:**
-
-| Status | Detail |
-|--------|--------|
-| 400 | Maximum 5 reactions per post |
-| 404 | Post not found |
+URL-encode the emoji path parameter (for example, `%E2%9D%A4%EF%B8%8F` for ❤️). A visitor may have at most five different reactions per post; exceeding the cap returns 409 with `reaction_cap_reached`.
 
 ### Remove Reaction
 
 #### DELETE /post/{post_id}/reactions/{emoji}
 
-Remove an emoji reaction. Requires authentication.
-
-The `emoji` path parameter should be URL-encoded (e.g., `%E2%9D%A4%EF%B8%8F` for ❤️).
-
-**Response (204):** No content
-
-### Toggle Reaction
-
-#### PUT /post/{post_id}/reactions/{emoji}
-
-Toggle a reaction (add if not present, remove if present). Requires authentication.
-
-**Response (200):**
-
-```json
-{
-  "toggled": true,
-  "emoji": "❤️",
-  "reactions": {
-    "❤️": 16,
-    "🔥": 8
-  },
-  "total": 24
-}
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `toggled` | boolean | true if added, false if removed |
+Removes the selected emoji. Returns 204 with no body. Use this operation explicitly when the visitor deselects a reaction.
 
 ## Comments
 
@@ -121,8 +51,7 @@ Get comments for a post.
 |-----------|------|---------|-------------|
 | `cursor` | string | null | Pagination cursor |
 | `limit` | integer | 50 | Results per page (1-200) |
-| `sort` | string | `created_at` | Sort field |
-| `order` | string | `asc` | `asc` or `desc` |
+| `view` | string | `flat` | `flat` or `tree` |
 
 **Response (200):**
 
@@ -135,12 +64,10 @@ Get comments for a post.
       "body": "Great artwork!",
       "depth": 0,
       "parent_id": null,
-      "author": {
-        "id": 2,
-        "handle": "commenter",
-        "public_sqid": "n9hRs",
-        "avatar_url": "https://..."
-      },
+      "author_id": 2,
+      "author_handle": "commenter",
+      "author_public_sqid": "n9hRs",
+      "author_avatar_url": "https://...",
       "created_at": "2024-01-15T11:00:00Z",
       "deleted_by_owner": false,
       "hidden_by_mod": false
@@ -151,18 +78,16 @@ Get comments for a post.
       "body": "Thanks!",
       "depth": 1,
       "parent_id": "comment-uuid",
-      "author": {
-        "id": 1,
-        "handle": "artist",
-        "public_sqid": "m8gPq"
-      },
+      "author_id": 1,
+      "author_handle": "artist",
+      "author_public_sqid": "m8gPq",
+      "author_avatar_url": null,
       "created_at": "2024-01-15T11:05:00Z",
       "deleted_by_owner": false,
       "hidden_by_mod": false
     }
   ],
-  "next_cursor": null,
-  "total_count": 2
+  "next_cursor": null
 }
 ```
 
@@ -174,18 +99,18 @@ payload (list, create, edit, `GET /post/{id}/widget-data`) serves:
 |---|---|
 | `body` | Plain rendering: each `<@SQID>` replaced by the target's current `@handle` (`@user` for a deleted account). What legacy clients display. |
 | `body_markup` | The stored source, with `<@SQID>` (equals `body` when there are no mentions). |
-| `mentions` | `[{public_sqid, handle, avatar_url}]` — the resolved sqids, in order of first appearance. |
+| `mentions` | `[{public_sqid, handle, avatar_url}]`: the resolved sqids, in order of first appearance. |
 
 `POST`/`PATCH` accept markup in `body`. A mention the writer may not make
 (target hidden from `/user/browse`, a block either way, the target's
 `mention_policy`), mentions past 16 per text, and all mentions from anonymous
-commenters are silently flattened to plain `@handle` text — never an error.
+commenters are silently flattened to plain `@handle` text without rejecting the request.
 
 ### Add Comment
 
 #### POST /post/{post_id}/comments
 
-Add a comment. Requires authentication.
+Add a comment as a signed-in or anonymous visitor. Anonymous requests omit the bearer token; there is no `anonymous` request field.
 
 ```json
 {
@@ -212,11 +137,10 @@ For replies, include `parent_id`:
   "body": "Great artwork!",
   "depth": 0,
   "parent_id": null,
-  "author": {
-    "id": 2,
-    "handle": "commenter",
-    "public_sqid": "n9hRs"
-  },
+  "author_id": 2,
+      "author_handle": "commenter",
+      "author_public_sqid": "n9hRs",
+      "author_avatar_url": null,
   "created_at": "2024-01-15T11:00:00Z"
 }
 ```
@@ -224,7 +148,8 @@ For replies, include `parent_id`:
 **Limits:**
 
 - Maximum depth: 2 (comments, replies, replies to replies)
-- Body: 1-5000 characters
+- Body: 1–2,000 characters
+- Maximum 1,000 comments per post
 
 **Errors:**
 
@@ -237,7 +162,7 @@ For replies, include `parent_id`:
 
 ### Update Comment
 
-#### PATCH /post/{post_id}/comments/{comment_id}
+#### PATCH /post/comments/{comment_id}
 
 Edit a comment. Requires ownership.
 
@@ -251,7 +176,7 @@ Edit a comment. Requires ownership.
 
 ### Delete Comment
 
-#### DELETE /post/{post_id}/comments/{comment_id}
+#### DELETE /post/comments/{comment_id}
 
 Delete a comment. Requires ownership.
 
@@ -267,7 +192,7 @@ Delete a comment. Requires ownership.
 
 ### Hide Comment
 
-#### POST /post/{post_id}/comments/{comment_id}/hide
+#### POST /post/comments/{comment_id}/hide
 
 Hide a comment. Moderator only.
 
@@ -282,45 +207,20 @@ Hide a comment. Moderator only.
 
 ### Unhide Comment
 
-#### DELETE /post/{post_id}/comments/{comment_id}/hide
+#### DELETE /post/comments/{comment_id}/hide
 
 Unhide a comment. Moderator only.
 
 **Response (204):** No content
 
-## Blog Post Reactions
+## Blog Post Reactions and Comments
 
-Blog posts also support reactions with the same format.
-
-### GET /blog/{id}/reactions
-
-### PUT /blog/{id}/reactions/{emoji}
-
-### DELETE /blog/{id}/reactions/{emoji}
-
-## Blog Post Comments
-
-### GET /blog/{id}/comments
-
-### POST /blog/{id}/comments
-
-### PATCH /blog/comments/{comment_id}
-
-### DELETE /blog/comments/{comment_id}
+Blog endpoints use `/blog-post`, not `/blog`. Blog features are currently disabled by the server and return 503. See the [OpenAPI contract](../../api/openapi.json) for their route definitions; use `/post` for artwork interactions.
 
 ## Rate Limits
 
-Comments and reactions are not explicitly rate limited, but excessive activity may trigger abuse detection.
+Comment creation is limited to **30 requests per five minutes** per signed-in user or anonymous IP. A 429 response means the client should wait before retrying. Reactions have a five-emoji cap per user/IP per post.
 
 ## Anonymous Comments
 
-Anonymous comments are supported on some posts:
-
-```json
-{
-  "body": "Anonymous comment",
-  "anonymous": true
-}
-```
-
-Anonymous comments show `author: null` in responses.
+Use the same comment body without an Authorization header. Anonymous comments have `author_id: null`, a generated `Guest_…` handle, and no public profile link. The response uses `author_handle`, `author_avatar_url`, and `author_public_sqid` fields rather than a nested `author` object. Raw IP addresses are not included in public comment responses.
