@@ -1071,6 +1071,74 @@ class PulseItem(BaseModel):
     has_original_body: bool = False
 
 
+class PulseActor(BaseModel):
+    """The member a public Pulse card is about."""
+
+    public_sqid: str
+    handle: str
+    avatar_url: str | None = None
+
+
+class PulseComment(BaseModel):
+    """One comment inside a public Pulse `comments` card."""
+
+    id: UUID
+    preview: str  # plain text, mentions as @handle, max 140 chars
+    is_reply: bool = False
+    created_at: datetime
+    post: Post
+
+
+class PulsePlayer(BaseModel):
+    """Payload of a public Pulse `player` card. Deliberately no name, ids,
+    keys or connection state (docs/pulse/)."""
+
+    device_model: str | None = None
+
+
+class PulseBadge(BaseModel):
+    """One badge inside a public Pulse `badge` card."""
+
+    badge: str
+    label: str
+    icon_url_64: str | None = None  # null only for a badge with no definition
+
+
+class PulseReputation(BaseModel):
+    """Payload of a public Pulse `reputation` card."""
+
+    delta: int  # sum over the card; always > 0
+    total: int  # the member's total right after the card's last event
+
+
+class PulseCard(BaseModel):
+    """One card of the public Pulse timeline: one member + one kind of
+    activity + one burst (docs/pulse/messages/0002-…)."""
+
+    id: str  # opaque; stable while the card grows
+    kind: Literal[
+        "likes",
+        "posts",
+        "remixes",
+        "comments",
+        "player",
+        "badge",
+        "reputation",
+        "promoted",
+    ]
+    actor: PulseActor
+    started_at: datetime  # oldest event in the card
+    updated_at: datetime  # newest event in the card; the sort key
+    count: int  # events in the card, after the visibility rules
+
+    # Kind-specific; null on the kinds that do not use it
+    posts: list[Post] | None = None  # likes, posts, remixes, promoted (max 6)
+    comments: list[PulseComment] | None = None  # comments (max 3)
+    player: PulsePlayer | None = None  # player
+    badges: list[PulseBadge] | None = None  # badge
+    reputation: PulseReputation | None = None  # reputation
+
+
 class WidgetData(BaseModel):
     """Combined widget data (reactions + comments) for efficient loading."""
 

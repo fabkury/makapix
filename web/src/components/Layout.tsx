@@ -24,9 +24,16 @@ interface NavItem {
 
 // Feature flag and configuration for header bottom-row with trending hashtags
 const SHOW_BOTTOM_ROW = true;  // Set to false to disable bottom-row entirely
-const BOTTOM_ROW_PAGES = ['/', '/recommended', '/hashtags', '/hashtags/[tag]'];  // Pages where bottom-row appears
+const BOTTOM_ROW_PAGES = ['/recent', '/recommended', '/hashtags', '/hashtags/[tag]'];  // Pages where bottom-row appears
 
 const navItems: NavItem[] = [
+  {
+    // Signed-in landing page: `/` redirects here (docs/pulse/)
+    href: '/pulse',
+    icon: '🔥',
+    label: 'Pulse',
+    matchPaths: ['/', '/pulse']
+  },
   {
     href: '/contribute',
     iconSrc: '/button/contribute/btn004-contribute-32px-1x.png',
@@ -42,11 +49,11 @@ const navItems: NavItem[] = [
     matchPaths: ['/recommended']
   },
   {
-    href: '/',
+    href: '/recent',
     iconSrc: '/button/new-artworks/btn006-new-artworks-v2-32px-1x.png',
     iconSrcSet: '/button/new-artworks/btn006-new-artworks-v2-32px-1x.png 1x, /button/new-artworks/btn006-new-artworks-v2-40px-1_25x.png 1.25x, /button/new-artworks/btn006-new-artworks-v2-48px-1_5x.png 1.5x, /button/new-artworks/btn006-new-artworks-v2-56px-1_75x.png 1.75x, /button/new-artworks/btn006-new-artworks-v2-64px-2x.png 2x, /button/new-artworks/btn006-new-artworks-v2-72px-2_25x.png 2.25x, /button/new-artworks/btn006-new-artworks-v2-80px-2_5x.png 2.5x, /button/new-artworks/btn006-new-artworks-v2-88px-2_75x.png 2.75x, /button/new-artworks/btn006-new-artworks-v2-96px-3x.png 3x, /button/new-artworks/btn006-new-artworks-v2-104px-3_25x.png 3.25x, /button/new-artworks/btn006-new-artworks-v2-112px-3_5x.png 3.5x, /button/new-artworks/btn006-new-artworks-v2-128px-4x.png 4x',
     label: 'Recent',
-    matchPaths: ['/', '/recent', '/posts']
+    matchPaths: ['/recent', '/posts']
   },
   {
     href: '/search',
@@ -303,7 +310,7 @@ export default function Layout({ children, title, description }: LayoutProps) {
             // Fallback: redirect to welcome page if needs_welcome is true
             router.push('/new-account-welcome');
           } else {
-            // Default: redirect to Recent Artworks
+            // Default: the signed-in landing page (`/` → Pulse)
             router.push('/');
           }
         }
@@ -454,8 +461,8 @@ export default function Layout({ children, title, description }: LayoutProps) {
                 const active = isActive(item);
                 // Auth checks and redirects
                 const handleClick = (e: React.MouseEvent) => {
-                  // For Recent artworks (/), redirect unauthenticated users to /welcome
-                  if (item.href === '/' && !isLoggedIn) {
+                  // Pulse and Recent are members-only: send visitors to /welcome
+                  if ((item.href === '/pulse' || item.href === '/recent') && !isLoggedIn) {
                     e.preventDefault();
                     markWelcomeAsInternalNav();
                     router.push('/welcome');
@@ -918,12 +925,13 @@ export default function Layout({ children, title, description }: LayoutProps) {
             margin-left: 16px;
           }
 
+          /* Five nav icons + up to four on the left must fit a 360px phone */
           .nav > :global(* + *) {
-            margin-left: 6px;
+            margin-left: 2px;
           }
 
-          .nav-item {
-            width: 40px;
+          .nav :global(a.nav-item) {
+            width: 36px;
             height: 40px;
           }
 
@@ -942,6 +950,20 @@ export default function Layout({ children, title, description }: LayoutProps) {
 
           .menu-panel {
             left: 8px;
+          }
+        }
+
+        @media (max-width: 340px) {
+          .nav > :global(* + *) {
+            margin-left: 0;
+          }
+
+          .nav :global(a.nav-item) {
+            width: 32px;
+          }
+
+          .header-left > :global(* + *) {
+            margin-left: 4px;
           }
         }
       `}</style>
