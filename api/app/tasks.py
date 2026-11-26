@@ -157,6 +157,13 @@ celery_app.conf.update(
             "schedule": crontab(minute=45, hour=4),  # 04:45 ET
             "options": {"queue": "default"},
         },
+        # "Displayed on" list retention (docs/impression-list/ L4): forget a
+        # member 90 days after their last showing. No ordering dependency.
+        "cleanup-expired-impression-users": {
+            "task": "app.tasks.cleanup_expired_impression_users",
+            "schedule": crontab(minute=50, hour=4),  # 04:50 ET
+            "options": {"queue": "default"},
+        },
         "renew-crl-if-needed": {
             "task": "app.tasks.renew_crl_if_needed",
             "schedule": crontab(minute=0, hour=5),  # 05:00 ET
@@ -599,6 +606,21 @@ def write_view_event(self, event_data: dict) -> None:
         if counter_updates:
             db.query(models.Post).filter(models.Post.id == post_id).update(
                 counter_updates, synchronize_session=False
+            )
+
+        # An Impression with a member behind it also counts toward that
+        # member's row in the artwork's "Displayed on" list
+        # (docs/impression-list/).
+        if event_data["view_type"] == "impression" and viewer_user_id is not None:
+            from .services.impression_list import record_showing
+
+            record_showing(
+                db,
+                post_id=post_id,
+                user_id=viewer_user_id,
+                shown_at=created_at,
+                device_type=event_data["device_type"],
+                player_id=player_id,
             )
 
         db.commit()
@@ -3324,6 +3346,31 @@ def process_bdr_job(self, bdr_id: str) -> dict[str, Any]:
 
         raise  # Re-raise for Celery retry
 
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.cleanup_expired_impression_users", bind=True)
+def cleanup_expired_impression_users(self) -> dict[str, Any]:
+    """
+    Daily task: forget "Displayed on" rows whose last showing is older than
+    90 days (docs/impression-list/ L4).
+
+    Runs daily at 04:50 US Eastern (configured in beat_schedule).
+    """
+    from .db import SessionLocal
+    from .services.impression_list import delete_expired
+
+    db = SessionLocal()
+    try:
+        deleted = delete_expired(db)
+        db.commit()
+        logger.info(f"Impression list cleanup: {deleted} expired rows deleted")
+        return {"status": "success", "deleted": deleted}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Impression list cleanup failed: {e}", exc_info=True)
+        raise
     finally:
         db.close()
 

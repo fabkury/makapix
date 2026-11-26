@@ -24,6 +24,7 @@ import ReportDialog from "./ReportDialog";
 import UseAsAvatarDialog from "./UseAsAvatarDialog";
 import SPOCommentsOverlay from "./SPOCommentsOverlay";
 import SPOReactionUsersOverlay from "./SPOReactionUsersOverlay";
+import SPOImpressionUsersOverlay from "./SPOImpressionUsersOverlay";
 import { EMOJI_OPTIONS } from "./CommentsAndReactions";
 import { ensureCompatibleArtUrl } from "../utils/imageCompat";
 
@@ -553,6 +554,8 @@ export default function SelectedPostOverlay({
   const [metaContentKey, setMetaContentKey] = useState(0);
   const [showCommentsOverlay, setShowCommentsOverlay] = useState(false);
   const [showReactionUsersOverlay, setShowReactionUsersOverlay] =
+    useState(false);
+  const [showImpressionUsersOverlay, setShowImpressionUsersOverlay] =
     useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [activeSubMenu, setActiveSubMenu] = useState<string | null>(null);
@@ -1483,7 +1486,10 @@ export default function SelectedPostOverlay({
         if (showMoreMenu) {
           setShowMoreMenu(false);
           closeSubPanelImmediate();
-        } else if (!showCommentsOverlay && !showReactionUsersOverlay) {
+        } else if (!showCommentsOverlay &&
+          !showReactionUsersOverlay &&
+          !showImpressionUsersOverlay
+        ) {
           void dismissToOriginAndClose();
         }
       }
@@ -1493,7 +1499,8 @@ export default function SelectedPostOverlay({
         phase === "selected" &&
         !showMoreMenu &&
         !showCommentsOverlay &&
-        !showReactionUsersOverlay
+        !showReactionUsersOverlay &&
+        !showImpressionUsersOverlay
       ) {
         if (e.key === "ArrowRight") {
           e.preventDefault();
@@ -1519,6 +1526,7 @@ export default function SelectedPostOverlay({
     dismissToOriginAndClose,
     showCommentsOverlay,
     showReactionUsersOverlay,
+    showImpressionUsersOverlay,
     showMoreMenu,
     phase,
     selectedIndex,
@@ -1776,7 +1784,14 @@ export default function SelectedPostOverlay({
                   </span>
                   <span>{widgetData?.views_count ?? 0}</span>
                 </div>
-                <div style={postViewCountStyles} title="Impressions">
+                <div
+                  style={{ ...postViewCountStyles, cursor: "pointer" }}
+                  title="See where this was displayed"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowImpressionUsersOverlay(true);
+                  }}
+                >
                   <span style={{ fontSize: "16px", marginRight: "-2px" }}>
                     📺
                   </span>
@@ -2482,6 +2497,13 @@ export default function SelectedPostOverlay({
         postId={post.id}
         isOpen={showReactionUsersOverlay}
         onClose={() => setShowReactionUsersOverlay(false)}
+      />
+
+      {/* "Displayed on" overlay (opened by 📺) */}
+      <SPOImpressionUsersOverlay
+        postId={post.id}
+        isOpen={showImpressionUsersOverlay}
+        onClose={() => setShowImpressionUsersOverlay(false)}
       />
     </div>,
     portalEl,

@@ -175,6 +175,30 @@ def get_reaction_users(
     return schemas.ReactionUsersResponse(items=items, total=len(items))
 
 
+@router.get(
+    "/{id}/impression-users",
+    response_model=schemas.Page[schemas.ImpressionUserItem],
+)
+def get_impression_users(
+    id: int,
+    cursor: str | None = None,
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+) -> schemas.Page[schemas.ImpressionUserItem]:
+    """
+    Members whose screens showed this artwork in the last 90 days — the
+    "Displayed on" list behind the 📺 number (docs/impression-list/).
+
+    Signed-in members only. Most recently shown first. Members who turned off
+    "Show me in Displayed on lists" are never included.
+    """
+    from ..services.impression_list import list_impression_users
+
+    post = get_accessible_post_or_404(db, id, current_user)
+    return list_impression_users(db, post, current_user, cursor, limit)
+
+
 @router.put(
     "/{id}/reactions/{emoji}",
     status_code=status.HTTP_204_NO_CONTENT,

@@ -612,6 +612,10 @@ def update_user(
     if payload.mention_policy is not None:
         user.mention_policy = payload.mention_policy
 
+    # Appear in "Displayed on" lists (docs/impression-list/ L5).
+    if payload.show_in_impression_lists is not None:
+        user.show_in_impression_lists = payload.show_in_impression_lists
+
     # Language for our emails (docs/localized-text/ D6); explicit null clears.
     if "locale" in payload.model_fields_set:
         user.locale = payload.locale

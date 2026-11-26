@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Annotated, Any, Generic, Literal, TypeVar
 from uuid import UUID
@@ -307,6 +307,8 @@ class UserFull(UserPublic):
     # Who may @mention this user: everyone | following (only members this user
     # follows) | nobody (docs/mentions/, D11)
     mention_policy: MentionPolicy = "everyone"
+    # Appear in artworks' "Displayed on" lists (docs/impression-list/ L5)
+    show_in_impression_lists: bool = True
     # Language for the emails we send (BCP 47); null = English
     locale: str | None = None
 
@@ -334,6 +336,7 @@ class UserUpdate(BaseModel):
     hidden_by_user: bool | None = None
     approved_hashtags: list[str] | None = None
     mention_policy: MentionPolicy | None = None
+    show_in_impression_lists: bool | None = None
     # Send null to clear (English)
     locale: Locale | None = None
 
@@ -1032,6 +1035,27 @@ class ReactionUsersResponse(BaseModel):
 
     items: list[ReactionUserItem]
     total: int
+
+
+class ImpressionUserItem(BaseModel):
+    """A member whose screens showed an artwork (docs/impression-list/).
+
+    Deliberately coarse: a calendar day, never a time, and device models,
+    never the member's own names for their players.
+    """
+
+    user_handle: str
+    user_avatar_url: str | None = None
+    user_public_sqid: str | None = None
+    # Models of the member's players that showed it (may be empty)
+    device_models: list[str] = Field(default_factory=list)
+    # Shown in the in-browser Web Player / in the mobile app
+    web_player: bool = False
+    app: bool = False
+    # Showings counted for this member on this artwork
+    count: int
+    # UTC calendar day of the latest showing
+    last_shown_on: date
 
 
 class PulseItem(BaseModel):
