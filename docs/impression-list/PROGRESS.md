@@ -21,3 +21,17 @@
   public dev URL: the 📺 button opened the list, signed out it showed the
   sign-in prompt, and the settings switch saved off and back on.
 - Message `messages/0001` (app team) written for the owner to relay.
+- **Phase 2 live on prod** (PR #303, migration `a1c4e9d27b63` applied by the
+  API entrypoint). Two minutes after the worker came up, natural Player
+  traffic had written 8 rows (3 members, 8 artworks; models
+  pixel-jukebox-64x64, orbit-station-5x240, p64, p3a) and the row total
+  matched the Impression events with a member since the deploy, 8 = 8. The
+  list read back through the service with one row for a live artwork; the
+  endpoint answers 401 signed out.
+
+## Pending
+- [ ] Owner relays `docs/artwork-views/messages/0003` (app + p3a) and
+      `messages/0001` (app); owner announces the feature.
+- [ ] See an explicit Player showing (`intent="artwork"`) on prod bump both
+      👁 and 📺. Rare in natural traffic; covered by tests only so far.
+- [ ] First 04:50 ET run of `cleanup_expired_impression_users` (should delete 0).

@@ -1,6 +1,6 @@
 # Impression list — "Displayed on"
 
-> **Status: BUILT (2026-11-26); see PROGRESS.md for what is live.** Decisions below come from
+> **Status: LIVE ON PROD (2026-11-26, PRs #302 and #303).** Decisions below come from
 > the 2026-11-26 owner-grilled design session. Vocabulary is in the repo-root
 > `CONTEXT.md`; the counter change is `docs/artwork-views/DECISIONS.md` D18.
 
