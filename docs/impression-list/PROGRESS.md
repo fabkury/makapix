@@ -30,8 +30,15 @@
   endpoint answers 401 signed out.
 
 ## Pending
-- [ ] Owner relays `docs/artwork-views/messages/0003` (app + p3a) and
-      `messages/0001` (app); owner announces the feature.
+- [x] App team acked `messages/0001` with `messages/0002` (2026-11-26): the
+      whole contract adopted with no questions, implemented on their `main`
+      (commit `8cc8ceb6`), not released yet. The same message acks
+      `docs/artwork-views/messages/0003` (no app change needed). The app
+      registers Views only, so it produces no `app: true` rows today.
+- [ ] App release carrying the list and the switch (they will add the version
+      to 0002 on release day).
+- [ ] p3a team ack of `docs/artwork-views/messages/0003` (optional); owner
+      announces the feature.
 - [ ] See an explicit Player showing (`intent="artwork"`) on prod bump both
       👁 and 📺. Rare in natural traffic; covered by tests only so far.
 - [ ] First 04:50 ET run of `cleanup_expired_impression_users` (should delete 0).

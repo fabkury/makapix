@@ -45,6 +45,9 @@ rows from `reactions`, `comments`, `badge_grants`, `reputation_history` and
 dev; three posts were re-timed for the check and put back afterwards.
 
 ## Open
-- App team builds the page against 0002 and tells us the release version.
+- ~~App team builds the page against 0002 and tells us the release version.~~
+  Done: `messages/0004` — Pulse shipped in app **1.15.0** (Android versionCode 44
+  on Play production 2026-11-25; iOS build 37 in App Review, auto-release).
+  Thread closed from their side.
 - Owner click-test of `/pulse` on prod (the browser check was done on dev).
 - `joined` cards, if the owner wants them later (see README, P2).
