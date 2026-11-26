@@ -5,12 +5,12 @@ Glossary for the Makapix Club (MPX) domain — a pixel art social network servin
 ## Artwork engagement
 
 **Artwork View**:
-A person deliberately looked at an artwork: on screen at least 2 seconds, by a Visitor who is not the artwork's author, counted at most once per Visitor per artwork per UTC day. The only metric public counters show.
+A person deliberately looked at an artwork: on screen at least 2 seconds, by a Visitor who is not the artwork's author, counted at most once per Visitor per artwork per UTC day. Shown publicly as the 👁 counter.
 _Avoid_: view (unqualified), intentional view, hit
 
 **Impression**:
-An artwork passed in front of someone without a deliberate choice to look — autoplay rotation on a player or Web Player, or appearance in a listing. Counted as volume, never summed with Artwork Views.
-_Avoid_: listing view, passive view, play
+An artwork was shown in playback — on a Player or in the Web Player — whether it came up in rotation or was explicitly requested. Counted as volume: every showing counts, except showings on the artwork author's own screens. An explicitly requested showing on a Player is both an Impression and an Artwork View; the two metrics overlap by design and are never added together.
+_Avoid_: listing view, passive view, play, display (as a separate metric)
 
 **Visitor**:
 The deduplication identity behind view metrics: the user account when authenticated, otherwise the (salted) hashed IP. One person on two logged-in devices is one Visitor; a shared anonymous NAT is one Visitor.

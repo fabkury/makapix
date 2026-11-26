@@ -157,6 +157,13 @@ celery_app.conf.update(
             "schedule": crontab(minute=45, hour=4),  # 04:45 ET
             "options": {"queue": "default"},
         },
+        # "Displayed on" list retention (docs/impression-list/ L4): forget a
+        # member 90 days after their last showing. No ordering dependency.
+        "cleanup-expired-impression-users": {
+            "task": "app.tasks.cleanup_expired_impression_users",
+            "schedule": crontab(minute=50, hour=4),  # 04:50 ET
+            "options": {"queue": "default"},
+        },
         "renew-crl-if-needed": {
             "task": "app.tasks.renew_crl_if_needed",
             "schedule": crontab(minute=0, hour=5),  # 05:00 ET
@@ -558,19 +565,62 @@ def write_view_event(self, event_data: dict) -> None:
 
         db.add(view_event)
 
-        # Accepted Artwork Views bump the denormalized public counter in the
-        # same transaction (docs/artwork-views/ D11). The nightly rollup
-        # recomputes the exact value, so any drift self-heals.
-        if event_data["view_type"] == "view":
-            db.query(models.Post).filter(models.Post.id == post_id).update(
-                {models.Post.view_count: models.Post.view_count + 1},
-                synchronize_session=False,
+        # An explicit showing on a Player is an Impression AND an Artwork
+        # View (docs/artwork-views/ D18): the ingestion side sends one
+        # 'impression' event flagged also_view when the per-day View dedup
+        # let it through, and both rows land in this one transaction.
+        also_view = bool(event_data.get("also_view"))
+        if also_view:
+            db.add(
+                models.ViewEvent(
+                    id=uuid.uuid4(),
+                    post_id=post_id,
+                    viewer_user_id=viewer_user_id,
+                    viewer_ip_hash=event_data["viewer_ip_hash"],
+                    country_code=event_data.get("country_code"),
+                    device_type=event_data["device_type"],
+                    view_source=event_data["view_source"],
+                    view_type="view",
+                    user_agent_hash=event_data.get("user_agent_hash"),
+                    referrer_domain=event_data.get("referrer_domain"),
+                    created_at=created_at,
+                    player_id=player_id,
+                    local_datetime=event_data.get("local_datetime"),
+                    local_timezone=event_data.get("local_timezone"),
+                    play_order=event_data.get("play_order"),
+                    channel=event_data.get("channel"),
+                    channel_context=event_data.get("channel_context"),
+                )
             )
-        elif event_data["view_type"] == "impression":
-            # Same contract for the undeduped Impressions counter (D17).
+
+        # Accepted Artwork Views and Impressions bump the denormalized public
+        # counters in the same transaction (docs/artwork-views/ D11, D17).
+        # The nightly rollup recomputes the exact values, so drift self-heals.
+        counter_updates = {}
+        if event_data["view_type"] == "view" or also_view:
+            counter_updates[models.Post.view_count] = models.Post.view_count + 1
+        if event_data["view_type"] == "impression":
+            counter_updates[models.Post.impression_count] = (
+                models.Post.impression_count + 1
+            )
+        if counter_updates:
             db.query(models.Post).filter(models.Post.id == post_id).update(
-                {models.Post.impression_count: models.Post.impression_count + 1},
-                synchronize_session=False,
+                counter_updates, synchronize_session=False
+            )
+
+        # An Impression with a member behind it also counts toward that
+        # member's row in the artwork's "Displayed on" list
+        # (docs/impression-list/).
+        if event_data["view_type"] == "impression" and viewer_user_id is not None:
+            from .services.impression_list import record_showing
+
+            record_showing(
+                db,
+                post_id=post_id,
+                user_id=viewer_user_id,
+                shown_at=created_at,
+                device_type=event_data["device_type"],
+                player_id=player_id,
             )
 
         db.commit()
@@ -906,14 +956,24 @@ def rollup_view_events(self) -> dict[str, Any]:
                         if event.viewer_user_id is not None:
                             agg["impressions_auth"] += 1
 
-                    # Site-level player slice: every player event is a "play"
-                    # (Views + Impressions), matching the pre-redesign numbers.
+                    # Site-level player slice: every showing is one "play".
+                    # Since D18 a registered Player's explicit showing writes
+                    # an Impression row plus (first of the day) a paired View
+                    # row, so the paired View row is not a second play.
                     if event.device_type == "player":
-                        player_total += 1
+                        is_paired_view = (
+                            event.player_id is not None
+                            and canonical_view_type(event.view_type) == VIEW
+                        )
+                        if not is_paired_view:
+                            player_total += 1
                         if event.player_id:
                             pid = str(event.player_id)
                             player_ids.add(pid)
-                            views_by_player_id[pid] = views_by_player_id.get(pid, 0) + 1
+                            if not is_paired_view:
+                                views_by_player_id[pid] = (
+                                    views_by_player_id.get(pid, 0) + 1
+                                )
 
                 offset += BATCH_SIZE
                 # Clear SQLAlchemy's identity map to free memory
@@ -3286,6 +3346,31 @@ def process_bdr_job(self, bdr_id: str) -> dict[str, Any]:
 
         raise  # Re-raise for Celery retry
 
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.cleanup_expired_impression_users", bind=True)
+def cleanup_expired_impression_users(self) -> dict[str, Any]:
+    """
+    Daily task: forget "Displayed on" rows whose last showing is older than
+    90 days (docs/impression-list/ L4).
+
+    Runs daily at 04:50 US Eastern (configured in beat_schedule).
+    """
+    from .db import SessionLocal
+    from .services.impression_list import delete_expired
+
+    db = SessionLocal()
+    try:
+        deleted = delete_expired(db)
+        db.commit()
+        logger.info(f"Impression list cleanup: {deleted} expired rows deleted")
+        return {"status": "success", "deleted": deleted}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Impression list cleanup failed: {e}", exc_info=True)
+        raise
     finally:
         db.close()
 

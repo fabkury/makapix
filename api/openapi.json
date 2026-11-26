@@ -3035,6 +3035,70 @@
         "title": "HourlyCount",
         "type": "object"
       },
+      "ImpressionUserItem": {
+        "description": "A member whose screens showed an artwork (docs/impression-list/).\n\nDeliberately coarse: a calendar day, never a time, and device models,\nnever the member's own names for their players.",
+        "properties": {
+          "app": {
+            "default": false,
+            "title": "App",
+            "type": "boolean"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "device_models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Device Models",
+            "type": "array"
+          },
+          "last_shown_on": {
+            "format": "date",
+            "title": "Last Shown On",
+            "type": "string"
+          },
+          "user_avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Avatar Url"
+          },
+          "user_handle": {
+            "title": "User Handle",
+            "type": "string"
+          },
+          "user_public_sqid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Public Sqid"
+          },
+          "web_player": {
+            "default": false,
+            "title": "Web Player",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "user_handle",
+          "count",
+          "last_shown_on"
+        ],
+        "title": "ImpressionUserItem",
+        "type": "object"
+      },
       "IssueViolationRequest": {
         "description": "Issue violation request.",
         "properties": {
@@ -4148,6 +4212,33 @@
           "items"
         ],
         "title": "Page[Comment]",
+        "type": "object"
+      },
+      "Page_ImpressionUserItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ImpressionUserItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "Page[ImpressionUserItem]",
         "type": "object"
       },
       "Page_Playlist_": {
@@ -9405,6 +9496,11 @@
             "title": "Roles",
             "type": "array"
           },
+          "show_in_impression_lists": {
+            "default": true,
+            "title": "Show In Impression Lists",
+            "type": "boolean"
+          },
           "tagline": {
             "anyOf": [
               {
@@ -9917,6 +10013,17 @@
               }
             ],
             "title": "Mention Policy"
+          },
+          "show_in_impression_lists": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Show In Impression Lists"
           },
           "tagline": {
             "anyOf": [
@@ -20004,6 +20111,82 @@
         "summary": "Hide Post",
         "tags": [
           "Posts"
+        ]
+      }
+    },
+    "/v1/post/{id}/impression-users": {
+      "get": {
+        "description": "Members whose screens showed this artwork in the last 90 days — the\n\"Displayed on\" list behind the 📺 number (docs/impression-list/).\n\nSigned-in members only. Most recently shown first. Members who turned off\n\"Show me in Displayed on lists\" are never included.",
+        "operationId": "get_impression_users_v1_post__id__impression_users_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ImpressionUserItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Impression Users",
+        "tags": [
+          "Reactions"
         ]
       }
     },

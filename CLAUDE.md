@@ -70,6 +70,7 @@ make clean           # Removes containers AND volumes (10-second grace period)
 | site_events | 7 days | site_stats_daily | Page views, signups, uploads, errors |
 | view_events | 7 days | site_stats_daily | Player artwork views |
 | site_stats_daily | Permanent | — | Daily rollups with auth breakdowns |
+| post_impression_users | 90 days after last showing | — | "Displayed on" list rows (member × artwork); days only, no times — see `docs/impression-list/` |
 
 **Rollup Schedule:** The daily Celery-beat rollups/cleanups run at fixed US Eastern times (beat `timezone="America/New_York"`), staggered across the 01:00–05:00 ET window. `rollup_view_events` 01:00 → `rollup_site_events` 02:00 → `cleanup_old_view_events` 02:30 (order is load-bearing: cleanup must follow the rollups). See `beat_schedule` in `api/app/tasks.py` for the full list.
 

@@ -66,6 +66,13 @@ export default function ContentSettingsPage() {
   const [policyError, setPolicyError] = useState<string | null>(null);
   const [policySaved, setPolicySaved] = useState(false);
 
+  // "Displayed on" lists opt-out (docs/impression-list/ L5); null hides the
+  // control (server without the setting).
+  const [showInLists, setShowInLists] = useState<boolean | null>(null);
+  const [listsSaving, setListsSaving] = useState(false);
+  const [listsError, setListsError] = useState<string | null>(null);
+  const [listsSaved, setListsSaved] = useState(false);
+
   const API_BASE_URL =
     typeof window !== 'undefined'
       ? process.env.NEXT_PUBLIC_API_BASE_URL || window.location.origin
@@ -110,6 +117,11 @@ export default function ContentSettingsPage() {
         setMentionPolicy(
           MENTION_POLICY_OPTIONS.some((o) => o.value === me.mention_policy)
             ? me.mention_policy
+            : null
+        );
+        setShowInLists(
+          typeof me.show_in_impression_lists === 'boolean'
+            ? me.show_in_impression_lists
             : null
         );
       } catch (err: any) {
@@ -226,6 +238,44 @@ export default function ContentSettingsPage() {
       setSaveError(err.message || 'Failed to save changes');
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Saves on change.
+  const handleShowInListsChange = async (next: boolean) => {
+    if (!userKey || showInLists === null) return;
+    const previous = showInLists;
+    setShowInLists(next);
+    setListsSaving(true);
+    setListsError(null);
+    setListsSaved(false);
+
+    try {
+      const response = await authenticatedFetch(`${API_BASE_URL}/api/user/${userKey}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ show_in_impression_lists: next }),
+      });
+
+      if (response.status === 401) {
+        clearTokens();
+        router.push('/auth');
+        return;
+      }
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        setShowInLists(previous);
+        setListsError(
+          typeof errData.detail === 'string' ? errData.detail : 'Failed to save changes'
+        );
+        return;
+      }
+      setListsSaved(true);
+    } catch (err: any) {
+      setShowInLists(previous);
+      setListsError(err.message || 'Failed to save changes');
+    } finally {
+      setListsSaving(false);
     }
   };
 
@@ -409,6 +459,43 @@ export default function ContentSettingsPage() {
 
             {policyError && <p className="save-error">{policyError}</p>}
             {policySaved && <p className="save-success">Saved.</p>}
+          </section>
+        )}
+
+        {showInLists !== null && (
+          <section className="settings-card">
+            <h2>Displayed on lists</h2>
+            <p className="section-intro">
+              Every artwork has a 📺 list of the members whose screens displayed it.
+            </p>
+
+            <div className="tag-list">
+              <label
+                className={`tag-row ${showInLists ? 'is-on' : ''}`}
+                htmlFor="show-in-impression-lists"
+              >
+                <input
+                  id="show-in-impression-lists"
+                  type="checkbox"
+                  checked={showInLists}
+                  disabled={listsSaving}
+                  onChange={(e) => handleShowInListsChange(e.target.checked)}
+                />
+                <span className="tag-text">
+                  <span className="tag-label" style={{ fontFamily: 'inherit' }}>
+                    Show me in Displayed on lists
+                  </span>
+                  <span className="tag-desc">
+                    When your player or the Web Player shows an artwork, other
+                    members can see you in that artwork&apos;s Displayed on list.
+                  </span>
+                </span>
+                <span className="tag-state">{showInLists ? 'Shown' : 'Hidden'}</span>
+              </label>
+            </div>
+
+            {listsError && <p className="save-error">{listsError}</p>}
+            {listsSaved && <p className="save-success">Saved.</p>}
           </section>
         )}
 
