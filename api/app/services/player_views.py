@@ -29,6 +29,9 @@ DUPLICATE = "duplicate"
 RATE_LIMITED = "rate_limited"
 POST_NOT_FOUND = "post_not_found"
 SELF_VIEW = "self_view"  # accepted, but intentionally not recorded
+# DUPLICATE means a retransmission of the same event. A repeat explicit
+# showing on the same day is RECORDED: it is an Impression, just not a second
+# Artwork View (docs/artwork-views/ D18).
 
 
 @dataclass
@@ -84,33 +87,24 @@ def record_view_event(
     from ..tasks import write_view_event
     from ..utils.view_tracking import ViewSource, hash_ip, visitor_key
     from .rate_limit import check_and_set_daily_view_dedup
-    from .view_metrics import IMPRESSION, VIEW
+    from .view_metrics import IMPRESSION
 
-    # Map p3a's intent to the canonical model (docs/artwork-views/ D6):
-    # an explicit artwork request is an Artwork View, channel playback is an
-    # Impression.
+    # Every showing on a Player is an Impression (docs/artwork-views/ D18):
+    # channel playback and explicit requests alike, undeduplicated volume.
+    # An explicit request ("artwork") is ALSO an Artwork View, counted once
+    # per (Visitor, artwork, UTC day). The player's owner is the Visitor
+    # (same identity space as their web sessions), so an owner's web View and
+    # their player's View of the same artwork collapse to one — and a repeat
+    # explicit showing that day still counts as an Impression.
+    also_view = False
     if event.intent == "artwork":
-        view_type = VIEW
-    elif event.intent == "channel":
-        view_type = IMPRESSION
-    else:
+        also_view = not check_and_set_daily_view_dedup(
+            visitor_key(player.owner_id, ""), event.post_id
+        )
+    elif event.intent != "channel":
         logger.warning(
             f"Unexpected intent value: {event.intent}, defaulting to impression"
         )
-        view_type = IMPRESSION
-
-    # Views count once per (Visitor, artwork, UTC day). The player's owner is
-    # the Visitor (same identity space as their web sessions), so an owner's
-    # web View and their player's View of the same artwork collapse to one.
-    if view_type == VIEW:
-        if check_and_set_daily_view_dedup(
-            visitor_key(player.owner_id, ""), event.post_id
-        ):
-            logger.debug(
-                f"Daily-deduped player view: owner={player.owner_id}, "
-                f"post={event.post_id}"
-            )
-            return ViewIngestResult(DUPLICATE)
 
     # Reject "1970-01-01T00:00:00Z" (unsynced device) -> store NULL local time.
     local_datetime = event.timestamp if event.timestamp != UNSYNC_TIMESTAMP else None
@@ -132,7 +126,9 @@ def record_view_event(
         "country_code": None,  # Players don't have geographic info
         "device_type": "player",
         "view_source": ViewSource.PLAYER.value,
-        "view_type": view_type,
+        "view_type": IMPRESSION,
+        # Also write the paired Artwork View row + bump view_count (D18).
+        "also_view": also_view,
         "user_agent_hash": None,
         "referrer_domain": None,
         "created_at": datetime.now(timezone.utc).isoformat(),

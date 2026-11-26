@@ -88,3 +88,16 @@
       (set period/grace in the UI). NOTE: dev's watchdog will alert once at its
       next 02:30 run from the 422 injected during dev verification — expected.
 - [ ] App team ack of messages/0001 (no action required on their side).
+
+## 2026-11-26 — D18: explicit Player showings count in 📺 as well
+- Owner decision (design session for `docs/impression-list/`): an Impression
+  is any showing in playback, by rotation or by request. Glossary and D18.
+- `record_view_event` now always dispatches an `impression` event; for
+  `intent="artwork"` it sets `also_view` when the per-day View dedup lets it
+  through, and `write_view_event` writes the paired `view` row and bumps both
+  counters in one transaction. A same-day repeat is `RECORDED` (Impression
+  only), no longer `DUPLICATE`. Recompute SQL unchanged; forward only.
+- Rollup site-wide player slice: a Player's paired `view` row is not a second
+  "play". Player-attributed View rows written earlier on the deploy day drop
+  out of that moderator-only figure for that one day (accepted).
+- Message `messages/0003` (app + p3a, FYI) written for the owner to relay.

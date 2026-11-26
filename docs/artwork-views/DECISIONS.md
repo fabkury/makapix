@@ -72,6 +72,18 @@ Impressions become a public per-artwork counter alongside Views, shown with 📺
 
 Storage mirrors D11: denormalized `posts.impression_count`, incremented in `write_view_event` on accepted Impressions, recomputed exactly by the nightly rollup (`recompute_post_impression_counts`, the undeduped twin of the Views recompute: canonical `impression` slice of the daily breakdowns plus raw impression rows after the watermark). Backfill counts **canonical `impression` only** — pre-redesign `listing`/`search`/`widget` rows are excluded, so lifetime Impressions start at 2026-08-13. Rejected: compute-on-read (a second stitching path this redesign deleted); folding legacy listing exposure in (mixed semantics for a bigger number).
 
+## D18 — Explicit Player displays count in both 👁 and 📺, amending D2, D6 and D17 (2026-11-26)
+
+An Impression is redefined as *an artwork shown in playback, on a Player or in the Web Player, by rotation or by explicit request* (glossary updated). A Player's `intent="artwork"` event therefore counts twice by design: as an Artwork View (unchanged — once per owner-Visitor per artwork per UTC day) **and** as an Impression (every showing, undeduplicated, guarded only by the 1/5s per-Player rate limit). Repeat explicit showings on the same day, which the View dedup drops today before anything is stored, must be recorded as Impressions. `intent="channel"` and the Web Player are unchanged. Showings on the artwork author's own screens stay excluded from both counters.
+
+D2's "never summed" becomes "overlap by design, never added together": 👁 and 📺 are still separate figures, but 📺 is no longer a disjoint set. D6's mapping gains the second effect; D17's storage and surfaces are unchanged.
+
+**Forward only**: existing `posts.impression_count` values are not backfilled. Past explicit displays survive only as per-day deduped Player Views in the daily breakdowns, so any backfill would be an undercount of mixed semantics. Lifetime 📺 includes explicit displays from the release date of this change.
+
+Why: the owner's intent for 📺 was always "times this was on a screen"; splitting Player activity across two counters by intent hid real screen time, and the 📺 list (`docs/impression-list/`) needs the number and the list to describe the same thing. Rejected: moving explicit displays to 📺 only (👁 drops for Player-popular artworks, and choosing an artwork *is* a deliberate look); once-per-day counting in 📺 (two counting rules inside one number); a new "Display" term (ripples through API field names, the app and p3a docs for no behavioural gain).
+
+No firmware change. p3a team gets an informational note; the app team is told because `impression_count` semantics shift.
+
 ---
 
 ## Appendix — implementation decisions (2026-08-13, resolved during build)

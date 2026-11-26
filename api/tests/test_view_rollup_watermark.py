@@ -190,15 +190,18 @@ def test_rollup_writes_site_player_slice(db, post, owner):
     db.commit()
 
     set_view_watermark(db, datetime.now(timezone.utc).date() - timedelta(days=3))
+    # An explicit showing (D18): an Impression row plus its paired View row,
+    # then a channel-rotation Impression. Two showings = two plays.
     _event(db, post.id, _utc_day(2, 9), device="player", player_id=player.id)
-    _event(
-        db,
-        post.id,
-        _utc_day(2, 10),
-        device="player",
-        player_id=player.id,
-        view_type="impression",
-    )
+    for hour in (9, 10):
+        _event(
+            db,
+            post.id,
+            _utc_day(2, hour),
+            device="player",
+            player_id=player.id,
+            view_type="impression",
+        )
     db.commit()
 
     _run(db)
@@ -207,7 +210,7 @@ def test_rollup_writes_site_player_slice(db, post, owner):
     site_row = (
         db.query(models.SiteStatsDaily).filter(models.SiteStatsDaily.date == day).one()
     )
-    assert site_row.total_player_views == 2  # views + impressions = "plays"
+    assert site_row.total_player_views == 2  # the paired View row is not a play
     assert site_row.active_players == 1
     assert site_row.views_by_player == {f"{owner.handle} / Kitchen": 2}
 

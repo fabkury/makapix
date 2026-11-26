@@ -98,6 +98,12 @@ makapix/player/{player_key}/view
 | `artwork` | User explicitly requested this artwork |
 | `channel` | Artwork shown via automated playback |
 
+Every reported showing counts as one **Impression** (the public 📺 number),
+whatever the intent. An `artwork` showing additionally counts as an **Artwork
+View** (👁), at most once per owner per artwork per UTC day. Showings of the
+player owner's own artworks are accepted but never counted. This mapping is
+server-side; the payload is unchanged (`docs/artwork-views/DECISIONS.md` D6, D18).
+
 ### Play Order Values
 
 | Value | Description |
