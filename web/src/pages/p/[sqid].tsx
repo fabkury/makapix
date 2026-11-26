@@ -4,6 +4,7 @@ import { useRouter } from "next/router";
 import Layout from "../../components/Layout";
 import CommentsAndReactions from "../../components/CommentsAndReactions";
 import SPOReactionUsersOverlay from "../../components/SPOReactionUsersOverlay";
+import SPOImpressionUsersOverlay from "../../components/SPOImpressionUsersOverlay";
 import StatsPanel from "../../components/StatsPanel";
 import PlayerBar from "../../components/PlayerBarDynamic";
 import {
@@ -195,6 +196,9 @@ export default function PostPage() {
 
   // Reaction users overlay (opened via ⚡ stat click)
   const [showReactionUsersOverlay, setShowReactionUsersOverlay] =
+    useState(false);
+  // "Displayed on" overlay (opened via 📺 stat click)
+  const [showImpressionUsersOverlay, setShowImpressionUsersOverlay] =
     useState(false);
 
   // Kebab menu state
@@ -1567,12 +1571,18 @@ export default function PostPage() {
                     {widgetData?.views_count ?? 0}
                   </span>
                 </div>
-                <div className="stat-item" title="Impressions">
+                <button
+                  type="button"
+                  className="stat-item stat-reactions"
+                  onClick={() => setShowImpressionUsersOverlay(true)}
+                  title="See where this was displayed"
+                  aria-label="See where this was displayed"
+                >
                   <span className="stat-icon">📺</span>
                   <span className="stat-count">
                     {widgetData?.impressions_count ?? 0}
                   </span>
-                </div>
+                </button>
                 <button
                   ref={moreButtonRef}
                   type="button"
@@ -2225,6 +2235,13 @@ export default function PostPage() {
         postId={post.id}
         isOpen={showReactionUsersOverlay}
         onClose={() => setShowReactionUsersOverlay(false)}
+      />
+
+      {/* "Displayed on" overlay (opened by 📺 stat) */}
+      <SPOImpressionUsersOverlay
+        postId={post.id}
+        isOpen={showImpressionUsersOverlay}
+        onClose={() => setShowImpressionUsersOverlay(false)}
       />
 
       {/* Stats Panel Modal */}

@@ -151,6 +151,12 @@ class User(Base):
     # Language the app shows this user, as a BCP 47 tag (docs/localized-text/
     # D6); NULL = English. Picks the language of the emails we send them.
     locale = Column(String(35), nullable=True)
+    # Whether this user appears in artworks' "Displayed on" lists
+    # (docs/impression-list/ L5). Read at list time only: showings are
+    # recorded either way, so opting back in restores the rows.
+    show_in_impression_lists = Column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
 
     # Timestamps
     created_at = Column(
@@ -1386,6 +1392,54 @@ class ViewEvent(Base):
     )
 
     __table_args__ = (Index("ix_view_events_post_created", post_id, created_at.desc()),)
+
+
+class PostImpressionUser(Base):
+    """One member whose screens showed one artwork (docs/impression-list/).
+
+    Backs the "Displayed on" list opened from the 📺 number: one row per
+    (artwork, member), upserted for every accepted Impression that has a
+    member behind it (a Player's owner, or a signed-in Web Player / app
+    user). Deliberately coarse: calendar days, never times (L3), and device
+    models, never Player names or ids (L2). Forgotten 90 days after the last
+    showing (L4, `cleanup_expired_impression_users`).
+    """
+
+    __tablename__ = "post_impression_users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    post_id = Column(
+        Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Running total of showings since the row was created.
+    shown_count = Column(Integer, nullable=False, default=1, server_default=text("1"))
+    # UTC calendar days.
+    first_shown_on = Column(Date, nullable=False)
+    last_shown_on = Column(Date, nullable=False, index=True)
+    # Where it was shown: distinct Player device models (snapshotted when the
+    # showing was recorded), plus whether the Web Player / the app showed it.
+    device_models = Column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    web_player = Column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    app = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+
+    user = relationship("User", passive_deletes=True)
+
+    __table_args__ = (
+        UniqueConstraint("post_id", "user_id", name="uq_post_impression_users"),
+        Index(
+            "ix_post_impression_users_post_last",
+            post_id,
+            last_shown_on.desc(),
+            id.desc(),
+        ),
+    )
 
 
 class PostStatsDaily(Base):

@@ -1,6 +1,6 @@
 # Impression list — "Displayed on"
 
-> **Status: PLANNED (2026-11-26). Nothing built.** Decisions below come from
+> **Status: BUILT (2026-11-26); see PROGRESS.md for what is live.** Decisions below come from
 > the 2026-11-26 owner-grilled design session. Vocabulary is in the repo-root
 > `CONTEXT.md`; the counter change is `docs/artwork-views/DECISIONS.md` D18.
 
@@ -99,3 +99,23 @@ server message to the app team (endpoint, setting, the day-granularity rule).
 and opt-in restores; blocked/hidden/banned filtered; author never listed;
 401 signed out; hidden artwork follows access rules; expiry task; no Player
 name or id anywhere in the payload.
+
+## As built (2026-11-26)
+
+- Table `post_impression_users` (`models.PostImpressionUser`), migration
+  `a1c4e9d27b63`. **Days, not timestamps, are stored** (`first_shown_on`,
+  `last_shown_on`): the pagination cursor carries the sort value, so a stored
+  time would have leaked through it.
+- `api/app/services/impression_list.py`: `record_showing` (single-statement
+  upsert, called from `write_view_event` for every Impression with a member
+  behind it), `list_impression_users`, `delete_expired`.
+- `GET /post/{id}/impression-users` in `routers/reactions.py`, returning
+  `Page[ImpressionUserItem]`.
+- `users.show_in_impression_lists`, on `UserFull` and `UserUpdate`.
+- Beat task `cleanup_expired_impression_users`, 04:50 ET. The list also
+  filters by the 90-day window on read.
+- Web: `SPOImpressionUsersOverlay.tsx`, opened from 📺 on `p/[sqid]` and the
+  single-post overlay; the switch is on `u/[sqid]/settings`.
+- A row with no device model, not Web Player and not app renders as "Player"
+  (a Player without a reported model).
+- Tests: `api/tests/test_impression_list.py`.
